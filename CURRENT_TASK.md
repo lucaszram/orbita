@@ -38,6 +38,7 @@ The active project work is broader than this file: continue planning/designing t
 - Expo Go SDK 51 was installed on `iPhone 17 Pro` Simulator so this SDK 51 project opens correctly. Metro is currently running for this workspace on port `8082` because port `8081` was occupied by another local project.
 - Expo/EAS preview setup is now configured for account `lucasssram`: project `@lucasssram/orbita`, EAS project ID `9e91bb5e-e69e-489e-818d-0e377f397147`.
 - Android preview build is complete and installable from Expo: `https://expo.dev/accounts/lucasssram/projects/orbita/builds/41da1364-fc7b-40d9-ac70-c244c48332ab`.
+- EAS Update branch `preview` is now published so the project no longer shows as empty in Expo Go's branch list: update group `52c16c65-723d-4684-b5c6-a72985f2520d`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/52c16c65-723d-4684-b5c6-a72985f2520d`.
 - iOS physical-device preview build is not complete yet because EAS requires Apple Developer credentials/ad hoc provisioning for `com.horoscopo.orbita`. The iOS flow reached the Apple login prompt and was intentionally stopped; do not paste Apple passwords into chat.
 - A local Git repository now exists because EAS Build requires Git. The first commits capture the current Órbita beta state and EAS build fixes.
 
@@ -179,3 +180,7 @@ The active project work is broader than this file: continue planning/designing t
 - EAS setup: installed SDK 51-compatible `expo-auth-session@~5.5.2` and `expo-web-browser@~13.0.3` to satisfy Clerk peer deps outside Expo Go.
 - EAS verification: after the final EAS fixes, TypeScript passed with `pnpm typecheck` and tests passed outside the sandbox with `pnpm test`, 12 tests, 0 failures.
 - EAS verification: Android preview build `41da1364-fc7b-40d9-ac70-c244c48332ab` completed successfully; Gradle log showed `BUILD SUCCESSFUL in 6m 32s`, produced `app-release.apk` at 131 MB, and Expo returned the install URL.
+- EAS Update verification: `eas update:configure` added `expo-updates`, `updates.url`, runtime version policy `appVersion`, and channel `preview`.
+- EAS Update verification: `eas update --branch preview --message "Orbita preview update" --platform all` published update group `52c16c65-723d-4684-b5c6-a72985f2520d` for Android and iOS, runtime `0.1.0`.
+- EAS Update verification: `eas update:list --branch preview --limit 5 --json` returned branch `preview` with the new update group. To see it in Expo Go, refresh/reopen the project's branch list.
+- EAS Update fixes: direct dependencies `expo-asset` and `babel-preset-expo` were added because pnpm did not expose them to Expo export unless they were declared explicitly.
