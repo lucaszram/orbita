@@ -41,9 +41,11 @@ The active project work is broader than this file: continue planning/designing t
 - EAS Update branch `preview` is now published so the project no longer shows as empty in Expo Go's branch list: update group `52c16c65-723d-4684-b5c6-a72985f2520d`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/52c16c65-723d-4684-b5c6-a72985f2520d`.
 - Expo Go on the physical iPhone showed branch `preview` but marked that first update as not compatible because it was published from the old SDK 51 app while the phone's current Expo Go expects a newer SDK.
 - A second SDK 57 update using runtime policy `appVersion` also showed as incompatible in Expo Go because it published runtime `0.2.0`. Expo Go expects Expo SDK runtimes such as `exposdk:57.0.0`, not arbitrary app-version runtimes.
-- To unblock phone review through Expo Go, the project has been migrated to Expo SDK 57 / React Native 0.86, app version `0.2.0`, runtime policy `sdkVersion`, and SDK 57-compatible Expo module versions.
+- User screenshot of Expo Go settings confirmed the installed phone client supports SDK 54, so SDK 57 updates still cannot open there. The working reference project is also on Expo SDK 54.
+- To unblock phone review through the user's current Expo Go, the project has been aligned to Expo SDK 54 / React Native 0.81.5, app version `0.2.0`, runtime policy `sdkVersion`, and SDK 54-compatible Expo module versions.
 - SDK 57 EAS Update is now published on branch `preview`: update group `b331824b-a4a9-4b9f-8442-6c41266a29e9`, runtime `0.2.0`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/b331824b-a4a9-4b9f-8442-6c41266a29e9`.
 - Expo Go-compatible EAS Update is now published on branch `preview`: update group `fe0c62e3-b873-490c-81d2-b02d816eee39`, runtime `exposdk:57.0.0`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/fe0c62e3-b873-490c-81d2-b02d816eee39`.
+- Current phone-compatible EAS Update is now published on branch `preview`: update group `feaa6ecc-784c-4396-af5b-4d7ce6466603`, runtime `exposdk:54.0.0`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/feaa6ecc-784c-4396-af5b-4d7ce6466603`.
 - iOS physical-device preview build is not complete yet because EAS requires Apple Developer credentials/ad hoc provisioning for `com.horoscopo.orbita`. The iOS flow reached the Apple login prompt and was intentionally stopped; do not paste Apple passwords into chat.
 - A true installed iOS preview build still requires access to a valid Apple Developer team for signing/provisioning. Until that is available, the practical iPhone path is Expo Go + EAS Update on branch `preview`.
 - A local Git repository now exists because EAS Build requires Git. The first commits capture the current Órbita beta state and EAS build fixes.
@@ -141,7 +143,7 @@ The active project work is broader than this file: continue planning/designing t
 5. If the user wants more exact local Archive 7/9/10 PNGs applied to Figma, use the same explicit-approval upload route that succeeded for `05-09`; do not silently fall back to old in-file fills unless the user asks.
 6. If continuing onboarding app implementation, inspect `app/onboarding.tsx` and run the Expo app on small/large iPhone sizes. Next practical slice is pixel-perfect continuation for screens `05-15`, using the same fixed-canvas/Figma-node-export approach when crops matter, not rewriting `01-04`.
 7. If continuing backend work, start from `docs/backend-todo.md` and the existing `convex/` modules. Next practical slice: run/link `pnpm convex:dev`, configure Clerk JWT/envs, generate Convex code, then migrate one app flow from `AsyncStorage` to Convex.
-8. If continuing device distribution, first publish the SDK 57 `preview` EAS Update and verify it opens in the user's current Expo Go. A true installed iOS preview still needs Apple Developer signing/provisioning; otherwise keep using Expo Go on iPhone and the completed Android preview build.
+8. If continuing device distribution, verify the user can open the latest `preview` update named `Orbita Expo Go SDK 54 preview` in Expo Go. A true installed iOS preview still needs Apple Developer signing/provisioning; otherwise keep using Expo Go on iPhone and the completed Android preview build.
 9. After any meaningful step, update this file with status, decisions, relevant files, next steps, and verification.
 
 ## Verification
@@ -201,3 +203,10 @@ The active project work is broader than this file: continue planning/designing t
 - Expo Go runtime fix verification: `pnpm typecheck` passed and `pnpm test` passed, 12 tests, 0 failures.
 - Expo Go runtime fix verification: `eas update --branch preview --message "Orbita Expo Go sdk runtime preview" --platform all` published update group `fe0c62e3-b873-490c-81d2-b02d816eee39` for Android and iOS, runtime `exposdk:57.0.0`, commit `1bdea70d85a4f1f79e8942be242be8bd96db801f`.
 - Expo Go runtime fix verification: `eas update:list --branch preview --limit 5 --json` shows `exposdk:57.0.0` as the latest update above the incompatible `0.2.0` and `0.1.0` updates.
+- SDK 54 phone compatibility verification: `pnpm exec expo install --check` reported dependencies are up to date.
+- SDK 54 phone compatibility verification: `pnpm typecheck` passed.
+- SDK 54 phone compatibility verification: `pnpm test` passed, 12 tests, 0 failures.
+- SDK 54 phone compatibility verification: `expo config --json` reports `sdkVersion: "54.0.0"` and runtime policy `sdkVersion`.
+- SDK 54 phone compatibility verification: `expo export --platform all` completed for web, iOS, and Android at `/private/tmp/orbita-sdk54-export-check`.
+- SDK 54 phone compatibility verification: `eas update --branch preview --message "Orbita Expo Go SDK 54 preview" --platform all` published update group `feaa6ecc-784c-4396-af5b-4d7ce6466603` for Android and iOS, runtime `exposdk:54.0.0`, commit `990cfb9feae336e8ee2941a974121a9155c25f07`.
+- SDK 54 phone compatibility verification: `eas update:list --branch preview --limit 6 --json` shows `exposdk:54.0.0` as the latest update above the incompatible SDK 57/app-version updates.
