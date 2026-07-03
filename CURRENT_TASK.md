@@ -40,8 +40,10 @@ The active project work is broader than this file: continue planning/designing t
 - Android preview build is complete and installable from Expo: `https://expo.dev/accounts/lucasssram/projects/orbita/builds/41da1364-fc7b-40d9-ac70-c244c48332ab`.
 - EAS Update branch `preview` is now published so the project no longer shows as empty in Expo Go's branch list: update group `52c16c65-723d-4684-b5c6-a72985f2520d`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/52c16c65-723d-4684-b5c6-a72985f2520d`.
 - Expo Go on the physical iPhone showed branch `preview` but marked that first update as not compatible because it was published from the old SDK 51 app while the phone's current Expo Go expects a newer SDK.
-- To unblock phone review through Expo Go, the project has been migrated to Expo SDK 57 / React Native 0.86, app version `0.2.0`, runtime policy `appVersion`, and SDK 57-compatible Expo module versions.
+- A second SDK 57 update using runtime policy `appVersion` also showed as incompatible in Expo Go because it published runtime `0.2.0`. Expo Go expects Expo SDK runtimes such as `exposdk:57.0.0`, not arbitrary app-version runtimes.
+- To unblock phone review through Expo Go, the project has been migrated to Expo SDK 57 / React Native 0.86, app version `0.2.0`, runtime policy `sdkVersion`, and SDK 57-compatible Expo module versions.
 - SDK 57 EAS Update is now published on branch `preview`: update group `b331824b-a4a9-4b9f-8442-6c41266a29e9`, runtime `0.2.0`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/b331824b-a4a9-4b9f-8442-6c41266a29e9`.
+- Expo Go-compatible EAS Update is now published on branch `preview`: update group `fe0c62e3-b873-490c-81d2-b02d816eee39`, runtime `exposdk:57.0.0`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/fe0c62e3-b873-490c-81d2-b02d816eee39`.
 - iOS physical-device preview build is not complete yet because EAS requires Apple Developer credentials/ad hoc provisioning for `com.horoscopo.orbita`. The iOS flow reached the Apple login prompt and was intentionally stopped; do not paste Apple passwords into chat.
 - A true installed iOS preview build still requires access to a valid Apple Developer team for signing/provisioning. Until that is available, the practical iPhone path is Expo Go + EAS Update on branch `preview`.
 - A local Git repository now exists because EAS Build requires Git. The first commits capture the current Órbita beta state and EAS build fixes.
@@ -195,3 +197,7 @@ The active project work is broader than this file: continue planning/designing t
 - SDK 57 migration verification: `expo export --platform all` completed for web, iOS, and Android at `/private/tmp/orbita-sdk57-export-check2`.
 - SDK 57 EAS Update verification: `eas update --branch preview --message "Orbita Expo Go SDK 57 preview" --platform all` published update group `b331824b-a4a9-4b9f-8442-6c41266a29e9` for Android and iOS, runtime `0.2.0`, commit `cbfe6fa8d588377a6679cb6e66efa996e6618b7a`.
 - SDK 57 EAS Update verification: `eas update:list --branch preview --limit 5 --json` shows the SDK 57 runtime `0.2.0` update first and the old SDK 51 runtime `0.1.0` update second.
+- Expo Go runtime fix verification: `app.json` now uses runtime policy `sdkVersion`.
+- Expo Go runtime fix verification: `pnpm typecheck` passed and `pnpm test` passed, 12 tests, 0 failures.
+- Expo Go runtime fix verification: `eas update --branch preview --message "Orbita Expo Go sdk runtime preview" --platform all` published update group `fe0c62e3-b873-490c-81d2-b02d816eee39` for Android and iOS, runtime `exposdk:57.0.0`, commit `1bdea70d85a4f1f79e8942be242be8bd96db801f`.
+- Expo Go runtime fix verification: `eas update:list --branch preview --limit 5 --json` shows `exposdk:57.0.0` as the latest update above the incompatible `0.2.0` and `0.1.0` updates.
