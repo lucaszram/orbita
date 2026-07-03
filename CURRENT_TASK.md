@@ -36,6 +36,10 @@ The active project work is broader than this file: continue planning/designing t
 - Pixel-perfect React Native pass for onboarding screens `01-04` is implemented in `app/onboarding.tsx`: fixed Figma canvas `393x852`, absolute-positioned local Figma components, fake status/home indicators, real Inter/Newsreader fonts, and direct screen mapping for frames `151:33`, `151:47`, `151:70`, and `151:105`.
 - To avoid another responsive reinterpretation, screens `01-04` now use Figma-derived local background/slot assets under `assets/orbita/figma/onboarding-v44/`. These exports are visual crops only; visible copy and UI geometry remain editable React Native.
 - Expo Go SDK 51 was installed on `iPhone 17 Pro` Simulator so this SDK 51 project opens correctly. Metro is currently running for this workspace on port `8082` because port `8081` was occupied by another local project.
+- Expo/EAS preview setup is now configured for account `lucasssram`: project `@lucasssram/orbita`, EAS project ID `9e91bb5e-e69e-489e-818d-0e377f397147`.
+- Android preview build is complete and installable from Expo: `https://expo.dev/accounts/lucasssram/projects/orbita/builds/41da1364-fc7b-40d9-ac70-c244c48332ab`.
+- iOS physical-device preview build is not complete yet because EAS requires Apple Developer credentials/ad hoc provisioning for `com.horoscopo.orbita`. The iOS flow reached the Apple login prompt and was intentionally stopped; do not paste Apple passwords into chat.
+- A local Git repository now exists because EAS Build requires Git. The first commits capture the current Órbita beta state and EAS build fixes.
 
 ## Decisions Made
 
@@ -75,8 +79,14 @@ The active project work is broader than this file: continue planning/designing t
 - `docs/decision-log.md`
 - `docs/architecture.md`
 - `docs/symbolic-asset-library.md`
+- `.easignore`
+- `.gitignore`
+- `.npmrc`
 - `app.json`
+- `eas.json`
 - `package.json`
+- `pnpm-lock.yaml`
+- `pnpm-workspace.yaml`
 - `supabase/schema.sql`
 - `convex/schema.ts`
 - `convex/auth.config.ts`
@@ -123,7 +133,8 @@ The active project work is broader than this file: continue planning/designing t
 5. If the user wants more exact local Archive 7/9/10 PNGs applied to Figma, use the same explicit-approval upload route that succeeded for `05-09`; do not silently fall back to old in-file fills unless the user asks.
 6. If continuing onboarding app implementation, inspect `app/onboarding.tsx` and run the Expo app on small/large iPhone sizes. Next practical slice is pixel-perfect continuation for screens `05-15`, using the same fixed-canvas/Figma-node-export approach when crops matter, not rewriting `01-04`.
 7. If continuing backend work, start from `docs/backend-todo.md` and the existing `convex/` modules. Next practical slice: run/link `pnpm convex:dev`, configure Clerk JWT/envs, generate Convex code, then migrate one app flow from `AsyncStorage` to Convex.
-8. After any meaningful step, update this file with status, decisions, relevant files, next steps, and verification.
+8. If continuing device distribution, next practical slice is iOS preview: rerun `eas build --platform ios --profile preview` and complete Apple Developer login/device registration interactively, or decide to keep Android-only preview for now.
+9. After any meaningful step, update this file with status, decisions, relevant files, next steps, and verification.
 
 ## Verification
 
@@ -160,3 +171,11 @@ The active project work is broader than this file: continue planning/designing t
 - Pixel-perfect `01-04` pass: `git status --short` was attempted again and the folder still does not respond as a git checkout.
 - Pixel-perfect `01-04` pass: Figma references were captured from frames `151:33`, `151:47`, `151:70`, and `151:105`; Simulator screenshots were captured at `/private/tmp/orbita-onboarding-01-final.png`, `/private/tmp/orbita-onboarding-02-final.png`, `/private/tmp/orbita-onboarding-03-final.png`, and `/private/tmp/orbita-onboarding-04-final2.png`.
 - Pixel-perfect `01-04` pass: Expo Go SDK 51 is installed in the `iPhone 17 Pro` Simulator and the app is open through Expo on `exp://127.0.0.1:8082`.
+- EAS setup: `expo whoami` confirmed `lucasssram`; `eas init --force` created and linked `@lucasssram/orbita`.
+- EAS setup: added `eas.json`, `owner: "lucasssram"`, EAS project ID, iOS non-exempt encryption flag, `.gitignore`, `.easignore`, `.npmrc`, and pnpm/EAS dependency fixes.
+- EAS setup: Android build initially failed because the archive was 2.3 GB; `.easignore` reduced the upload to 1.3 GB.
+- EAS setup: Android build then failed on pnpm workspace metadata; adding `packages: ["."]` to `pnpm-workspace.yaml` fixed dependency install on EAS pnpm 9.
+- EAS setup: Android build then failed on Gradle resolving `@react-native/gradle-plugin`; adding `node-linker=hoisted` and explicit `@react-native/gradle-plugin@0.74.87` fixed the native build.
+- EAS setup: installed SDK 51-compatible `expo-auth-session@~5.5.2` and `expo-web-browser@~13.0.3` to satisfy Clerk peer deps outside Expo Go.
+- EAS verification: after the final EAS fixes, TypeScript passed with `pnpm typecheck` and tests passed outside the sandbox with `pnpm test`, 12 tests, 0 failures.
+- EAS verification: Android preview build `41da1364-fc7b-40d9-ac70-c244c48332ab` completed successfully; Gradle log showed `BUILD SUCCESSFUL in 6m 32s`, produced `app-release.apk` at 131 MB, and Expo returned the install URL.
