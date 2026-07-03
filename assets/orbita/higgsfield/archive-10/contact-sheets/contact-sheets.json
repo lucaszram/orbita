@@ -1,0 +1,28 @@
+{
+  "sheets": [
+    {
+      "name": "Archive 10 All",
+      "path": "contact-sheets/archive-10-all.jpg"
+    },
+    {
+      "name": "Zodiac Emblems",
+      "path": "contact-sheets/zodiac-emblems.jpg"
+    },
+    {
+      "name": "Moon Phases",
+      "path": "contact-sheets/moon-phases.jpg"
+    },
+    {
+      "name": "Planetary Symbols",
+      "path": "contact-sheets/planetary-symbols.jpg"
+    },
+    {
+      "name": "App Symbols Backgrounds",
+      "path": "contact-sheets/app-symbols-backgrounds.jpg"
+    },
+    {
+      "name": "Needs Review",
+      "path": "contact-sheets/needs-review.jpg"
+    }
+  ]
+}

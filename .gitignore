@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Expo / React Native local state
+.expo/
+.expo-shared/
+dist/
+web-build/
+
+# Native build output
+android/
+ios/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Logs and OS files
+*.log
+.DS_Store
+
+# TypeScript
+*.tsbuildinfo

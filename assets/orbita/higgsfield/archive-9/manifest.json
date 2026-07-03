@@ -1,0 +1,179 @@
+{
+  "generated_at": "2026-07-03T00:14:30.262770+00:00",
+  "source_folder": "/Users/lucas/Downloads/archive (9)",
+  "workspace_folder": "/Users/lucas/Documents/horoscopo/assets/orbita/higgsfield/archive-9",
+  "total_pngs": 10,
+  "index_order": "lexicographic filename order, 1-based",
+  "assets": [
+    {
+      "index": 1,
+      "id": "archive9_idx01",
+      "filename": "hf_20260702_235218_20d93cbe-68f4-4955-902d-b488e6520745.png",
+      "inbox_path": "/Users/lucas/Documents/horoscopo/assets/orbita/higgsfield/archive-9/inbox/hf_20260702_235218_20d93cbe-68f4-4955-902d-b488e6520745.png",
+      "style_reference_path": "/Users/lucas/Documents/horoscopo/assets/orbita/higgsfield/archive-9/style-reference/archive9_style_reference__idx01__home_orbital_hero_reference__hf_20260702_235218_20d93cbe-68f4-4955-902d-b488e6520745.png",
+      "role": "home_orbital_hero_reference",
+      "dimensions": {
+        "width": 2048,
+        "height": 2048
+      },
+      "mode": "RGB",
+      "has_alpha": false,
+      "file_size_bytes": 5174060,
+      "status": "style_reference_candidate",
+      "notes": "Referencia de direccion visual dark/cobre/orbital; no subir a Figma automaticamente."
+    },
+    {
+      "index": 2,
+      "id": "archive9_idx02",
+      "filename": "hf_20260702_235255_56590b7d-0753-4cf9-becd-25f25a080ba5.png",
+      "inbox_path": "/Users/lucas/Documents/horoscopo/assets/orbita/higgsfield/archive-9/inbox/hf_20260702_235255_56590b7d-0753-4cf9-becd-25f25a080ba5.png",
+      "style_reference_path": "/Users/lucas/Documents/horoscopo/assets/orbita/higgsfield/archive-9/style-reference/archive9_style_reference__idx02__chart_grid_texture_reference__hf_20260702_235255_56590b7d-0753-4cf9-becd-25f25a080ba5.png",
+      "role": "chart_grid_texture_reference",
+      "dimensions": {
+        "width": 2048,
+        "height": 2048
+      },
+      "mode": "RGB",
+      "has_alpha": false,
+      "file_size_bytes": 6841718,
+      "status": "style_reference_candidate",
+      "notes": "Referencia de direccion visual dark/cobre/orbital; no subir a Figma automaticamente."
+    },
+    {
+      "index": 3,
+      "id": "archive9_idx03",
+      "filename": "hf_20260702_235301_7a7c44d1-7d80-493a-8898-44d85f4bb8d9.png",
+      "inbox_path": "/Users/lucas/Documents/horoscopo/assets/orbita/higgsfield/archive-9/inbox/hf_20260702_235301_7a7c44d1-7d80-493a-8898-44d85f4bb8d9.png",
+      "style_reference_path": "/Users/lucas/Documents/horoscopo/assets/orbita/higgsfield/archive-9/style-reference/archive9_style_reference__idx03__editorial_symbol_book_reference__hf_20260702_235301_7a7c44d1-7d80-493a-8898-44d85f4bb8d9.png",
+      "role": "editorial_symbol_book_reference",
+      "dimensions": {
+        "width": 2048,
+        "height": 2048
+      },
+      "mode": "RGB",
+      "has_alpha": false,
+      "file_size_bytes": 5794561,
+      "status": "style_reference_candidate",
+      "notes": "Referencia de direccion visual dark/cobre/orbital; no subir a Figma automaticamente."
+    },
+    {
+      "index": 4,
+      "id": "archive9_idx04",
+      "filename": "hf_20260702_235504_97281f27-788e-4eac-8da2-485fbb4466cc.png",
+      "inbox_path": "/Users/lucas/Documents/horoscopo/assets/orbita/higgsfield/archive-9/inbox/hf_20260702_235504_97281f27-788e-4eac-8da2-485fbb4466cc.png",
+      "style_reference_path": "/Users/lucas/Documents/horoscopo/assets/orbita/higgsfield/archive-9/style-reference/archive9_style_reference__idx04__sacred_geometry_chart_reference__hf_20260702_235504_97281f27-788e-4eac-8da2-485fbb4466cc.png",
+      "role": "sacred_geometry_chart_reference",
+      "dimensions": {
+        "width": 2048,
+        "height": 2048
+      },
+      "mode": "RGB",
+      "has_alpha": false,
+      "file_size_bytes": 3576785,
+      "status": "style_reference_candidate",
+      "notes": "Referencia de direccion visual dark/cobre/orbital; no subir a Figma automaticamente."
+    },
+    {
+      "index": 5,
+      "id": "archive9_idx05",
+      "filename": "hf_20260702_235508_1184ab9b-bd61-4be2-8fca-9ad6282c0915.png",
+      "inbox_path": "/Users/lucas/Documents/horoscopo/assets/orbita/higgsfield/archive-9/inbox/hf_20260702_235508_1184ab9b-bd61-4be2-8fca-9ad6282c0915.png",
+      "style_reference_path": "/Users/lucas/Documents/horoscopo/assets/orbita/higgsfield/archive-9/style-reference/archive9_style_reference__idx05__sacred_geometry_chart_reference__hf_20260702_235508_1184ab9b-bd61-4be2-8fca-9ad6282c0915.png",
+      "role": "sacred_geometry_chart_reference",
+      "dimensions": {
+        "width": 2048,
+        "height": 2048
+      },
+      "mode": "RGB",
+      "has_alpha": false,
+      "file_size_bytes": 6027664,
+      "status": "style_reference_candidate",
+      "notes": "Referencia de direccion visual dark/cobre/orbital; no subir a Figma automaticamente."
+    },
+    {
+      "index": 6,
+      "id": "archive9_idx06",
+      "filename": "hf_20260702_235529_00a1622a-5376-4a61-b613-ca0c24f9495e.png",
+      "inbox_path": "/Users/lucas/Documents/horoscopo/assets/orbita/higgsfield/archive-9/inbox/hf_20260702_235529_00a1622a-5376-4a61-b613-ca0c24f9495e.png",
+      "style_reference_path": "/Users/lucas/Documents/horoscopo/assets/orbita/higgsfield/archive-9/style-reference/archive9_style_reference__idx06__orbital_object_reference__hf_20260702_235529_00a1622a-5376-4a61-b613-ca0c24f9495e.png",
+      "role": "orbital_object_reference",
+      "dimensions": {
+        "width": 2048,
+        "height": 2048
+      },
+      "mode": "RGB",
+      "has_alpha": false,
+      "file_size_bytes": 6616491,
+      "status": "style_reference_candidate",
+      "notes": "Referencia de direccion visual dark/cobre/orbital; no subir a Figma automaticamente."
+    },
+    {
+      "index": 7,
+      "id": "archive9_idx07",
+      "filename": "hf_20260702_235530_b47fd181-0a73-4488-a341-d3c14acb5222.png",
+      "inbox_path": "/Users/lucas/Documents/horoscopo/assets/orbita/higgsfield/archive-9/inbox/hf_20260702_235530_b47fd181-0a73-4488-a341-d3c14acb5222.png",
+      "style_reference_path": "/Users/lucas/Documents/horoscopo/assets/orbita/higgsfield/archive-9/style-reference/archive9_style_reference__idx07__orbital_object_reference__hf_20260702_235530_b47fd181-0a73-4488-a341-d3c14acb5222.png",
+      "role": "orbital_object_reference",
+      "dimensions": {
+        "width": 2048,
+        "height": 2048
+      },
+      "mode": "RGB",
+      "has_alpha": false,
+      "file_size_bytes": 5918298,
+      "status": "style_reference_candidate",
+      "notes": "Referencia de direccion visual dark/cobre/orbital; no subir a Figma automaticamente."
+    },
+    {
+      "index": 8,
+      "id": "archive9_idx08",
+      "filename": "hf_20260702_235752_19e5890e-7855-4b53-9bfc-7e7f37266ec1.png",
+      "inbox_path": "/Users/lucas/Documents/horoscopo/assets/orbita/higgsfield/archive-9/inbox/hf_20260702_235752_19e5890e-7855-4b53-9bfc-7e7f37266ec1.png",
+      "style_reference_path": "/Users/lucas/Documents/horoscopo/assets/orbita/higgsfield/archive-9/style-reference/archive9_style_reference__idx08__vertical_backplate_reference__hf_20260702_235752_19e5890e-7855-4b53-9bfc-7e7f37266ec1.png",
+      "role": "vertical_backplate_reference",
+      "dimensions": {
+        "width": 1536,
+        "height": 2752
+      },
+      "mode": "RGB",
+      "has_alpha": false,
+      "file_size_bytes": 6009144,
+      "status": "style_reference_candidate",
+      "notes": "Referencia de direccion visual dark/cobre/orbital; no subir a Figma automaticamente."
+    },
+    {
+      "index": 9,
+      "id": "archive9_idx09",
+      "filename": "hf_20260702_235756_5e2456e0-d40f-4f86-995e-9b5480fe951f.png",
+      "inbox_path": "/Users/lucas/Documents/horoscopo/assets/orbita/higgsfield/archive-9/inbox/hf_20260702_235756_5e2456e0-d40f-4f86-995e-9b5480fe951f.png",
+      "style_reference_path": "/Users/lucas/Documents/horoscopo/assets/orbita/higgsfield/archive-9/style-reference/archive9_style_reference__idx09__vertical_backplate_reference__hf_20260702_235756_5e2456e0-d40f-4f86-995e-9b5480fe951f.png",
+      "role": "vertical_backplate_reference",
+      "dimensions": {
+        "width": 1536,
+        "height": 2752
+      },
+      "mode": "RGB",
+      "has_alpha": false,
+      "file_size_bytes": 4851601,
+      "status": "style_reference_candidate",
+      "notes": "Referencia de direccion visual dark/cobre/orbital; no subir a Figma automaticamente."
+    },
+    {
+      "index": 10,
+      "id": "archive9_idx10",
+      "filename": "hf_20260702_235757_5c00f8c8-7847-4a0b-9808-0c3fee1476c8.png",
+      "inbox_path": "/Users/lucas/Documents/horoscopo/assets/orbita/higgsfield/archive-9/inbox/hf_20260702_235757_5c00f8c8-7847-4a0b-9808-0c3fee1476c8.png",
+      "style_reference_path": "/Users/lucas/Documents/horoscopo/assets/orbita/higgsfield/archive-9/style-reference/archive9_style_reference__idx10__vertical_backplate_reference__hf_20260702_235757_5c00f8c8-7847-4a0b-9808-0c3fee1476c8.png",
+      "role": "vertical_backplate_reference",
+      "dimensions": {
+        "width": 1536,
+        "height": 2752
+      },
+      "mode": "RGB",
+      "has_alpha": false,
+      "file_size_bytes": 5758701,
+      "status": "style_reference_candidate",
+      "notes": "Referencia de direccion visual dark/cobre/orbital; no subir a Figma automaticamente."
+    }
+  ]
+}

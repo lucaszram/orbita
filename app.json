@@ -1,0 +1,43 @@
+{
+  "expo": {
+    "name": "Órbita",
+    "slug": "orbita",
+    "owner": "lucasssram",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "orbita",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.horoscopo.orbita"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0D0E12"
+      },
+      "package": "com.horoscopo.orbita"
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-notifications"
+    ],
+    "extra": {
+      "convexUrl": "",
+      "clerkPublishableKey": "",
+      "supabaseUrl": "",
+      "supabaseAnonKey": "",
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "9e91bb5e-e69e-489e-818d-0e377f397147"
+      }
+    }
+  }
+}
