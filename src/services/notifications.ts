@@ -5,7 +5,8 @@ Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldPlaySound: false,
     shouldSetBadge: false,
-    shouldShowAlert: true
+    shouldShowBanner: true,
+    shouldShowList: true
   })
 });
 
@@ -34,13 +35,13 @@ export async function scheduleDailyReminder(time: string): Promise<boolean> {
   await Notifications.cancelAllScheduledNotificationsAsync();
   await Notifications.scheduleNotificationAsync({
     content: {
-      title: "Tu ritual diario te espera",
-      body: "Abri tu mensaje del dia y elegi una accion simple."
+      title: "Tu lectura diaria te espera",
+      body: "Abrí Órbita y mirá tu contexto del día."
     },
     trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DAILY,
       hour: Number.isFinite(hour) ? hour : 9,
-      minute: Number.isFinite(minute) ? minute : 0,
-      repeats: true
+      minute: Number.isFinite(minute) ? minute : 0
     }
   });
 

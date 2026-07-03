@@ -39,7 +39,10 @@ The active project work is broader than this file: continue planning/designing t
 - Expo/EAS preview setup is now configured for account `lucasssram`: project `@lucasssram/orbita`, EAS project ID `9e91bb5e-e69e-489e-818d-0e377f397147`.
 - Android preview build is complete and installable from Expo: `https://expo.dev/accounts/lucasssram/projects/orbita/builds/41da1364-fc7b-40d9-ac70-c244c48332ab`.
 - EAS Update branch `preview` is now published so the project no longer shows as empty in Expo Go's branch list: update group `52c16c65-723d-4684-b5c6-a72985f2520d`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/52c16c65-723d-4684-b5c6-a72985f2520d`.
+- Expo Go on the physical iPhone showed branch `preview` but marked that first update as not compatible because it was published from the old SDK 51 app while the phone's current Expo Go expects a newer SDK.
+- To unblock phone review through Expo Go, the project has been migrated to Expo SDK 57 / React Native 0.86, app version `0.2.0`, runtime policy `appVersion`, and SDK 57-compatible Expo module versions. Publish a new `preview` update after this migration so Expo Go can open it.
 - iOS physical-device preview build is not complete yet because EAS requires Apple Developer credentials/ad hoc provisioning for `com.horoscopo.orbita`. The iOS flow reached the Apple login prompt and was intentionally stopped; do not paste Apple passwords into chat.
+- A true installed iOS preview build still requires access to a valid Apple Developer team for signing/provisioning. Until that is available, the practical iPhone path is Expo Go + EAS Update on branch `preview`.
 - A local Git repository now exists because EAS Build requires Git. The first commits capture the current Órbita beta state and EAS build fixes.
 
 ## Decisions Made
@@ -105,6 +108,7 @@ The active project work is broader than this file: continue planning/designing t
 - `convex/lib/orbita.ts`
 - `convex/lib/users.ts`
 - `src/services/backendProviders.tsx`
+- `src/services/notifications.ts`
 - `src/services/supabase.ts`
 - `src/services/storage.ts`
 - `src/hooks/useAppState.tsx`
@@ -134,7 +138,7 @@ The active project work is broader than this file: continue planning/designing t
 5. If the user wants more exact local Archive 7/9/10 PNGs applied to Figma, use the same explicit-approval upload route that succeeded for `05-09`; do not silently fall back to old in-file fills unless the user asks.
 6. If continuing onboarding app implementation, inspect `app/onboarding.tsx` and run the Expo app on small/large iPhone sizes. Next practical slice is pixel-perfect continuation for screens `05-15`, using the same fixed-canvas/Figma-node-export approach when crops matter, not rewriting `01-04`.
 7. If continuing backend work, start from `docs/backend-todo.md` and the existing `convex/` modules. Next practical slice: run/link `pnpm convex:dev`, configure Clerk JWT/envs, generate Convex code, then migrate one app flow from `AsyncStorage` to Convex.
-8. If continuing device distribution, next practical slice is iOS preview: rerun `eas build --platform ios --profile preview` and complete Apple Developer login/device registration interactively, or decide to keep Android-only preview for now.
+8. If continuing device distribution, first publish the SDK 57 `preview` EAS Update and verify it opens in the user's current Expo Go. A true installed iOS preview still needs Apple Developer signing/provisioning; otherwise keep using Expo Go on iPhone and the completed Android preview build.
 9. After any meaningful step, update this file with status, decisions, relevant files, next steps, and verification.
 
 ## Verification
@@ -184,3 +188,7 @@ The active project work is broader than this file: continue planning/designing t
 - EAS Update verification: `eas update --branch preview --message "Orbita preview update" --platform all` published update group `52c16c65-723d-4684-b5c6-a72985f2520d` for Android and iOS, runtime `0.1.0`.
 - EAS Update verification: `eas update:list --branch preview --limit 5 --json` returned branch `preview` with the new update group. To see it in Expo Go, refresh/reopen the project's branch list.
 - EAS Update fixes: direct dependencies `expo-asset` and `babel-preset-expo` were added because pnpm did not expose them to Expo export unless they were declared explicitly.
+- SDK 57 migration verification: `pnpm typecheck` passed with bundled Node.
+- SDK 57 migration verification: `pnpm test` passed with bundled Node, 12 tests, 0 failures.
+- SDK 57 migration verification: `pnpm exec expo install --check` reported dependencies are up to date.
+- SDK 57 migration verification: `expo export --platform all` completed for web, iOS, and Android at `/private/tmp/orbita-sdk57-export-check2`.
