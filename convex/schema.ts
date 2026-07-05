@@ -14,6 +14,7 @@ const subscriptionStatus = v.union(
   v.literal("expired")
 );
 const contentStatus = v.union(v.literal("draft"), v.literal("review"), v.literal("published"), v.literal("archived"));
+const labReviewStatus = v.union(v.literal("needs_review"), v.literal("approved"), v.literal("rejected"));
 
 export default defineSchema({
   users: defineTable({
@@ -164,6 +165,50 @@ export default defineSchema({
     currentPeriodEnd: v.optional(v.number()),
     updatedAt: v.number()
   }).index("by_user", ["userId"]),
+
+  labSubjects: defineTable({
+    createdByUserId: v.id("users"),
+    displayName: v.string(),
+    birthDate: v.string(),
+    birthTime: v.optional(v.string()),
+    birthTimePrecision,
+    birthPlaceLabel: v.string(),
+    placeId: v.optional(v.string()),
+    placeProvider: v.optional(v.string()),
+    latitude: v.optional(v.number()),
+    longitude: v.optional(v.number()),
+    timezone: v.string(),
+    notes: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number()
+  })
+    .index("by_createdBy", ["createdByUserId"])
+    .index("by_createdBy_updatedAt", ["createdByUserId", "updatedAt"]),
+
+  labRuns: defineTable({
+    createdByUserId: v.id("users"),
+    subjectId: v.id("labSubjects"),
+    localDate: v.string(),
+    timezone: v.string(),
+    normalizedInput: v.any(),
+    chartPayload: v.any(),
+    dailyReadingPayload: v.any(),
+    modelVersions: v.object({
+      chart: v.string(),
+      dailyReading: v.string()
+    }),
+    modelGaps: v.array(v.string()),
+    editorialPayload: v.optional(v.any()),
+    futureSelfNote: v.optional(v.string()),
+    editorialUpdatedAt: v.optional(v.number()),
+    reviewStatus: v.optional(labReviewStatus),
+    reviewNote: v.optional(v.string()),
+    reviewedAt: v.optional(v.number()),
+    createdAt: v.number()
+  })
+    .index("by_createdBy", ["createdByUserId"])
+    .index("by_createdBy_createdAt", ["createdByUserId", "createdAt"])
+    .index("by_subject_createdAt", ["subjectId", "createdAt"]),
 
   contentModules: defineTable({
     kind: v.union(
