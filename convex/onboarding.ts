@@ -1,11 +1,45 @@
-import { mutationGeneric as mutation } from "convex/server";
+import { mutationGeneric as mutation, queryGeneric as query } from "convex/server";
 import { v } from "convex/values";
 import { normalizeBirthTime } from "./lib/orbita";
-import { getOrCreateUser, omitUndefined, requireUser } from "./lib/users";
+import { findUserByTokenIdentifier, getOrCreateUser, omitUndefined, requireUser } from "./lib/users";
 
 const identityValidator = v.union(v.literal("ella"), v.literal("el"), v.literal("prefiero_no_decirlo"));
 const birthTimePrecisionValidator = v.union(v.literal("known"), v.literal("approximate"), v.literal("unknown"));
 const paymentStateValidator = v.union(v.literal("not_started"), v.literal("started"), v.literal("paid"), v.literal("skipped"));
+
+async function findDraftForCurrentContext(ctx: any, clientDraftId?: string) {
+  const identity = await ctx.auth.getUserIdentity();
+  const user = identity ? await findUserByTokenIdentifier(ctx, identity.tokenIdentifier) : null;
+
+  if (user) {
+    const userDraft = await ctx.db
+      .query("onboardingDrafts")
+      .withIndex("by_user", (q: any) => q.eq("userId", user._id))
+      .first();
+
+    if (userDraft) {
+      return userDraft;
+    }
+  }
+
+  if (!clientDraftId) {
+    return null;
+  }
+
+  return await ctx.db
+    .query("onboardingDrafts")
+    .withIndex("by_clientDraftId", (q: any) => q.eq("clientDraftId", clientDraftId))
+    .first();
+}
+
+export const getDraft = query({
+  args: {
+    clientDraftId: v.optional(v.string())
+  },
+  handler: async (ctx, args) => {
+    return await findDraftForCurrentContext(ctx, args.clientDraftId);
+  }
+});
 
 export const saveDraft = mutation({
   args: {

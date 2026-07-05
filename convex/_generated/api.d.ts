@@ -13,6 +13,7 @@ import type * as birthData from "../birthData.js";
 import type * as charts from "../charts.js";
 import type * as contentModules from "../contentModules.js";
 import type * as devices from "../devices.js";
+import type * as home from "../home.js";
 import type * as journal from "../journal.js";
 import type * as lib_astrologyApi from "../lib/astrologyApi.js";
 import type * as lib_backoffice from "../lib/backoffice.js";
@@ -22,6 +23,7 @@ import type * as notifications from "../notifications.js";
 import type * as onboarding from "../onboarding.js";
 import type * as readings from "../readings.js";
 import type * as relationships from "../relationships.js";
+import type * as studio from "../studio.js";
 import type * as subscriptions from "../subscriptions.js";
 import type * as users from "../users.js";
 
@@ -37,6 +39,7 @@ declare const fullApi: ApiFromModules<{
   charts: typeof charts;
   contentModules: typeof contentModules;
   devices: typeof devices;
+  home: typeof home;
   journal: typeof journal;
   "lib/astrologyApi": typeof lib_astrologyApi;
   "lib/backoffice": typeof lib_backoffice;
@@ -46,6 +49,7 @@ declare const fullApi: ApiFromModules<{
   onboarding: typeof onboarding;
   readings: typeof readings;
   relationships: typeof relationships;
+  studio: typeof studio;
   subscriptions: typeof subscriptions;
   users: typeof users;
 }>;

@@ -131,6 +131,8 @@ test("builds stable daily reading payloads for the same input", () => {
   assert.equal(first.home.doList.length, 3);
   assert.equal(first.home.avoidList.length, 3);
   assert.equal(first.personalization.status, "maqueta_no_personalizada_completa");
+  assert.ok(first.personalization.missing.includes("astrologyapi_credentials_not_configured"));
+  assert.ok(first.personalization.missing.includes("daily_transits_require_real_provider"));
   assert.equal(first.chartProfile.triad.length, 3);
   assert.equal(first.deepDive.title.length > 0, true);
   assert.equal(first.transits.highlighted, null);
