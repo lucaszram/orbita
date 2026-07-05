@@ -15,26 +15,23 @@ async function getCurrentBirthData(ctx: any, userId: string) {
 }
 
 async function getCurrentChart(ctx: any, userId: string) {
-  const currentVersion = await ctx.db
-    .query("natalCharts")
-    .withIndex("by_user_version", (q: any) => q.eq("userId", userId).eq("calculationVersion", CHART_CALCULATION_VERSION))
-    .first();
-
-  return currentVersion
-    ?? (await ctx.db
+  return (
+    (await ctx.db
       .query("natalCharts")
       .withIndex("by_user", (q: any) => q.eq("userId", userId))
       .order("desc")
-      .first());
+      .first()) ??
+    (await ctx.db
+      .query("natalCharts")
+      .withIndex("by_user_version", (q: any) => q.eq("userId", userId).eq("calculationVersion", CHART_CALCULATION_VERSION))
+      .first())
+  );
 }
 
 export const current = query({
   handler: async (ctx) => {
     const user = await requireExistingUser(ctx);
-    return await ctx.db
-      .query("natalCharts")
-      .withIndex("by_user_version", (q: any) => q.eq("userId", user._id).eq("calculationVersion", CHART_CALCULATION_VERSION))
-      .first();
+    return await getCurrentChart(ctx, user._id);
   }
 });
 

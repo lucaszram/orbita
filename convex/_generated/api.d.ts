@@ -30,6 +30,7 @@ import type * as studio from "../studio.js";
 import type * as subscriptions from "../subscriptions.js";
 import type * as transits from "../transits.js";
 import type * as users from "../users.js";
+import type * as webB0Seed from "../webB0Seed.js";
 
 import type {
   ApiFromModules,
@@ -60,6 +61,7 @@ declare const fullApi: ApiFromModules<{
   subscriptions: typeof subscriptions;
   transits: typeof transits;
   users: typeof users;
+  webB0Seed: typeof webB0Seed;
 }>;
 
 /**

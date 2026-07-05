@@ -35,6 +35,7 @@ import {
   buildPublicDailyHomeResponse,
   buildPublicTransitTimelineResponse
 } from "../convex/publicLab";
+import { sanitizeAppFacingPayload } from "../convex/webB0Seed";
 
 function buildFixtureAstrologyChart() {
   const input = normalizeBirthInput({
@@ -101,6 +102,27 @@ test("builds user fields from a Clerk-like identity", () => {
   assert.equal(fields.email, "mica@example.com");
   assert.equal(fields.name, "Mica");
   assert.equal(fields.updatedAt, 123);
+});
+
+test("sanitizes provider raw and request details before Web B0 QA persistence", () => {
+  const payload = sanitizeAppFacingPayload({
+    source: "astrologyapi",
+    provider: {
+      status: "success",
+      request: { natal: { day: 11 } }
+    },
+    normalized: {
+      placements: [{ key: "sun", raw: { provider: true }, request: { nested: true } }]
+    },
+    raw: { natalChartInterpretation: true }
+  }) as any;
+
+  assert.equal(payload.raw, undefined);
+  assert.equal(payload.provider.request, undefined);
+  assert.equal(payload.normalized.placements[0].raw, undefined);
+  assert.equal(payload.normalized.placements[0].request, undefined);
+  assert.equal(payload.provider.status, "success");
+  assert.equal(payload.normalized.placements[0].key, "sun");
 });
 
 test("backoffice read auth does not write when the user row does not exist yet", async () => {
