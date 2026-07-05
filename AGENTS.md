@@ -20,6 +20,14 @@ At the start of every new thread in this project:
 - Update `CURRENT_TASK.md` whenever the plan, status, decisions, next steps, or handoff context changes.
 - If the task gets too large or the thread gets noisy, write a clear handoff into `CURRENT_TASK.md`.
 
+## Multi-agent workflow
+
+- Este repo se trabaja con dos agentes como pares: **Codex = backend**, **Claude = frontend**. Ver `WORKFLOW.md` (canónico).
+- **Tu territorio (Codex):** `convex/**` (schema, funciones, `lib/`). Sos el **único** que corre `pnpm convex:dev` / `pnpm convex:codegen` y el que **commitea `convex/_generated/`**. No edités `app/**` ni `src/**` (territorio de Claude).
+- **El contrato** entre back y front es `convex/schema.ts` + las firmas `args`/`returns` de cada función. Todo cambio de contrato se anota en `convex/CHANGELOG.md` y se commitea **solo**, sin mezclarlo con una feature.
+- Trabajás en el worktree `../orbita-backend` (branch `feature/api`). Todo entra por PR a `main`; rebase antes del PR.
+- Antes del PR: `pnpm test` + `pnpm typecheck` en verde (no hay eslint).
+
 ## Product Guardrails
 
 - Current brand is `Órbita`.
