@@ -105,6 +105,13 @@ git worktree add ../orbita-backend  feature/api
 git worktree add ../orbita-frontend feature/web
 ```
 
+Cada worktree tiene su **propio `node_modules`** (no lo comparten). Instalá una vez en cada uno — pnpm usa un store global con hardlinks, así que es rápido y no duplica disco:
+
+```bash
+cd ../orbita-backend  && pnpm install
+cd ../orbita-frontend && pnpm install
+```
+
 El día a día, dos terminales:
 
 ```bash
@@ -116,6 +123,8 @@ cd ../orbita-frontend && claude
 ```
 
 Cada uno commitea en su branch. Mergeás a `main` por PR.
+
+> **Verificado en el setup inicial:** ambas ramas typechequean en verde por separado (`tsc --noEmit`). El frontend no importa `convex/_generated` (referencia el backend por `anyApi` de `convex/server`), así que `feature/web` compila sin el código de `convex/`.
 
 > **Un solo deployment de Convex (`dutiful-viper-815`).** Ver sección 4: **solo el backend** corre `convex dev`/`codegen` contra ese deployment. El frontend nunca lo corre.
 
