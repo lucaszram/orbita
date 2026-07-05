@@ -3,10 +3,17 @@ import test from "node:test";
 import { requireBackofficeExistingUser } from "../convex/lib/backoffice";
 import {
   buildAstrologicalLabRunPayload,
+  buildChartWheelData,
   buildLabRunPayload,
   buildDailyReadingPayload,
+  buildLongRangeTimelineContract,
   buildNatalChartSnapshot,
+  buildWebB0PersonalityReadingPayload,
+  buildWebB0TransitDetailPayload,
+  buildWebB0ValuesMapPayload,
+  buildValueRadar,
   normalizeAstrologyApiNatalChart,
+  normalizeAstrologyApiTransitTimeline,
   normalizeAstrologyApiTransits,
   getModelGaps,
   getZodiacPlacement,
@@ -16,6 +23,68 @@ import {
   userFieldsFromIdentity
 } from "../convex/lib/orbita";
 import { getTimezoneOffsetHours } from "../convex/lib/astrologyApi";
+import {
+  buildNatalInterpretationGatewayPlan,
+  generateDailyHomeWithGateway,
+  mergeDailyHomeWithLlm,
+  parseLlmDailyHomeText
+} from "../convex/lib/aiGateway";
+import {
+  assertPublicLabAccess,
+  buildCompleteHoroscopeProfile,
+  buildPublicDailyHomeResponse,
+  buildPublicTransitTimelineResponse
+} from "../convex/publicLab";
+
+function buildFixtureAstrologyChart() {
+  const input = normalizeBirthInput({
+    birthDate: "1996-01-15",
+    birthTime: "08:30",
+    birthTimePrecision: "known",
+    birthPlaceLabel: "Buenos Aires, Argentina",
+    latitude: -34.6037,
+    longitude: -58.3816,
+    timezone: "America/Argentina/Buenos_Aires"
+  });
+
+  return normalizeAstrologyApiNatalChart({
+    input,
+    houseSystem: "placidus",
+    timezoneOffset: -3,
+    calculationTimeSource: "birth_time",
+    natalChartInterpretation: {
+      planets: [
+        { name: "Sun", full_degree: 294.4, norm_degree: 24.4, is_retro: "false", sign: "Capricorn", house: 11 },
+        { name: "Moon", full_degree: 208.1, norm_degree: 28.1, is_retro: "false", sign: "Libra", house: 8 },
+        { name: "Mercury", full_degree: 302.2, norm_degree: 2.2, is_retro: "true", sign: "Aquarius", house: 12 },
+        { name: "Venus", full_degree: 195.1, norm_degree: 15.1, is_retro: "false", sign: "Libra", house: 7 },
+        { name: "Saturn", full_degree: 14.2, norm_degree: 14.2, is_retro: "true", sign: "Aries", house: 1 }
+      ],
+      houses: [
+        { house: 1, sign: "Pisces", degree: 340.2 },
+        { house: 2, sign: "Aries", degree: 16.1 },
+        { house: 3, sign: "Taurus", degree: 45.3 },
+        { house: 4, sign: "Gemini", degree: 78.1 },
+        { house: 5, sign: "Cancer", degree: 105.4 },
+        { house: 6, sign: "Leo", degree: 132.7 },
+        { house: 7, sign: "Virgo", degree: 160.2 },
+        { house: 8, sign: "Libra", degree: 196.1 },
+        { house: 9, sign: "Scorpio", degree: 225.8 },
+        { house: 10, sign: "Sagittarius", degree: 258.1 },
+        { house: 11, sign: "Capricorn", degree: 285.2 },
+        { house: 12, sign: "Aquarius", degree: 312.3 }
+      ]
+    },
+    westernChartData: {
+      aspects: [
+        { aspecting_planet: "Sun", aspected_planet: "Moon", type: "Square", orb: 1.2, diff: 91.2 },
+        { aspecting_planet: "Venus", aspected_planet: "Moon", type: "Trine", orb: 2.1, diff: 118.1 },
+        { aspecting_planet: "Saturn", aspected_planet: "Sun", type: "Opposition", orb: 0.8, diff: 179.2 },
+        { aspecting_planet: "Mercury", aspected_planet: "Moon", type: "Semi Sextile", orb: 4.3, diff: 25.7 }
+      ]
+    }
+  });
+}
 
 test("builds user fields from a Clerk-like identity", () => {
   const fields = userFieldsFromIdentity(
@@ -262,6 +331,107 @@ test("normalizes AstrologyAPI natal chart responses into Órbita chart data", ()
   assert.equal(chart.placements.some((placement) => placement.key === "ascendant"), true);
 });
 
+test("builds chart wheel data for the frontend renderer", () => {
+  const chart = buildFixtureAstrologyChart();
+  const wheel = buildChartWheelData(chart);
+
+  assert.equal(wheel.version, "orbita-chart-wheel-v1");
+  assert.equal(wheel.status, "ready");
+  assert.equal(wheel.coordinateSystem.degreeOrigin, "aries_0");
+  assert.equal(wheel.planets.some((planet) => planet.key === "sun" && planet.fullDegree === 294.4), true);
+  assert.equal(wheel.houses.length, 12);
+  assert.equal(wheel.angles.ascendant, 340.2);
+  assert.equal(wheel.aspects.some((aspect) => aspect.type === "square" && aspect.color === "#C45B63"), true);
+  assert.equal(wheel.rendererHints.drawHousesFromCusps, true);
+});
+
+test("scores value radar from harmony, stress and Saturn restrictions", () => {
+  const chart = buildFixtureAstrologyChart();
+  const radar = buildValueRadar(chart);
+  const identity = radar.dimensions.find((dimension) => dimension.id === "identity");
+  const love = radar.dimensions.find((dimension) => dimension.id === "love_creativity");
+  const innerWorld = radar.dimensions.find((dimension) => dimension.id === "inner_world");
+
+  assert.equal(radar.version, "orbita-value-radar-v1");
+  assert.equal(radar.status, "ready");
+  assert.ok(identity);
+  assert.ok(love);
+  assert.ok(innerWorld);
+  assert.equal((identity?.restrictions ?? 0) > 0, true);
+  assert.equal((innerWorld?.stress ?? 0) > 0, true);
+  assert.equal((love?.harmony ?? 0) > 2, true);
+  assert.equal(radar.formula.restrictions.includes("Saturno"), true);
+});
+
+test("adapts value radar to the Web B0 map contract", () => {
+  const chart = buildFixtureAstrologyChart();
+  const payload = buildWebB0ValuesMapPayload({ normalized: chart });
+
+  assert.equal(payload.axes.length, 8);
+  assert.equal(payload.topDrivers.length, 3);
+  assert.equal(payload.topStressors.length, 3);
+  assert.equal(payload.axes.every((axis) => axis.harmony >= 0 && axis.harmony <= 1), true);
+  assert.equal(payload.axes.every((axis) => axis.tension >= 0 && axis.tension <= 1), true);
+  assert.equal(payload.note.includes("diagnostico"), true);
+});
+
+test("builds Web B0 personality reading sections from a normalized chart", () => {
+  const chart = buildFixtureAstrologyChart();
+  const payload = buildWebB0PersonalityReadingPayload({ normalized: chart });
+
+  assert.equal(payload.headline.includes("Sol en capricornio"), true);
+  assert.equal(payload.sections.some((section) => section.key === "sun"), true);
+  assert.equal(payload.sections.some((section) => section.key === "moon"), true);
+  assert.equal(payload.sections.some((section) => section.key === "ascendant"), true);
+  assert.equal(JSON.stringify(payload).includes("undefined"), false);
+  assert.equal(payload.disclaimer.includes("No reemplaza"), true);
+});
+
+test("builds Web B0 transit detail from daily highlighted transit payload", () => {
+  const transit = normalizeAstrologyApiTransits({
+    transit_relation: [
+      {
+        transit_planet: "Saturn",
+        natal_planet: "Sun",
+        aspect_type: "Square",
+        start_time: "2026-07-01 00:00:00",
+        exact_time: "2026-07-05 00:00:00",
+        end_time: "2026-07-09 00:00:00",
+        transit_sign: "Aries",
+        natal_house: 1,
+        is_retrograde: true
+      }
+    ]
+  })[0];
+  const payload = buildWebB0TransitDetailPayload({ transits: { highlighted: transit } }, "2026-07-05");
+
+  assert.equal(payload.title.includes("Saturno"), true);
+  assert.equal(payload.aspect.angleLabel, "90 grados");
+  assert.equal(payload.scene.transitingBody.name, "saturn");
+  assert.equal(payload.frequency.timeline.length, 3);
+  assert.equal(payload.earth.suggestions.length, 3);
+  assert.equal(JSON.stringify(payload).includes("undefined"), false);
+});
+
+test("long range timeline contract requires provider-confirmed windows", () => {
+  const contract = buildLongRangeTimelineContract();
+
+  assert.equal(contract.version, "orbita-long-range-timeline-provider-v1");
+  assert.equal(contract.status, "needs_provider_endpoint");
+  assert.equal(contract.gaps.includes("confirm_astrologyapi_long_range_or_forecast_endpoint"), true);
+  assert.equal(contract.requiredEventFields.includes("nextOccurrence"), true);
+});
+
+test("natal interpretation Gateway plan is versioned and cacheable", () => {
+  const plan = buildNatalInterpretationGatewayPlan({ model: "openai/gpt-5.4" });
+
+  assert.equal(plan.provider, "vercel-ai-gateway");
+  assert.equal(plan.promptVersion, "orbita-natal-profile-llm-v1");
+  assert.equal(plan.cacheVersion, "orbita-natal-profile-cache-v1");
+  assert.equal(plan.cacheTable, "natalInterpretations");
+  assert.equal(plan.sections.some((section) => section.id === "values_radar"), true);
+});
+
 test("selects high-priority major transits for daily readings", () => {
   const transits = normalizeAstrologyApiTransits({
     transit_relation: [
@@ -299,6 +469,181 @@ test("selects high-priority major transits for daily readings", () => {
   assert.equal(selected.length, 2);
   assert.equal(selected[0].transitPlanet, "saturn");
   assert.equal(selected[0].natalPoint, "sun");
+});
+
+test("normalizes AstrologyAPI weekly transits into timeline windows", () => {
+  const timeline = normalizeAstrologyApiTransitTimeline(
+    {
+      transit_relation: [
+        {
+          transit_planet: "Uranus",
+          natal_planet: "Sun",
+          aspect_type: "Trine",
+          start_time: "2023-01-28 10:11:41",
+          exact_time: "2023-01-28 13:53:38",
+          end_time: "2023-01-28 17:36:39"
+        },
+        {
+          transit_planet: "Mercury",
+          natal_planet: "Ascendant",
+          type: "Sextile",
+          orb: 0.57,
+          date: "16-6-2017"
+        }
+      ]
+    },
+    {
+      source: "natal_transits_weekly",
+      scope: "personal_weekly"
+    }
+  );
+
+  assert.equal(timeline.length, 2);
+  assert.equal(timeline[0].startTime, "2023-01-28 10:11:41");
+  assert.equal(timeline[0].exactTime, "2023-01-28 13:53:38");
+  assert.equal(timeline[0].endTime, "2023-01-28 17:36:39");
+  assert.equal(timeline[0].windowStatus, "windowed");
+  assert.equal(timeline[1].aspectType, "sextile");
+  assert.equal(timeline[1].date, "2017-06-16");
+  assert.equal(timeline[1].windowStatus, "dated");
+});
+
+test("AI Gateway disabled fallback does not require a generation call", async () => {
+  const llm = await generateDailyHomeWithGateway({
+    enabled: false,
+    dailyHome: {
+      header: { headline: "Base" },
+      modules: { do: ["a", "b", "c"], avoid: ["d", "e", "f"] }
+    },
+    generateText: async () => {
+      throw new Error("should not be called");
+    }
+  });
+
+  assert.equal(llm.status, "disabled");
+  assert.ok(llm.gaps.includes("llm_gateway_disabled"));
+});
+
+test("AI Gateway error fallback adds explicit gap and keeps three-item modules", async () => {
+  const baseHome = {
+    header: { headline: "Base headline" },
+    modules: {
+      do: ["Uno", "Dos", "Tres"],
+      avoid: ["Cuatro", "Cinco", "Seis"],
+      action: "Base action",
+      question: "Base question"
+    },
+    longRead: { title: "Base", body: "Base body" },
+    personalization: {},
+    modelGaps: [],
+    mode: "provider_real"
+  };
+  const error = new Error("rate limited") as Error & { statusCode?: number };
+  error.statusCode = 429;
+  const llm = await generateDailyHomeWithGateway({
+    enabled: true,
+    apiKey: "test-key",
+    model: "anthropic/claude-sonnet-4.6",
+    dailyHome: baseHome,
+    generateText: async () => {
+      throw error;
+    }
+  });
+  const merged = mergeDailyHomeWithLlm({ dailyHome: baseHome, llm }) as any;
+
+  assert.equal(llm.status, "error");
+  assert.ok(llm.gaps.includes("ai_gateway_rate_limited"));
+  assert.equal(merged.modules.do.length, 3);
+  assert.equal(merged.modules.avoid.length, 3);
+  assert.ok(merged.modelGaps.includes("ai_gateway_rate_limited"));
+});
+
+test("AI Gateway success parses JSON and merges Orbita copy", async () => {
+  const parsed = parseLlmDailyHomeText(`{
+    "headline": "Saturno pide foco sin dramatizar.",
+    "do": ["Bajar el tema a una accion.", "Pedir precision.", "Elegir ritmo."],
+    "avoid": ["Cerrar por orgullo.", "Prometer de mas.", "Leerlo como sentencia."],
+    "action": "Escribi una linea concreta.",
+    "question": "Que necesita menos velocidad?",
+    "longRead": { "title": "El punto activo", "body": "Un texto breve." },
+    "personalizationNote": "Basado en transito destacado."
+  }`);
+
+  assert.equal(parsed?.do.length, 3);
+  assert.equal(parsed?.avoid.length, 3);
+  assert.equal(parsed?.headline.includes("Saturno"), true);
+});
+
+test("public lab timeline response hides provider raw payload", () => {
+  const publicTimeline = buildPublicTransitTimelineResponse({
+    input: {
+      birthDate: "1996-11-11",
+      birthTime: "10:48",
+      birthTimePrecision: "known",
+      birthPlaceLabel: "Buenos Aires, Argentina",
+      latitude: -34.6037,
+      longitude: -58.3816,
+      timezone: "America/Argentina/Buenos_Aires",
+      localDate: "2026-07-05"
+    },
+    providerResult: {
+      status: "success",
+      provider: "astrologyapi",
+      providerVersion: "astrologyapi-western-transits-v1",
+      houseSystem: "placidus",
+      localDate: "2026-07-05",
+      warnings: [],
+      normalized: {
+        timeline: {
+          version: "orbita-transit-timeline-v1",
+          provider: "astrologyapi",
+          localDate: "2026-07-05",
+          events: [
+            {
+              id: "event-1",
+              source: "natal_transits_weekly",
+              scope: "personal_weekly",
+              transitPlanet: "saturn",
+              transitPlanetEs: "Saturno",
+              natalPoint: "sun",
+              natalPointEs: "Sol",
+              aspectType: "square",
+              aspectTypeEs: "cuadratura",
+              startTime: "2026-07-01 00:00:00",
+              exactTime: "2026-07-05 00:00:00",
+              endTime: "2026-07-09 00:00:00",
+              isRetrograde: false,
+              transitSign: "Aries",
+              transitSignEs: "aries",
+              natalHouse: 1,
+              priority: 15,
+              date: "2026-07-05",
+              displayText: "Saturno en cuadratura con tu Sol en casa 1.",
+              windowStatus: "windowed"
+            }
+          ],
+          providerStatus: {
+            status: "success",
+            endpoints: {
+              "natal_transits/weekly": "success",
+              "tropical_transits/weekly": "skipped",
+              "tropical_transits/monthly": "skipped"
+            },
+            warnings: []
+          },
+          rawPolicy: {
+            returnsProviderRaw: false,
+            reason: "raw hidden"
+          }
+        }
+      },
+      raw: { shouldNotLeak: true }
+    }
+  }) as any;
+
+  assert.equal(publicTimeline.timeline.events.length, 1);
+  assert.equal(publicTimeline.provider.status, "success");
+  assert.equal(JSON.stringify(publicTimeline).includes("shouldNotLeak"), false);
 });
 
 test("builds provider-backed lab payloads with editorial daily modules", () => {
@@ -401,4 +746,196 @@ test("falls back to stub payloads when AstrologyAPI is not configured", () => {
   assert.equal(payload.dailyReading.chartProfile.limitations.length > 0, true);
   assert.equal(payload.dailyReading.voidPreview.suggestedQuestions.length > 0, true);
   assert.equal(payload.modelGaps.includes("astrologyapi_credentials_not_configured"), true);
+});
+
+test("public lab is disabled unless explicitly enabled", () => {
+  const previousEnabled = process.env.ORBITA_PUBLIC_LAB_ENABLED;
+  const previousKey = process.env.ORBITA_PUBLIC_LAB_KEY;
+  delete process.env.ORBITA_PUBLIC_LAB_ENABLED;
+  delete process.env.ORBITA_PUBLIC_LAB_KEY;
+
+  try {
+    assert.throws(() => assertPublicLabAccess(), /Public lab is disabled/);
+
+    process.env.ORBITA_PUBLIC_LAB_ENABLED = "true";
+    assert.doesNotThrow(() => assertPublicLabAccess());
+
+    process.env.ORBITA_PUBLIC_LAB_KEY = "lab-secret";
+    assert.throws(() => assertPublicLabAccess("wrong"), /access key is invalid/);
+    assert.doesNotThrow(() => assertPublicLabAccess("lab-secret"));
+  } finally {
+    if (previousEnabled === undefined) {
+      delete process.env.ORBITA_PUBLIC_LAB_ENABLED;
+    } else {
+      process.env.ORBITA_PUBLIC_LAB_ENABLED = previousEnabled;
+    }
+
+    if (previousKey === undefined) {
+      delete process.env.ORBITA_PUBLIC_LAB_KEY;
+    } else {
+      process.env.ORBITA_PUBLIC_LAB_KEY = previousKey;
+    }
+  }
+});
+
+test("public lab maps fallback payloads into stable Home output", () => {
+  const labPayload = buildAstrologicalLabRunPayload({
+    localDate: "2026-07-05",
+    input: {
+      birthDate: "1996-11-11",
+      birthTime: "10:48",
+      birthTimePrecision: "known",
+      birthPlaceLabel: "Buenos Aires, Argentina",
+      latitude: -34.6037,
+      longitude: -58.3816,
+      timezone: "America/Argentina/Buenos_Aires"
+    },
+    providerResult: {
+      status: "not_configured",
+      provider: "astrologyapi",
+      providerVersion: "astrologyapi-western-v1",
+      localDate: "2026-07-05",
+      warnings: ["astrologyapi_credentials_not_configured"],
+      raw: { shouldNotLeak: true }
+    }
+  }) as any;
+
+  const publicOutput = buildPublicDailyHomeResponse({
+    input: {
+      displayName: "Lucas",
+      birthDate: "1996-11-11",
+      birthTime: "10:48",
+      birthTimePrecision: "known",
+      birthPlaceLabel: "Buenos Aires, Argentina",
+      latitude: -34.6037,
+      longitude: -58.3816,
+      timezone: "America/Argentina/Buenos_Aires",
+      localDate: "2026-07-05"
+    },
+    labPayload
+  }) as any;
+
+  assert.equal(publicOutput.header.greeting, "Hola, Lucas");
+  assert.equal(publicOutput.modules.do.length, 3);
+  assert.equal(publicOutput.modules.avoid.length, 3);
+  assert.equal(publicOutput.provider.status, "not_configured");
+  assert.equal(publicOutput.mode, "demo_without_provider");
+  assert.ok(publicOutput.modelGaps.includes("astrologyapi_credentials_not_configured"));
+  assert.equal(JSON.stringify(publicOutput).includes("shouldNotLeak"), false);
+});
+
+test("public lab keeps unknown birth time explicit in model gaps", () => {
+  const labPayload = buildAstrologicalLabRunPayload({
+    localDate: "2026-07-05",
+    input: {
+      birthDate: "1996-11-11",
+      birthTime: "10:48",
+      birthTimePrecision: "unknown",
+      birthPlaceLabel: "Buenos Aires, Argentina",
+      timezone: "America/Argentina/Buenos_Aires"
+    },
+    providerResult: {
+      status: "not_configured",
+      provider: "astrologyapi",
+      providerVersion: "astrologyapi-western-v1",
+      localDate: "2026-07-05",
+      warnings: ["astrologyapi_credentials_not_configured"]
+    }
+  }) as any;
+
+  const publicOutput = buildPublicDailyHomeResponse({
+    input: {
+      birthDate: "1996-11-11",
+      birthTime: "10:48",
+      birthTimePrecision: "unknown",
+      birthPlaceLabel: "Buenos Aires, Argentina",
+      timezone: "America/Argentina/Buenos_Aires",
+      localDate: "2026-07-05"
+    },
+    labPayload
+  }) as any;
+
+  assert.equal(publicOutput.modules.do.length, 3);
+  assert.equal(publicOutput.modules.avoid.length, 3);
+  assert.ok(publicOutput.modelGaps.includes("unknown_birth_time_limits_ascendant_houses_and_moon_precision"));
+});
+
+test("public lab builds a complete horoscope feature map for one profile", () => {
+  const input = {
+    displayName: "Lucas",
+    birthDate: "1996-11-11",
+    birthTime: "10:48",
+    birthTimePrecision: "known" as const,
+    birthPlaceLabel: "Buenos Aires, Argentina",
+    latitude: -34.6037,
+    longitude: -58.3816,
+    timezone: "America/Argentina/Buenos_Aires",
+    localDate: "2026-07-05",
+    runTimezone: "America/Argentina/Buenos_Aires"
+  };
+  const labPayload = buildAstrologicalLabRunPayload({
+    localDate: input.localDate,
+    input,
+    providerResult: {
+      status: "not_configured",
+      provider: "astrologyapi",
+      providerVersion: "astrologyapi-western-v1",
+      localDate: input.localDate,
+      warnings: ["astrologyapi_credentials_not_configured"]
+    }
+  }) as any;
+  const dailyHome = buildPublicDailyHomeResponse({ input, labPayload }) as any;
+  const complete = buildCompleteHoroscopeProfile({ input, labPayload, dailyHome }) as any;
+
+  assert.equal(complete.version, "orbita-complete-profile-preview-v1");
+  assert.equal(complete.blocks.identity.length, 6);
+  assert.equal(complete.blocks.natalChart.length, 7);
+  assert.equal(complete.blocks.daily[0].data.do.length, 3);
+  assert.equal(complete.blocks.currentSky.length, 6);
+  assert.equal(complete.blocks.future.length, 4);
+  assert.equal(complete.blocks.extras.length, 5);
+  assert.equal(complete.blocks.extras[2].data.lifePathNumber, 11);
+  assert.equal(complete.chartWheelData.status, "missing_chart");
+  assert.equal(complete.valueRadar.status, "missing_chart");
+  assert.equal(complete.editorialGeneration.cacheTable, "natalInterpretations");
+  assert.equal(complete.longRangeTimeline.status, "needs_provider_endpoint");
+  assert.equal(complete.rawPolicy.returnsProviderRaw, false);
+  assert.ok(complete.nextBackendNeeds.includes("Definir proveedor LLM y versionado/cache de prompts editoriales."));
+});
+
+test("public complete horoscope uses normalized ascendant for chart ruler when provider succeeds", () => {
+  const input = {
+    displayName: "Mica",
+    birthDate: "1996-01-15",
+    birthTime: "08:30",
+    birthTimePrecision: "known" as const,
+    birthPlaceLabel: "Buenos Aires, Argentina",
+    latitude: -34.6037,
+    longitude: -58.3816,
+    timezone: "America/Argentina/Buenos_Aires",
+    localDate: "2026-07-05"
+  };
+  const chart = buildFixtureAstrologyChart();
+  const labPayload = buildAstrologicalLabRunPayload({
+    localDate: input.localDate,
+    input,
+    providerResult: {
+      status: "success",
+      provider: "astrologyapi",
+      providerVersion: "astrologyapi-western-v1",
+      houseSystem: "placidus",
+      localDate: input.localDate,
+      warnings: [],
+      normalized: { chart, transits: [] },
+      raw: { fixture: true }
+    }
+  }) as any;
+  const dailyHome = buildPublicDailyHomeResponse({ input, labPayload }) as any;
+  const complete = buildCompleteHoroscopeProfile({ input, labPayload, dailyHome }) as any;
+  const chartRuler = complete.blocks.identity.find((item: any) => item.id === "1.6");
+
+  assert.equal(chartRuler.status, "ready");
+  assert.equal(chartRuler.data.sign, "piscis");
+  assert.equal(chartRuler.data.ruler, "Neptuno");
+  assert.deepEqual(chartRuler.missing, []);
 });

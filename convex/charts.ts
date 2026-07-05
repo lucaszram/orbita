@@ -1,5 +1,10 @@
 import { mutationGeneric as mutation, queryGeneric as query } from "convex/server";
-import { buildNatalChartSnapshot, CHART_CALCULATION_VERSION } from "./lib/orbita";
+import {
+  buildNatalChartSnapshot,
+  buildWebB0PersonalityReadingPayload,
+  buildWebB0ValuesMapPayload,
+  CHART_CALCULATION_VERSION
+} from "./lib/orbita";
 import { requireExistingUser, requireUser } from "./lib/users";
 
 async function getCurrentBirthData(ctx: any, userId: string) {
@@ -9,6 +14,20 @@ async function getCurrentBirthData(ctx: any, userId: string) {
     .first();
 }
 
+async function getCurrentChart(ctx: any, userId: string) {
+  const currentVersion = await ctx.db
+    .query("natalCharts")
+    .withIndex("by_user_version", (q: any) => q.eq("userId", userId).eq("calculationVersion", CHART_CALCULATION_VERSION))
+    .first();
+
+  return currentVersion
+    ?? (await ctx.db
+      .query("natalCharts")
+      .withIndex("by_user", (q: any) => q.eq("userId", userId))
+      .order("desc")
+      .first());
+}
+
 export const current = query({
   handler: async (ctx) => {
     const user = await requireExistingUser(ctx);
@@ -16,6 +35,24 @@ export const current = query({
       .query("natalCharts")
       .withIndex("by_user_version", (q: any) => q.eq("userId", user._id).eq("calculationVersion", CHART_CALCULATION_VERSION))
       .first();
+  }
+});
+
+export const valuesMap = query({
+  handler: async (ctx) => {
+    const user = await requireExistingUser(ctx);
+    const chart = await getCurrentChart(ctx, user._id);
+
+    return chart ? buildWebB0ValuesMapPayload(chart.payload) : null;
+  }
+});
+
+export const personalityReading = query({
+  handler: async (ctx) => {
+    const user = await requireExistingUser(ctx);
+    const chart = await getCurrentChart(ctx, user._id);
+
+    return chart ? buildWebB0PersonalityReadingPayload(chart.payload) : null;
   }
 });
 

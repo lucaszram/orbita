@@ -15,6 +15,8 @@ const subscriptionStatus = v.union(
 );
 const contentStatus = v.union(v.literal("draft"), v.literal("review"), v.literal("published"), v.literal("archived"));
 const labReviewStatus = v.union(v.literal("needs_review"), v.literal("approved"), v.literal("rejected"));
+const generationStatus = v.union(v.literal("pending"), v.literal("ready"), v.literal("fallback"), v.literal("error"), v.literal("stale"));
+const timelinePeriodType = v.union(v.literal("week"), v.literal("month"), v.literal("long_range"));
 
 export default defineSchema({
   users: defineTable({
@@ -70,13 +72,52 @@ export default defineSchema({
   natalCharts: defineTable({
     userId: v.id("users"),
     birthDataId: v.id("birthData"),
+    birthDataHash: v.optional(v.string()),
+    cacheKey: v.optional(v.string()),
+    providerVersion: v.optional(v.string()),
     calculationVersion: v.string(),
     payload: v.any(),
-    createdAt: v.number()
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number())
   })
     .index("by_user", ["userId"])
     .index("by_birthData", ["birthDataId"])
-    .index("by_user_version", ["userId", "calculationVersion"]),
+    .index("by_user_version", ["userId", "calculationVersion"])
+    .index("by_cacheKey", ["cacheKey"]),
+
+  profileAstrologyCaches: defineTable({
+    userId: v.id("users"),
+    birthDataId: v.id("birthData"),
+    natalChartId: v.optional(v.id("natalCharts")),
+    cacheKey: v.string(),
+    cacheVersion: v.string(),
+    payload: v.any(),
+    createdAt: v.number(),
+    updatedAt: v.number()
+  })
+    .index("by_user", ["userId"])
+    .index("by_birthData", ["birthDataId"])
+    .index("by_cacheKey", ["cacheKey"])
+    .index("by_user_version", ["userId", "cacheVersion"]),
+
+  natalInterpretations: defineTable({
+    userId: v.id("users"),
+    natalChartId: v.id("natalCharts"),
+    feature: v.string(),
+    locale: v.string(),
+    promptVersion: v.string(),
+    cacheVersion: v.string(),
+    model: v.optional(v.string()),
+    provider: v.optional(v.string()),
+    status: generationStatus,
+    payload: v.any(),
+    usage: v.optional(v.any()),
+    createdAt: v.number(),
+    updatedAt: v.number()
+  })
+    .index("by_user", ["userId"])
+    .index("by_chart_feature_version", ["natalChartId", "feature", "promptVersion"])
+    .index("by_user_feature_version", ["userId", "feature", "promptVersion"]),
 
   dailyReadings: defineTable({
     userId: v.id("users"),
@@ -84,20 +125,79 @@ export default defineSchema({
     timezone: v.string(),
     natalChartId: v.optional(v.id("natalCharts")),
     contentVersion: v.string(),
+    promptVersion: v.optional(v.string()),
+    cacheVersion: v.optional(v.string()),
+    model: v.optional(v.string()),
+    provider: v.optional(v.string()),
+    status: v.optional(generationStatus),
+    usage: v.optional(v.any()),
     payload: v.any(),
-    createdAt: v.number()
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number())
   })
     .index("by_user", ["userId"])
-    .index("by_user_date", ["userId", "localDate"]),
+    .index("by_user_date", ["userId", "localDate"])
+    .index("by_user_date_version", ["userId", "localDate", "contentVersion"]),
+
+  dailyLlmReadings: defineTable({
+    userId: v.id("users"),
+    localDate: v.string(),
+    timezone: v.string(),
+    natalChartId: v.optional(v.id("natalCharts")),
+    promptVersion: v.string(),
+    cacheVersion: v.string(),
+    model: v.optional(v.string()),
+    provider: v.optional(v.string()),
+    status: generationStatus,
+    payload: v.any(),
+    usage: v.optional(v.any()),
+    createdAt: v.number(),
+    updatedAt: v.number()
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_date", ["userId", "localDate"])
+    .index("by_user_date_prompt", ["userId", "localDate", "promptVersion"]),
 
   transitReadings: defineTable({
     userId: v.id("users"),
     localDate: v.string(),
     timezone: v.string(),
     natalChartId: v.optional(v.id("natalCharts")),
+    providerVersion: v.optional(v.string()),
+    timelineVersion: v.optional(v.string()),
     payload: v.any(),
-    createdAt: v.number()
-  }).index("by_user_date", ["userId", "localDate"]),
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number())
+  })
+    .index("by_user_date", ["userId", "localDate"])
+    .index("by_user_date_provider", ["userId", "localDate", "providerVersion"]),
+
+  transitTimelineCaches: defineTable({
+    userId: v.id("users"),
+    natalChartId: v.optional(v.id("natalCharts")),
+    periodType: timelinePeriodType,
+    periodStart: v.string(),
+    periodEnd: v.string(),
+    providerVersion: v.string(),
+    timelineVersion: v.string(),
+    payload: v.any(),
+    createdAt: v.number(),
+    updatedAt: v.number()
+  })
+    .index("by_user_period", ["userId", "periodType", "periodStart"])
+    .index("by_chart_period_version", ["natalChartId", "periodStart", "providerVersion"])
+    .index("by_user_period_version", ["userId", "periodStart", "providerVersion"]),
+
+  globalSkyCaches: defineTable({
+    localDate: v.string(),
+    timezone: v.string(),
+    providerVersion: v.string(),
+    payload: v.any(),
+    createdAt: v.number(),
+    updatedAt: v.number()
+  })
+    .index("by_date", ["localDate"])
+    .index("by_date_timezone_version", ["localDate", "timezone", "providerVersion"]),
 
   savedReadings: defineTable({
     userId: v.id("users"),

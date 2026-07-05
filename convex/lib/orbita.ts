@@ -2,6 +2,9 @@ export const CHART_CALCULATION_VERSION = "orbita-stub-v1";
 export const DAILY_READING_CONTENT_VERSION = "orbita-daily-stub-v1";
 export const ASTROLOGY_API_CHART_CALCULATION_VERSION = "orbita-astrologyapi-western-v1";
 export const DAILY_READING_EDITORIAL_VERSION = "orbita-daily-editorial-p0-v1";
+export const CHART_WHEEL_DATA_VERSION = "orbita-chart-wheel-v1";
+export const VALUE_RADAR_VERSION = "orbita-value-radar-v1";
+export const LONG_RANGE_TIMELINE_CONTRACT_VERSION = "orbita-long-range-timeline-provider-v1";
 
 export type AuthIdentityLike = {
   tokenIdentifier: string;
@@ -71,6 +74,32 @@ export type NormalizedAstroTransit = {
   priority: number;
 };
 
+export type NormalizedAstroTimelineEvent = NormalizedAstroTransit & {
+  id: string;
+  source: "natal_transits_weekly" | "tropical_transits_weekly" | "tropical_transits_monthly";
+  scope: "personal_weekly" | "tropical_weekly" | "tropical_monthly";
+  date: string | null;
+  displayText: string;
+  windowStatus: "windowed" | "dated";
+};
+
+export type NormalizedAstroTimeline = {
+  version: "orbita-transit-timeline-v1";
+  provider: "astrologyapi";
+  localDate: string;
+  events: NormalizedAstroTimelineEvent[];
+  providerStatus: {
+    status: "success" | "partial" | "not_configured" | "missing_input" | "error";
+    endpoints: Record<string, "success" | "not_configured" | "missing_input" | "error" | "skipped">;
+    warnings: string[];
+    error?: string;
+  };
+  rawPolicy: {
+    returnsProviderRaw: false;
+    reason: string;
+  };
+};
+
 export type NormalizedAstroChart = {
   provider: "astrologyapi";
   calculationVersion: typeof ASTROLOGY_API_CHART_CALCULATION_VERSION;
@@ -92,6 +121,124 @@ export type NormalizedAstroChart = {
   };
 };
 
+export type ChartWheelData = {
+  version: typeof CHART_WHEEL_DATA_VERSION;
+  status: "ready" | "missing_chart";
+  coordinateSystem: {
+    degreeOrigin: "aries_0";
+    direction: "counterclockwise";
+    totalDegrees: 360;
+  };
+  planets: Array<{
+    key: string;
+    label: string;
+    sign: string;
+    signEs: string;
+    degree: number | null;
+    fullDegree: number | null;
+    house: number | null;
+    isRetrograde: boolean | null;
+    displayDegree: string;
+  }>;
+  houses: Array<{
+    house: number;
+    label: string;
+    sign: string;
+    signEs: string;
+    cuspDegree: number | null;
+    theme: string;
+  }>;
+  aspects: Array<{
+    from: string;
+    to: string;
+    type: string;
+    typeEs: string;
+    orb: number | null;
+    isMajor: boolean;
+    lineStyle: "solid" | "dashed";
+    color: string;
+    weight: number;
+  }>;
+  angles: {
+    ascendant: number | null;
+    descendant: number | null;
+    mc: number | null;
+    ic: number | null;
+  };
+  legend: {
+    harmony: string[];
+    stress: string[];
+    neutral: string[];
+    restriction: string[];
+  };
+  rendererHints: {
+    rotateToAscendant: boolean;
+    labelLanguage: "es";
+    drawHousesFromCusps: boolean;
+  };
+  gaps: string[];
+};
+
+export type ValueRadarData = {
+  version: typeof VALUE_RADAR_VERSION;
+  status: "ready" | "missing_chart";
+  formula: {
+    harmony: string;
+    stress: string;
+    restrictions: string;
+    disclaimer: string;
+  };
+  dimensions: Array<{
+    id: string;
+    label: string;
+    houseFocus: number[];
+    harmony: number;
+    stress: number;
+    restrictions: number;
+    netScore: number;
+    drivers: string[];
+  }>;
+  totals: {
+    harmony: number;
+    stress: number;
+    restrictions: number;
+    netScore: number;
+  };
+  gaps: string[];
+};
+
+export type WebB0ValuesMapPayload = {
+  axes: Array<{ key: string; label: string; harmony: number; tension: number }>;
+  topDrivers: Array<{ label: string; value: number }>;
+  topStressors: Array<{ label: string; value: number }>;
+  note: string;
+};
+
+export type WebB0PersonalityReadingPayload = {
+  headline: string;
+  sections: Array<{
+    key: string;
+    title: string;
+    intro: string;
+    placement: { label: string; planet: string; sign?: string; house?: number };
+    body: string;
+  }>;
+  disclaimer: string;
+};
+
+export type WebB0TransitDetailPayload = {
+  title: string;
+  aspect: { type: string; angleLabel: string };
+  scene: {
+    transitingBody: { name: string; label: string };
+    natalPoint: { name: string; sign?: string; label: string };
+  };
+  reading: { fragments: Array<{ source: string; text: string }>; plain: string };
+  frequency: { label: string; timeline: Array<{ label: string; current: boolean }> };
+  earth: { headline: string; suggestions: string[] };
+  window: { label: string; note: string };
+};
+
 export type AstrologyProviderRunResult = {
   status: "success" | "not_configured" | "missing_input" | "error";
   provider: "astrologyapi";
@@ -103,6 +250,7 @@ export type AstrologyProviderRunResult = {
   normalized?: {
     chart: NormalizedAstroChart;
     transits: NormalizedAstroTransit[];
+    timeline?: NormalizedAstroTimeline;
   };
   raw?: unknown;
   error?: string;
@@ -456,6 +604,729 @@ const houseThemes: Record<number, string> = {
   12: "descanso, cierre y mundo interno"
 };
 
+const valueRadarDimensions = [
+  { id: "identity", label: "Identidad", houseFocus: [1] },
+  { id: "body_resources", label: "Cuerpo y recursos", houseFocus: [2, 6] },
+  { id: "communication", label: "Palabra y entorno", houseFocus: [3] },
+  { id: "roots", label: "Raiz e intimidad", houseFocus: [4] },
+  { id: "love_creativity", label: "Amor y deseo", houseFocus: [5, 7] },
+  { id: "work_direction", label: "Trabajo y direccion", houseFocus: [6, 10] },
+  { id: "community_expansion", label: "Expansion y red", houseFocus: [9, 11] },
+  { id: "inner_world", label: "Profundidad y cierre", houseFocus: [8, 12] }
+] as const;
+
+const harmonyAspects = new Set(["trine", "sextile"]);
+const stressAspects = new Set(["square", "opposition"]);
+const hardAspects = new Set(["square", "opposition", "conjunction"]);
+
+function aspectRenderStyle(type: string) {
+  if (harmonyAspects.has(type)) {
+    return { color: "#4E9F8A", lineStyle: "solid" as const, weight: type === "trine" ? 2 : 1.5 };
+  }
+  if (stressAspects.has(type)) {
+    return { color: "#C45B63", lineStyle: "solid" as const, weight: 2 };
+  }
+  if (type === "conjunction") {
+    return { color: "#7C6BFF", lineStyle: "solid" as const, weight: 1.75 };
+  }
+  return { color: "#9CA3AF", lineStyle: "dashed" as const, weight: 1 };
+}
+
+function formatWheelDegree(placement: NormalizedAstroPlacement) {
+  if (placement.degree === null) {
+    return `${placement.label} en ${placement.signEs}`;
+  }
+  return `${placement.label} ${placement.degree.toFixed(1)}° ${placement.signEs}`;
+}
+
+function clampScore(value: number) {
+  return Math.max(0, Math.min(10, Math.round(value * 10) / 10));
+}
+
+function dimensionsForHouse(house: number | null | undefined) {
+  if (!house) {
+    return [];
+  }
+  return valueRadarDimensions
+    .filter((dimension) => dimension.houseFocus.includes(house as never))
+    .map((dimension) => dimension.id);
+}
+
+function dimensionsForPlacement(placement?: NormalizedAstroPlacement | null) {
+  return dimensionsForHouse(placement?.house);
+}
+
+function pushDriver(drivers: string[], value: string) {
+  if (drivers.length < 5 && !drivers.includes(value)) {
+    drivers.push(value);
+  }
+}
+
+function average(values: number[]) {
+  if (values.length === 0) {
+    return 0;
+  }
+  return Math.round((values.reduce((sum, value) => sum + value, 0) / values.length) * 10) / 10;
+}
+
+export function buildChartWheelData(chart: NormalizedAstroChart | null): ChartWheelData {
+  if (!chart) {
+    return {
+      version: CHART_WHEEL_DATA_VERSION,
+      status: "missing_chart",
+      coordinateSystem: {
+        degreeOrigin: "aries_0",
+        direction: "counterclockwise",
+        totalDegrees: 360
+      },
+      planets: [],
+      houses: [],
+      aspects: [],
+      angles: {
+        ascendant: null,
+        descendant: null,
+        mc: null,
+        ic: null
+      },
+      legend: {
+        harmony: ["trine", "sextile"],
+        stress: ["square", "opposition"],
+        neutral: ["conjunction", "quincunx", "semi_sextile"],
+        restriction: ["saturn", "hard_aspects"]
+      },
+      rendererHints: {
+        rotateToAscendant: true,
+        labelLanguage: "es",
+        drawHousesFromCusps: true
+      },
+      gaps: ["natal_chart_required_for_chart_wheel_data"]
+    };
+  }
+
+  const planets = chart.placements.map((placement) => ({
+    key: placement.key,
+    label: placement.label,
+    sign: placement.sign,
+    signEs: placement.signEs,
+    degree: placement.degree,
+    fullDegree: placement.fullDegree,
+    house: placement.house,
+    isRetrograde: placement.isRetrograde,
+    displayDegree: formatWheelDegree(placement)
+  }));
+  const houses = chart.houses
+    .filter((house) => house.house > 0)
+    .map((house) => ({
+      house: house.house,
+      label: `Casa ${house.house}`,
+      sign: house.sign,
+      signEs: house.signEs,
+      cuspDegree: house.degree,
+      theme: house.theme
+    }));
+  const aspects = chart.aspects.map((aspect) => {
+    const style = aspectRenderStyle(aspect.type);
+    return {
+      from: aspect.from,
+      to: aspect.to,
+      type: aspect.type,
+      typeEs: aspect.typeEs,
+      orb: aspect.orb,
+      isMajor: aspect.isMajor,
+      lineStyle: aspect.isMajor ? style.lineStyle : "dashed" as const,
+      color: style.color,
+      weight: aspect.isMajor ? style.weight : 0.75
+    };
+  });
+  const houseDegree = (houseNumber: number) => houses.find((house) => house.house === houseNumber)?.cuspDegree ?? null;
+
+  return {
+    version: CHART_WHEEL_DATA_VERSION,
+    status: "ready",
+    coordinateSystem: {
+      degreeOrigin: "aries_0",
+      direction: "counterclockwise",
+      totalDegrees: 360
+    },
+    planets,
+    houses,
+    aspects,
+    angles: {
+      ascendant: houseDegree(1),
+      descendant: houseDegree(7),
+      mc: houseDegree(10),
+      ic: houseDegree(4)
+    },
+    legend: {
+      harmony: ["trine", "sextile"],
+      stress: ["square", "opposition"],
+      neutral: ["conjunction", "quincunx", "semi_sextile"],
+      restriction: ["saturn", "hard_aspects"]
+    },
+    rendererHints: {
+      rotateToAscendant: true,
+      labelLanguage: "es",
+      drawHousesFromCusps: true
+    },
+    gaps: planets.some((placement) => placement.fullDegree === null) ? ["some_planet_full_degrees_missing"] : []
+  };
+}
+
+export function buildValueRadar(chart: NormalizedAstroChart | null): ValueRadarData {
+  const baseDimensions = valueRadarDimensions.map((dimension) => ({
+    id: dimension.id,
+    label: dimension.label,
+    houseFocus: [...dimension.houseFocus],
+    harmony: 2,
+    stress: 0,
+    restrictions: 0,
+    netScore: 5,
+    drivers: [] as string[]
+  }));
+  const byId = new Map(baseDimensions.map((dimension) => [dimension.id, dimension]));
+
+  if (!chart) {
+    return {
+      version: VALUE_RADAR_VERSION,
+      status: "missing_chart",
+      formula: {
+        harmony: "Trigonos y sextiles suman armonia a las casas/puntos involucrados.",
+        stress: "Cuadraturas y oposiciones suman estres a las casas/puntos involucrados.",
+        restrictions: "Saturno, casas activadas por Saturno y aspectos duros suman restricciones.",
+        disclaimer: "Score editorial interno para ordenar la experiencia; no es diagnostico ni prediccion."
+      },
+      dimensions: baseDimensions,
+      totals: {
+        harmony: average(baseDimensions.map((dimension) => dimension.harmony)),
+        stress: 0,
+        restrictions: 0,
+        netScore: 5
+      },
+      gaps: ["natal_chart_required_for_value_radar"]
+    };
+  }
+
+  const placementByKey = new Map(chart.placements.map((placement) => [placement.key, placement]));
+
+  for (const placement of chart.placements) {
+    if (placement.key !== "saturn") {
+      continue;
+    }
+    for (const dimensionId of dimensionsForPlacement(placement)) {
+      const dimension = byId.get(dimensionId);
+      if (!dimension) {
+        continue;
+      }
+      dimension.restrictions += 2;
+      pushDriver(dimension.drivers, `Saturno en casa ${placement.house}`);
+    }
+  }
+
+  for (const aspect of chart.aspects.filter((item) => item.isMajor)) {
+    const from = placementByKey.get(aspect.from);
+    const to = placementByKey.get(aspect.to);
+    const affectedDimensionIds = Array.from(new Set([...dimensionsForPlacement(from), ...dimensionsForPlacement(to)]));
+    const aspectLabel = `${labelForPoint(aspect.from)} ${aspect.typeEs} ${labelForPoint(aspect.to)}`;
+
+    for (const dimensionId of affectedDimensionIds) {
+      const dimension = byId.get(dimensionId);
+      if (!dimension) {
+        continue;
+      }
+
+      if (harmonyAspects.has(aspect.type)) {
+        dimension.harmony += aspect.type === "trine" ? 2 : 1.5;
+        pushDriver(dimension.drivers, `${aspectLabel}: armonia`);
+      }
+
+      if (stressAspects.has(aspect.type)) {
+        dimension.stress += aspect.type === "square" ? 2.5 : 2;
+        pushDriver(dimension.drivers, `${aspectLabel}: estres`);
+      }
+
+      if (aspect.from === "saturn" || aspect.to === "saturn") {
+        dimension.restrictions += hardAspects.has(aspect.type) ? 2.5 : 1;
+        pushDriver(dimension.drivers, `${aspectLabel}: restriccion Saturno`);
+      } else if (hardAspects.has(aspect.type)) {
+        dimension.restrictions += 0.5;
+      }
+    }
+  }
+
+  const dimensions = baseDimensions.map((dimension) => {
+    const harmony = clampScore(dimension.harmony);
+    const stress = clampScore(dimension.stress);
+    const restrictions = clampScore(dimension.restrictions);
+    const netScore = clampScore(5 + harmony * 0.45 - stress * 0.55 - restrictions * 0.45);
+    return {
+      ...dimension,
+      harmony,
+      stress,
+      restrictions,
+      netScore
+    };
+  });
+
+  return {
+    version: VALUE_RADAR_VERSION,
+    status: "ready",
+    formula: {
+      harmony: "Trigonos y sextiles suman armonia a las casas/puntos involucrados.",
+      stress: "Cuadraturas y oposiciones suman estres a las casas/puntos involucrados.",
+      restrictions: "Saturno, casas activadas por Saturno y aspectos duros suman restricciones.",
+      disclaimer: "Score editorial interno para ordenar la experiencia; no es diagnostico ni prediccion."
+    },
+    dimensions,
+    totals: {
+      harmony: average(dimensions.map((dimension) => dimension.harmony)),
+      stress: average(dimensions.map((dimension) => dimension.stress)),
+      restrictions: average(dimensions.map((dimension) => dimension.restrictions)),
+      netScore: average(dimensions.map((dimension) => dimension.netScore))
+    },
+    gaps: []
+  };
+}
+
+function isNormalizedChart(value: unknown): value is NormalizedAstroChart {
+  const record = asRecord(value);
+  return Array.isArray(record.placements) && Array.isArray(record.houses) && typeof record.summary === "object";
+}
+
+export function extractNormalizedChartFromPayload(payload: unknown): NormalizedAstroChart | null {
+  if (isNormalizedChart(payload)) {
+    return payload;
+  }
+
+  const record = asRecord(payload);
+  if (isNormalizedChart(record.normalized)) {
+    return record.normalized;
+  }
+
+  const chart = asRecord(record.chart);
+  if (isNormalizedChart(chart.normalized)) {
+    return chart.normalized;
+  }
+
+  return null;
+}
+
+function scaleScore01(value: number) {
+  return Math.max(0, Math.min(1, Math.round((value / 10) * 100) / 100));
+}
+
+function strongestDriverLabel(dimension: ValueRadarData["dimensions"][number]) {
+  return dimension.drivers[0] ?? dimension.label;
+}
+
+export function buildWebB0ValuesMapPayload(chartPayload: unknown): WebB0ValuesMapPayload {
+  const chart = extractNormalizedChartFromPayload(chartPayload);
+  const radar = buildValueRadar(chart);
+  const axes = radar.dimensions.map((dimension) => ({
+    key: dimension.id,
+    label: dimension.label,
+    harmony: scaleScore01(dimension.harmony),
+    tension: scaleScore01(Math.max(dimension.stress, dimension.restrictions))
+  }));
+
+  const topDrivers = [...radar.dimensions]
+    .sort((left, right) => right.harmony - left.harmony || right.netScore - left.netScore)
+    .slice(0, 3)
+    .map((dimension) => ({
+      label: strongestDriverLabel(dimension),
+      value: scaleScore01(dimension.harmony)
+    }));
+
+  const topStressors = [...radar.dimensions]
+    .sort((left, right) => right.stress + right.restrictions - (left.stress + left.restrictions))
+    .slice(0, 3)
+    .map((dimension) => ({
+      label: strongestDriverLabel(dimension),
+      value: scaleScore01(Math.max(dimension.stress, dimension.restrictions))
+    }));
+
+  return {
+    axes,
+    topDrivers,
+    topStressors,
+    note:
+      radar.status === "ready"
+        ? "Mapa editorial derivado de casas, aspectos mayores y activaciones de Saturno. No es diagnostico ni prediccion."
+        : "Mapa en modo maqueta hasta que exista una carta natal calculada con proveedor real."
+  };
+}
+
+type WebB0Placement = {
+  key: string;
+  label: string;
+  planet: string;
+  sign?: string;
+  house?: number;
+  degree?: number;
+};
+
+const personalityTemplates: Record<string, { title: string; intro: string; body: string }> = {
+  sun: {
+    title: "Nucleo",
+    intro: "Lo que organiza tu energia de base.",
+    body: "Marca una forma de orientar deseo, orgullo y vitalidad sin convertirlo en destino fijo."
+  },
+  moon: {
+    title: "Clima interno",
+    intro: "Como registra el cuerpo lo que pasa.",
+    body: "Habla de necesidades, memoria emocional y ritmo de cuidado."
+  },
+  ascendant: {
+    title: "Entrada al mundo",
+    intro: "La primera capa con la que respondes al entorno.",
+    body: "Ordena estilo, reaccion inicial y modo de ocupar espacio."
+  },
+  mercury: {
+    title: "Mente y palabra",
+    intro: "Como pensas, nombras y conectas datos.",
+    body: "Ayuda a leer tu manera de preguntar, explicar y procesar senales."
+  },
+  venus: {
+    title: "Deseo y vinculo",
+    intro: "Lo que busca afinidad, belleza y acuerdo.",
+    body: "No define tus relaciones: muestra que tipo de clima suele abrir disponibilidad."
+  },
+  mars: {
+    title: "Impulso",
+    intro: "Como arranca la accion cuando algo importa.",
+    body: "Senala ritmo, friccion y energia para moverte sin entrar en automatico."
+  },
+  saturn: {
+    title: "Borde y oficio",
+    intro: "Donde la carta pide estructura y paciencia.",
+    body: "Muestra una zona de practica: limite, responsabilidad y forma propia."
+  }
+};
+
+function numberOrUndefined(value: unknown) {
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(number) ? number : undefined;
+}
+
+function placementFromNormalizedChart(chart: NormalizedAstroChart | null, key: string): WebB0Placement | null {
+  const placement = chart?.placements.find((item) => item.key === key);
+  if (!placement) {
+    return null;
+  }
+
+  return {
+    key,
+    label: placement.label,
+    planet: placement.label,
+    sign: placement.signEs,
+    house: placement.house ?? undefined,
+    degree: placement.degree ?? undefined
+  };
+}
+
+function placementFromPayloadRecord(payload: unknown, key: string): WebB0Placement | null {
+  const record = asRecord(payload);
+  const placements = asRecord(record.placements);
+  const triad = asRecord(record.triad);
+  const rawCandidates = [asRecord(placements[key]), asRecord(triad[key])];
+  const raw = rawCandidates.find((candidate) => typeof candidate.sign === "string" && candidate.sign.trim());
+
+  if (!raw) {
+    return null;
+  }
+
+  const planet = typeof raw.planet === "string" ? raw.planet : labelForPoint(key);
+  const sign = typeof raw.sign === "string" ? raw.sign : undefined;
+
+  return {
+    key,
+    label: planet,
+    planet,
+    sign,
+    house: numberOrUndefined(raw.house),
+    degree: numberOrUndefined(raw.degree)
+  };
+}
+
+function chartPlacement(payload: unknown, key: string): WebB0Placement | null {
+  return placementFromNormalizedChart(extractNormalizedChartFromPayload(payload), key) ?? placementFromPayloadRecord(payload, key);
+}
+
+function formatWebB0Placement(placement: WebB0Placement) {
+  const sign = placement.sign ? ` en ${placement.sign}` : "";
+  const house = placement.house ? `, casa ${placement.house}` : "";
+  return `${placement.planet}${sign}${house}`;
+}
+
+function buildPersonalitySection(placement: WebB0Placement) {
+  const template = personalityTemplates[placement.key] ?? {
+    title: placement.label,
+    intro: "Una pieza mas del mapa natal.",
+    body: "Sirve para ordenar contexto simbolico sin cerrar una conclusion sobre vos."
+  };
+  const sign = placement.sign ? ` en ${placement.sign}` : " con signo pendiente";
+  const house = placement.house ? ` y casa ${placement.house}` : "";
+
+  return {
+    key: placement.key,
+    title: template.title,
+    intro: template.intro,
+    placement: {
+      label: formatWebB0Placement(placement),
+      planet: placement.planet,
+      sign: placement.sign,
+      house: placement.house
+    },
+    body: `${placement.planet}${sign}${house}. ${template.body}`
+  };
+}
+
+export function buildWebB0PersonalityReadingPayload(chartPayload: unknown): WebB0PersonalityReadingPayload {
+  const orderedKeys = ["sun", "moon", "ascendant", "mercury", "venus", "mars", "saturn"];
+  const placements = orderedKeys.map((key) => chartPlacement(chartPayload, key)).filter((item): item is WebB0Placement => Boolean(item));
+  const sun = placements.find((placement) => placement.key === "sun");
+
+  return toSerializable({
+    headline: sun ? `Tu carta empieza por ${formatWebB0Placement(sun)}.` : "Tu carta personal esta en preparacion.",
+    sections: placements.map(buildPersonalitySection),
+    disclaimer: "Lectura simbolica para entretenimiento, autoconocimiento y contexto diario. No reemplaza consejo profesional ni predice resultados."
+  }) as WebB0PersonalityReadingPayload;
+}
+
+function normalizedTransitFromValue(value: unknown): NormalizedAstroTransit | null {
+  const record = asRecord(value);
+  const transitPlanet = normalizeKey(record.transitPlanet ?? record.transit_planet);
+  const natalPoint = normalizeKey(record.natalPoint ?? record.natal_planet);
+  const aspectType = normalizeKey(record.aspectType ?? record.aspect_type ?? record.type);
+
+  if (!transitPlanet || !natalPoint || !aspectType) {
+    return null;
+  }
+
+  const transit = {
+    transitPlanet,
+    transitPlanetEs:
+      typeof record.transitPlanetEs === "string" ? record.transitPlanetEs : labelForPoint(record.transitPlanet ?? record.transit_planet),
+    natalPoint,
+    natalPointEs: typeof record.natalPointEs === "string" ? record.natalPointEs : labelForPoint(record.natalPoint ?? record.natal_planet),
+    aspectType,
+    aspectTypeEs: typeof record.aspectTypeEs === "string" ? record.aspectTypeEs : aspectEs(aspectType),
+    startTime: typeof record.startTime === "string" ? record.startTime : typeof record.start_time === "string" ? record.start_time : null,
+    exactTime: typeof record.exactTime === "string" ? record.exactTime : typeof record.exact_time === "string" ? record.exact_time : null,
+    endTime: typeof record.endTime === "string" ? record.endTime : typeof record.end_time === "string" ? record.end_time : null,
+    isRetrograde:
+      typeof record.isRetrograde === "boolean" || record.isRetrograde === null ? record.isRetrograde : boolFromApi(record.is_retrograde),
+    transitSign: typeof record.transitSign === "string" ? record.transitSign : typeof record.transit_sign === "string" ? record.transit_sign : null,
+    transitSignEs:
+      typeof record.transitSignEs === "string"
+        ? record.transitSignEs
+        : typeof record.transit_sign === "string"
+          ? signEs(record.transit_sign)
+          : null,
+    natalHouse: numberOrUndefined(record.natalHouse ?? record.natal_house) ?? null,
+    priority: numberOrUndefined(record.priority) ?? 0
+  };
+
+  return {
+    ...transit,
+    priority: transit.priority || transitPriority(transit)
+  };
+}
+
+export function extractHighlightedTransitFromPayload(payload: unknown): NormalizedAstroTransit | null {
+  const record = asRecord(payload);
+  const transits = asRecord(record.transits);
+  const timeline = asRecord(record.timeline);
+  const candidates = [
+    record.highlightedTransit,
+    record.highlighted,
+    transits.highlighted,
+    asArray(record.selectedTransits)[0],
+    asArray(transits.rawNormalized)[0],
+    asArray(timeline.events)[0],
+    asArray(record.events)[0]
+  ];
+
+  for (const candidate of candidates) {
+    const transit = normalizedTransitFromValue(candidate);
+    if (transit) {
+      return transit;
+    }
+  }
+
+  return null;
+}
+
+function angleLabelForAspect(aspectType: string) {
+  const angles: Record<string, string> = {
+    conjunction: "0 grados",
+    opposition: "180 grados",
+    square: "90 grados",
+    trine: "120 grados",
+    sextile: "60 grados"
+  };
+  return angles[aspectType] ?? "angulo variable";
+}
+
+function compactWindowLabel(value: string | null) {
+  if (!value) {
+    return null;
+  }
+  return value.replace("T", " ").slice(0, 16);
+}
+
+function buildTransitTimeline(transit: NormalizedAstroTransit, localDate: string) {
+  const entries = [
+    transit.startTime ? { label: `Inicio ${compactWindowLabel(transit.startTime)}`, current: false } : null,
+    transit.exactTime ? { label: `Pico ${compactWindowLabel(transit.exactTime)}`, current: true } : null,
+    transit.endTime ? { label: `Cierre ${compactWindowLabel(transit.endTime)}`, current: false } : null
+  ].filter((item): item is { label: string; current: boolean } => Boolean(item));
+
+  return entries.length > 0 ? entries : [{ label: localDate, current: true }];
+}
+
+export function buildWebB0TransitDetailPayload(payload: unknown, localDate: string): WebB0TransitDetailPayload {
+  const transit = extractHighlightedTransitFromPayload(payload);
+
+  if (!transit) {
+    const text = "Todavia no hay transito destacado para esta fecha. La pantalla puede mostrar estructura, pero falta proveedor diario.";
+    return toSerializable({
+      title: "Transito del dia pendiente",
+      aspect: { type: "pending", angleLabel: "pendiente" },
+      scene: {
+        transitingBody: { name: "pending", label: "Cielo actual" },
+        natalPoint: { name: "pending", label: "Carta natal" }
+      },
+      reading: {
+        fragments: [{ source: "orbita", text }],
+        plain: text
+      },
+      frequency: {
+        label: "Sin ventana confirmada",
+        timeline: [{ label: localDate, current: true }]
+      },
+      earth: {
+        headline: "Usalo como placeholder editorial hasta que haya transitos reales.",
+        suggestions: [
+          "Mostrar estado vacio claro.",
+          "Evitar una lectura inventada.",
+          "Pedir generar lectura diaria si falta el dato."
+        ]
+      },
+      window: {
+        label: "Pendiente",
+        note: "La ventana exacta tiene que venir del proveedor astrologico."
+      }
+    }) as WebB0TransitDetailPayload;
+  }
+
+  const editorial = getTransitEditorial(transit);
+  const title = `${transit.transitPlanetEs} ${transit.aspectTypeEs} tu ${transit.natalPointEs}`;
+  const fragments = [
+    {
+      source: "cielo",
+      text: `${transit.transitPlanetEs} forma ${transit.aspectTypeEs} con tu ${transit.natalPointEs}.`
+    },
+    {
+      source: "carta",
+      text:
+        transit.natalHouse !== null
+          ? `La activacion cae en casa ${transit.natalHouse}: ${houseThemes[transit.natalHouse] ?? "area de vida activa"}.`
+          : "La casa natal queda pendiente de confirmacion."
+    },
+    {
+      source: "ritmo",
+      text: editorial.question
+    }
+  ];
+
+  return toSerializable({
+    title,
+    aspect: {
+      type: transit.aspectTypeEs,
+      angleLabel: angleLabelForAspect(transit.aspectType)
+    },
+    scene: {
+      transitingBody: {
+        name: transit.transitPlanet,
+        label: transit.transitPlanetEs
+      },
+      natalPoint: {
+        name: transit.natalPoint,
+        sign: transit.transitSignEs ?? undefined,
+        label: transit.natalPointEs
+      }
+    },
+    reading: {
+      fragments,
+      plain: fragments.map((fragment) => fragment.text).join(" ")
+    },
+    frequency: {
+      label: transit.startTime || transit.exactTime || transit.endTime ? "Ventana del proveedor" : "Fecha local",
+      timeline: buildTransitTimeline(transit, localDate)
+    },
+    earth: {
+      headline: editorial.energy,
+      suggestions: editorial.doList
+    },
+    window: {
+      label: transit.exactTime ? "Pico estimado" : transit.startTime || transit.endTime ? "Ventana estimada" : "Fecha local",
+      note:
+        compactWindowLabel(transit.exactTime) ??
+        compactWindowLabel(transit.startTime) ??
+        "Sin hora exacta en el payload normalizado."
+    }
+  }) as WebB0TransitDetailPayload;
+}
+
+export function buildLongRangeTimelineContract() {
+  return {
+    version: LONG_RANGE_TIMELINE_CONTRACT_VERSION,
+    status: "needs_provider_endpoint",
+    strategy: "provider_range_or_forecast_endpoint",
+    policy:
+      "Las fechas largas tipo una vez al anio, hasta marzo o vuelve en 2027 deben venir de endpoint astrologico de rango/forecast o inspeccion de proveedor. El LLM no inventa ventanas.",
+    implementedNow: {
+      weeklyPersonal: "natal_transits/weekly",
+      weeklySky: "tropical_transits/weekly",
+      monthlySky: "tropical_transits/monthly"
+    },
+    candidateProviderEndpoints: [
+      {
+        endpoint: "natal_transits/weekly",
+        role: "ventana personal corta",
+        status: "implemented"
+      },
+      {
+        endpoint: "tropical_transits/monthly",
+        role: "contexto mensual del cielo",
+        status: "implemented"
+      },
+      {
+        endpoint: "life_forecast_report/tropical",
+        role: "inspeccion opcional de proveedor; no voz final Orbita",
+        status: "needs_review"
+      },
+      {
+        endpoint: "provider_long_range_transit_or_forecast",
+        role: "inicio/exacto/fin, recurrencia y proximas ocurrencias",
+        status: "needs_confirmation"
+      }
+    ],
+    requiredEventFields: [
+      "startTime",
+      "exactTime",
+      "endTime",
+      "transitPlanet",
+      "natalPoint",
+      "aspectType",
+      "frequencyLabel",
+      "recurrenceLabel",
+      "nextOccurrence"
+    ],
+    gaps: ["confirm_astrologyapi_long_range_or_forecast_endpoint"]
+  };
+}
+
 function normalizeKey(value: unknown) {
   return String(value ?? "")
     .trim()
@@ -675,7 +1546,7 @@ export function normalizeAstrologyApiTransits(response: unknown): NormalizedAstr
     const transit = asRecord(rawTransit);
     const transitPlanet = normalizeKey(transit.transit_planet);
     const natalPoint = normalizeKey(transit.natal_planet);
-    const aspectType = normalizeKey(transit.aspect_type);
+    const aspectType = normalizeKey(transit.aspect_type ?? transit.type);
     const normalized = {
       transitPlanet,
       transitPlanetEs: labelForPoint(transit.transit_planet),
@@ -697,6 +1568,151 @@ export function normalizeAstrologyApiTransits(response: unknown): NormalizedAstr
       priority: transitPriority(normalized)
     };
   });
+}
+
+function normalizeProviderDate(value: unknown) {
+  if (typeof value !== "string" || !value.trim()) {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) {
+    return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+  }
+
+  const dateMatch = trimmed.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (dateMatch) {
+    const day = dateMatch[1].padStart(2, "0");
+    const month = dateMatch[2].padStart(2, "0");
+    return `${dateMatch[3]}-${month}-${day}`;
+  }
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) {
+    return trimmed;
+  }
+
+  return parsed.toISOString().slice(0, 10);
+}
+
+function timelineEventId(args: {
+  source: NormalizedAstroTimelineEvent["source"];
+  date: string | null;
+  transitPlanet: string;
+  natalPoint: string;
+  aspectType: string;
+  exactTime: string | null;
+}) {
+  return [args.source, args.date ?? "no-date", args.transitPlanet, args.aspectType, args.natalPoint, args.exactTime ?? "no-exact"]
+    .join(":")
+    .replace(/[^a-z0-9:_-]+/gi, "_");
+}
+
+export function normalizeAstrologyApiTransitTimeline(
+  response: unknown,
+  args: {
+    source: NormalizedAstroTimelineEvent["source"];
+    scope: NormalizedAstroTimelineEvent["scope"];
+  }
+): NormalizedAstroTimelineEvent[] {
+  const record = asRecord(response);
+  return asArray(record.transit_relation).map((rawTransit) => {
+    const transit = asRecord(rawTransit);
+    const transitPlanet = normalizeKey(transit.transit_planet);
+    const natalPoint = normalizeKey(transit.natal_planet);
+    const aspectType = normalizeKey(transit.aspect_type ?? transit.type);
+    const startTime = typeof transit.start_time === "string" ? transit.start_time : null;
+    const exactTime = typeof transit.exact_time === "string" ? transit.exact_time : null;
+    const endTime = typeof transit.end_time === "string" ? transit.end_time : null;
+    const date = normalizeProviderDate(transit.date ?? exactTime ?? startTime);
+    const normalized = {
+      transitPlanet,
+      transitPlanetEs: labelForPoint(transit.transit_planet),
+      natalPoint,
+      natalPointEs: labelForPoint(transit.natal_planet),
+      aspectType,
+      aspectTypeEs: aspectEs(aspectType),
+      startTime,
+      exactTime,
+      endTime,
+      isRetrograde: boolFromApi(transit.is_retrograde),
+      transitSign: typeof transit.transit_sign === "string" ? transit.transit_sign : null,
+      transitSignEs: typeof transit.transit_sign === "string" ? signEs(transit.transit_sign) : null,
+      natalHouse: roundDegree(transit.natal_house ?? transit.house),
+      priority: 0
+    };
+    const priority = transitPriority(normalized);
+    const event = {
+      ...normalized,
+      priority,
+      id: timelineEventId({
+        source: args.source,
+        date,
+        transitPlanet,
+        natalPoint,
+        aspectType,
+        exactTime
+      }),
+      source: args.source,
+      scope: args.scope,
+      date,
+      displayText: formatTransitDisplay({ ...normalized, priority }),
+      windowStatus: startTime || exactTime || endTime ? "windowed" : "dated"
+    } satisfies NormalizedAstroTimelineEvent;
+
+    return event;
+  });
+}
+
+export function buildTransitTimelinePreview(args: {
+  localDate: string;
+  natalWeekly?: unknown;
+  tropicalWeekly?: unknown;
+  tropicalMonthly?: unknown;
+  endpointStatus?: NormalizedAstroTimeline["providerStatus"]["endpoints"];
+  warnings?: string[];
+  status?: NormalizedAstroTimeline["providerStatus"]["status"];
+  error?: string;
+}): NormalizedAstroTimeline {
+  const events = [
+    ...normalizeAstrologyApiTransitTimeline(args.natalWeekly, {
+      source: "natal_transits_weekly",
+      scope: "personal_weekly"
+    }),
+    ...normalizeAstrologyApiTransitTimeline(args.tropicalWeekly, {
+      source: "tropical_transits_weekly",
+      scope: "tropical_weekly"
+    }),
+    ...normalizeAstrologyApiTransitTimeline(args.tropicalMonthly, {
+      source: "tropical_transits_monthly",
+      scope: "tropical_monthly"
+    })
+  ]
+    .filter((event) => majorAspects.has(event.aspectType))
+    .sort((left, right) => right.priority - left.priority || String(left.exactTime ?? left.date).localeCompare(String(right.exactTime ?? right.date)))
+    .slice(0, 18);
+
+  return {
+    version: "orbita-transit-timeline-v1",
+    provider: "astrologyapi",
+    localDate: args.localDate,
+    events,
+    providerStatus: {
+      status: args.status ?? (events.length > 0 ? "success" : "not_configured"),
+      endpoints: args.endpointStatus ?? {
+        "natal_transits/weekly": args.natalWeekly ? "success" : "skipped",
+        "tropical_transits/weekly": args.tropicalWeekly ? "success" : "skipped",
+        "tropical_transits/monthly": args.tropicalMonthly ? "success" : "skipped"
+      },
+      warnings: args.warnings ?? [],
+      error: args.error
+    },
+    rawPolicy: {
+      returnsProviderRaw: false,
+      reason: "El timeline publico normaliza ventanas y fechas; el raw completo queda en backoffice."
+    }
+  };
 }
 
 export function selectRelevantTransits(transits: NormalizedAstroTransit[], limit = 3) {

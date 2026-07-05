@@ -1,10 +1,12 @@
 import {
   BirthChartInput,
+  buildTransitTimelinePreview,
   normalizeAstrologyApiNatalChart,
   normalizeAstrologyApiTransits,
   normalizeBirthInput,
   toSerializable,
-  type AstrologyProviderRunResult
+  type AstrologyProviderRunResult,
+  type NormalizedAstroTimeline
 } from "./orbita";
 
 const DEFAULT_ASTROLOGY_API_BASE_URL = "https://json.astrologyapi.com/v1";
@@ -45,6 +47,21 @@ type PlaceLookupResult = {
     utcOffset?: number;
     raw: unknown;
   }>;
+  raw?: unknown;
+  error?: string;
+};
+
+export type ExtendedTransitProviderResult = {
+  status: "success" | "partial" | "not_configured" | "missing_input" | "error";
+  provider: "astrologyapi";
+  providerVersion: string;
+  houseSystem?: string;
+  localDate: string;
+  warnings: string[];
+  request?: unknown;
+  normalized?: {
+    timeline: NormalizedAstroTimeline;
+  };
   raw?: unknown;
   error?: string;
 };
@@ -309,6 +326,165 @@ export async function runAstrologyApiProvider(args: {
       error: error instanceof Error ? error.message : "Unknown AstrologyAPI error"
     }) as AstrologyProviderRunResult;
   }
+}
+
+export async function runAstrologyApiExtendedTransits(args: {
+  input: BirthChartInput;
+  localDate: string;
+  includeNatalWeekly?: boolean;
+  includeTropicalWeekly?: boolean;
+  includeTropicalMonthly?: boolean;
+}): Promise<ExtendedTransitProviderResult> {
+  const config = getAstrologyApiConfig();
+  const prepared = buildBirthRequest(args.input, config.houseSystem);
+  const includeNatalWeekly = args.includeNatalWeekly ?? true;
+  const includeTropicalWeekly = args.includeTropicalWeekly ?? false;
+  const includeTropicalMonthly = args.includeTropicalMonthly ?? false;
+  const endpointStatus: NormalizedAstroTimeline["providerStatus"]["endpoints"] = {
+    "natal_transits/weekly": includeNatalWeekly ? "not_configured" : "skipped",
+    "tropical_transits/weekly": includeTropicalWeekly ? "not_configured" : "skipped",
+    "tropical_transits/monthly": includeTropicalMonthly ? "not_configured" : "skipped"
+  };
+
+  if (!hasAstrologyApiCredentials(config)) {
+    return toSerializable({
+      status: "not_configured",
+      provider: "astrologyapi",
+      providerVersion: "astrologyapi-western-transits-v1",
+      houseSystem: config.houseSystem,
+      localDate: args.localDate,
+      warnings: ["astrologyapi_credentials_not_configured"],
+      request: prepared.status === "ready" ? prepared.request : null,
+      normalized: {
+        timeline: buildTransitTimelinePreview({
+          localDate: args.localDate,
+          endpointStatus,
+          status: "not_configured",
+          warnings: ["astrologyapi_credentials_not_configured"]
+        })
+      }
+    }) as ExtendedTransitProviderResult;
+  }
+
+  if (prepared.status !== "ready") {
+    const missingInputStatus = Object.fromEntries(
+      Object.entries(endpointStatus).map(([endpoint, status]) => [endpoint, status === "skipped" ? status : "missing_input"])
+    ) as NormalizedAstroTimeline["providerStatus"]["endpoints"];
+
+    return toSerializable({
+      status: "missing_input",
+      provider: "astrologyapi",
+      providerVersion: "astrologyapi-western-transits-v1",
+      houseSystem: config.houseSystem,
+      localDate: args.localDate,
+      warnings: prepared.warnings,
+      request: null,
+      normalized: {
+        timeline: buildTransitTimelinePreview({
+          localDate: args.localDate,
+          endpointStatus: missingInputStatus,
+          status: "missing_input",
+          warnings: prepared.warnings
+        })
+      }
+    }) as ExtendedTransitProviderResult;
+  }
+
+  type ExtendedTransitEndpointEntry = readonly [
+    "natal_transits/weekly" | "tropical_transits/weekly" | "tropical_transits/monthly",
+    "natalWeekly" | "tropicalWeekly" | "tropicalMonthly"
+  ];
+  const endpointEntries: ExtendedTransitEndpointEntry[] = [];
+  if (includeNatalWeekly) {
+    endpointEntries.push(["natal_transits/weekly", "natalWeekly"]);
+  }
+  if (includeTropicalWeekly) {
+    endpointEntries.push(["tropical_transits/weekly", "tropicalWeekly"]);
+  }
+  if (includeTropicalMonthly) {
+    endpointEntries.push(["tropical_transits/monthly", "tropicalMonthly"]);
+  }
+
+  if (endpointEntries.length === 0) {
+    return toSerializable({
+      status: "missing_input",
+      provider: "astrologyapi",
+      providerVersion: "astrologyapi-western-transits-v1",
+      houseSystem: config.houseSystem,
+      localDate: args.localDate,
+      warnings: ["no_extended_transit_endpoint_selected"],
+      request: prepared.request,
+      normalized: {
+        timeline: buildTransitTimelinePreview({
+          localDate: args.localDate,
+          endpointStatus,
+          status: "missing_input",
+          warnings: ["no_extended_transit_endpoint_selected"]
+        })
+      }
+    }) as ExtendedTransitProviderResult;
+  }
+
+  const settled = await Promise.allSettled(
+    endpointEntries.map(async ([endpoint, key]) => ({
+      endpoint,
+      key,
+      raw: await postAstrologyApi(config, endpoint, prepared.request)
+    }))
+  );
+
+  const raw: Record<string, unknown> = {};
+  const warnings = [...prepared.warnings];
+  let firstError: string | undefined;
+
+  for (const result of settled) {
+    if (result.status === "fulfilled") {
+      raw[result.value.key] = result.value.raw;
+      endpointStatus[result.value.endpoint] = "success";
+      continue;
+    }
+
+    const entry = endpointEntries[settled.indexOf(result)];
+    if (entry) {
+      endpointStatus[entry[0]] = "error";
+    }
+    const message = result.reason instanceof Error ? result.reason.message : "Unknown AstrologyAPI extended transit error";
+    warnings.push(message);
+    firstError ??= message;
+  }
+
+  const successCount = Object.values(endpointStatus).filter((status) => status === "success").length;
+  const selectedCount = Object.values(endpointStatus).filter((status) => status !== "skipped").length;
+  const status: ExtendedTransitProviderResult["status"] =
+    successCount === selectedCount ? "success" : successCount > 0 ? "partial" : "error";
+  const timeline = buildTransitTimelinePreview({
+    localDate: args.localDate,
+    natalWeekly: raw.natalWeekly,
+    tropicalWeekly: raw.tropicalWeekly,
+    tropicalMonthly: raw.tropicalMonthly,
+    endpointStatus,
+    warnings,
+    status,
+    error: firstError
+  });
+
+  return toSerializable({
+    status,
+    provider: "astrologyapi",
+    providerVersion: "astrologyapi-western-transits-v1",
+    houseSystem: config.houseSystem,
+    localDate: args.localDate,
+    warnings,
+    request: {
+      extendedTransits: prepared.request,
+      endpoints: endpointStatus
+    },
+    normalized: {
+      timeline
+    },
+    raw,
+    error: firstError
+  }) as ExtendedTransitProviderResult;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

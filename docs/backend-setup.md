@@ -36,6 +36,8 @@ pnpm exec convex env set ASTROLOGY_API_HOUSE_SYSTEM "placidus"
 
 `ASTROLOGY_API_LOCATION_URL` queda opcional hasta tener el endpoint exacto de Location API para la cuenta. Sin esa variable, el lookup de lugar del backoffice muestra estado `not_configured`, pero se pueden cargar lat/lon/timezone manualmente.
 
+`ASTROLOGY_API_LONG_RANGE_URL` queda opcional/futuro hasta confirmar con AstrologyAPI un endpoint de rango o forecast que devuelva ventanas largas confirmadas: inicio, exacto, fin, frecuencia y próximas ocurrencias. Órbita no debe inventar con LLM frases tipo `vuelve en 2027` o `dura hasta marzo`; esas fechas tienen que venir del proveedor o de un motor astronómico explícito aprobado.
+
 El backoffice llama primero a AstrologyAPI desde una acción Convex y guarda:
 
 - input normalizado,
@@ -84,6 +86,83 @@ Variable de Convex dev:
 pnpm exec convex env set ORBITA_BACKOFFICE_ALLOWED_EMAILS lucaszramos11@gmail.com
 ```
 
+## Lab público-dev
+
+`/lab` usa acciones Convex públicas-dev sin sesión para cargar datos natales, previsualizar la Home diaria y ver el mapa de horóscopo completo por perfil. Queda apagado por defecto.
+
+Variables de Convex dev:
+
+```bash
+pnpm exec convex env set ORBITA_PUBLIC_LAB_ENABLED true
+pnpm exec convex env set ORBITA_PUBLIC_LAB_KEY "<codigo-opcional>"
+```
+
+Si `ORBITA_PUBLIC_LAB_KEY` queda vacío, alcanza con `ORBITA_PUBLIC_LAB_ENABLED=true`. Si se define una key, la web debe enviar ese código desde el campo `Código lab`.
+
+El lab no guarda usuarios, sujetos, runs ni lecturas. Para guardar, revisar y aprobar contenido sigue existiendo `/backoffice`. El raw completo de proveedor tampoco vuelve por `/lab`; queda reservado para `/backoffice`.
+
+### AI Gateway para copy del lab
+
+La capa LLM del lab corre server-side desde Convex contra Vercel AI Gateway. Convex sigue siendo el backend principal; Vercel se usa para modelo, budget y observabilidad.
+
+Variables de Convex dev:
+
+```bash
+pnpm exec convex env set ORBITA_LLM_ENABLED true
+pnpm exec convex env set AI_GATEWAY_API_KEY "<ai_gateway_key>"
+pnpm exec convex env set ORBITA_LLM_MODEL "<provider/model>"
+pnpm exec convex env set ORBITA_LLM_DAILY_PROMPT_VERSION "orbita-lab-daily-home-llm-v1"
+pnpm exec convex env set ORBITA_LLM_DAILY_CACHE_VERSION "orbita-llm-daily-cache-v1"
+pnpm exec convex env set ORBITA_LLM_NATAL_PROMPT_VERSION "orbita-natal-profile-llm-v1"
+pnpm exec convex env set ORBITA_LLM_NATAL_CACHE_VERSION "orbita-natal-profile-cache-v1"
+```
+
+`ORBITA_LLM_MODEL` debe usar el formato de AI Gateway `provider/model`. Si falta `ORBITA_LLM_ENABLED=true`, la key o el modelo, `/lab` vuelve a templates determinísticos y agrega el gap correspondiente sin gastar tokens.
+
+Las llamadas de Gateway salen con tags:
+
+- `feature:orbita-lab`
+- `env:dev`
+- `user:lab`
+
+La Home diaria usa `dailyLlmReadings` como cache objetivo por usuario + fecha + timezone + promptVersion. Las interpretaciones natales tipo `Amor y relaciones`, `Tu suerte` y `Mapa de valores` usan `natalInterpretations` por usuario + carta natal + feature + promptVersion.
+
+### Tránsitos extendidos
+
+`/lab` ahora tiene un preview de timeline que normaliza:
+
+- `natal_transits/weekly`
+- `tropical_transits/weekly`
+- `tropical_transits/monthly`
+
+El default recomendado para probar costo bajo es `natal_transits/weekly` solamente. Los endpoints tropicales quedan como apoyo para inspección de cielo semanal/mensual. El resultado público devuelve eventos normalizados (`startTime`, `exactTime`, `endTime`, planeta transitante, punto natal, aspecto, casa, prioridad y texto de display) y no devuelve raw completo.
+
+Para timeline largo, el contrato público devuelve `longRangeTimeline` con estado `needs_provider_endpoint`. El backend espera un endpoint de rango/forecast antes de mostrar textos tipo `esto pasa una vez al año`, `hasta marzo` o `vuelve en 2027`.
+
+### Cache de app mobile
+
+El cache vive en Convex, no en memoria del lab:
+
+- `natalCharts` / `profileAstrologyCaches`: carta natal y datos normalizados por perfil/birthData.
+- `natalInterpretations`: interpretaciones natales LLM por feature + promptVersion.
+- `dailyReadings` / `dailyLlmReadings`: Home diaria por usuario + fecha + timezone + version.
+- `transitTimelineCaches`: timeline semanal/mensual/largo por usuario + periodo + providerVersion.
+- `globalSkyCaches`: cielo global diario reutilizable por todos.
+
+`/lab` sigue sin escribir en estas tablas; sólo muestra el contrato y los datos de preview. La app móvil y `/backoffice` son los que tienen que persistir cuando pasemos a flujo real.
+
+### Contrato visual para frontend
+
+`previewDailyHome` y `previewCompleteHoroscope` devuelven `chartWheelData` para que el frontend dibuje la rueda con SVG/canvas sin pedir otra API: grados absolutos, casas, aspectos, colores/estilos de línea, labels y hints de renderer.
+
+También devuelven `valueRadar`, calculado en backend sobre la carta natal cacheable:
+
+- armonía: trígonos y sextiles,
+- estrés: cuadraturas y oposiciones,
+- restricciones: Saturno, casas activadas por Saturno y aspectos duros.
+
+La fórmula está versionada como `orbita-value-radar-v1`.
+
 ## Expo
 
 `.env.local` ya fue creado por Clerk/Convex. No imprimirlo ni commitearlo.
@@ -99,12 +178,17 @@ pnpm exec expo start --web
 Abrir:
 
 ```text
+http://localhost:8081/lab
 http://localhost:8081/backoffice
 ```
 
 ## Resultado esperado
 
 - Si faltan envs, `/backoffice` muestra un estado de setup.
+- Si `/lab` está apagado en Convex, muestra error de lab deshabilitado al generar.
+- Si `/lab` genera `Horóscopo completo`, muestra los bloques Identity, Carta, Daily, Cielo actual, Futuro y Extras con fuente A/B/C, estado y faltantes.
+- Si `/lab` genera Home con LLM y Gateway está configurado, muestra `llm.status=success`; si falta config o hay 402/429/error, mantiene la Home template y agrega gaps explícitos.
+- Si `/lab` genera timeline, muestra próximos eventos normalizados; el raw de AstrologyAPI no vuelve en la respuesta pública.
 - Si Clerk está configurado pero no hay sesión, muestra login web de Clerk.
 - Si Clerk inició sesión pero Convex todavía no confirmó identidad, muestra `Conectando Convex` o `Falta conectar Clerk con Convex`.
 - Si el email está allowlisted, muestra el lab para crear personas, correr el modelo stub e inspeccionar runs.

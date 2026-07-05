@@ -15,16 +15,20 @@ import type * as contentModules from "../contentModules.js";
 import type * as devices from "../devices.js";
 import type * as home from "../home.js";
 import type * as journal from "../journal.js";
+import type * as lib_aiGateway from "../lib/aiGateway.js";
 import type * as lib_astrologyApi from "../lib/astrologyApi.js";
 import type * as lib_backoffice from "../lib/backoffice.js";
 import type * as lib_orbita from "../lib/orbita.js";
 import type * as lib_users from "../lib/users.js";
 import type * as notifications from "../notifications.js";
 import type * as onboarding from "../onboarding.js";
+import type * as places from "../places.js";
+import type * as publicLab from "../publicLab.js";
 import type * as readings from "../readings.js";
 import type * as relationships from "../relationships.js";
 import type * as studio from "../studio.js";
 import type * as subscriptions from "../subscriptions.js";
+import type * as transits from "../transits.js";
 import type * as users from "../users.js";
 
 import type {
@@ -41,16 +45,20 @@ declare const fullApi: ApiFromModules<{
   devices: typeof devices;
   home: typeof home;
   journal: typeof journal;
+  "lib/aiGateway": typeof lib_aiGateway;
   "lib/astrologyApi": typeof lib_astrologyApi;
   "lib/backoffice": typeof lib_backoffice;
   "lib/orbita": typeof lib_orbita;
   "lib/users": typeof lib_users;
   notifications: typeof notifications;
   onboarding: typeof onboarding;
+  places: typeof places;
+  publicLab: typeof publicLab;
   readings: typeof readings;
   relationships: typeof relationships;
   studio: typeof studio;
   subscriptions: typeof subscriptions;
+  transits: typeof transits;
   users: typeof users;
 }>;
 
