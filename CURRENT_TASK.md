@@ -11,7 +11,7 @@ The active project work is broader than this file: continue planning/designing t
 - Startup memory files have been added: `AGENTS.md`, `PROJECT_CONTEXT.md`, `CURRENT_TASK.md`, and `docs/architecture.md`.
 - `README.md`, `docs/contexto-actual.md`, `docs/figma-context.md`, and `docs/decision-log.md` were adjusted so the new bootstrap files are discoverable and the old prompt-only Figma page is treated as historical.
 - Existing context docs already describe the current product direction, Figma file, onboarding flow, Home V1.1, asset library, Archive 7, Archive 9, and the symbolic asset library.
-- The workspace currently does not appear to expose git status from `/Users/lucas/Documents/horoscopo`; `git status --short` reports that it is not a git repository.
+- A local Git repository now exists; current workspace inspection reports modified `CURRENT_TASK.md` and `app/onboarding.tsx` while this onboarding polish is in progress.
 - Latest visible thread context shows an active request in `Diagramar home en Figma` to catalog a new `archive (10)` asset batch. Do not assume that work is complete unless you inspect the workspace/docs/Figma state.
 - Backend/connections analysis was added in `docs/backend-todo.md`.
 - Convex + Clerk was selected and implemented as the new backend/auth foundation. Supabase remains legacy/reference only.
@@ -32,10 +32,60 @@ The active project work is broader than this file: continue planning/designing t
 - Current technical gap: the app is now Órbita-branded in `app.json`, onboarding, storage keys, and visible local screens. Convex/Clerk backend contracts exist, but screens have not yet been migrated from `AsyncStorage` to Convex. Geocoding/timezone provider, real natal chart calculation, App Store/Google Play subscriptions, analytics, and production content workflows remain unimplemented.
 - Latest cleanup renamed app config/package/storage to Órbita, updated visible Home/Explore/Journal/Profile/tab copy, fixed unaccented signal copy in local content, and removed literal previous-brand references from active docs.
 - Figma page `UX V4.4 - Órbita Onboarding Immersive Pass` now has a visible implementation note: `Órbita / RN beta implementation note`, marking the React Native beta and iOS Simulator verification.
-- Convex codegen/dev sync is blocked until the project is linked with `pnpm convex:dev`/`npx convex dev` and `CONVEX_DEPLOYMENT` exists.
+- Convex is now linked locally to dev deployment `dutiful-viper-815`; codegen produced `convex/_generated/`, but final function upload to Convex Cloud must be run by the user locally because Codex is blocked from transferring backend code externally.
+- Backoffice Lab V1 is now implemented locally as a web route at `/backoffice`: it is an internal model lab for test people, normalized birth inputs, versioned stub chart snapshots, daily reading payloads, model gap inspection, and saved lab runs.
+- Backoffice Lab V1 added isolated Convex tables/functions for `labSubjects` and `labRuns`, guarded by Clerk auth plus `ORBITA_BACKOFFICE_ALLOWED_EMAILS` / `ORBITA_BACKOFFICE_ALLOW_ALL` server envs. It uses generic Convex references so the Expo code can typecheck before `convex/_generated` exists.
+- `/backoffice` now shows Clerk's web sign-in UI when Convex/Clerk public envs exist but there is no active Clerk session.
+- `/backoffice` now uses Clerk sign-in directly; the operational access path is signing in with `lucaszramos11@gmail.com`, which must stay in `ORBITA_BACKOFFICE_ALLOWED_EMAILS` on Convex.
+- Backend setup runbook now lives at `docs/backend-setup.md`.
+- Clerk CLI is installed and authenticated as `lucaszramos11@gmail.com`; `clerk init --app app_3G2mZM0b44zGplJmkpwPFuamFYG` linked this repo to Clerk app `Orbita`, pulled development env vars into `.env.local`, and installed the current Expo SDK package `@clerk/expo`.
+- The code now uses `@clerk/expo` instead of the older `@clerk/clerk-expo`; `package.json` and `pnpm-lock.yaml` were updated accordingly.
+- Convex dev deployment is identified as `dutiful-viper-815` with public URL `https://dutiful-viper-815.convex.cloud`; `.env.local` contains the local Convex deployment values and Clerk development values. Convex server envs `CLERK_JWT_ISSUER_DOMAIN` and `ORBITA_BACKOFFICE_ALLOWED_EMAILS` were set successfully on the dev deployment.
+- `convex/_generated/` exists locally and the user successfully ran `pnpm exec convex dev --once --typecheck disable`; Convex confirmed functions ready on dev deployment `dutiful-viper-815`.
+- Backoffice Lab V1 is now synced to Convex dev. If `convex/` code changes again, the user must rerun `pnpm exec convex dev --once --typecheck disable` locally because Codex is blocked from uploading backend code externally.
+- Backoffice auth polish is implemented locally: `/backoffice` is Clerk-only, waits for `useConvexAuth()` before mounting lab queries/mutations, redirects Clerk sign-in back to `/backoffice`, and shows clear states for missing envs, connecting Convex, JWT mismatch, and non-allowlisted email.
+- Clerk JWT template `convex` now exists in the linked Clerk app with audience/application id `convex`, so Convex can receive Clerk identity for `lucaszramos11@gmail.com` after a fresh sign-in.
+- Backoffice Convex helper fix is implemented locally: read queries validate Clerk/email without writing to `users`; if the user row does not exist yet, `listSubjects` and `listRuns` return empty lists and the first mutation creates/updates the user.
+- Backoffice visual polish is implemented locally: the large hero was reduced into a compact internal-tool header, the content is centered in a stable max-width container, and blocked auth no longer leaves active forms visible underneath.
+- Onboarding web centering polish is implemented locally: the fixed `393x852` Figma canvas no longer upscales on desktop web, and a shared Figma screen chrome helper normalizes status/progress/back placement for the birthdate, birthplace, and birth-time screens.
+- Onboarding local web debugging is enabled for `localhost`, `127.0.0.1`, and `::1`, so `/onboarding?debugStep=...` works in Expo Web export for screenshot verification without opening it on non-local hosts.
 - Pixel-perfect React Native pass for onboarding screens `01-04` is implemented in `app/onboarding.tsx`: fixed Figma canvas `393x852`, absolute-positioned local Figma components, fake status/home indicators, real Inter/Newsreader fonts, and direct screen mapping for frames `151:33`, `151:47`, `151:70`, and `151:105`.
 - To avoid another responsive reinterpretation, screens `01-04` now use Figma-derived local background/slot assets under `assets/orbita/figma/onboarding-v44/`. These exports are visual crops only; visible copy and UI geometry remain editable React Native.
-- Expo Go SDK 51 was installed on `iPhone 17 Pro` Simulator so this SDK 51 project opens correctly. Metro is currently running for this workspace on port `8082` because port `8081` was occupied by another local project.
+- Pixel-perfect React Native continuation for onboarding screens `05-15` is now implemented in `app/onboarding.tsx`: the flexible `OnboardingShell` render path is no longer used for the remaining onboarding steps, and the flow now uses fixed `393x852` Figma-style canvases plus a `393x1180` scroll canvas for payment.
+- Screens `09 / Birth Time Picker` and `10 / Birth Time Selected` were specifically rebuilt to stop the oversized responsive layout seen on phone: native status chrome is hidden, fake Figma status/progress/back controls are drawn, `09` is now a light text-wheel layout rather than white picker cards, and `10` is now light with an integrated orbital crop instead of a dark responsive poster layout.
+- Screen `11 / Your Base Chart` now uses the Archive 10 orbital chart crop as a square rounded Figma-style chart block instead of the older circular natal-chart diagram.
+- Screens `12 / Personalizing` and `13 / Before After / Órbita` were corrected against live V4.4 Figma metadata and screenshots: `12` no longer shows the hidden chart crop or visible CTA and now advances after the fake progress; `13` uses the V4.4 `dailyTextureB` background treatment, exact panel sizes, and the two Archive 10 circular symbols above the columns.
+- Screens `14 / Create Account` and `15 / Onboarding Payment / Scroll` were corrected against live V4.4 Figma metadata and screenshots: `14` now uses the flatter account form/social buttons from Figma; `15` has the closer dark premium payment layout, plan selector, benefits, how-it-works area, legal row, and fixed bottom CTA while preserving safer Órbita copy.
+- Screens `05 / Birthdate Empty` through `11 / Your Base Chart` received a new Figma correction pass against live V4.4 metadata/screenshots: `06` now uses the warmer solar field, glow, and emblem scale; `08` removes the wrong circular crop and uses the horizon as integrated full-frame atmosphere; `09` uses the corrected text-wheel positions, selection band, no-time button, note, and CTA geometry; `10` and `11` remove the oversized crops and use full-field warm backgrounds with aligned metrics/glyphs.
+- New visual polish pass against Figma/screenshots fixed repeated mismatches: light-screen progress segments are now black/gray instead of copper, `12 / Personalizing` opens at the Figma-visible 59% state before auto-advancing, `13 / Before After / Órbita` no longer renders a literal `\n` and has a brighter background wash, and `15 / Onboarding Payment / Scroll` now uses an outline-style `PLUS` badge with no visible back chevron.
+- Additional screenshot-driven polish pass corrected `10 / Ascendente afinado` and `11 / Your Base Chart`: removed the rectangular/circular asset artifacts, rebuilt the warm orbital/chart backgrounds with fixed RN geometry, added the Figma-style outer orbital ring/glow on `10`, and restored the radial natal chart grid/glyph balance on `11`.
+- Additional screenshot-driven polish pass corrected `13 / Before After / Órbita`: restored a darker integrated orbital backplate, adjusted the before/after panel positions and highlighted-column width, and changed the CTA to the pale blue treatment visible in Figma.
+- Additional Figma-derived asset pass corrected `12 / Personalizing`: the screen now uses the exact Figma-resolved calculation background exported from node `152:26` (`figma_onboarding_12_background__152-26.png`) instead of the wrong local Archive 10 PNG with a diagonal swoosh crop.
+- Additional Figma-derived asset pass corrected `13 / Before After / Órbita`: the screen now uses the exact Figma-resolved background exported from node `152:28` (`figma_onboarding_13_background__152-28.png`), removes the non-Figma top progress/back chrome, and uses the Figma panel sizes/rotations.
+- Additional screenshot-driven polish pass corrected `05 / Birthdate Empty`: the date wheel now uses Newsreader like Figma, capitalized month labels, exact year offsets from the frame, and a robust wrapping helper so previous months/days do not collapse to the same value.
+- Additional Figma/compositing pass corrected `08 / Birthplace Selected`: the screen now uses the Figma-resolved horizon background from node `152:16`, keeps the Figma `22%` image and `#F7F3EA` `64%` wash values, and adds the missing light base layer so the asset does not blend against the dark canvas and turn gray.
+- Additional Figma polish pass corrected `09 / Birth Time Picker`: live Figma frame `151:348` confirmed the circular wheel is correct; the app now uses Figma background opacities, the `11%` orbital ring, Newsreader wheel numerals, the correct selector band, softer `No sé la hora` button, and `48px` bottom CTA.
+- Additional Figma polish pass corrected `15 / Onboarding Payment / Scroll`: live Figma frame `151:610` confirmed the fixed benefits panel/chip positions; the app now uses absolute chips instead of flex-wrap rows, the long benefits chip no longer truncates, and `Cómo funciona` no longer collides with `Qué incluye`.
+- Additional Figma polish pass corrected `14 / Create Account`: the account screen now opens with the Figma sample email `mica@email.com` as editable state and uses Newsreader for the email field instead of a heavy Inter placeholder.
+- Additional Figma/mobile behavior pass corrected `07 / Birthplace Search`: the city field now auto-focuses on entry and no longer wraps the fixed Figma canvas in keyboard avoidance, so iPhone should open the native keyboard like the Figma frame instead of showing a passive search screen.
+- Additional Figma/light-background polish corrected shared light screens and `14 / Create Account`: `FigmaLightBackdrop` now uses a lighter texture/wash, and account gets a clean extra wash so its background matches Figma's warmer off-white.
+- Additional Figma pixel pass corrected `11 / Your Base Chart` and reinforced `07 / Birthplace Search`: screen `11` now uses the exact Figma-resolved chart image export from node `152:22` as its integrated backplate with editable text/symbols on top, and screen `07` imperatively focuses the city input after mount so the native keyboard path is stronger on iPhone.
+- Additional Figma pixel pass corrected `15 / Onboarding Payment / Scroll`: the top paywall title now uses the exact Figma line break `Tu cielo, todos\nlos días.`, the restore link uses Figma's medium/opacity treatment, and the subtitle color matches the lighter Figma payment copy while keeping the safer `Tu día con contexto` line in the how-it-works section.
+- Additional Figma pixel pass corrected `11 / Your Base Chart`: the app now restores the full radial natal chart grid with editable RN geometry over the light backdrop, matching the fresh Figma frame `151:428` instead of showing a mostly empty background with only the glyphs.
+- Additional Figma pixel pass corrected `06 / Birthdate Selected`: the app no longer renders the artificial copper/peach circle behind the solar emblem, so the sun sits directly in the integrated solar field like the Figma frame.
+- The `05-15` implementation keeps local beta behavior: editable date/time/city/email/plan state, mock city options, no real auth/payment/geocoding/chart calculation, and final payment CTA still calls `createProfile` then routes to `/(tabs)`.
+- Current phone-compatible EAS Update for this pixel-perfect continuation is published on branch `preview`: update group `4a1c1cf1-1f56-4704-b0c0-7a5a051df7f4`, runtime `exposdk:54.0.0`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/4a1c1cf1-1f56-4704-b0c0-7a5a051df7f4`. Previous groups `4b8a23d5-a9af-43b0-ad0a-fbd7aa210754`, `c8db30e9-bc8b-4aa3-8bdf-21f545939a1a`, `2a77d0fd-68a3-413b-a0ef-5309c72e1c11`, `d79634c6-b285-40bd-8421-7e7e80dd2143`, `db389668-3956-4b98-a806-0a33f53e7846`, `dc4f837b-28e7-4858-9420-626583974faa`, `29114707-d5b7-4de2-880a-3eb08e4ba823`, `6ed3ba8b-c825-4121-99b5-e7450b4f8a69`, `b71a3b90-9d20-44d3-ba70-f04dc20bc9c6`, `cf035676-763e-48d1-ba02-5ad15764a740`, `31b993d7-20af-4a02-8ae1-187774cb2cca`, `cfc74531-572c-429b-9cc6-fe37c96b3436`, `59951ce6-bfff-484d-a5a4-73d02dbc618b`, `8cc0e33b-31a3-420f-9385-48b80f5feae8`, `66894e41-a209-4f22-9d02-b2496070e093`, `ca752f95-c97e-4660-b379-9b1c645acc34`, `604b39fd-b9c1-4f0c-899d-0c208687e2c0`, `15729fbc-1046-4e97-9d1e-46db92f0517a`, `67909001-cc97-431b-a62a-b56077d962ca`, and `883c6ea6-9778-4d5b-85b1-f3702c457f9b` are superseded.
+- Onboarding V4.4 immersive asset pass is now implemented in `app/onboarding.tsx`: the local asset manifest uses real selected Archive 7/10 assets across the flow instead of relying mostly on flat RN geometry or Figma-derived crops. Key additions: `01` logo/backplate `idx08` + Archive 10 backplate, `02` benefit tiles from Archive 7 `idx68/27/38/13`, `03` identify backgrounds `idx21/27`, `04` daily base/backplates `idx20/21/61/65/66`, `05-10` birth-data assets `idx34/40/77/83`, `11` base chart `idx46/47`, `12` personalizing `idx51/55`, `13` before/after `idx53/81`, `14` account `idx58/59`, and `15` payment `idx62` with `idx69` as a subtle secondary atmosphere.
+- Current phone-compatible EAS Update after the immersive asset pass is published on branch `preview`: update group `b087be8e-061d-4907-95c2-3d446bc56807`, runtime `exposdk:54.0.0`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/b087be8e-061d-4907-95c2-3d446bc56807`. It supersedes `Onboarding 06 sun emblem cleanup`.
+- Latest phone-compatible EAS Update is the optimized loading hotfix on branch `preview`: update group `809f8cfb-cd54-4e10-a545-b03be399adb1`, runtime `exposdk:54.0.0`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/809f8cfb-cd54-4e10-a545-b03be399adb1`. It supersedes `Onboarding immersive asset pass`.
+- The raw selected Archive 7/10 assets remain untouched as source files, but `app/onboarding.tsx` now points the heavy onboarding visuals to 36 optimized JPEG derivatives in `assets/orbita/optimized/onboarding-v44/` totaling about `5.6M`, so Expo Go does not need to download the multi-megabyte PNG originals before opening the preview.
+- Latest phone-compatible EAS Update is now the native UI primitives pass on branch `preview`: update group `edb14d63-a72b-4fe9-b344-3e13aa296024`, runtime `exposdk:54.0.0`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/edb14d63-a72b-4fe9-b344-3e13aa296024`. It supersedes `Onboarding load hotfix optimized assets`.
+- Onboarding V4.4 now uses React Native Reusables/NativeWind for the approved mobile controls, not shadcn web/Radix DOM. The local `src/components/ui/` registry components include RNR `button`, `input`, `label`, `radio-group`, `toggle`, `progress`, `separator`, `badge`, `avatar`, `text`, and `icon`, plus thin Órbita adapters where the fixed Figma canvas needs absolute coordinates.
+- The visible onboarding controls in `app/onboarding.tsx` now use RNR-backed primitives: identity is a `RadioGroup`, birthplace/account inputs go through `Input`/`Label`, `No sé la hora` goes through `Toggle`, payment plans are a `RadioGroup`, `PLUS` uses `Badge`, and account adds `Avatar`.
+- The old custom date/time wheel path was removed from `app/onboarding.tsx`; screens `05` and `09` now use `@react-native-community/datetimepicker` with local conversion back into the existing `YYYY-MM-DD` and `08:30 AM` state formats. `birthTimeUnknown` still stores `birthTime` as undefined on submit.
+- NativeWind/RNR infrastructure is now configured through `components.json`, `global.css`, `tailwind.config.js`, `metro.config.js`, `nativewind-env.d.ts`, `babel.config.js`, `app/_layout.tsx`, and `src/lib/utils.ts`. Expo's SDK 54 installer currently resolves Reanimated/Worklets as `react-native-reanimated@~4.1.1` and `react-native-worklets@0.5.1`.
+- This RNR/native picker pass has not been published to EAS yet. Latest published phone-compatible `preview` remains `Onboarding native ui primitives pass` (`edb14d63-a72b-4fe9-b344-3e13aa296024`) until the NativeWind/Reanimated export issue is fixed and a new EAS Update is explicitly published.
+- Historical simulator note: Expo Go SDK 51 was previously installed on `iPhone 17 Pro` for the older SDK 51 project, but the currently booted Simulator now reports Expo Go SDK 57 and rejects this SDK 54 project. No Metro server is intentionally left running after the latest `05-15` pass.
 - Expo/EAS preview setup is now configured for account `lucasssram`: project `@lucasssram/orbita`, EAS project ID `9e91bb5e-e69e-489e-818d-0e377f397147`.
 - Android preview build is complete and installable from Expo: `https://expo.dev/accounts/lucasssram/projects/orbita/builds/41da1364-fc7b-40d9-ac70-c244c48332ab`.
 - EAS Update branch `preview` is now published so the project no longer shows as empty in Expo Go's branch list: update group `52c16c65-723d-4684-b5c6-a72985f2520d`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/52c16c65-723d-4684-b5c6-a72985f2520d`.
@@ -45,10 +95,24 @@ The active project work is broader than this file: continue planning/designing t
 - To unblock phone review through the user's current Expo Go, the project has been aligned to Expo SDK 54 / React Native 0.81.5, app version `0.2.0`, runtime policy `sdkVersion`, and SDK 54-compatible Expo module versions.
 - SDK 57 EAS Update is now published on branch `preview`: update group `b331824b-a4a9-4b9f-8442-6c41266a29e9`, runtime `0.2.0`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/b331824b-a4a9-4b9f-8442-6c41266a29e9`.
 - Expo Go-compatible EAS Update is now published on branch `preview`: update group `fe0c62e3-b873-490c-81d2-b02d816eee39`, runtime `exposdk:57.0.0`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/fe0c62e3-b873-490c-81d2-b02d816eee39`.
-- Current phone-compatible EAS Update is now published on branch `preview`: update group `feaa6ecc-784c-4396-af5b-4d7ce6466603`, runtime `exposdk:54.0.0`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/feaa6ecc-784c-4396-af5b-4d7ce6466603`.
+- Earlier SDK 54 phone-compatible EAS Update was published on branch `preview`: update group `feaa6ecc-784c-4396-af5b-4d7ce6466603`, runtime `exposdk:54.0.0`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/feaa6ecc-784c-4396-af5b-4d7ce6466603`. It is now superseded by the latest `Figma polish onboarding progress payment` update.
 - iOS physical-device preview build is not complete yet because EAS requires Apple Developer credentials/ad hoc provisioning for `com.horoscopo.orbita`. The iOS flow reached the Apple login prompt and was intentionally stopped; do not paste Apple passwords into chat.
 - A true installed iOS preview build still requires access to a valid Apple Developer team for signing/provisioning. Until that is available, the practical iPhone path is Expo Go + EAS Update on branch `preview`.
 - A local Git repository now exists because EAS Build requires Git. The first commits capture the current Órbita beta state and EAS build fixes.
+- Content/personalization planning pass was added in `docs/textos-analisis-personalizacion.md`, based on current Órbita docs/Figma/código plus Mobbin references for Co-Star and Moonly. It inventories the static copy, dynamic personalized readings, analysis modules, guardrails, and P0/P1/P2 prioritization needed for each incoming user.
+- Backend/backoffice astrological implementation pass is now added without wiring the user app: AstrologyAPI server-side adapter, chart/transit normalization, editorial daily payload P0, fixtures P0, provider/raw inspector, place lookup hook, and review statuses for lab runs.
+- Backoffice lab smoke test is now saved for `Lucas prueba` with birth data `1996-11-11 10:48`, assumed `Buenos Aires, Argentina`, timezone `America/Argentina/Buenos_Aires`, and local reading date `2026-07-04`. The run saved successfully, but AstrologyAPI returned `not_configured`, so the lab stored the expected stub fallback with provider request metadata and gaps.
+- Backoffice inspector UI has been polished after the first live run: it now shows a compact run summary, readable chart fields, readable daily modules/topics, provider status, and bounded scrollable raw JSON blocks so long payloads no longer overlap the next sections.
+- Backend/API decision doc now exists at `docs/api-astrologica-orbita.md`; it summarizes AstrologyAPI, the endpoints in use, what data each endpoint returns, what Orbita must own on top, the Lucas lab test, and the next validation steps.
+- Competitive astrology reference doc now exists at `docs/referencias-costar-moonly-orbita.md`; it lists what Co-Star and Moonly ask, show, sell, and separate technically, then maps what Orbita should take, adapt, defer, or avoid.
+- Home content/backend doc now exists at `docs/home-contenidos-personalizados.md`; it refocuses the Co-Star/Moonly analysis away from pages and into the exact personalized text modules the backend should generate for Home: daily headline, topics, `Hace`, `Evita`, action, question, Void prompts, lunar/calendar P1, editorial banks, and data required for personalization.
+- Interactive Home Lab is now implemented inside `/backoffice`: generated lab runs now include richer editorial payloads for chart profile, Home, topics, Deep Dive, transits, Void preview, Future Self, long read, guardrails, versions, and mode; the UI adds editable tabs and lab-only saving for `editorialPayload` and `futureSelfNote`.
+- Home Lab content correction: `Hacé` and `Evitá` should be three-item lists each, not one-liners. The lab also now needs to show a clear personalization trace explaining whether a run uses real natal chart + daily transits, natal fallback only, or demo-only editorial output because the provider is missing.
+- Órbita Web V0 is now implemented locally: on web, `/` renders a public dark premium landing using real Órbita assets; on native, `/` still redirects to onboarding or tabs through the existing app state.
+- A new `/studio` route is implemented as a protected web Studio with Clerk + Convex auth shell and the backoffice allowlist pattern. Studio V0 is intentionally visual/local: video drop is simulated, metadata edits stay in component state, and no files or video metadata are uploaded or persisted.
+- A web asset manifest now curates Home core assets, onboarding optimized assets, and Archive 10 symbols as a shared web visual language. The assets are used as integrated hero/texture/backplate/symbol material, not as a wholesale gallery.
+- `convex/studio.ts` adds a local `checkAccess` query, but it is not synced to Convex dev yet. The sync command was blocked by policy because it uploads local backend code externally; the user must run `pnpm exec convex dev --once --typecheck disable` locally before `/studio` can validate against the live dev deployment.
+- The consumer app still uses local/stub behavior; real astrology is intentionally limited to `/backoffice` until outputs are reviewed and approved.
 
 ## Decisions Made
 
@@ -56,6 +120,7 @@ The active project work is broader than this file: continue planning/designing t
 - Órbita is the only current product brand.
 - Previous names and intermediate explorations are historical context only.
 - Current design reference mix is 70% Co-Star / 30% Moonly.
+- Content strategy interpretation of the 70/30 mix: use Co-Star for editorial authority, sparse daily rhythm, data precision and chart/detail patterns; use Moonly for onboarding clarity, privacy framing, payment/benefit progression and Plus gating. Do not copy Co-Star's unsupported `NASA` claim or Moonly's inflated wellness/review claims.
 - Current onboarding is `01-15` in `UX V4.3 - Órbita Onboarding Copy`.
 - Payment is a single onboarding payment screen with weekly and annual plans.
 - App Core/Home design lives in `UX V4.5 - Órbita App Core`.
@@ -64,6 +129,15 @@ The active project work is broader than this file: continue planning/designing t
 - Assets should be selected, cropped, classified, and verified instead of uploaded wholesale.
 - Backend planning should treat `docs/backend-todo.md` as the current backlog source for auth, profile, birth data, geocoding, chart calculation, payments, daily readings, journal, notifications, analytics, CMS, and external integrations.
 - Backend V1 decision is Convex + Clerk. Do not extend `supabase/schema.sql` for new Órbita work unless there is an explicit product/technical decision to revert.
+- Backoffice V1 decision: build a lab first, not a full CMS/admin. The first web route is `/backoffice`, scoped to loading test subjects, running the current stub/proveedor astrológico, inspecting model gaps/raw provider payloads, saving lab runs, and marking review status. Payments, production analytics, full CMS editorial, LLM output, and app migration from `AsyncStorage` remain out of scope.
+- Home Lab decision: `/backoffice` is the place to polish personalized astrological content before app work. It keeps original generated payloads separate from edited `editorialPayload`, supports Future Self notes, and treats provider-missing output as explicit `demo_without_provider` instead of blocking editorial review.
+- Home Lab output decision: Co-Star-style `Do/Don't` maps to three `Hacé` items and three `Evitá` items. Every run must expose a visible `personalization` block so editorial review can tell what came from real user astrology and what is still maqueta.
+- Web V0 decision: `/` is the public landing on Expo Web only; iOS/Android keep the existing app redirect. `/studio` is the private web surface for visual/content operations.
+- Studio V0 decision: video drop/upload is mock-only for now. Do not add storage, transcoding, file persistence, or public user uploads until the visual workflow is approved.
+- Web asset decision: use the full Órbita asset library as a curated language system. Do not show every asset at once or treat RGB PNGs as transparent stickers.
+- Backoffice astrology provider decision: use AstrologyAPI first for backend lab calculations, keep Órbita-owned editorial text, keep the adapter isolated, and do not expose provider credentials through app/client envs.
+- Backoffice access decision: use Clerk directly with `lucaszramos11@gmail.com` allowlisted in Convex. Do not use a generic internal-code shortcut.
+- Backoffice auth implementation decision: do not call `listSubjects`, `upsertSubject`, `runModel`, or run detail queries until Convex confirms `isAuthenticated`; a Clerk-only visible session is not enough.
 - Onboarding asset rule for the V4.4 pass: no principal visual should read as a square/rectangle photo pasted onto a background. If an asset is RGB/no-alpha, use it as a full-frame background, low-opacity texture, masked symbol, or integrated diagram.
 - `01 / Logo Splash` should use an editable Órbita orbital mark instead of a square logo image.
 - For the `05-09` onboarding slice, the selected treatment is `Ritmo mixto`: `05`, `07`, and `09` stay light with `orbita_daily_texture_b` as an atmospheric wallpaper; `06` and `08` use stronger integrated Sol/Horizonte imagery.
@@ -72,6 +146,8 @@ The active project work is broader than this file: continue planning/designing t
 - First app beta keeps onboarding local/stubbed: no Convex write, no Clerk auth, no real geocoding/timezone, no real chart calculation, and no StoreKit/Play Billing yet.
 - For pixel-perfect RN passes, use the Figma frame as source of truth over hand-guessed `Image resizeMode="cover"` crops. If an image fill crop matters, export the specific Figma background/slot node as a local derived asset and keep text/buttons editable in RN.
 - A dev-only `debugStep` query param in `app/onboarding.tsx` may be used to open exact onboarding steps in Simulator for screenshots, for example `exp://127.0.0.1:8082/--/onboarding?debugStep=3`.
+- Onboarding UI decision: use React Native Reusables generated components and NativeWind for mobile UI primitives; keep wrappers thin so the fixed `393x852` Figma canvas and asset composition remain stable.
+- Onboarding date/time decision: React Native Reusables does not provide a dedicated date picker in the selected registry, so use `@react-native-community/datetimepicker` for birth date and birth time instead of recreating custom wheels.
 
 ## Relevant Files
 
@@ -84,21 +160,39 @@ The active project work is broader than this file: continue planning/designing t
 - `docs/ritmo-trabajo.md`
 - `docs/assets-needed.md`
 - `docs/onboarding-v44-react-native-handoff.md`
+- `docs/textos-analisis-personalizacion.md`
+- `docs/api-astrologica-orbita.md`
+- `docs/referencias-costar-moonly-orbita.md`
+- `docs/home-contenidos-personalizados.md`
 - `docs/backend-todo.md`
+- `docs/backend-setup.md`
 - `docs/decision-log.md`
 - `docs/architecture.md`
 - `docs/symbolic-asset-library.md`
 - `.easignore`
+- `.env.example`
 - `.gitignore`
 - `.npmrc`
+- `babel.config.js`
+- `components.json`
+- `global.css`
+- `metro.config.js`
+- `nativewind-env.d.ts`
 - `app.json`
 - `eas.json`
 - `package.json`
 - `pnpm-lock.yaml`
 - `pnpm-workspace.yaml`
 - `supabase/schema.sql`
+- `app/index.tsx`
+- `app/backoffice.tsx`
+- `app/studio.tsx`
+- `app/_layout.tsx`
 - `convex/schema.ts`
+- `convex/_generated/`
 - `convex/auth.config.ts`
+- `convex/backoffice.ts`
+- `convex/studio.ts`
 - `convex/users.ts`
 - `convex/onboarding.ts`
 - `convex/birthData.ts`
@@ -110,8 +204,17 @@ The active project work is broader than this file: continue planning/designing t
 - `convex/notifications.ts`
 - `convex/devices.ts`
 - `convex/contentModules.ts`
+- `convex/lib/backoffice.ts`
 - `convex/lib/orbita.ts`
 - `convex/lib/users.ts`
+- `src/components/backoffice/BackofficeLab.tsx`
+- `src/components/web/orbita-landing.tsx`
+- `src/components/web/orbita-studio.tsx`
+- `src/components/ui/`
+- `src/lib/utils.ts`
+- `src/content/webAssets.ts`
+- `src/services/backofficeRefs.ts`
+- `src/services/studioRefs.ts`
 - `src/services/backendProviders.tsx`
 - `src/services/notifications.ts`
 - `src/services/supabase.ts`
@@ -127,7 +230,12 @@ The active project work is broader than this file: continue planning/designing t
 - `app/(tabs)/journal.tsx`
 - `app/(tabs)/profile.tsx`
 - `assets/orbita/figma/onboarding-v44/backgrounds/`
+- `assets/orbita/figma/onboarding-v44/backgrounds/figma_onboarding_08_background__152-16.png`
+- `assets/orbita/figma/onboarding-v44/backgrounds/figma_onboarding_11_chart_image__152-22.png`
+- `assets/orbita/figma/onboarding-v44/backgrounds/figma_onboarding_12_background__152-26.png`
+- `assets/orbita/figma/onboarding-v44/backgrounds/figma_onboarding_13_background__152-28.png`
 - `assets/orbita/figma/onboarding-v44/02-benefit-slots/`
+- `assets/orbita/optimized/onboarding-v44/`
 - `assets/orbita/core/`
 - `assets/orbita/higgsfield/archive-7/`
 - `assets/orbita/higgsfield/archive-9/`
@@ -141,12 +249,19 @@ The active project work is broader than this file: continue planning/designing t
 3. If continuing onboarding visual work, start from Figma page `UX V4.4 - Órbita Onboarding Immersive Pass` and compare against `UX V4.3 - Órbita Onboarding Copy`.
 4. If continuing asset work, inspect `assets/orbita/higgsfield/`, `assets/orbita/symbolic-library/`, and any new batch mentioned by the user. Preserve raw files and create manifests/contact sheets/classification folders.
 5. If the user wants more exact local Archive 7/9/10 PNGs applied to Figma, use the same explicit-approval upload route that succeeded for `05-09`; do not silently fall back to old in-file fills unless the user asks.
-6. If continuing onboarding app implementation, inspect `app/onboarding.tsx` and run the Expo app on small/large iPhone sizes. Next practical slice is pixel-perfect continuation for screens `05-15`, using the same fixed-canvas/Figma-node-export approach when crops matter, not rewriting `01-04`.
-7. If continuing backend work, start from `docs/backend-todo.md` and the existing `convex/` modules. Next practical slice: run/link `pnpm convex:dev`, configure Clerk JWT/envs, generate Convex code, then migrate one app flow from `AsyncStorage` to Convex.
-8. If continuing device distribution, verify the user can open the latest `preview` update named `Orbita Expo Go SDK 54 preview` in Expo Go. A true installed iOS preview still needs Apple Developer signing/provisioning; otherwise keep using Expo Go on iPhone and the completed Android preview build.
-9. After any meaningful step, update this file with status, decisions, relevant files, next steps, and verification.
+6. If continuing onboarding app implementation, inspect `app/onboarding.tsx` and the RNR/NativeWind config. Next practical slice is to fix the NativeWind/Reanimated export failure, launch the app on physical iPhone/Expo Go, verify `05` and `09` native pickers, `03`/`15` radio behavior, `14` avatar/input behavior, then publish a new EAS `preview` update only after it opens locally.
+7. If continuing Web V0, start from `/`, `/studio`, `src/components/web/`, `src/content/webAssets.ts`, and `convex/studio.ts`. Next practical slice: run `pnpm exec convex dev --once --typecheck disable` locally to publish the Studio access query, then open `/` and `/studio` in Expo Web with and without a Clerk session.
+8. If continuing backend work, start from `docs/backend-todo.md`, `docs/backend-setup.md`, `/backoffice`, and the existing `convex/` modules. Next practical slice: set AstrologyAPI envs in Convex, rerun `pnpm exec convex dev --once --typecheck disable` if backend files changed, rerun `Generar Home Lab` for `Lucas prueba`, review chart/Home/Deep Dive/transits/Void/Future Self output, edit text, and mark runs approved/rejected. Do not connect this to the app until lab outputs are approved.
+9. If continuing content/product planning, start from `docs/home-contenidos-personalizados.md`, then use `docs/textos-analisis-personalizacion.md` and `docs/referencias-costar-moonly-orbita.md` as broader references. Next practical slice: replace demo editorial strings with a real Orbita P0 editorial bank for headline, topics, three `Hacé`, three `Evitá`, action, question, Deep Dive, Void prompts, Future Self prompts, and personalization trace copy.
+10. If continuing device distribution, first unblock `expo export --platform all` for the RNR/native picker pass. The latest failure is a Worklets Babel transform exception while bundling Reanimated; the next likely fix is aligning `@babel/plugin-transform-react-jsx` with Babel 7 instead of the accidentally installed 8.x package, then rerunning export and `eas update --branch preview`.
+11. After any meaningful step, update this file with status, decisions, relevant files, next steps, and verification.
 
 ## Verification
+
+- `docs/api-astrologica-orbita.md` documents the current AstrologyAPI choice, the provider endpoints, what data comes from the API, what Orbita must own, and why the provider output is not the final user-facing reading.
+- `docs/referencias-costar-moonly-orbita.md` documents Co-Star vs Moonly feature/copy/product patterns, the Orbita decision matrix, and why onboarding, natal chart, daily readings, calendar, payment, relationships, and CMS/backoffice need separate implementation paths.
+- `docs/home-contenidos-personalizados.md` documents the focused content inventory the user requested: what daily/home text modules Co-Star and Moonly inspire, how Orbita should personalize them from natal chart + daily transits, what editorial banks are needed, and what the backend should return before any app UI work.
+- Home Lab implementation verified locally with TypeScript and tests; the app public flow remains untouched.
 
 - Confirmed main docs exist and describe Órbita as current product direction.
 - Confirmed workspace files include Expo app, docs, Supabase schema, tests, and asset libraries.
@@ -154,10 +269,43 @@ The active project work is broader than this file: continue planning/designing t
 - Confirmed prompt-only Figma page references are marked as historical/non-source-of-truth.
 - Confirmed Figma API exposes `UX V4.3 - Órbita Onboarding Copy` and inspected onboarding frames including birthdate, birthplace, base chart, personalizing, account, and payment.
 - Confirmed `docs/backend-todo.md` now contains the backend/connections todo list.
+- Confirmed Mobbin references for Co-Star onboarding, Co-Star Home, Moonly onboarding/payment, and Moonly Home were inspected through the Mobbin connector plus local temporary screenshot downloads under `/private/tmp/orbita-mobbin/`.
+- Confirmed Figma API still exposes only `UX V4.3 - Órbita Onboarding Copy` as a top-level page in this session; `UX V4.5 - Órbita App Core` and `UX V4.6 - Órbita Asset Library` remain documented sources but were analyzed through project docs.
+- Added `docs/textos-analisis-personalizacion.md` as the content and analysis inventory for static copy, dynamic personalized modules, editorial libraries, Plus/payment copy, privacy/error states, and prioritization.
 - TypeScript passed with direct local `tsc --noEmit`.
 - Tests passed with direct local `tsx --test test/*.test.ts`: 12 tests, 0 failures.
+- Órbita Web V0 verification: `pnpm typecheck` passed after adding `/`, `/studio`, web components, web asset manifest, and `convex/studio.ts`.
+- Órbita Web V0 verification: `pnpm test` was blocked in-sandbox by the `tsx` pipe permission, then passed outside the sandbox with 21 tests and 0 failures.
+- Órbita Web V0 verification: `pnpm exec expo export --platform web --output-dir /private/tmp/orbita-web-v0-export --clear` completed successfully and bundled the new landing/Studio routes plus web assets.
+- Órbita Web V0 verification: `pnpm web` / `expo start --web` could not be used for preview because Expo CLI hit a Node 24 `ERR_SOCKET_BAD_PORT` during port discovery, and the fixed-port attempt hung before serving. A static export server was started at `http://127.0.0.1:8099/`.
+- Órbita Web V0 verification: automated screenshots could not be captured because Playwright is installed but its Chromium binary is missing, and no local Chrome/Edge app was available.
+- Órbita Web V0 verification: Convex dev sync was attempted but blocked by policy because it would upload local backend code to an external Convex deployment. The local code is ready; the user must run the sync command locally.
 - `pnpm test` and `pnpm typecheck` wrappers attempted to run a pnpm install/status check and aborted in no-TTY mode; direct binaries were used for verification.
-- `convex codegen --typecheck=disable` was attempted and failed because `CONVEX_DEPLOYMENT` is not set; run `pnpm convex:dev` to link the project before codegen.
+- Earlier `convex codegen --typecheck=disable` failed before `CONVEX_DEPLOYMENT` existed; this is now superseded by the linked `dutiful-viper-815` setup.
+- Backoffice Lab V1 verification: `pnpm typecheck` passed.
+- Backoffice Lab V1 verification: `pnpm test` was blocked in-sandbox by the `tsx` pipe permission, then passed outside the sandbox with 15 tests and 0 failures.
+- Backoffice Lab V1 verification: Convex env setup succeeded and `convex/_generated/` was created locally, but the final Convex function upload step remains blocked for Codex by external-transfer policy.
+- Backoffice Lab V1 verification: `expo export --platform web --output-dir /private/tmp/orbita-backoffice-web-export` completed successfully, so the `/backoffice` route bundles for Expo Web.
+- Backoffice Astro Lab V1 verification: `pnpm typecheck` passed after adding AstrologyAPI adapter, chart/transit normalization, fixtures, review status, and backoffice UI controls.
+- Backoffice Astro Lab V1 verification: `pnpm test` was blocked in-sandbox by the `tsx` pipe permission, then passed outside the sandbox with 21 tests and 0 failures.
+- Backoffice live lab verification: Expo Web is running at `http://localhost:8081/backoffice`, Clerk + Convex auth works for `lucaszramos11@gmail.com`, `Lucas prueba` was saved, and `Correr proveedor astrológico` created a run dated `2026-07-04` with `orbita-stub-v1+provider-not_configured`, request `{ day: 11, month: 11, year: 1996, hour: 10, min: 48, lat: -34.6037, lon: -58.3816, tzone: -3, house_type: "placidus" }`, and gaps `astrologyapi_credentials_not_configured` plus `editorial_review_required_before_app_release`.
+- Backoffice live lab UI note: at the default narrow browser width, the `Ejecución del modelo` controls can be visually overlapped by the side panels; a 1280px-wide viewport showed the controls correctly and allowed the provider run.
+- Backoffice inspector UI verification: `pnpm typecheck` passed, `pnpm test` passed outside the sandbox with 21 tests and 0 failures, and the in-app browser at `http://localhost:8081/backoffice` shows the inspector summary plus contained JSON blocks instead of overlapping raw payloads.
+- Backend/API documentation verification: `docs/api-astrologica-orbita.md` was created from local adapter code plus official AstrologyAPI docs for `western_chart_data`, `natal_chart_interpretation`, `natal_transits/daily`, and Geo Location API.
+- Backoffice Clerk-only verification: Convex dev sync completed from the user's terminal with `functions ready`; local preview at `http://127.0.0.1:8084/backoffice` responds. The UI was then changed back to Clerk-only access to avoid the generic-code path.
+- Backoffice Clerk-only final verification: `tsc --noEmit` passed, `tsx --test test/*.test.ts` passed with 15 tests and 0 failures, Expo Web export completed to `/private/tmp/orbita-backoffice-web-export`, `http://127.0.0.1:8084/backoffice` responds, and the exported bundle no longer contains the internal-code strings.
+- Backoffice auth/design polish verification: Clerk JWT template `convex` was created in Clerk with audience `convex`; `src/components/backoffice/BackofficeLab.tsx` now gates on `useConvexAuth()` before rendering lab queries/mutations; blocked auth returns only the compact header plus the relevant notice.
+- Backoffice/onboarding polish verification: `pnpm typecheck` passed, tests passed with 15 tests and 0 failures, and `expo export --platform web --output-dir /private/tmp/orbita-backoffice-web-export --clear` completed successfully after the auth/design/onboarding changes.
+- Backoffice query-write regression verification: `pnpm test` now includes `backoffice read auth does not write when the user row does not exist yet`; latest run passed 16 tests, 0 failures.
+- Latest verification after the Convex helper fix and local `debugStep` change: `pnpm typecheck` passed, `pnpm test` passed with 16 tests and 0 failures, and Expo Web export completed to `/private/tmp/orbita-backoffice-web-export`.
+- In-app browser verification of `/onboarding?debugStep=3`, `5`, `8`, and `9` on `http://127.0.0.1:8084` showed the fixed canvas centered in a `1280x720` viewport with center delta `0`; the expected screen copy rendered for daily guidance, birthdate selected, birth time picker, and birth time selected.
+- In-app browser verification of `/backoffice` confirmed Clerk identity reaches Convex. The remaining visible `e.db.insert is not a function` error comes from the currently deployed Convex function version and should clear after the user reruns `pnpm exec convex dev --once --typecheck disable`.
+- Backoffice white-screen fix: `src/components/backoffice/BackofficeLab.tsx` no longer references the `SecondaryButton` component that Metro omitted from the web bundle; the secondary stub action now renders directly as a `Pressable`.
+- Backoffice white-screen verification: `pnpm typecheck` passed, `pnpm test` passed with 21 tests and 0 failures, Expo Web export completed, the exported bundle changed to `entry-d01709cf2062919060983f8c6f84a820.js`, and `rg` confirmed the bundle no longer contains `SecondaryButton`.
+- In-app browser verification after the white-screen fix: `/backoffice` loads the new `entry-d017...` bundle and renders the Backoffice shell instead of a blank page. The only remaining blocker shown in the UI is the deployed Convex `e.db.insert is not a function` error, which still requires rerunning `pnpm exec convex dev --once --typecheck disable`.
+- Backoffice auth clarification: the visible session card confirms Google/Clerk login is working for `lucaszramos11@gmail.com`; the remaining `e.db.insert is not a function` message is a stale Convex deployment problem, not an auth problem.
+- Backoffice stale-deployment UI polish: `friendlyBackofficeError` now maps `e.db.insert is not a function` to a clear `Convex necesita sincronizarse` message that tells the user to rerun `pnpm exec convex dev --once --typecheck disable`.
+- Latest verification after the stale-deployment message polish: `pnpm typecheck` passed and Expo Web export completed with bundle `entry-2e1fbc6d981d6ee15fb286bd56c33da3.js`.
 - Verified Figma V4.4 onboarding pass with screenshots of the full page and detailed frames: `01`, `02`, `04`, `08`, `10`, `11`, `12`, `13`, and `15`.
 - Fixed CTA contrast after screenshot review on dark screens with light CTAs.
 - Added editable orbital geometry inside `04 / Daily Guidance` phone after review so the phone no longer depends on an inner square image.
@@ -188,6 +336,20 @@ The active project work is broader than this file: continue planning/designing t
 - EAS setup: Android build then failed on Gradle resolving `@react-native/gradle-plugin`; adding `node-linker=hoisted` and explicit `@react-native/gradle-plugin@0.74.87` fixed the native build.
 - EAS setup: installed SDK 51-compatible `expo-auth-session@~5.5.2` and `expo-web-browser@~13.0.3` to satisfy Clerk peer deps outside Expo Go.
 - EAS verification: after the final EAS fixes, TypeScript passed with `pnpm typecheck` and tests passed outside the sandbox with `pnpm test`, 12 tests, 0 failures.
+- Onboarding load hotfix: generated optimized JPEG derivatives for the heavy onboarding assets under `assets/orbita/optimized/onboarding-v44/`; folder size is about `5.6M`.
+- Onboarding load hotfix: TypeScript passed with `pnpm typecheck`; tests passed outside the sandbox with `pnpm test`, 12 tests, 0 failures.
+- Onboarding load hotfix: `expo export --platform ios` completed successfully and showed the onboarding assets using the optimized JPEGs instead of the heavy raw PNGs.
+- Onboarding load hotfix: guardrail search in `app/onboarding.tsx` found no previous-brand text, no `Leemos los tránsitos`, no `NASA`, no `védica`/`vedica`, no unaccented `senal`, and no superseded payment claim strings.
+- Onboarding load hotfix: EAS `preview` branch now lists `Onboarding load hotfix optimized assets` first, group `809f8cfb-cd54-4e10-a545-b03be399adb1`, runtime `exposdk:54.0.0`.
+- Onboarding native UI primitives pass: TypeScript passed with `pnpm typecheck`; tests passed outside the sandbox with `pnpm test`, 21 tests, 0 failures; iOS export passed with `pnpm exec expo export --platform ios --output-dir /private/tmp/orbita-ui-primitives-export`.
+- Onboarding native UI primitives pass: guardrail search in `app/onboarding.tsx` and `src/components/ui` found no previous-brand text, no `Leemos los tránsitos`, no `NASA`, no `védica`/`vedica`, no unaccented `senal`, and no superseded payment claim strings.
+- Onboarding native UI primitives pass: EAS `preview` branch now lists `Onboarding native ui primitives pass` first, group `edb14d63-a72b-4fe9-b344-3e13aa296024`, runtime `exposdk:54.0.0`.
+- Onboarding RNR/native picker pass: `pnpm typecheck` passed after adding NativeWind/RNR and `@react-native-community/datetimepicker`.
+- Onboarding RNR/native picker pass: `pnpm test` is still blocked in-sandbox by the `tsx` pipe permission, then passed outside the sandbox with 21 tests, 0 failures.
+- Onboarding RNR/native picker pass: `pnpm exec expo export --platform ios --output-dir /private/tmp/orbita-rnr-onboarding-export` completed successfully and bundled the existing optimized onboarding assets plus the new NativeWind/RNR runtime.
+- Onboarding RNR/native picker pass: guardrail search in `app/onboarding.tsx` found no previous-brand text, no `Leemos los tránsitos`, no `NASA`, no `védica`, no unaccented `senal`, and no remaining `WheelControl`/Figma wheel component references.
+- Onboarding RNR/native picker pass publish attempt: `eas update --branch preview --message "Onboarding RNR native picker pass" --platform all --non-interactive` failed before publishing because Expo export could not resolve `@babel/plugin-transform-react-jsx`. Adding the latest package installed `8.0.1`, which is not aligned with the project's Babel 7 stack.
+- Onboarding RNR/native picker pass publish attempt: after reinstalling Expo SDK 54-compatible `react-native-reanimated` / `react-native-worklets`, `pnpm typecheck` still passes but `expo export --platform all` fails while transforming `react-native-reanimated/src/animation/timing.ts` with `[Worklets] Babel plugin exception: Cannot read properties of undefined (reading 'length')`. No new EAS update was published; `edb14d63-a72b-4fe9-b344-3e13aa296024` remains the latest published phone-compatible preview.
 - EAS verification: Android preview build `41da1364-fc7b-40d9-ac70-c244c48332ab` completed successfully; Gradle log showed `BUILD SUCCESSFUL in 6m 32s`, produced `app-release.apk` at 131 MB, and Expo returned the install URL.
 - EAS Update verification: `eas update:configure` added `expo-updates`, `updates.url`, runtime version policy `appVersion`, and channel `preview`.
 - EAS Update verification: `eas update --branch preview --message "Orbita preview update" --platform all` published update group `52c16c65-723d-4684-b5c6-a72985f2520d` for Android and iOS, runtime `0.1.0`.
@@ -209,4 +371,163 @@ The active project work is broader than this file: continue planning/designing t
 - SDK 54 phone compatibility verification: `expo config --json` reports `sdkVersion: "54.0.0"` and runtime policy `sdkVersion`.
 - SDK 54 phone compatibility verification: `expo export --platform all` completed for web, iOS, and Android at `/private/tmp/orbita-sdk54-export-check`.
 - SDK 54 phone compatibility verification: `eas update --branch preview --message "Orbita Expo Go SDK 54 preview" --platform all` published update group `feaa6ecc-784c-4396-af5b-4d7ce6466603` for Android and iOS, runtime `exposdk:54.0.0`, commit `990cfb9feae336e8ee2941a974121a9155c25f07`.
-- SDK 54 phone compatibility verification: `eas update:list --branch preview --limit 6 --json` shows `exposdk:54.0.0` as the latest update above the incompatible SDK 57/app-version updates.
+- Onboarding `10-11` polish verification: `pnpm typecheck` passed.
+- Onboarding `10-11` polish verification: `pnpm test` passed outside the sandbox after the `tsx` pipe was blocked in-sandbox, 12 tests, 0 failures.
+- Onboarding `10-11` polish verification: guardrail search in `app/onboarding.tsx`, `app.json`, `package.json`, and `src` found no previous-brand text, no `Leemos los tránsitos`, no `NASA`, no `védica`/`vedica`, and no unaccented `senal`.
+- Onboarding `10-11` polish verification: web export screenshots were captured at `/private/tmp/orbita-polish-c-app-10.png` and `/private/tmp/orbita-polish-c-app-11.png` and compared against Figma references `/private/tmp/orbita-figma-10.png` and `/private/tmp/orbita-figma-11.png`.
+- Onboarding `10-11` polish verification: iOS export completed at `/private/tmp/orbita-onboarding-export-check-10-11-polish`.
+- Onboarding `10-11` polish verification: EAS Update `Onboarding 10 11 Figma polish` published on branch `preview`, group `8cc0e33b-31a3-420f-9385-48b80f5feae8`, runtime `exposdk:54.0.0`, and `eas update:list --branch preview --limit 4 --json` confirmed it is first on the branch.
+- SDK 54 phone compatibility verification: `eas update:list --branch preview --limit 6 --json` showed `exposdk:54.0.0` as the latest update above the incompatible SDK 57/app-version updates at that point; this was later superseded by the Figma correction updates on the same SDK 54 runtime.
+- Pixel-perfect `05-15` continuation verification: `pnpm typecheck` passed with bundled Node.
+- Pixel-perfect `05-15` continuation verification: `pnpm test` passed, 12 tests, 0 failures.
+- Pixel-perfect `05-15` continuation verification: guardrail search in active app code found no previous-brand text, no `Leemos los tránsitos`, no `NASA`, no `védica`/`vedica`, and no unaccented `senal`.
+- Pixel-perfect `05-15` continuation verification: `expo export --platform ios --output-dir /private/tmp/orbita-onboarding-export-check` completed successfully.
+- Pixel-perfect `05-15` continuation verification: local Simulator launch was attempted on booted `iPhone 17`, but the installed Expo Go client there is SDK 57 and rejects this SDK 54 project. The practical review path remains the physical phone's Expo Go SDK 54-compatible `preview` branch.
+- Pixel-perfect `05-15` EAS Update verification: `eas update --branch preview --message "Pixel-perfect onboarding 05-15" --platform all` published update group `883c6ea6-9778-4d5b-85b1-f3702c457f9b` for Android and iOS, runtime `exposdk:54.0.0`, commit `24721abcf9a01a53d7985a68bc49feeb30a6b835*`.
+- Figma correction `09-11` verification: `pnpm typecheck` passed with bundled Node.
+- Figma correction `09-11` verification: `pnpm test` passed, 12 tests, 0 failures.
+- Figma correction `09-11` verification: guardrail search in active app code found no previous-brand text, no `Leemos los tránsitos`, no `NASA`, no `védica`/`vedica`, and no unaccented `senal`.
+- Figma correction `09-11` verification: Expo config reports `name: "Órbita"`, `slug: "orbita"`, `owner: "lucasssram"`, `sdkVersion: "54.0.0"`, runtime policy `sdkVersion`, and EAS updates URL `https://u.expo.dev/9e91bb5e-e69e-489e-818d-0e377f397147`.
+- Figma correction `09-11` verification: `expo export --platform ios --output-dir /private/tmp/orbita-onboarding-export-check` completed successfully.
+- Figma correction `09-11` EAS Update verification: `eas update --branch preview --message "Figma correction onboarding 09-11" --platform all` published update group `67909001-cc97-431b-a62a-b56077d962ca` for Android and iOS, runtime `exposdk:54.0.0`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/67909001-cc97-431b-a62a-b56077d962ca`.
+- Figma correction `09-11` EAS Update verification: `eas update:list --branch preview --limit 4 --json` shows group `67909001-cc97-431b-a62a-b56077d962ca` first on branch `preview`.
+- Figma correction `12-13` evidence: Figma V4.4 frame IDs were inspected live: `151:513` for `12 / Personalizing` and `151:569` for `13 / Before After / Órbita`; screenshots were downloaded to `/private/tmp/orbita-figma-12.png` and `/private/tmp/orbita-figma-13.png`.
+- Figma correction `12-13` verification: `pnpm typecheck` passed with bundled Node.
+- Figma correction `12-13` verification: initial `pnpm test` was blocked by sandbox IPC permissions for `tsx`; rerunning outside the sandbox passed, 12 tests, 0 failures.
+- Figma correction `12-13` verification: guardrail search in active app code found no previous-brand text, no `Leemos los tránsitos`, no `NASA`, no `védica`/`vedica`, and no unaccented `senal`.
+- Figma correction `12-13` verification: `expo export --platform ios --output-dir /private/tmp/orbita-onboarding-export-check-12-13` completed successfully.
+- Figma correction `12-13` EAS Update verification: `eas update --branch preview --message "Figma correction onboarding 12-13" --platform all` published update group `15729fbc-1046-4e97-9d1e-46db92f0517a` for Android and iOS, runtime `exposdk:54.0.0`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/15729fbc-1046-4e97-9d1e-46db92f0517a`.
+- Figma correction `12-13` EAS Update verification: `eas update:list --branch preview --limit 4 --json` shows group `15729fbc-1046-4e97-9d1e-46db92f0517a` first on branch `preview`.
+- Figma correction `14-15` evidence: Figma V4.4 frame IDs were inspected live: `151:480` for `14 / Create Account` and `151:610` for `15 / Onboarding Payment / Scroll`; screenshots were downloaded to `/private/tmp/orbita-figma-14.png` and `/private/tmp/orbita-figma-15.png`.
+- Figma correction `12-15` verification: `pnpm typecheck` passed with bundled Node.
+- Figma correction `12-15` verification: initial `pnpm test` was blocked by sandbox IPC permissions for `tsx`; rerunning outside the sandbox passed, 12 tests, 0 failures.
+- Figma correction `12-15` verification: guardrail search in active app code found no previous-brand text, no `Leemos los tránsitos`, no `NASA`, no `védica`/`vedica`, and no unaccented `senal`.
+- Figma correction `12-15` verification: `expo export --platform ios --output-dir /private/tmp/orbita-onboarding-export-check-12-15` completed successfully.
+- Figma correction `12-15` EAS Update verification: `eas update --branch preview --message "Figma correction onboarding 12-15" --platform all` published update group `604b39fd-b9c1-4f0c-899d-0c208687e2c0` for Android and iOS, runtime `exposdk:54.0.0`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/604b39fd-b9c1-4f0c-899d-0c208687e2c0`.
+- Figma correction `12-15` EAS Update verification: `eas update:list --branch preview --limit 4 --json` shows group `604b39fd-b9c1-4f0c-899d-0c208687e2c0` first on branch `preview`.
+- Figma correction `05-11` verification: live V4.4 metadata was inspected for frames `151:136`, `151:184`, `151:223`, `151:314`, `151:348`, `151:391`, and `151:428`; reference screenshots for `09`, `10`, and `11` were saved under `/private/tmp/orbita-figma-09.png`, `/private/tmp/orbita-figma-10.png`, and `/private/tmp/orbita-figma-11.png`.
+- Figma correction `05-11` verification: local web screenshots were captured at `/private/tmp/orbita-web-step05-after-fix.png`, `/private/tmp/orbita-web-step06-after-fix.png`, `/private/tmp/orbita-web-step07-after-fix.png`, `/private/tmp/orbita-web-step08-after-fix.png`, `/private/tmp/orbita-web-step09-final-this-pass.png`, `/private/tmp/orbita-web-step10-final-this-pass.png`, and `/private/tmp/orbita-web-step11-final-this-pass.png`.
+- Figma correction `05-11` verification: `pnpm typecheck` passed with bundled Node.
+- Figma correction `05-11` verification: `pnpm test` was blocked in the sandbox by the `tsx` pipe permission, then passed outside the sandbox, 12 tests and 0 failures.
+- Figma correction `05-11` verification: guardrail search in active app files found no previous-brand text, no `Leemos los tránsitos`, no `NASA`, no `védica`/`vedica`, and no unaccented `senal`.
+- Figma correction `05-11` verification: `expo export --platform ios` completed at `/private/tmp/orbita-onboarding-export-check-05-11-final`.
+- Figma correction `05-11` EAS Update verification: `eas update --branch preview --message "Figma correction onboarding 05-11" --platform all` published update group `ca752f95-c97e-4660-b379-9b1c645acc34` for Android and iOS, runtime `exposdk:54.0.0`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/ca752f95-c97e-4660-b379-9b1c645acc34`.
+- Figma correction `05-11` EAS Update verification: `eas update:list --branch preview --limit 4 --json` shows group `ca752f95-c97e-4660-b379-9b1c645acc34` first on branch `preview`.
+- Figma polish verification: references were downloaded for frames `151:47`, `151:105`, `151:513`, `151:569`, `151:480`, and `151:610`; current app screenshots were captured under `/private/tmp/orbita-current-audit/`, including `app-12-fixed.png`, `app-13-final-pass.png`, `app-14-fixed.png`, and `app-15-final-pass.png`.
+- Figma polish verification: `pnpm typecheck` passed with bundled Node.
+- Figma polish verification: guardrail search in active app files found no previous-brand text, no `Leemos los tránsitos`, no `NASA`, no `védica`/`vedica`, and no unaccented `senal`; matches for `\n` are intentional JS newline strings, not rendered literal text after the fix.
+- Figma polish verification: `pnpm test` passed outside the sandbox, 12 tests and 0 failures.
+- Figma polish verification: `expo export --platform ios --output-dir /private/tmp/orbita-onboarding-export-check-visual-polish-final` completed successfully.
+- Figma polish EAS Update verification: `eas update --branch preview --message "Figma polish onboarding progress payment" --platform all` published update group `66894e41-a209-4f22-9d02-b2496070e093` for Android and iOS, runtime `exposdk:54.0.0`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/66894e41-a209-4f22-9d02-b2496070e093`.
+- Figma polish EAS Update verification: `eas update:list --branch preview --limit 4 --json` shows group `66894e41-a209-4f22-9d02-b2496070e093` first on branch `preview`.
+- Onboarding `13` polish verification: final screenshot `/private/tmp/orbita-audit-latest/app-13-final.png` was compared against Figma reference `/private/tmp/orbita-figma-13.png`; the pass restored the integrated backplate/orbit field, corrected the panel placement, and aligned the CTA color closer to the Figma frame.
+- Onboarding `13` polish verification: `pnpm typecheck` passed.
+- Onboarding `13` polish verification: `pnpm test` was blocked in the sandbox by the `tsx` pipe permission, then passed outside the sandbox with 12 tests and 0 failures.
+- Onboarding `13` polish verification: guardrail search in active app files found no previous-brand text, no `Leemos los tránsitos`, no `NASA`, no `védica`/`vedica`, and no unaccented `senal`.
+- Onboarding `13` polish verification: `expo export --platform ios --output-dir /private/tmp/orbita-onboarding-export-check-13-polish` completed successfully.
+- Onboarding `13` EAS Update verification: `eas update --branch preview --message "Onboarding 13 Figma polish" --platform all` published update group `59951ce6-bfff-484d-a5a4-73d02dbc618b` for Android and iOS, runtime `exposdk:54.0.0`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/59951ce6-bfff-484d-a5a4-73d02dbc618b`.
+- Onboarding `13` EAS Update verification: `eas update:list --branch preview --limit 4 --json` shows group `59951ce6-bfff-484d-a5a4-73d02dbc618b` first on branch `preview`.
+- Onboarding `12` Figma background evidence: Figma design context for frame `151:513` confirmed background node `152:26` named `image-bg / 12 / calculation transit field / archive10-idx30`, with image opacity `58%` and wash `#06070A` opacity `58%`.
+- Onboarding `12` Figma background evidence: the Figma-resolved background asset was downloaded from the MCP asset URL and added as `assets/orbita/figma/onboarding-v44/backgrounds/figma_onboarding_12_background__152-26.png`.
+- Onboarding `12` polish verification: local dev screenshot `/private/tmp/orbita-audit-latest/app-12-final.png` was compared against Figma reference `/private/tmp/orbita-figma-12.png`; the backplate now matches the circular orbital field instead of the previous diagonal crop.
+- Onboarding `12` polish verification: `pnpm typecheck` passed.
+- Onboarding `12` polish verification: `pnpm test` was blocked in the sandbox by the `tsx` pipe permission, then passed outside the sandbox with 12 tests and 0 failures.
+- Onboarding `12` polish verification: guardrail search in active app files found no previous-brand text, no `Leemos los tránsitos`, no `NASA`, no `védica`/`vedica`, and no unaccented `senal`.
+- Onboarding `12` polish verification: `expo export --platform ios --output-dir /private/tmp/orbita-onboarding-export-check-12-figma-bg` completed successfully.
+- Onboarding `12` EAS Update verification: `eas update --branch preview --message "Onboarding 12 Figma background" --platform all` published update group `cfc74531-572c-429b-9cc6-fe37c96b3436` for Android and iOS, runtime `exposdk:54.0.0`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/cfc74531-572c-429b-9cc6-fe37c96b3436`.
+- Onboarding `12` EAS Update verification: `eas update:list --branch preview --limit 4 --json` shows group `cfc74531-572c-429b-9cc6-fe37c96b3436` first on branch `preview`.
+- Onboarding `05` wheel evidence: Figma design context for frame `151:136` confirmed the birthdate picker rows use Newsreader, selected values at `22px`, inactive values at `15px`, and year rows `1992`, `1993`, `1994`, `1996`, `1997`, `1998`, `1999`.
+- Onboarding `05` wheel verification: local dev screenshot `/private/tmp/orbita-audit-latest/app-05-final.png` was compared against Figma frame `151:136`; typography, month capitalization, and year rows now match the visible Figma structure more closely.
+- Onboarding `05` wheel verification: `pnpm typecheck` passed.
+- Onboarding `05` wheel verification: `pnpm test` was blocked in the sandbox by the `tsx` pipe permission, then passed outside the sandbox with 12 tests and 0 failures.
+- Onboarding `05` wheel verification: guardrail search in active app files found no previous-brand text, no `Leemos los tránsitos`, no `NASA`, no `védica`/`vedica`, and no unaccented `senal`.
+- Onboarding `05` wheel verification: `expo export --platform ios --output-dir /private/tmp/orbita-onboarding-export-check-05-wheel` completed successfully.
+- Onboarding `05` wheel EAS Update verification: `eas update --branch preview --message "Onboarding 05 wheel typography" --platform all` published update group `31b993d7-20af-4a02-8ae1-187774cb2cca` for Android and iOS, runtime `exposdk:54.0.0`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/31b993d7-20af-4a02-8ae1-187774cb2cca`.
+- Onboarding `05` wheel EAS Update verification: `eas update:list --branch preview --limit 4 --json` shows group `31b993d7-20af-4a02-8ae1-187774cb2cca` first on branch `preview`.
+- Onboarding `08` Figma/compositing evidence: Figma design context for frame `151:314` confirmed background node `152:16`, image opacity `22%`, wash `#F7F3EA` opacity `64%`, Newsreader title at `32/38`, body at `24/30`, privacy copy at `y=703`, and CTA at `y=759`.
+- Onboarding `08` Figma/compositing evidence: the Figma-resolved background was downloaded as `assets/orbita/figma/onboarding-v44/backgrounds/figma_onboarding_08_background__152-16.png`; its MD5 hash matches the existing Archive 10 horizon asset (`b9f54720755f30dd60350cdfa3a93afd`), so the visual fix was the missing light base layer under the `22%` image.
+- Onboarding `08` polish verification: local dev screenshot `/private/tmp/orbita-audit-latest/app-08-final.png` now shows the warm light horizon/planet treatment instead of the earlier gray composite.
+- Onboarding `08` polish verification: `pnpm typecheck` passed.
+- Onboarding `08` polish verification: `pnpm test` was blocked in the sandbox by the `tsx` pipe permission, then passed outside the sandbox with 12 tests and 0 failures.
+- Onboarding `08` polish verification: guardrail search in active app files found no previous-brand text, no `Leemos los tránsitos`, no `NASA`, no `védica`/`vedica`, and no unaccented `senal`.
+- Onboarding `08` polish verification: `expo export --platform ios --output-dir /private/tmp/orbita-onboarding-export-check-08-bg-clear --clear` completed successfully; the EAS export log included `figma_onboarding_08_background__152-16.b9f54720755f30dd60350cdfa3a93afd.png`.
+- Onboarding `08` EAS Update verification: `eas update --branch preview --message "Onboarding 08 Figma background" --platform all` published update group `cf035676-763e-48d1-ba02-5ad15764a740` for Android and iOS, runtime `exposdk:54.0.0`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/cf035676-763e-48d1-ba02-5ad15764a740`.
+- Onboarding `08` EAS Update verification: `eas update:list --branch preview --limit 4 --json` shows group `cf035676-763e-48d1-ba02-5ad15764a740` first on branch `preview`.
+- Onboarding `09` Figma polish evidence: live Figma design context for frame `151:348` confirmed the circular wheel layout, `dailyTextureB` opacity `16%`, wash `#F7F3EA` opacity `70%`, orbital ring node `163:4` opacity `11%`, selector band at `x=67 y=349 w=257 h=36`, Newsreader wheel numerals, `No sé la hora` button at `x=31 y=597 w=329 h=64`, note at `y=685`, and CTA at `y=759 h=48`.
+- Onboarding `09` polish verification: local dev screenshot `/private/tmp/orbita-full-audit-current/app-09-after.png` now matches the Figma wheel structure more closely, with softer background, serif hour/minute numerals, the correct selector band, and the white secondary button treatment.
+- Onboarding `09` polish verification: `pnpm typecheck` passed.
+- Onboarding `09` polish verification: `pnpm test` was blocked in the sandbox by the `tsx` pipe permission, then passed outside the sandbox with 12 tests and 0 failures.
+- Onboarding `09` polish verification: guardrail search in active app files found no previous-brand text, no `Leemos los tránsitos`, no `NASA`, no `védica`/`vedica`, and no unaccented `senal`.
+- Onboarding `09` polish verification: `expo export --platform ios --output-dir /private/tmp/orbita-onboarding-export-check-09-wheel` completed successfully.
+- Onboarding `09` EAS Update verification: `eas update --branch preview --message "Onboarding 09 Figma wheel polish" --platform all` published update group `b71a3b90-9d20-44d3-ba70-f04dc20bc9c6` for Android and iOS, runtime `exposdk:54.0.0`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/b71a3b90-9d20-44d3-ba70-f04dc20bc9c6`.
+- Onboarding `09` EAS Update verification: `eas update:list --branch preview --limit 4 --json` shows group `b71a3b90-9d20-44d3-ba70-f04dc20bc9c6` first on branch `preview`.
+- Onboarding `15` Figma polish evidence: live Figma design context for frame `151:610` confirmed the fixed `Qué incluye` panel at `x=23 y=585 w=345 h=178`, five absolute benefits chips, `Cómo funciona` at `y=797`, and the final CTA at `y=1111`.
+- Onboarding `15` polish verification: local browser screenshots were captured at `/private/tmp/orbita-full-audit-current/app-15-after.png` and `/private/tmp/orbita-full-audit-current/app-15-bottom-after.png`; the benefits panel no longer overlaps the how-it-works section and the long benefits chip no longer truncates.
+- Onboarding `15` polish verification: `pnpm typecheck` passed.
+- Onboarding `15` polish verification: `pnpm test` was blocked in the sandbox by the `tsx` pipe permission, then passed outside the sandbox with 12 tests and 0 failures.
+- Onboarding `15` polish verification: guardrail search in active app files found no previous-brand text, no `Leemos los tránsitos`, no `NASA`, no `védica`/`vedica`, and no unaccented `senal`.
+- Onboarding `15` polish verification: `expo export --platform ios --output-dir /private/tmp/orbita-onboarding-export-check-15-benefits` completed successfully.
+- Onboarding `15` EAS Update verification: `eas update --branch preview --message "Onboarding 15 benefits layout" --platform all` published update group `6ed3ba8b-c825-4121-99b5-e7450b4f8a69` for Android and iOS, runtime `exposdk:54.0.0`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/6ed3ba8b-c825-4121-99b5-e7450b4f8a69`.
+- Onboarding `15` EAS Update verification: `eas update:list --branch preview --limit 4 --json` shows group `6ed3ba8b-c825-4121-99b5-e7450b4f8a69` first on branch `preview`, above the `09`, `08`, and `05` polish updates.
+- Onboarding `13` Figma background evidence: live Figma design context for frame `151:569` confirmed background node `152:28` at `44%`, wash `#090A0D` at `54%`, no visible progress/back controls, before panel rotation `3deg`, after panel rotation `-2deg`, and CTA at `y=759`.
+- Onboarding `13` Figma background evidence: the Figma-resolved background was downloaded as `assets/orbita/figma/onboarding-v44/backgrounds/figma_onboarding_13_background__152-28.png` with SHA-256 `e427013f3a6d10e0100ad0bc54505f1b035da1c33b0f6ae018af9b9538552f45`.
+- Onboarding `13` polish verification: local browser screenshot `/private/tmp/orbita-full-audit-current/app-13-after-bg.png` was compared against Figma reference `/private/tmp/orbita-figma-13.png`; the background crop, visible chrome, panel sizes, rotations, legal copy, and CTA now match more closely.
+- Onboarding `13` polish verification: `pnpm typecheck` passed.
+- Onboarding `13` polish verification: `pnpm test` was blocked in the sandbox by the `tsx` pipe permission, then passed outside the sandbox with 12 tests and 0 failures.
+- Onboarding `13` polish verification: guardrail search in active app files found no previous-brand text, no `Leemos los tránsitos`, no `NASA`, no `védica`/`vedica`, and no unaccented `senal`.
+- Onboarding `13` polish verification: `expo export --platform ios --output-dir /private/tmp/orbita-onboarding-export-check-13-figma-bg-clean --clear` completed successfully and dropped the unused Archive 7 before/after assets from the export.
+- Onboarding `13` EAS Update verification: `eas update --branch preview --message "Onboarding 13 Figma background" --platform all` published update group `29114707-d5b7-4de2-880a-3eb08e4ba823` for Android and iOS, runtime `exposdk:54.0.0`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/29114707-d5b7-4de2-880a-3eb08e4ba823`.
+- Onboarding `13` EAS Update verification: `eas update:list --branch preview --limit 4 --json` shows group `29114707-d5b7-4de2-880a-3eb08e4ba823` first on branch `preview`, above the `15`, `09`, and `08` polish updates.
+- Onboarding `14` Figma account evidence: local browser screenshot `/private/tmp/orbita-full-audit-current/app-14-after-email.png` was compared against Figma reference `/private/tmp/orbita-figma-14.png`; the account screen now shows editable `mica@email.com` in the expected dark editorial field treatment.
+- Onboarding `14` polish verification: `pnpm typecheck` passed.
+- Onboarding `14` polish verification: `pnpm test` was blocked in the sandbox by the `tsx` pipe permission, then passed outside the sandbox with 12 tests and 0 failures.
+- Onboarding `14` polish verification: guardrail search in active app files found no previous-brand text, no `Leemos los tránsitos`, no `NASA`, no `védica`/`vedica`, and no unaccented `senal`.
+- Onboarding `14` polish verification: `expo export --platform ios --output-dir /private/tmp/orbita-onboarding-export-check-14-email --clear` completed successfully.
+- Onboarding `14` EAS Update verification: `eas update --branch preview --message "Onboarding 14 account email" --platform all` published update group `dc4f837b-28e7-4858-9420-626583974faa` for Android and iOS, runtime `exposdk:54.0.0`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/dc4f837b-28e7-4858-9420-626583974faa`.
+- Onboarding `14` EAS Update verification: `eas update:list --branch preview --limit 4 --json` shows group `dc4f837b-28e7-4858-9420-626583974faa` first on branch `preview`, above the `13`, `15`, and `09` polish updates.
+- Full onboarding audit evidence: fresh app screenshots for `01-15` were captured under `/private/tmp/orbita-audit-now/`, and a Figma-vs-app comparison board was generated at `/private/tmp/orbita-audit-now/compare-figma-app-01-15.png`.
+- Onboarding `07` keyboard-focus verification: local browser check confirmed the active DOM element after opening `debugStep=6` is the city `INPUT` with placeholder `Buenos`; screenshot saved at `/private/tmp/orbita-audit-now/app-07-autofocus.png`.
+- Onboarding `07` polish verification: `pnpm typecheck` passed.
+- Onboarding `07` polish verification: `pnpm test` was blocked in the sandbox by the `tsx` pipe permission, then passed outside the sandbox with 12 tests and 0 failures.
+- Onboarding `07` polish verification: guardrail search in active app files found no previous-brand text, no `Leemos los tránsitos`, no `NASA`, no `védica`/`vedica`, and no unaccented `senal`.
+- Onboarding `07` polish verification: `expo export --platform ios --output-dir /private/tmp/orbita-onboarding-export-check-07-autofocus --clear` completed successfully.
+- Onboarding `07` EAS Update verification: `eas update --branch preview --message "Onboarding 07 keyboard focus" --platform all` published update group `db389668-3956-4b98-a806-0a33f53e7846` for Android and iOS, runtime `exposdk:54.0.0`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/db389668-3956-4b98-a806-0a33f53e7846`.
+- Onboarding `07` EAS Update verification: `eas update:list --branch preview --limit 4 --json` shows group `db389668-3956-4b98-a806-0a33f53e7846` first on branch `preview`, above the `14`, `13`, and `15` polish updates.
+- Onboarding light-background evidence: fresh screen `14` browser screenshot is `/private/tmp/orbita-audit-next/app-14-clean-bg.png`; image comparison improved from `rms=63.56 mean=27.79 bg=(217,216,211)` to `rms=49.33 mean=7.24 bg=(243,240,233)` against Figma bg sample `(243,240,235)`.
+- Onboarding light-background verification: `pnpm typecheck` passed.
+- Onboarding light-background verification: `pnpm test` was blocked in the sandbox by the `tsx` pipe permission, then passed outside the sandbox with 12 tests and 0 failures.
+- Onboarding light-background verification: guardrail search in active app files found no previous-brand text, no `Leemos los tránsitos`, no `NASA`, no `védica`/`vedica`, and no unaccented `senal`.
+- Onboarding light-background verification: `expo export --platform ios --output-dir /private/tmp/orbita-onboarding-export-check-light-bg --clear` completed successfully.
+- Onboarding light-background EAS Update verification: `eas update --branch preview --message "Onboarding light screens background" --platform all` published update group `d79634c6-b285-40bd-8421-7e7e80dd2143` for Android and iOS, runtime `exposdk:54.0.0`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/d79634c6-b285-40bd-8421-7e7e80dd2143`.
+- Onboarding light-background EAS Update verification: `eas update:list --branch preview --limit 4 --json` shows group `d79634c6-b285-40bd-8421-7e7e80dd2143` first on branch `preview`, above `Onboarding 07 keyboard focus`, `Onboarding 14 account email`, and `Onboarding 13 Figma background`.
+- Onboarding `11` / `07` evidence: fresh app screenshots were captured under `/private/tmp/orbita-audit-fresh/`, including `/private/tmp/orbita-audit-fresh/app-11-after-figma-bg.png`, `/private/tmp/orbita-audit-fresh/app-07-focus-after.png`, and comparison board `/private/tmp/orbita-audit-fresh/compare-figma-app-01-15-after-11.png`.
+- Onboarding `11` Figma evidence: live Figma node `152:22` (`image-bg / 11 / integrated base chart diagram / core-chart-a`) was exported to `assets/orbita/figma/onboarding-v44/backgrounds/figma_onboarding_11_chart_image__152-22.png` and wired into `FigmaNatalChartBackdrop` so visible UI remains editable React Native text/symbols.
+- Onboarding `07` focus evidence: local browser check on `debugStep=6` confirmed the active DOM element is the city `INPUT` with placeholder `Buenos` after the imperative focus effect.
+- Onboarding `11` / `07` verification: `pnpm typecheck` passed.
+- Onboarding `11` / `07` verification: guardrail search in active app files found no previous-brand text, no `Leemos los tránsitos`, no `NASA`, no `védica`/`vedica`, and no unaccented `senal`.
+- Onboarding `11` / `07` verification: `pnpm test` was blocked in the sandbox by the `tsx` pipe permission, then passed outside the sandbox with 12 tests and 0 failures.
+- Onboarding `11` / `07` verification: `expo export --platform ios --output-dir /private/tmp/orbita-onboarding-export-check-11-07 --clear` completed successfully and included the new `figma_onboarding_11_chart_image__152-22.png` asset.
+- Onboarding `11` / `07` EAS Update verification: `eas update --branch preview --message "Onboarding 11 chart and 07 focus" --platform all` published update group `2a77d0fd-68a3-413b-a0ef-5309c72e1c11` for Android and iOS, runtime `exposdk:54.0.0`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/2a77d0fd-68a3-413b-a0ef-5309c72e1c11`.
+- Onboarding `11` / `07` EAS Update verification: `eas update:list --branch preview --limit 4 --json` shows group `2a77d0fd-68a3-413b-a0ef-5309c72e1c11` first on branch `preview`, above `Onboarding light screens background`, `Onboarding 07 keyboard focus`, and `Onboarding 14 account email`.
+- Onboarding `11` radial grid evidence: fresh Figma screenshot for frame `151:428` was downloaded to `/private/tmp/orbita-implement-plan/figma-11-fresh.png`; app screenshots before/after were captured at `/private/tmp/orbita-implement-plan/app-11.png` and `/private/tmp/orbita-implement-plan/app-11-after-grid.png`.
+- Onboarding `11` radial grid verification: `app/onboarding.tsx` now renders `FigmaAstroGrid` inside `FigmaNatalChartBackdrop`, restoring the full-screen chart grid behind editable text/metrics.
+- Onboarding `11` radial grid verification: `pnpm typecheck` passed.
+- Onboarding `11` radial grid verification: guardrail search in active app files found no previous-brand text, no `Leemos los tránsitos`, no `NASA`, no `védica`/`vedica`, and no unaccented `senal`.
+- Onboarding `11` radial grid verification: `pnpm test` was blocked in the sandbox by the `tsx` pipe permission, then passed outside the sandbox with 12 tests and 0 failures.
+- Onboarding `11` radial grid verification: `expo export --platform ios --output-dir /private/tmp/orbita-onboarding-export-check-11-grid --clear` completed successfully.
+- Onboarding `11` radial grid EAS Update verification: `eas update --branch preview --message "Onboarding 11 radial chart grid" --platform all` published update group `4b8a23d5-a9af-43b0-ad0a-fbd7aa210754` for Android and iOS, runtime `exposdk:54.0.0`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/4b8a23d5-a9af-43b0-ad0a-fbd7aa210754`.
+- Onboarding `11` radial grid EAS Update verification: `eas update:list --branch preview --limit 4 --json` shows group `4b8a23d5-a9af-43b0-ad0a-fbd7aa210754` first on branch `preview`, above `Onboarding 15 title polish`, `Onboarding 11 chart and 07 focus`, and `Onboarding light screens background`.
+- Onboarding `06` sun halo evidence: Figma reference `/private/tmp/orbita-audit-now/figma-06.png` shows the solar emblem without a peach/copper disc behind it, while the previous app capture `/private/tmp/orbita-audit-fresh/app-06.png` showed an artificial circular halo.
+- Onboarding `06` sun halo verification: `app/onboarding.tsx` removed the extra `FigmaEllipse color="rgba(196, 106, 58, 0.18)"` layer from `FigmaBirthdateSelectedScreen`; the solar asset remains editable/positioned as before.
+- Onboarding `06` sun halo verification: `pnpm typecheck` passed.
+- Onboarding `06` sun halo verification: guardrail search in active app files found no previous-brand text, no `Leemos los tránsitos`, no `NASA`, no `védica`/`vedica`, and no unaccented `senal`.
+- Onboarding `06` sun halo verification: `expo export --platform ios --output-dir /private/tmp/orbita-onboarding-export-check-06-sun-halo --clear` completed successfully.
+- Onboarding `06` sun halo verification: `pnpm test` remained blocked in the sandbox by the `tsx` pipe permission, but the equivalent `node --import tsx --test test/*.test.ts` passed with 12 tests and 0 failures.
+- Onboarding `06` sun halo EAS Update verification: `eas update --branch preview --message "Onboarding 06 sun emblem cleanup" --platform all` published update group `4a1c1cf1-1f56-4704-b0c0-7a5a051df7f4` for Android and iOS, runtime `exposdk:54.0.0`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/4a1c1cf1-1f56-4704-b0c0-7a5a051df7f4`.
+- Onboarding `06` sun halo EAS Update verification: `eas update:list --branch preview --limit 4 --json` shows group `4a1c1cf1-1f56-4704-b0c0-7a5a051df7f4` first on branch `preview`, above `Onboarding 11 radial chart grid`, `Onboarding 15 title polish`, and `Onboarding 11 chart and 07 focus`.
+- Onboarding immersive asset pass verification: `pnpm typecheck` passed.
+- Onboarding immersive asset pass verification: `pnpm test` passed outside the sandbox after the `tsx` pipe was blocked in-sandbox, 12 tests and 0 failures.
+- Onboarding immersive asset pass verification: guardrail search in `app/onboarding.tsx` found no previous-brand text, no `Leemos los tránsitos`, no `NASA`, no `védica`/`vedica`, no unaccented `senal`, and no old payment copy strings `Calculamos tu carta`, `Cruzamos tu mapa`, or `Te damos una acción`.
+- Onboarding immersive asset pass verification: `expo export --platform ios --output-dir /private/tmp/orbita-onboarding-asset-pass-export-final` completed successfully and bundled the new selected Archive 7/10 asset layers.
+- Onboarding immersive asset pass EAS Update verification: `npx eas-cli update --branch preview --message "Onboarding immersive asset pass" --platform all` published update group `b087be8e-061d-4907-95c2-3d446bc56807` for Android and iOS, runtime `exposdk:54.0.0`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/b087be8e-061d-4907-95c2-3d446bc56807`.
+- Onboarding immersive asset pass EAS Update verification: `npx eas-cli update:list --branch preview --limit 3 --json` shows group `b087be8e-061d-4907-95c2-3d446bc56807` first on branch `preview`, above `Onboarding 06 sun emblem cleanup` and `Onboarding 11 radial chart grid`.

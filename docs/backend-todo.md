@@ -21,11 +21,17 @@ Nota importante: la API de Figma sólo listó la página `UX V4.3 - Órbita Onbo
 - El motor actual calcula lecturas determinísticas por seed local. Calcula signo solar por fecha, pero no carta natal real, ascendente, casas, luna, aspectos ni tránsitos personalizados.
 - Notificaciones actuales son locales con `expo-notifications`; no hay push tokens, campañas ni scheduling server-side.
 - `app.json` ya está configurado como Órbita; bundle/package/scheme fueron renombrados para la beta local.
-- Convex codegen queda pendiente hasta linkear un proyecto con `npx convex dev`/`pnpm convex:dev` y tener `CONVEX_DEPLOYMENT`.
+- Convex está linkeado localmente al dev deployment `dutiful-viper-815`; `convex/_generated/` existe localmente y las funciones ya fueron subidas al deployment dev por el usuario con `pnpm exec convex dev --once --typecheck disable`.
+- Backoffice Lab V1 ya existe como ruta Expo Web `/backoffice`, con tablas Convex aisladas `labSubjects` y `labRuns`, funciones para cargar personas de prueba, correr el modelo stub, guardar ejecuciones e inspeccionar inputs/outputs/model gaps.
+- El backoffice usa Clerk + allowlist server-side (`ORBITA_BACKOFFICE_ALLOWED_EMAILS` o escape hatch local `ORBITA_BACKOFFICE_ALLOW_ALL=true`). El acceso operativo elegido es iniciar sesión con `lucaszramos11@gmail.com`.
+- El backoffice ahora espera `useConvexAuth()` antes de ejecutar queries/mutations, por lo que evita disparar `labSubjects`/`labRuns` antes de que Convex reciba identidad Clerk.
+- Backoffice Astro Lab V1 ahora agrega proveedor AstrologyAPI server-side: acción Convex para previsualizar carta/tránsitos, normalización a payload Órbita, lectura diaria editorial P0, guardado de raw API, fixtures P0 y revisión `needs_review/approved/rejected`.
+- La app de usuario sigue sin consumir este proveedor; el corte actual es sólo backend/backoffice.
+- Las queries del backoffice ya no intentan crear/actualizar `users`: si el usuario Clerk está habilitado pero todavía no existe fila en `users`, `listSubjects` y `listRuns` devuelven listas vacías; la primera mutation crea/actualiza el usuario y guarda la persona.
 
 ## Corte Convex + Clerk implementado
 
-- [x] Agregar dependencias `convex`, `@clerk/clerk-expo` y `expo-secure-store`.
+- [x] Agregar dependencias `convex`, `@clerk/expo` y `expo-secure-store`.
 - [x] Agregar envs base: `EXPO_PUBLIC_CONVEX_URL`, `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_JWT_ISSUER_DOMAIN`.
 - [x] Montar `ClerkProvider` + `ConvexProviderWithClerk` en el root layout con fallback local si no hay credenciales.
 - [x] Crear `convex/auth.config.ts` para issuer Clerk.
@@ -33,15 +39,20 @@ Nota importante: la API de Figma sólo listó la página `UX V4.3 - Órbita Onbo
 - [x] Crear funciones Convex por dominio: usuario, onboarding, datos natales, carta natal stub, lecturas diarias, guardadas, diario, vínculo, suscripción stub, notificaciones, devices y módulos de contenido.
 - [x] Encapsular cálculo astrológico inicial como stub versionado en `convex/lib/orbita.ts`.
 - [x] Agregar tests mínimos de helpers para identidad Clerk-like, normalización de hora, signo solar, snapshot natal stub y lectura diaria estable.
+- [x] Crear Backoffice Lab V1 para probar personas/modelo antes de migrarlo a la app: `/backoffice`, `labSubjects`, `labRuns`, model gaps y tests de payload estable.
+- [x] Crear Backoffice Astro Lab V1: adapter AstrologyAPI, normalización de carta/tránsitos, selector de tránsitos P0, lectura editorial propia, raw API visible, fixtures y estados de revisión.
 
 ## Pendiente de conexión
 
-- [ ] Correr `pnpm convex:dev` para linkear el proyecto y generar `CONVEX_DEPLOYMENT`.
-- [ ] Actualizar `CONVEX_DEPLOYMENT`, `EXPO_PUBLIC_CONVEX_URL`, `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` y `CLERK_JWT_ISSUER_DOMAIN` en `.env.local`/EAS.
-- [ ] Correr `pnpm convex:codegen` luego del linkeo.
-- [ ] Configurar Clerk JWT template para Convex con application id `convex`.
+- [x] Linkear el proyecto localmente a Convex dev deployment `dutiful-viper-815`.
+- [x] Actualizar `.env.local` con `CONVEX_DEPLOYMENT`, `EXPO_PUBLIC_CONVEX_URL` y envs de Clerk development.
+- [x] Configurar `CLERK_JWT_ISSUER_DOMAIN` y `ORBITA_BACKOFFICE_ALLOWED_EMAILS` en Convex dev.
+- [x] Correr localmente `pnpm convex:codegen` o `pnpm exec convex dev --once --typecheck disable` para subir funciones al deployment.
+- [x] Configurar Clerk JWT template `convex` para Convex con audience/application id `convex`.
 - [ ] Migrar pantallas de `AsyncStorage` a queries/mutations Convex de forma gradual.
-- [ ] Reemplazar adapters/stubs por proveedores reales: geocoding/timezone, cálculo astrológico, pagos App Store/Google Play.
+- [ ] Configurar credenciales reales de AstrologyAPI en Convex dev/prod y validar contra 10-20 fixtures.
+- [ ] Confirmar endpoint exacto de AstrologyAPI Location API para autocomplete/lugar; por ahora el backoffice permite lat/lon/timezone manual y lookup configurable.
+- [ ] Reemplazar adapters/stubs por proveedores reales en la app: geocoding/timezone, cálculo astrológico, pagos App Store/Google Play.
 
 ## Brechas críticas detectadas
 
@@ -201,6 +212,7 @@ Backend runtime bajo, pero hay tareas de soporte:
 
 ### P2 - CMS, assets y operaciones
 
+- [x] Crear backoffice/lab mínimo para personas de prueba, modelo stub, lectura diaria y gaps antes de llevarlo a la app.
 - [ ] Crear admin/CMS mínimo para contenido editorial: daily modules, topics, long reads, legal copy, paywall inclusions.
 - [ ] Crear workflow de publicación con estados `draft/review/published/archived`.
 - [ ] Crear validaciones de contenido prohibido antes de publicar.

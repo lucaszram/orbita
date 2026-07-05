@@ -11,6 +11,7 @@ The app still has local-first behavior for the visible MVP screens, but the new 
 - `app/_layout.tsx`: root Expo Router layout.
 - `app/index.tsx`: entry route.
 - `app/onboarding.tsx`: inherited onboarding screen.
+- `app/backoffice.tsx`: internal Expo Web lab for test subjects, stub model runs, and backend/model inspection.
 - `app/(tabs)/_layout.tsx`: tab navigation.
 - `app/(tabs)/index.tsx`: Home tab.
 - `app/(tabs)/explore.tsx`: exploration/weekly/transit style content.
@@ -37,9 +38,14 @@ The V1 can still run with local data. Convex + Clerk is the new backend directio
 
 - Clerk owns auth/session.
 - Convex owns app data, user records, onboarding drafts, birth data, chart snapshots, readings, journal, relationship profiles, notifications/devices, subscriptions, and content modules.
+- Backoffice Lab V1 uses isolated Convex tables for `labSubjects` and `labRuns`; it is for testing model inputs/outputs only, not production user data.
+- Backoffice Astro Lab calls AstrologyAPI from Convex actions only, normalizes chart/transit payloads in `convex/lib/orbita.ts`, stores raw provider output in lab runs, and keeps all final copy as Órbita-owned editorial text.
+- Local development is linked to Convex deployment `dutiful-viper-815`.
+- Expo uses Clerk through `@clerk/expo`.
 - `convex/auth.config.ts` reads `CLERK_JWT_ISSUER_DOMAIN`.
 - Expo reads `EXPO_PUBLIC_CONVEX_URL` and `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY`.
 - If those env vars are missing, `BackendProviders` falls back to rendering the app without remote providers so local development still works.
+- `/backoffice` also requires a Clerk session whose email is allowlisted in `ORBITA_BACKOFFICE_ALLOWED_EMAILS`; local-only development may use `ORBITA_BACKOFFICE_ALLOW_ALL=true`.
 
 Convex modules live in `convex/`:
 
@@ -55,6 +61,9 @@ Convex modules live in `convex/`:
 - `notifications.ts`
 - `devices.ts`
 - `contentModules.ts`
+- `backoffice.ts`
+- `lib/astrologyApi.ts`
+- `lib/backoffice.ts`
 - `lib/orbita.ts`
 - `lib/users.ts`
 
