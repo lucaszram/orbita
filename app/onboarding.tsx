@@ -1,4 +1,5 @@
-import { ComponentProps, ReactNode, useEffect, useMemo, useState } from "react";
+import { ComponentProps, ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import {
   Alert,
   Image,
@@ -15,7 +16,7 @@ import {
   View
 } from "react-native";
 import { Inter_400Regular, Inter_500Medium, Inter_700Bold } from "@expo-google-fonts/inter";
-import { Newsreader_500Medium } from "@expo-google-fonts/newsreader";
+import { Newsreader_400Regular, Newsreader_500Medium } from "@expo-google-fonts/newsreader";
 import { Ionicons } from "@expo/vector-icons";
 import { useFonts } from "expo-font";
 import { LinearGradient } from "expo-linear-gradient";
@@ -25,10 +26,19 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Topic } from "@/domain/types";
 import { formatSign, getZodiacSign } from "@/domain/zodiac";
 import { useAppState } from "@/hooks/useAppState";
+import { Avatar, AvatarFallback, AvatarImage, Badge, Button, PlanOption, RadioGroup, SelectableRow, TextField, ToggleRow } from "@/components/ui";
 
 const SCREEN_COUNT = 15;
 const FIGMA_CANVAS_WIDTH = 393;
 const FIGMA_CANVAS_HEIGHT = 852;
+
+function canUseLocalDebugStep() {
+  if (process.env.EXPO_OS !== "web" || typeof window === "undefined") {
+    return false;
+  }
+
+  return ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+}
 
 const orbitaColors = {
   warmBg: "#F7F5EF",
@@ -43,27 +53,47 @@ const orbitaColors = {
 };
 
 const onboardingAssets = {
-  dailyTextureB: require("../assets/orbita/core/orbita_daily_texture_b.png"),
-  birthChartDiagram: require("../assets/orbita/core/orbita_carta_natal_diagram_a.png"),
-  sunEmblem: require("../assets/orbita/higgsfield/archive-10/selected/planetary-symbols/archive10_planet_sun_copper_corona__idx25__hf_20260703_003922_ccda12d2-b2c4-49b7-8d8b-98e39f7ca57b.png"),
-  ascendantHorizon: require("../assets/orbita/higgsfield/archive-10/selected/planetary-symbols/archive10_point_ascendant_horizon__idx27__hf_20260703_003935_22932911-5789-4448-86d9-01581b18136e.png"),
-  orbitalChart: require("../assets/orbita/higgsfield/archive-10/selected/backgrounds/archive10_chart_orbital_ring_system__idx15__hf_20260703_003620_1a5dde8e-83bb-4467-92aa-05390062a68b.png"),
-  transits: require("../assets/orbita/higgsfield/archive-10/selected/backgrounds/archive10_transits_dynamic_orbital_body__idx30__hf_20260703_004042_c574180f-254d-49ef-9530-8bfcddc126f2.png"),
-  backplate: require("../assets/orbita/higgsfield/archive-10/selected/backgrounds/archive10_ringed_planet_orbital_backplate__idx34__hf_20260703_004145_9eff4a2f-00b4-4198-9f34-61c94e0a2e50.png"),
+  dailyTextureB: require("../assets/orbita/optimized/onboarding-v44/daily_texture_b.jpg"),
+  birthChartDiagram: require("../assets/orbita/optimized/onboarding-v44/birth_chart_diagram.jpg"),
+  logoOrbe: require("../assets/orbita/optimized/onboarding-v44/logo_orbe_idx08.jpg"),
+  sunEmblem: require("../assets/orbita/optimized/onboarding-v44/sun_emblem_idx25.jpg"),
+  ascendantHorizon: require("../assets/orbita/optimized/onboarding-v44/ascendant_horizon_idx27.jpg"),
+  orbitalChart: require("../assets/orbita/optimized/onboarding-v44/orbital_chart_idx15.jpg"),
+  transits: require("../assets/orbita/optimized/onboarding-v44/transits_idx30.jpg"),
+  backplate: require("../assets/orbita/optimized/onboarding-v44/backplate_idx34.jpg"),
   figmaBg01: require("../assets/orbita/figma/onboarding-v44/backgrounds/figma_onboarding_01_background__152-2.png"),
   figmaBg02: require("../assets/orbita/figma/onboarding-v44/backgrounds/figma_onboarding_02_background__152-4.png"),
   figmaBg03: require("../assets/orbita/figma/onboarding-v44/backgrounds/figma_onboarding_03_background__152-6.png"),
   figmaBg04: require("../assets/orbita/figma/onboarding-v44/backgrounds/figma_onboarding_04_background__152-8.png"),
-  beforeSymbol: require("../assets/orbita/higgsfield/archive-7/selected/onboarding/13-before-after/onboarding_13_before_after__idx53__hf_20260702_230421_2a16c0db-f3c2-453e-b3f5-ea07317ed327.png"),
-  afterSymbol: require("../assets/orbita/higgsfield/archive-7/selected/onboarding/13-before-after/onboarding_13_before_after__idx81__hf_20260702_231014_3cf0aab5-0749-4be2-8ac3-b114028201b3.png"),
-  benefitLunar: require("../assets/orbita/figma/onboarding-v44/02-benefit-slots/figma_onboarding_02_slot_lunar__151-54.png"),
-  benefitGuide: require("../assets/orbita/figma/onboarding-v44/02-benefit-slots/figma_onboarding_02_slot_guia__151-55.png"),
-  benefitPractice: require("../assets/orbita/figma/onboarding-v44/02-benefit-slots/figma_onboarding_02_slot_practica__151-56.png"),
-  benefitDecisions: require("../assets/orbita/figma/onboarding-v44/02-benefit-slots/figma_onboarding_02_slot_decisiones__151-57.png"),
-  identifyBg: require("../assets/orbita/higgsfield/archive-7/selected/onboarding/03-identify-backgrounds/onboarding_03_identify_background__idx22__hf_20260702_225600_28fa337f-fc29-450f-90bb-45d1d3fbab8e.png"),
-  dailyBackplate: require("../assets/orbita/higgsfield/archive-7/selected/onboarding/04-daily-guidance-backplates/onboarding_04_daily_guidance_backplate__idx66__hf_20260702_230651_78bd4533-f37b-444b-85c1-ec79aae4180a.png"),
-  dailyBackplateFigma: require("../assets/orbita/higgsfield/archive-7/selected/onboarding/04-daily-guidance-backplates/onboarding_04_daily_guidance_backplate__idx65__hf_20260702_230648_d1cfc679-53d3-4486-836e-b10fef818d79.png"),
-  paymentBg: require("../assets/orbita/higgsfield/archive-7/selected/onboarding/15-payment/onboarding_15_payment__idx62__hf_20260702_230605_4349256f-bc12-482c-b48e-863d13ca7b0f.png")
+  figmaBg08: require("../assets/orbita/optimized/onboarding-v44/figma_bg_08.jpg"),
+  figmaBg11: require("../assets/orbita/figma/onboarding-v44/backgrounds/figma_onboarding_11_chart_image__152-22.png"),
+  figmaBg12: require("../assets/orbita/optimized/onboarding-v44/figma_bg_12.jpg"),
+  figmaBg13: require("../assets/orbita/optimized/onboarding-v44/figma_bg_13.jpg"),
+  benefitLunar: require("../assets/orbita/optimized/onboarding-v44/benefit_lunar_idx68.jpg"),
+  benefitGuide: require("../assets/orbita/optimized/onboarding-v44/benefit_guide_idx27.jpg"),
+  benefitPractice: require("../assets/orbita/optimized/onboarding-v44/benefit_practice_idx38.jpg"),
+  benefitDecisions: require("../assets/orbita/optimized/onboarding-v44/benefit_decisions_idx13.jpg"),
+  identifyBg21: require("../assets/orbita/optimized/onboarding-v44/identify_bg_idx21.jpg"),
+  identifyBg27: require("../assets/orbita/optimized/onboarding-v44/identify_bg_idx27.jpg"),
+  dailyBase: require("../assets/orbita/optimized/onboarding-v44/daily_base_idx20.jpg"),
+  dailyBaseAlt: require("../assets/orbita/optimized/onboarding-v44/daily_base_idx21.jpg"),
+  dailyBackplate61: require("../assets/orbita/optimized/onboarding-v44/daily_backplate_idx61.jpg"),
+  dailyBackplate: require("../assets/orbita/optimized/onboarding-v44/daily_backplate_idx66.jpg"),
+  dailyBackplateFigma: require("../assets/orbita/optimized/onboarding-v44/daily_backplate_idx65.jpg"),
+  birthData34: require("../assets/orbita/optimized/onboarding-v44/birth_data_idx34.jpg"),
+  birthData40: require("../assets/orbita/optimized/onboarding-v44/birth_data_idx40.jpg"),
+  birthData77: require("../assets/orbita/optimized/onboarding-v44/birth_data_idx77.jpg"),
+  birthData83: require("../assets/orbita/optimized/onboarding-v44/birth_data_idx83.jpg"),
+  baseChart46: require("../assets/orbita/optimized/onboarding-v44/base_chart_idx46.jpg"),
+  baseChart47: require("../assets/orbita/optimized/onboarding-v44/base_chart_idx47.jpg"),
+  personalizing51: require("../assets/orbita/optimized/onboarding-v44/personalizing_idx51.jpg"),
+  personalizing55: require("../assets/orbita/optimized/onboarding-v44/personalizing_idx55.jpg"),
+  beforeAfter53: require("../assets/orbita/optimized/onboarding-v44/before_after_idx53.jpg"),
+  beforeAfter81: require("../assets/orbita/optimized/onboarding-v44/before_after_idx81.jpg"),
+  accountSeal58: require("../assets/orbita/optimized/onboarding-v44/account_seal_idx58.jpg"),
+  accountSeal59: require("../assets/orbita/optimized/onboarding-v44/account_seal_idx59.jpg"),
+  paymentAlt69: require("../assets/orbita/optimized/onboarding-v44/payment_idx69.jpg"),
+  paymentBg: require("../assets/orbita/optimized/onboarding-v44/payment_idx62.jpg")
 };
 
 type Identity = "ella" | "el" | "prefiero_no_decirlo";
@@ -139,15 +169,8 @@ function clamp(value: number, min: number, max: number) {
 }
 
 function wrap(value: number, min: number, max: number) {
-  if (value < min) {
-    return max;
-  }
-
-  if (value > max) {
-    return min;
-  }
-
-  return value;
+  const range = max - min + 1;
+  return ((((value - min) % range) + range) % range) + min;
 }
 
 function pad2(value: number) {
@@ -204,24 +227,54 @@ function formatBirthTime(time: BirthTime) {
   return `${pad2(time.hour)}:${pad2(time.minute)} ${time.period}`;
 }
 
+function toNativeBirthDate(date: BirthDateParts) {
+  return new Date(date.year ?? 1996, (date.month ?? 1) - 1, date.day ?? 15);
+}
+
+function fromNativeBirthDate(date: Date): BirthDateParts {
+  return {
+    day: date.getDate(),
+    month: date.getMonth() + 1,
+    year: date.getFullYear()
+  };
+}
+
+function toNativeBirthTime(time: BirthTime) {
+  const normalizedHour = time.period === "PM" ? (time.hour % 12) + 12 : time.hour % 12;
+  return new Date(2000, 0, 1, normalizedHour, time.minute, 0, 0);
+}
+
+function fromNativeBirthTime(date: Date): BirthTime {
+  const hours = date.getHours();
+  const period: Period = hours >= 12 ? "PM" : "AM";
+  const hour = hours % 12 || 12;
+
+  return {
+    hour,
+    minute: date.getMinutes(),
+    period
+  };
+}
+
 export default function OnboardingScreen() {
   const { createProfile } = useAppState();
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
     Inter_700Bold,
+    Newsreader_400Regular,
     Newsreader_500Medium
   });
   const params = useLocalSearchParams<{ debugStep?: string }>();
   const debugStep = typeof params.debugStep === "string" ? Number(params.debugStep) : undefined;
   const [step, setStep] = useState(0);
   const [identity, setIdentity] = useState<Identity | undefined>("ella");
-  const [birthDate, setBirthDate] = useState<BirthDateParts>({});
+  const [birthDate, setBirthDate] = useState<BirthDateParts>({ day: 15, month: 1, year: 1996 });
   const [birthPlaceSearch, setBirthPlaceSearch] = useState("");
   const [birthPlace, setBirthPlace] = useState<BirthPlace | undefined>();
   const [birthTime, setBirthTime] = useState<BirthTime>({ hour: 8, minute: 30, period: "AM" });
   const [birthTimeUnknown, setBirthTimeUnknown] = useState(false);
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState("mica@email.com");
   const [selectedPlan, setSelectedPlan] = useState<PlanId>("annual");
   const [chartProgress, setChartProgress] = useState(0);
 
@@ -238,7 +291,7 @@ export default function OnboardingScreen() {
   });
 
   useEffect(() => {
-    if (!__DEV__ || debugStep === undefined || Number.isNaN(debugStep)) {
+    if ((!__DEV__ && !canUseLocalDebugStep()) || debugStep === undefined || Number.isNaN(debugStep)) {
       return;
     }
 
@@ -250,20 +303,20 @@ export default function OnboardingScreen() {
       return;
     }
 
-    setChartProgress(12);
-    const timer = setInterval(() => {
-      setChartProgress((current) => {
-        if (current >= 59) {
-          clearInterval(timer);
-          return 59;
-        }
-
-        return Math.min(59, current + 7);
-      });
-    }, 220);
-
-    return () => clearInterval(timer);
+    setChartProgress(59);
   }, [step]);
+
+  useEffect(() => {
+    if (step !== 11 || chartProgress < 59 || debugStep !== undefined) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setStep(12);
+    }, 900);
+
+    return () => clearTimeout(timer);
+  }, [chartProgress, debugStep, step]);
 
   function updateBirthDate(part: keyof BirthDateParts, delta: number) {
     setBirthDate((current) => {
@@ -284,6 +337,10 @@ export default function OnboardingScreen() {
     });
   }
 
+  function updateBirthDateFromNative(date: Date) {
+    setBirthDate(fromNativeBirthDate(date));
+  }
+
   function updateBirthTime(part: keyof BirthTime, delta: number) {
     setBirthTimeUnknown(false);
     setBirthTime((current) => {
@@ -292,11 +349,16 @@ export default function OnboardingScreen() {
       }
 
       if (part === "minute") {
-        return { ...current, minute: wrap(current.minute + delta * 5, 0, 55) };
+        return { ...current, minute: wrap(current.minute + delta, 0, 59) };
       }
 
       return { ...current, period: current.period === "AM" ? "PM" : "AM" };
     });
+  }
+
+  function updateBirthTimeFromNative(date: Date) {
+    setBirthTimeUnknown(false);
+    setBirthTime(fromNativeBirthTime(date));
   }
 
   function next() {
@@ -369,290 +431,105 @@ export default function OnboardingScreen() {
 
   if (step === 4) {
     return (
-      <OnboardingShell background={onboardingAssets.dailyTextureB} footer={footer} tone="light">
-        <OnboardingProgress step={step} tone="light" />
-        <HeaderBlock body="Tu fecha ubica el Sol en tu carta." title="¿Cuándo naciste?" tone="light" />
-        <View style={styles.pickerDeck}>
-          <WheelPicker
-            label="Día"
-            onDown={() => updateBirthDate("day", -1)}
-            onUp={() => updateBirthDate("day", 1)}
-            value={birthDate.day ? String(birthDate.day) : "Día"}
-          />
-          <WheelPicker
-            label="Mes"
-            onDown={() => updateBirthDate("month", -1)}
-            onUp={() => updateBirthDate("month", 1)}
-            value={birthDate.month ? monthName(birthDate.month, "short") : "Mes"}
-          />
-          <WheelPicker
-            label="Año"
-            onDown={() => updateBirthDate("year", -1)}
-            onUp={() => updateBirthDate("year", 1)}
-            value={birthDate.year ? String(birthDate.year) : "Año"}
-            wide
-          />
-        </View>
-        <PrivacyLine text="La usamos para calcular tu carta natal. Nunca vendemos ni compartimos tus datos." tone="light" />
-      </OnboardingShell>
+      <FigmaBirthdateEmptyScreen
+        birthDate={birthDate}
+        onBack={back}
+        onChangeBirthDate={updateBirthDateFromNative}
+        onNext={next}
+        onUpdateBirthDate={updateBirthDate}
+      />
     );
   }
 
   if (step === 5) {
     return (
-      <OnboardingShell background={onboardingAssets.sunEmblem} footer={footer} tone="dark">
-        <OnboardingProgress step={step} tone="dark" />
-        <View style={styles.centeredVisualStack}>
-          <Image resizeMode="cover" source={onboardingAssets.sunEmblem} style={styles.integratedOrb} />
-          <Text style={styles.darkTitle}>Sol en {zodiacLabel}.</Text>
-          <Text style={styles.darkBody}>{formatLongDate(birthDate)}</Text>
-        </View>
-        <View style={styles.metricPanelDark}>
-          <MetricRow label="SOL" value={zodiacLabel} />
-          <MetricRow label="ELEMENTO" value={elementLabel} />
-        </View>
-        <Pressable accessibilityRole="button" onPress={() => setStep(4)} style={styles.inlineButtonDark}>
-          <Text style={styles.inlineButtonDarkText}>Cambiar fecha</Text>
-        </Pressable>
-        <PrivacyLine text="La usamos para calcular tu carta natal. Nunca vendemos ni compartimos tus datos." tone="dark" />
-      </OnboardingShell>
+      <FigmaBirthdateSelectedScreen
+        dateLabel={formatLongDate(birthDate)}
+        elementLabel={elementLabel}
+        onBack={back}
+        onChangeDate={() => setStep(4)}
+        onNext={next}
+        zodiacLabel={zodiacLabel}
+      />
     );
   }
 
   if (step === 6) {
     return (
-      <OnboardingShell background={onboardingAssets.dailyTextureB} footer={footer} keyboard tone="light">
-        <OnboardingProgress step={step} tone="light" />
-        <HeaderBlock body="La ciudad ajusta el horizonte de tu carta." title="¿Dónde naciste?" tone="light" />
-        <View style={styles.fieldBlock}>
-          <Text style={styles.fieldLabel}>CIUDAD</Text>
-          <TextInput
-            autoCapitalize="words"
-            onChangeText={(value) => {
-              setBirthPlaceSearch(value);
-              setBirthPlace(undefined);
-            }}
-            placeholder="Buenos"
-            placeholderTextColor="rgba(17, 17, 17, 0.4)"
-            style={styles.textInput}
-            value={birthPlaceSearch}
-          />
-        </View>
-        <View style={styles.searchResults}>
-          {getFilteredPlaces(birthPlaceSearch).map((place) => (
-            <Pressable
-              accessibilityRole="button"
-              key={place.label}
-              onPress={() => {
-                setBirthPlace(place);
-                setBirthPlaceSearch(place.label);
-              }}
-              style={[styles.searchResultRow, birthPlace?.label === place.label && styles.searchResultRowSelected]}
-            >
-              <Ionicons color={orbitaColors.copper} name="location-outline" size={18} />
-              <Text style={styles.searchResultText}>{place.label}</Text>
-            </Pressable>
-          ))}
-        </View>
-        <PrivacyLine text="La usamos para precisar tu carta natal. Nunca vendemos ni compartimos tus datos." tone="light" />
-      </OnboardingShell>
+      <FigmaBirthplaceSearchScreen
+        birthPlace={birthPlace}
+        onBack={back}
+        onChangeSearch={(value) => {
+          setBirthPlaceSearch(value);
+          setBirthPlace(undefined);
+        }}
+        onSelectPlace={(place) => {
+          setBirthPlace(place);
+          setBirthPlaceSearch(place.label);
+          setStep(7);
+        }}
+        search={birthPlaceSearch}
+      />
     );
   }
 
   if (step === 7) {
     return (
-      <OnboardingShell background={onboardingAssets.ascendantHorizon} footer={footer} tone="dark">
-        <OnboardingProgress step={step} tone="dark" />
-        <View style={styles.horizonCopy}>
-          <Text style={styles.darkTitle}>Horizonte definido.</Text>
-          <Text style={styles.darkBody}>{birthPlace?.label ?? "Buenos Aires, Argentina"}</Text>
-          <Text style={styles.darkNote}>El lugar ayuda a calcular tu ascendente y las casas.</Text>
-        </View>
-        <PrivacyLine text="La usamos para precisar tu carta natal. Nunca vendemos ni compartimos tus datos." tone="dark" />
-      </OnboardingShell>
+      <FigmaBirthplaceSelectedScreen birthPlace={birthPlace} onBack={back} onNext={next} />
     );
   }
 
   if (step === 8) {
     return (
-      <OnboardingShell background={onboardingAssets.dailyTextureB} footer={footer} tone="light">
-        <OnboardingProgress step={step} tone="light" />
-        <HeaderBlock body="La hora afina tu ascendente y tus casas." title="¿A qué hora naciste?" tone="light" />
-        <View style={styles.timePickerPanel}>
-          <WheelPicker
-            label="Hora"
-            onDown={() => updateBirthTime("hour", -1)}
-            onUp={() => updateBirthTime("hour", 1)}
-            value={pad2(birthTime.hour)}
-          />
-          <WheelPicker
-            label="Min"
-            onDown={() => updateBirthTime("minute", -1)}
-            onUp={() => updateBirthTime("minute", 1)}
-            value={pad2(birthTime.minute)}
-          />
-          <WheelPicker
-            label="Modo"
-            onDown={() => updateBirthTime("period", -1)}
-            onUp={() => updateBirthTime("period", 1)}
-            value={birthTime.period}
-          />
-        </View>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => setBirthTimeUnknown(true)}
-          style={[styles.unknownTimeButton, birthTimeUnknown && styles.unknownTimeButtonSelected]}
-        >
-          <View>
-            <Text style={styles.unknownTimeTitle}>No sé la hora</Text>
-            <Text style={styles.unknownTimeBody}>Usamos una carta aproximada.</Text>
-          </View>
-          {birthTimeUnknown ? <Ionicons color={orbitaColors.copper} name="checkmark-circle" size={22} /> : null}
-        </Pressable>
-        <Text style={styles.lightNote}>Podés continuar sin hora exacta. La lectura será menos precisa.</Text>
-      </OnboardingShell>
+      <FigmaBirthTimePickerScreen
+        birthTime={birthTime}
+        birthTimeUnknown={birthTimeUnknown}
+        onBack={back}
+        onNext={next}
+        onChangeBirthTime={updateBirthTimeFromNative}
+        onToggleUnknown={() => setBirthTimeUnknown((current) => !current)}
+        onUpdateBirthTime={updateBirthTime}
+      />
     );
   }
 
   if (step === 9) {
     return (
-      <OnboardingShell background={onboardingAssets.orbitalChart} footer={footer} tone="dark">
-        <OnboardingProgress step={step} tone="dark" />
-        <View style={styles.timeSelectedBlock}>
-          <Text style={styles.darkTitle}>{birthTimeUnknown ? "Carta aproximada." : "Ascendente afinado."}</Text>
-          <Text style={styles.darkBody}>{birthTimeUnknown ? "Seguimos sin hora exacta." : formatBirthTime(birthTime)}</Text>
-          <Text style={styles.darkNote}>
-            {birthTimeUnknown ? "Podés volver atrás si encontrás el dato." : "La hora ordena las casas de tu carta."}
-          </Text>
-        </View>
-        <View style={styles.metricPanelDark}>
-          <MetricRow label="HORA" value={timeLabel} />
-        </View>
-      </OnboardingShell>
+      <FigmaBirthTimeSelectedScreen birthTimeUnknown={birthTimeUnknown} onBack={back} onNext={next} timeLabel={timeLabel} />
     );
   }
 
   if (step === 10) {
     return (
-      <OnboardingShell background={onboardingAssets.birthChartDiagram} footer={footer} tone="light">
-        <OnboardingProgress step={step} tone="light" />
-        <HeaderBlock title="Estos son tus puntos de partida." tone="light" />
-        <Image resizeMode="cover" source={onboardingAssets.birthChartDiagram} style={styles.chartDiagram} />
-        <View style={styles.summaryTable}>
-          <MetricRow label="FECHA" tone="light" value={formatShortDate(birthDate)} />
-          <MetricRow label="LUGAR" tone="light" value={birthPlace?.city ?? "Buenos Aires"} />
-          <MetricRow label="HORA" tone="light" value={birthTimeUnknown ? "Aproximada" : formatBirthTime(birthTime)} />
-        </View>
-        <Text style={styles.lightNote}>Con esto calculamos tu Sol, ascendente y casas.</Text>
-      </OnboardingShell>
+      <FigmaBaseChartScreen
+        birthDateLabel={formatShortDate(birthDate)}
+        birthPlaceLabel={birthPlace?.city ?? "Buenos Aires"}
+        birthTimeLabel={birthTimeUnknown ? "Aproximada" : formatBirthTime(birthTime)}
+        onBack={back}
+        onNext={next}
+      />
     );
   }
 
   if (step === 11) {
     return (
-      <OnboardingShell background={onboardingAssets.transits} footer={footer} tone="dark">
-        <OnboardingProgress step={step} tone="dark" />
-        <HeaderBlock body="Carta natal en proceso." title="Calculando tu cielo..." tone="dark" />
-        <View style={styles.progressPanel}>
-          <ProgressRow label="Carta natal" value={chartProgress} />
-          <ProgressRow label="Tránsitos del día" value={0} />
-        </View>
-        <Text style={styles.darkNote}>Usamos tus datos para ordenar tus posiciones.</Text>
-      </OnboardingShell>
+      <FigmaPersonalizingScreen chartProgress={chartProgress} onBack={back} onNext={next} />
     );
   }
 
   if (step === 12) {
     return (
-      <OnboardingShell background={onboardingAssets.afterSymbol} footer={footer} scroll tone="dark">
-        <OnboardingProgress step={step} tone="dark" />
-        <HeaderBlock
-          body="Una guía diaria puede cambiar cómo mirás tu día."
-          title="Antes y después de Órbita"
-          tone="dark"
-        />
-        <View style={styles.beforeAfterGrid}>
-          <BeforeAfterColumn
-            image={onboardingAssets.beforeSymbol}
-            items={["Vivía en automático", "No sabía qué priorizar", "Dudaba de lo que quería", "Me sentía agotada", "Vínculos poco claros"]}
-            title="Antes"
-          />
-          <BeforeAfterColumn
-            image={onboardingAssets.afterSymbol}
-            items={[
-              "Con calma y confianza",
-              "Conozco mis fortalezas y límites",
-              "Centrada y enfocada en lo importante",
-              "Confío más en mi intuición",
-              "Me vinculo con más claridad"
-            ]}
-            title="Después"
-          />
-        </View>
-        <Text style={styles.darkNote}>No resuelve por vos. Te devuelve contexto.</Text>
-      </OnboardingShell>
+      <FigmaBeforeAfterScreen onBack={back} onNext={next} />
     );
   }
 
   if (step === 13) {
     return (
-      <OnboardingShell background={onboardingAssets.dailyTextureB} footer={footer} keyboard tone="light">
-        <OnboardingProgress step={step} tone="light" />
-        <HeaderBlock
-          body="Tu historial, tus lecturas y tus tránsitos quedan en tu cuenta."
-          title="Guardá tu carta."
-          tone="light"
-        />
-        <View style={styles.fieldBlock}>
-          <Text style={styles.fieldLabel}>EMAIL</Text>
-          <TextInput
-            autoCapitalize="none"
-            inputMode="email"
-            onChangeText={setEmail}
-            placeholder="mica@email.com"
-            placeholderTextColor="rgba(17, 17, 17, 0.4)"
-            style={styles.textInput}
-            value={email}
-          />
-        </View>
-        <Text style={styles.separatorText}>O seguir con</Text>
-        <View style={styles.socialStack}>
-          <SocialButton icon="logo-apple" label="Continuar con Apple" />
-          <SocialButton icon="logo-google" label="Continuar con Google" />
-        </View>
-      </OnboardingShell>
+      <FigmaAccountScreen email={email} onBack={back} onChangeEmail={setEmail} onNext={next} />
     );
   }
 
-  return (
-    <OnboardingShell background={onboardingAssets.paymentBg} footer={footer} scroll tone="dark">
-      <View style={styles.paymentTopBar}>
-        <View style={styles.plusBrand}>
-          <Text style={styles.plusBrandText}>Órbita</Text>
-          <Text style={styles.plusBadge}>PLUS</Text>
-        </View>
-        <Text style={styles.restoreText}>Restaurar</Text>
-      </View>
-      <View style={styles.paymentHero}>
-        <Text style={styles.paymentTitle}>Tu cielo, todos los días.</Text>
-        <Text style={styles.paymentBody}>Carta natal, guía diaria y lecturas más profundas.</Text>
-      </View>
-      <PlanSelector selectedPlan={selectedPlan} onSelect={setSelectedPlan} />
-      <Text style={styles.paymentLegal}>Cancelás cuando quieras. Entretenimiento y autoconocimiento.</Text>
-      <View style={styles.unlockPanel}>
-        <Text style={styles.panelTitle}>Todo lo que desbloqueás</Text>
-        {["Carta natal completa", "Guía diaria personalizada", "Tránsitos en tu carta", "Preguntale a Órbita", "Sueños, vínculos y calendario"].map((benefit) => (
-          <BenefitRow key={benefit} label={benefit} />
-        ))}
-      </View>
-      <View style={styles.stepsPanel}>
-        <Text style={styles.panelTitle}>Cómo te acompaña</Text>
-        <StepRow index="01" title="Tu carta completa" body="Sol, Luna, ascendente, casas y aspectos en lenguaje claro." />
-        <StepRow index="02" title="Tu día con contexto" body="Lecturas y tránsitos personalizados según tu mapa." />
-        <StepRow index="03" title="Preguntas más profundas" body="Consultas, sueños y vínculos conectados con tu cielo." />
-      </View>
-    </OnboardingShell>
-  );
+  return <FigmaPaymentScreen onBack={back} onSelectPlan={setSelectedPlan} onSubmit={submit} selectedPlan={selectedPlan} />;
 }
 
 function canAdvance(
@@ -721,8 +598,10 @@ function FigmaSplashScreen({ onNext }: { onNext: () => void }) {
     <FigmaCanvas>
       <StatusBar hidden />
       <Pressable accessibilityRole="button" onPress={onNext} style={StyleSheet.absoluteFill}>
-        <FigmaImageFull opacity={1} source={onboardingAssets.figmaBg01} />
-        <FigmaRect color="#08090B" h={852} opacity={0.56} w={393} x={0} y={0} />
+        <AssetBackplate opacity={0.92} source={onboardingAssets.backplate} washColor="#08090B" washOpacity={0.44} />
+        <AmbientImageCrop h={270} opacity={0.18} radius={135} source={onboardingAssets.logoOrbe} w={270} x={61} y={223} />
+        <FigmaImageFull opacity={0.18} source={onboardingAssets.figmaBg01} />
+        <ImageWash color="#08090B" opacity={0.42} />
         <FigmaStatusBar timeLineHeight={14} timeSize={11} timeX={28} timeY={20} tone="light" y={24} />
         <FigmaEllipse borderColor="#C46A3A" borderOpacity={0.95} borderWidth={2} h={56.1} w={102.3} x={144.85} y={297.95} />
         <FigmaEllipse borderColor="#C46A3A" borderOpacity={0.95} borderWidth={1} color="#050506" h={16.5} w={16.5} x={187.75} y={317.75} />
@@ -739,8 +618,10 @@ function FigmaAlignScreen({ onNext }: { onNext: () => void }) {
   return (
     <FigmaCanvas>
       <StatusBar hidden />
-      <FigmaImageFull opacity={1} source={onboardingAssets.figmaBg02} />
-      <FigmaRect color="#0B0C10" h={852} opacity={0.56} w={393} x={0} y={0} />
+      <AssetBackplate opacity={0.88} source={onboardingAssets.backplate} washColor="#0B0C10" washOpacity={0.48} />
+      <FigmaImageFull opacity={0.34} source={onboardingAssets.figmaBg02} />
+      <AmbientImageCrop h={360} opacity={0.18} radius={180} source={onboardingAssets.dailyBackplateFigma} w={360} x={16} y={284} />
+      <ImageWash color="#0B0C10" opacity={0.34} />
       <FigmaStatusBar tone="light" />
       <FigmaText
         align="center"
@@ -803,8 +684,10 @@ function FigmaIdentifyScreen({
   return (
     <FigmaCanvas>
       <StatusBar hidden />
-      <FigmaImageFull opacity={1} source={onboardingAssets.figmaBg03} />
-      <FigmaRect color="#0B0C10" h={852} opacity={0.66} w={393} x={0} y={0} />
+      <AssetBackplate opacity={0.84} source={onboardingAssets.identifyBg21} washColor="#0B0C10" washOpacity={0.58} />
+      <AmbientImageCrop h={360} opacity={0.2} radius={180} source={onboardingAssets.identifyBg27} w={360} x={86} y={242} />
+      <FigmaImageFull opacity={0.24} source={onboardingAssets.figmaBg03} />
+      <ImageWash color="#0B0C10" opacity={0.28} />
       <FigmaStatusBar batteryX={348} cellX={306} timeY={22} tone="light" wifiX={331} y={27} />
       <FigmaBackChevron onPress={onBack} x={32} y={78} />
       <FigmaSegmentProgress active={2} x={58} y={94} />
@@ -819,14 +702,17 @@ function FigmaIdentifyScreen({
         x={32}
         y={210}
       />
-      <FigmaIdentityOption label="Ella" onPress={() => onSelectIdentity("ella")} selected={identity === "ella"} y={282} />
-      <FigmaIdentityOption label="Él" onPress={() => onSelectIdentity("el")} selected={identity === "el"} y={360} />
-      <FigmaIdentityOption
-        label="Prefiero no decirlo"
-        onPress={() => onSelectIdentity("prefiero_no_decirlo")}
-        selected={identity === "prefiero_no_decirlo"}
-        y={438}
-      />
+      <RadioGroup onValueChange={(value) => onSelectIdentity(value as Identity)} style={styles.figmaIdentityGroup} value={identity}>
+        <FigmaIdentityOption label="Ella" onPress={() => onSelectIdentity("ella")} selected={identity === "ella"} value="ella" y={282} />
+        <FigmaIdentityOption label="Él" onPress={() => onSelectIdentity("el")} selected={identity === "el"} value="el" y={360} />
+        <FigmaIdentityOption
+          label="Prefiero no decirlo"
+          onPress={() => onSelectIdentity("prefiero_no_decirlo")}
+          selected={identity === "prefiero_no_decirlo"}
+          value="prefiero_no_decirlo"
+          y={438}
+        />
+      </RadioGroup>
       <FigmaText
         align="center"
         color="#F7F5EF"
@@ -848,8 +734,11 @@ function FigmaDailyGuidanceScreen({ onBack, onNext }: { onBack: () => void; onNe
   return (
     <FigmaCanvas>
       <StatusBar hidden />
-      <FigmaImageFull opacity={1} source={onboardingAssets.figmaBg04} />
-      <FigmaRect color="#0B0C10" h={852} opacity={0.45} w={393} x={0} y={0} />
+      <AssetBackplate opacity={0.92} source={onboardingAssets.dailyBackplate} washColor="#0B0C10" washOpacity={0.4} />
+      <AmbientImageCrop h={410} opacity={0.18} radius={205} source={onboardingAssets.dailyBackplate61} w={410} x={-116} y={250} />
+      <AmbientImageCrop h={320} opacity={0.18} radius={160} source={onboardingAssets.dailyBaseAlt} w={320} x={212} y={230} />
+      <FigmaImageFull opacity={0.22} source={onboardingAssets.figmaBg04} />
+      <ImageWash color="#0B0C10" opacity={0.32} />
       <FigmaStatusBar tone="light" />
       <FigmaBackChevron fontSize={30} onPress={onBack} x={30} y={66} />
       <FigmaText
@@ -878,6 +767,8 @@ function FigmaDailyGuidanceScreen({ onBack, onNext }: { onBack: () => void; onNe
       <FigmaEllipse color="#5C3A43" h={136} opacity={0.42} w={136} x={270} y={298} />
       <FigmaRect borderColor="#363A45" borderOpacity={0.9} color="#0E1118" h={330} radius={32} w={196} x={99} y={256} />
       <FigmaRect borderColor="#444956" borderOpacity={0.6} color="#171B24" h={254} radius={20} w={158} x={118} y={292} />
+      <AmbientImageCrop h={246} opacity={0.36} radius={18} source={onboardingAssets.dailyBase} w={150} x={122} y={296} />
+      <FigmaRect color="#05070A" h={246} opacity={0.48} radius={18} w={150} x={122} y={296} />
       <FigmaRect color="#05070A" h={8} radius={4} w={58} x={167} y={274} />
       <FigmaEllipse borderColor="#C46A3A" borderOpacity={0.54} h={54} rotate="-18deg" w={122} x={134} y={338} />
       <FigmaEllipse borderColor="#C46A3A" borderOpacity={0.45} h={62} rotate="20deg" w={128} x={132} y={350} />
@@ -915,9 +806,551 @@ function FigmaDailyGuidanceScreen({ onBack, onNext }: { onBack: () => void; onNe
   );
 }
 
+function FigmaBirthdateEmptyScreen({
+  birthDate,
+  onBack,
+  onChangeBirthDate,
+  onNext,
+  onUpdateBirthDate
+}: {
+  birthDate: BirthDateParts;
+  onBack: () => void;
+  onChangeBirthDate: (date: Date) => void;
+  onNext: () => void;
+  onUpdateBirthDate: (part: keyof BirthDateParts, delta: number) => void;
+}) {
+  return (
+    <FigmaCanvas>
+      <StatusBar hidden />
+      <FigmaLightBackdrop accentSource={onboardingAssets.birthData77} accentOpacity={0.12} washOpacity={0.9} />
+      <FigmaScreenChrome onBack={onBack} screen={5} tone="light" />
+      <FigmaText color="#111111" family="Newsreader_500Medium" fontSize={34} lineHeight={41} text="¿Cuándo naciste?" w={318} x={32} y={124} />
+      <FigmaText color="rgba(17, 17, 17, 0.58)" family="Inter_400Regular" fontSize={14} lineHeight={20} text="Tu fecha ubica el Sol en tu carta." w={300} x={32} y={186} />
+      <FigmaRect color="rgba(255, 252, 246, 0.7)" h={242} radius={10} w={329} x={32} y={318} />
+      <FigmaNativeDateTimePicker
+        maximumDate={new Date(2026, 11, 31)}
+        minimumDate={new Date(1900, 0, 1)}
+        mode="date"
+        onChange={onChangeBirthDate}
+        value={toNativeBirthDate(birthDate)}
+        h={222}
+        w={329}
+        x={32}
+        y={328}
+      />
+      <Pressable accessibilityLabel="Día anterior" accessibilityRole="button" onPress={() => onUpdateBirthDate("day", -1)} style={[styles.figmaDateNudge, { left: 32, top: 560 }]} />
+      <Pressable accessibilityLabel="Día siguiente" accessibilityRole="button" onPress={() => onUpdateBirthDate("day", 1)} style={[styles.figmaDateNudge, { left: 198, top: 560 }]} />
+      <FigmaText
+        color="rgba(17, 17, 17, 0.48)"
+        family="Inter_400Regular"
+        fontSize={12}
+        lineHeight={16}
+        text="La usamos para calcular tu carta natal. Nunca vendemos ni compartimos tus datos."
+        w={297}
+        x={48}
+        y={692}
+      />
+      <FigmaCTA fill="#111111" h={52} label="Continuar" onPress={onNext} radius={0} textColor="#F7F5EF" y={760} />
+      <FigmaHomeIndicator color="#111111" />
+    </FigmaCanvas>
+  );
+}
+
+function FigmaBirthdateSelectedScreen({
+  dateLabel,
+  elementLabel,
+  onBack,
+  onChangeDate,
+  onNext,
+  zodiacLabel
+}: {
+  dateLabel: string;
+  elementLabel: string;
+  onBack: () => void;
+  onChangeDate: () => void;
+  onNext: () => void;
+  zodiacLabel: string;
+}) {
+  return (
+    <FigmaCanvas>
+      <StatusBar hidden />
+      <FigmaLightBackdrop accentSource={onboardingAssets.birthData40} accentOpacity={0.18} washOpacity={0.82} />
+      <AmbientImageCrop h={430} opacity={0.18} radius={215} source={onboardingAssets.sunEmblem} w={430} x={-18} y={208} />
+      <FigmaRect color="#F7F5EF" h={852} opacity={0.58} w={393} x={0} y={0} />
+      <FigmaScreenChrome onBack={onBack} screen={6} tone="light" />
+      <FigmaText color="#111111" family="Newsreader_500Medium" fontSize={31} lineHeight={37} text={`Sol en ${zodiacLabel}.`} w={305} x={44} y={132} />
+      <FigmaText color="rgba(17, 17, 17, 0.54)" family="Inter_400Regular" fontSize={14} lineHeight={20} text={dateLabel} w={305} x={44} y={188} />
+      <FigmaImageCrop h={190} radius={95} source={onboardingAssets.sunEmblem} w={190} x={101} y={276} />
+      <FigmaMetricText label="SOL" value={zodiacLabel} y={532} />
+      <FigmaLine color="rgba(17, 17, 17, 0.18)" w={275} x={54} y={564} />
+      <FigmaMetricText label="ELEMENTO" value={elementLabel} y={596} />
+      <FigmaLine color="rgba(17, 17, 17, 0.18)" w={275} x={54} y={628} />
+      <Button
+        fill="transparent"
+        onPress={onChangeDate}
+        radius={0}
+        style={[styles.figmaAbsolute, { height: 34, left: 44, top: 658, width: 305 }]}
+        textColor="#C46A3A"
+        variant="figma"
+      >
+        <FigmaText align="center" color="#C46A3A" family="Inter_700Bold" fontSize={14} lineHeight={18} text="Cambiar fecha" w={305} x={0} y={6} />
+      </Button>
+      <FigmaText
+        align="center"
+        color="rgba(17, 17, 17, 0.48)"
+        family="Inter_400Regular"
+        fontSize={12}
+        lineHeight={16}
+        text="La usamos para calcular tu carta natal. Nunca vendemos ni compartimos tus datos."
+        w={277}
+        x={58}
+        y={704}
+      />
+      <FigmaCTA fill="#111111" h={48} label="Continuar" onPress={onNext} radius={0} textColor="#F7F5EF" y={760} />
+      <FigmaHomeIndicator color="#111111" />
+    </FigmaCanvas>
+  );
+}
+
+function FigmaBirthplaceSearchScreen({
+  birthPlace,
+  onBack,
+  onChangeSearch,
+  onSelectPlace,
+  search
+}: {
+  birthPlace?: BirthPlace;
+  onBack: () => void;
+  onChangeSearch: (value: string) => void;
+  onSelectPlace: (place: BirthPlace) => void;
+  search: string;
+}) {
+  const inputRef = useRef<TextInput>(null);
+  const results = getFilteredPlaces(search);
+
+  useEffect(() => {
+    const focusTimer = setTimeout(() => {
+      inputRef.current?.focus();
+    }, 180);
+
+    return () => clearTimeout(focusTimer);
+  }, []);
+
+  return (
+    <View style={styles.keyboardRoot}>
+      <FigmaCanvas>
+        <StatusBar hidden />
+        <FigmaLightBackdrop accentSource={onboardingAssets.birthData34} accentOpacity={0.12} washOpacity={0.9} />
+        <FigmaScreenChrome onBack={onBack} screen={7} tone="light" />
+        <FigmaText color="#111111" family="Newsreader_500Medium" fontSize={34} lineHeight={41} text="¿Dónde naciste?" w={318} x={32} y={124} />
+        <FigmaText color="rgba(17, 17, 17, 0.58)" family="Inter_400Regular" fontSize={14} lineHeight={20} text="La ciudad ajusta el horizonte de tu carta." w={310} x={32} y={186} />
+        <FigmaText color="#C46A3A" family="Inter_700Bold" fontSize={10} lineHeight={12} text="CIUDAD" w={270} x={32} y={276} />
+        <TextField
+          autoFocus
+          autoCapitalize="words"
+          autoCorrect={false}
+          containerStyle={[styles.figmaAbsolute, { height: 34, left: 32, top: 291, width: 270 }]}
+          inputStyle={styles.figmaBirthplaceInputText}
+          onChangeText={onChangeSearch}
+          placeholder="Buenos"
+          ref={inputRef}
+          value={search}
+          variant="light"
+        />
+        <FigmaLine color="rgba(17, 17, 17, 0.72)" w={329} x={32} y={329} />
+        {results.slice(0, 3).map((place, index) => (
+          <FigmaPlaceResult
+            key={place.label}
+            label={place.label}
+            onPress={() => onSelectPlace(place)}
+            selected={birthPlace?.label === place.label}
+            y={356 + index * 45}
+          />
+        ))}
+        <FigmaText
+          align="center"
+          color="rgba(17, 17, 17, 0.42)"
+          family="Inter_400Regular"
+          fontSize={11}
+          lineHeight={15}
+          text="La usamos para precisar tu carta natal. Nunca vendemos ni compartimos tus datos."
+          w={297}
+          x={48}
+          y={520}
+        />
+        <FigmaHomeIndicator color="#111111" />
+      </FigmaCanvas>
+    </View>
+  );
+}
+
+function FigmaBirthplaceSelectedScreen({ birthPlace, onBack, onNext }: { birthPlace?: BirthPlace; onBack: () => void; onNext: () => void }) {
+  return (
+      <FigmaCanvas>
+        <StatusBar hidden />
+        <FigmaRect color="#F7F3EA" h={852} w={393} x={0} y={0} />
+      <FigmaImageFull opacity={0.18} source={onboardingAssets.ascendantHorizon} />
+      <FigmaImageFull opacity={0.2} source={onboardingAssets.figmaBg08} />
+      <FigmaRect color="#F7F3EA" h={852} opacity={0.62} w={393} x={0} y={0} />
+      <FigmaScreenChrome onBack={onBack} screen={8} tone="light" />
+      <FigmaText color="#111111" family="Newsreader_500Medium" fontSize={32} lineHeight={38} text="Horizonte definido." w={305} x={43} y={131} />
+      <FigmaText color="#77736A" family="Inter_500Medium" fontSize={15} lineHeight={20} text={birthPlace?.label ?? "Buenos Aires, Argentina"} w={305} x={43} y={187} />
+      <FigmaLine color="rgba(17, 17, 17, 0.72)" w={305} x={43} y={243} />
+      <FigmaText color="#111111" family="Newsreader_400Regular" fontSize={24} lineHeight={30} text="El lugar ayuda a calcular tu ascendente y las casas." w={305} x={43} y={277} />
+      <FigmaText
+        align="center"
+        color="#77736A"
+        family="Inter_500Medium"
+        fontSize={11}
+        lineHeight={15}
+        text="La usamos para precisar tu carta natal. Nunca vendemos ni compartimos tus datos."
+        w={277}
+        x={58}
+        y={703}
+      />
+      <FigmaCTA fill="#111111" h={48} label="Continuar" onPress={onNext} radius={0} textColor="#F7F5EF" y={759} />
+      <FigmaHomeIndicator color="#111111" />
+    </FigmaCanvas>
+  );
+}
+
+function FigmaBirthTimePickerScreen({
+  birthTime,
+  birthTimeUnknown,
+  onChangeBirthTime,
+  onBack,
+  onNext,
+  onToggleUnknown,
+  onUpdateBirthTime
+}: {
+  birthTime: BirthTime;
+  birthTimeUnknown: boolean;
+  onChangeBirthTime: (date: Date) => void;
+  onBack: () => void;
+  onNext: () => void;
+  onToggleUnknown: () => void;
+  onUpdateBirthTime: (part: keyof BirthTime, delta: number) => void;
+}) {
+  return (
+    <FigmaCanvas>
+      <StatusBar hidden />
+      <FigmaRect color="#F7F5EF" h={852} w={393} x={0} y={0} />
+      <FigmaImageFull opacity={0.08} source={onboardingAssets.birthData83} />
+      <FigmaImageFull opacity={0.16} source={onboardingAssets.dailyTextureB} />
+      <FigmaRect color="#F7F3EA" h={852} opacity={0.7} w={393} x={0} y={0} />
+      <AmbientImageCrop h={320} opacity={0.11} radius={160} source={onboardingAssets.orbitalChart} w={320} x={35} y={245} />
+      <FigmaScreenChrome onBack={onBack} screen={9} tone="light" />
+      <FigmaText color="#111111" family="Newsreader_500Medium" fontSize={32} lineHeight={38} text="¿A qué hora naciste?" w={305} x={43} y={131} />
+      <FigmaText color="#77736A" family="Inter_500Medium" fontSize={15} lineHeight={20} text="La hora afina tu ascendente y tus casas." w={305} x={43} y={187} />
+      <FigmaRect color="rgba(255, 252, 246, 0.72)" h={242} radius={10} w={329} x={32} y={292} />
+      <FigmaRect color="rgba(239, 238, 232, 0.75)" h={36} radius={4} w={257} x={67} y={395} />
+      <FigmaNativeDateTimePicker
+        mode="time"
+        onChange={onChangeBirthTime}
+        value={toNativeBirthTime(birthTime)}
+        h={222}
+        w={329}
+        x={32}
+        y={302}
+      />
+      <Pressable accessibilityLabel="Hora anterior" accessibilityRole="button" onPress={() => onUpdateBirthTime("hour", -1)} style={[styles.figmaDateNudge, { left: 32, top: 536 }]} />
+      <Pressable accessibilityLabel="Hora siguiente" accessibilityRole="button" onPress={() => onUpdateBirthTime("hour", 1)} style={[styles.figmaDateNudge, { left: 198, top: 536 }]} />
+      <FigmaUnknownSplitButton selected={birthTimeUnknown} onPress={onToggleUnknown} />
+      <FigmaText
+        color="rgba(17, 17, 17, 0.48)"
+        family="Inter_400Regular"
+        fontSize={11}
+        lineHeight={15}
+        text="Podés continuar sin hora exacta. La lectura será menos precisa."
+        w={277}
+        x={58}
+        y={686}
+      />
+      <FigmaCTA fill="#111111" h={48} label="Continuar" onPress={onNext} radius={0} textColor="#F7F5EF" y={759} />
+      <FigmaHomeIndicator color="#111111" />
+    </FigmaCanvas>
+  );
+}
+
+function FigmaBirthTimeSelectedScreen({
+  birthTimeUnknown,
+  onBack,
+  onNext,
+  timeLabel
+}: {
+  birthTimeUnknown: boolean;
+  onBack: () => void;
+  onNext: () => void;
+  timeLabel: string;
+}) {
+  return (
+    <FigmaCanvas>
+      <StatusBar hidden />
+      <FigmaAscendantBackdrop />
+      <FigmaScreenChrome onBack={onBack} screen={10} tone="light" />
+      <FigmaText
+        color="#111111"
+        family="Newsreader_500Medium"
+        fontSize={31}
+        lineHeight={37}
+        text={birthTimeUnknown ? "Carta aproximada." : "Ascendente afinado."}
+        w={305}
+        x={44}
+        y={132}
+      />
+      <FigmaText color="rgba(17, 17, 17, 0.58)" family="Inter_400Regular" fontSize={13} lineHeight={18} text={birthTimeUnknown ? "Sin hora exacta" : timeLabel} w={305} x={44} y={188} />
+      <FigmaLine color="rgba(17, 17, 17, 0.35)" w={305} x={44} y={244} />
+      <FigmaText
+        color="#111111"
+        family="Newsreader_500Medium"
+        fontSize={20}
+        lineHeight={27}
+        text={birthTimeUnknown ? "Podés volver atrás si encontrás el dato." : "La hora ordena las casas de tu carta."}
+        w={305}
+        x={44}
+        y={278}
+      />
+      <FigmaMetricText label="HORA" value={timeLabel} y={622} />
+      <FigmaLine color="rgba(17, 17, 17, 0.18)" w={275} x={54} y={654} />
+      <FigmaText
+        align="center"
+        color="rgba(17, 17, 17, 0.48)"
+        family="Inter_400Regular"
+        fontSize={11}
+        lineHeight={15}
+        text="Podés volver atrás si necesitás cambiar la hora."
+        w={277}
+        x={58}
+        y={704}
+      />
+      <FigmaCTA fill="#111111" h={48} label="Continuar" onPress={onNext} radius={0} textColor="#F7F5EF" y={760} />
+      <FigmaHomeIndicator color="#111111" />
+    </FigmaCanvas>
+  );
+}
+
+function FigmaBaseChartScreen({
+  birthDateLabel,
+  birthPlaceLabel,
+  birthTimeLabel,
+  onBack,
+  onNext
+}: {
+  birthDateLabel: string;
+  birthPlaceLabel: string;
+  birthTimeLabel: string;
+  onBack: () => void;
+  onNext: () => void;
+}) {
+  return (
+    <FigmaCanvas>
+      <StatusBar hidden />
+      <FigmaNatalChartBackdrop />
+      <FigmaStatusBar tone="dark" timeLineHeight={14} timeSize={11} timeX={28} timeY={20} y={24} />
+      <FigmaBackChevron color="#111111" onPress={onBack} x={28} y={65} />
+      <FigmaStepProgress screen={11} tone="light" />
+      <FigmaText color="#111111" family="Newsreader_500Medium" fontSize={36} lineHeight={40} text={"Estos son tus\npuntos de partida."} w={330} x={32} y={116} />
+      <FigmaText align="center" color="#111111" family="Newsreader_400Regular" fontSize={15} lineHeight={20} text="☉" w={20} x={130} y={313} />
+      <FigmaText align="center" color="#C46A3A" family="Newsreader_400Regular" fontSize={15} lineHeight={20} text="☽" w={20} x={240} y={291} />
+      <FigmaEllipse color="#111111" h={6} opacity={0.9} w={6} x={194} y={359} />
+      <FigmaText align="center" color="#111111" family="Inter_400Regular" fontSize={13} lineHeight={20} text="↑" w={20} x={192} y={418} />
+      <FigmaBaseMetricText label="FECHA" value={birthDateLabel} y={548} />
+      <FigmaLine color="rgba(17, 17, 17, 0.18)" w={329} x={32} y={579} />
+      <FigmaBaseMetricText label="LUGAR" value={birthPlaceLabel} y={608} />
+      <FigmaLine color="rgba(17, 17, 17, 0.18)" w={329} x={32} y={639} />
+      <FigmaBaseMetricText label="HORA" value={birthTimeLabel} y={668} />
+      <FigmaLine color="rgba(17, 17, 17, 0.18)" w={329} x={32} y={699} />
+      <FigmaText color="#5C5852" family="Newsreader_400Regular" fontSize={13} lineHeight={18} text="Con esto calculamos tu Sol, ascendente y casas." w={320} x={32} y={712} />
+      <FigmaCTA fill="#111111" h={48} label="Calcular mi carta" onPress={onNext} radius={0} textColor="#F7F5EF" y={760} />
+      <FigmaHomeIndicator color="#111111" />
+    </FigmaCanvas>
+  );
+}
+
+function FigmaPersonalizingScreen({ chartProgress, onBack, onNext }: { chartProgress: number; onBack: () => void; onNext: () => void }) {
+  const canContinue = chartProgress >= 59;
+
+  return (
+    <FigmaCanvas>
+      <StatusBar hidden />
+      <AssetBackplate opacity={0.68} source={onboardingAssets.personalizing51} washColor="#06070A" washOpacity={0.42} />
+      <AmbientImageCrop h={430} opacity={0.18} radius={215} source={onboardingAssets.personalizing55} w={430} x={-44} y={230} />
+      <FigmaImageFull opacity={0.24} source={onboardingAssets.transits} />
+      <FigmaImageFull opacity={0.22} source={onboardingAssets.figmaBg12} />
+      <ImageWash color="#06070A" opacity={0.46} />
+      <FigmaStatusBar tone="light" timeLineHeight={14} timeSize={11} timeX={28} timeY={20} y={24} />
+      <FigmaBackChevron onPress={onBack} x={28} y={65} />
+      <FigmaStepProgress screen={12} tone="dark" />
+      <FigmaText align="center" color="#F7F5EF" family="Inter_700Bold" fontSize={31} lineHeight={36} text="Calculando tu cielo..." w={285} x={54} y={132} />
+      <FigmaText align="center" color="#F7F5EF" family="Inter_400Regular" fontSize={14} lineHeight={20} text="Carta natal en proceso." w={290} x={52} y={224} />
+      <FigmaProgressMeter label="Carta natal" value={chartProgress} y={320} />
+      <FigmaProgressMeter label="Tránsitos del día" value={0} y={394} />
+      <FigmaRect borderColor="rgba(247, 245, 239, 0.16)" color="#18191E" h={54} radius={18} w={309} x={42} y={750} />
+      <FigmaText
+        align="center"
+        color="rgba(216, 211, 200, 0.92)"
+        family="Inter_500Medium"
+        fontSize={12}
+        lineHeight={15}
+        text="Usamos tus datos para ordenar tus posiciones."
+        w={269}
+        x={62}
+        y={766}
+      />
+      {canContinue ? (
+        <Pressable accessibilityLabel="Continuar" accessibilityRole="button" onPress={onNext} style={[styles.figmaAbsolute, { height: 852, left: 0, top: 0, width: 393 }]} />
+      ) : null}
+      <FigmaHomeIndicator color="#F5F3EE" />
+    </FigmaCanvas>
+  );
+}
+
+function FigmaBeforeAfterScreen({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
+  return (
+    <FigmaCanvas>
+      <StatusBar hidden />
+      <AssetBackplate opacity={0.58} source={onboardingAssets.beforeAfter81} washColor="#090A0D" washOpacity={0.48} />
+      <AmbientImageCrop h={260} opacity={0.28} radius={130} source={onboardingAssets.beforeAfter53} w={260} x={-50} y={318} />
+      <AmbientImageCrop h={260} opacity={0.26} radius={130} source={onboardingAssets.beforeAfter81} w={260} x={202} y={250} />
+      <FigmaImageFull opacity={0.26} source={onboardingAssets.figmaBg13} />
+      <ImageWash color="#090A0D" opacity={0.42} />
+      <FigmaStatusBar tone="light" />
+      <Pressable accessibilityLabel="Volver" accessibilityRole="button" onPress={onBack} style={[styles.figmaAbsolute, { height: 56, left: 16, opacity: 0, top: 56, width: 56 }]} />
+      <FigmaText align="center" color="#F7F5EF" family="Inter_700Bold" fontSize={27} lineHeight={32} text={"Antes y después\nde Órbita"} w={305} x={44} y={154} />
+      <FigmaText
+        align="center"
+        color="#F7F5EF"
+        family="Inter_500Medium"
+        fontSize={14}
+        lineHeight={19}
+        text="Una guía diaria puede cambiar cómo mirás tu día."
+        w={285}
+        x={54}
+        y={226}
+      />
+      <AmbientImageCrop h={54} radius={27} source={onboardingAssets.beforeAfter53} w={54} x={115} y={269} />
+      <AmbientImageCrop h={62} radius={31} source={onboardingAssets.beforeAfter81} w={62} x={241} y={249} />
+      <FigmaBeforeAfterPanel
+        items={["Vivía en automático", "No sabía qué priorizar", "Dudaba de lo que quería", "Me sentía agotada", "Vínculos poco claros"]}
+        rotate="3deg"
+        title="Antes"
+        x={30}
+        y={327}
+      />
+      <FigmaBeforeAfterPanel
+        highlight
+        items={["Con calma y confianza", "Conozco mis fortalezas y límites", "Centrada y enfocada en lo importante", "Confío más en mi intuición", "Me vinculo con más claridad"]}
+        rotate="-2deg"
+        title="Después"
+        x={181}
+        y={288}
+      />
+      <FigmaText align="center" color="rgba(216, 211, 200, 0.92)" family="Inter_500Medium" fontSize={13} lineHeight={18} text="No resuelve por vos. Te devuelve contexto." w={301} x={46} y={696} />
+      <FigmaCTA fill="#EEF2FF" h={56} label="Continuar" onPress={onNext} radius={28} textColor="#111111" y={760} />
+      <FigmaHomeIndicator color="#F5F3EE" />
+    </FigmaCanvas>
+  );
+}
+
+function FigmaAccountScreen({
+  email,
+  onBack,
+  onChangeEmail,
+  onNext
+}: {
+  email: string;
+  onBack: () => void;
+  onChangeEmail: (value: string) => void;
+  onNext: () => void;
+}) {
+  return (
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.keyboardRoot}>
+      <FigmaCanvas>
+        <StatusBar hidden />
+        <FigmaLightBackdrop accentSource={onboardingAssets.accountSeal59} accentOpacity={0.15} washOpacity={0.86} />
+        <AmbientImageCrop h={190} opacity={0.12} radius={95} source={onboardingAssets.accountSeal58} w={190} x={201} y={70} />
+        <FigmaRect color="#F7F5EF" h={852} opacity={0.58} w={393} x={0} y={0} />
+        <FigmaStatusBar tone="dark" timeLineHeight={14} timeSize={11} timeX={28} timeY={20} y={24} />
+        <FigmaBackChevron color="#111111" onPress={onBack} x={28} y={65} />
+        <FigmaStepProgress screen={14} tone="light" />
+        <FigmaText color="#111111" family="Newsreader_500Medium" fontSize={40} lineHeight={49} text="Guardá tu carta." w={318} x={32} y={116} />
+        <FigmaText color="rgba(17, 17, 17, 0.6)" family="Inter_500Medium" fontSize={16} lineHeight={23} text="Tu historial, tus lecturas y tus tránsitos quedan en tu cuenta." w={310} x={32} y={224} />
+        <FigmaText color="#C46A3A" family="Inter_700Bold" fontSize={10} lineHeight={12} text="EMAIL" w={270} x={32} y={326} />
+        <Avatar alt="Sello de cuenta Órbita" className="border border-border bg-muted" style={styles.figmaAccountAvatar}>
+          <AvatarImage source={onboardingAssets.accountSeal58} />
+          <AvatarFallback>
+            <Text style={styles.figmaAccountAvatarFallback}>Ó</Text>
+          </AvatarFallback>
+        </Avatar>
+        <TextField
+          autoCapitalize="none"
+          autoCorrect={false}
+          containerStyle={[styles.figmaAbsolute, { height: 34, left: 32, top: 341, width: 270 }]}
+          inputMode="email"
+          inputStyle={styles.figmaAccountInputText}
+          onChangeText={onChangeEmail}
+          placeholder="vos@email.com"
+          value={email}
+          variant="light"
+        />
+        <FigmaLine color="rgba(17, 17, 17, 0.72)" w={329} x={32} y={379} />
+        <FigmaCTA fill="#111111" h={48} label="Continuar" onPress={onNext} radius={0} textColor="#F7F5EF" y={408} />
+        <FigmaText align="center" color="rgba(17, 17, 17, 0.48)" family="Inter_700Bold" fontSize={13} lineHeight={16} text="O seguir con" w={393} x={0} y={478} />
+        <FigmaSocialButton label="Continuar con Apple" y={516} />
+        <FigmaSocialButton label="Continuar con Google" y={576} />
+        <FigmaHomeIndicator color="#111111" />
+      </FigmaCanvas>
+    </KeyboardAvoidingView>
+  );
+}
+
+function FigmaPaymentScreen({
+  onBack,
+  onSelectPlan,
+  onSubmit,
+  selectedPlan
+}: {
+  onBack: () => void;
+  onSelectPlan: (plan: PlanId) => void;
+  onSubmit: () => void;
+  selectedPlan: PlanId;
+}) {
+  return (
+    <FigmaCanvas>
+      <StatusBar hidden />
+      <ScrollView bounces={false} showsVerticalScrollIndicator={false} style={StyleSheet.absoluteFill} contentContainerStyle={styles.figmaPaymentScrollContent}>
+        <View style={styles.figmaPaymentContent}>
+          <Image resizeMode="cover" source={onboardingAssets.paymentBg} style={styles.figmaPaymentBg} />
+          <AmbientImageCrop h={360} opacity={0.18} radius={180} source={onboardingAssets.paymentAlt69} w={360} x={178} y={684} />
+          <FigmaRect color="#08090B" h={1180} opacity={0.7} w={393} x={0} y={0} />
+          <FigmaRect color="#08090B" h={820} opacity={0.2} w={393} x={0} y={360} />
+          <FigmaStatusBar tone="light" />
+          <Pressable accessibilityLabel="Volver" accessibilityRole="button" onPress={onBack} style={[styles.figmaAbsolute, { height: 44, left: 16, top: 55, width: 44 }]} />
+          <FigmaText align="right" color="rgba(247, 245, 239, 0.88)" family="Inter_500Medium" fontSize={13} lineHeight={16} text="Restaurar" w={68} x={294} y={70} />
+          <FigmaText color="#F7F5EF" family="Newsreader_500Medium" fontSize={20} lineHeight={24} text="Órbita" w={80} x={32} y={120} />
+          <Badge className="border-accent bg-accent/10" variant="outline" style={styles.figmaPaymentPlusBadge}>
+            <Text style={styles.figmaPaymentPlusText}>PLUS</Text>
+          </Badge>
+          <FigmaText color="#FAF5EE" family="Inter_700Bold" fontSize={34} lineHeight={38} text={"Tu cielo, todos\nlos días."} w={318} x={32} y={202} />
+          <FigmaText color="rgba(232, 221, 209, 0.95)" family="Inter_500Medium" fontSize={14} lineHeight={20} text="Carta natal, tránsitos y lecturas más profundas." w={304} x={32} y={296} />
+          <FigmaPaymentPlanRows onSelectPlan={onSelectPlan} selectedPlan={selectedPlan} />
+          <FigmaUnlockPanel />
+          <FigmaHowItWorksPanel />
+          <FigmaEllipse borderColor="#C46A3A" borderOpacity={0.9} borderWidth={1} h={17} w={17} x={32} y={1048} />
+          <FigmaText align="center" color="#C46A3A" family="Inter_700Bold" fontSize={9} lineHeight={10} text="✓" w={17} x={32} y={1052} />
+          <FigmaText color="rgba(247, 245, 239, 0.74)" family="Inter_500Medium" fontSize={11.5} lineHeight={16} text="Cancelás cuando quieras. Entretenimiento y autoconocimiento." w={292} x={62} y={1044} />
+          <FigmaCTA fill="#F5E8D8" h={52} label="Continuar" onPress={onSubmit} radius={12} textColor="#111111" w={345} x={24} y={1112} />
+          <FigmaHomeIndicator color="#F5F3EE" y={1162} />
+        </View>
+      </ScrollView>
+    </FigmaCanvas>
+  );
+}
+
 function FigmaCanvas({ children }: { children: ReactNode }) {
   const { height, width } = useWindowDimensions();
-  const scale = Math.min(width / FIGMA_CANVAS_WIDTH, height / FIGMA_CANVAS_HEIGHT);
+  const fitScale = Math.min(width / FIGMA_CANVAS_WIDTH, height / FIGMA_CANVAS_HEIGHT);
+  const scale = process.env.EXPO_OS === "web" ? Math.min(fitScale, 1) : fitScale;
   const scaledWidth = FIGMA_CANVAS_WIDTH * scale;
   const scaledHeight = FIGMA_CANVAS_HEIGHT * scale;
   const offsetX = -(FIGMA_CANVAS_WIDTH * (1 - scale)) / 2;
@@ -932,8 +1365,192 @@ function FigmaCanvas({ children }: { children: ReactNode }) {
   );
 }
 
+function FigmaScreenChrome({ onBack, screen, tone }: { onBack: () => void; screen: number; tone: ScreenTone }) {
+  const chromeTone = tone === "light" ? "dark" : "light";
+  const backColor = tone === "light" ? "#111111" : "#F7F5EF";
+
+  return (
+    <>
+      <FigmaStatusBar tone={chromeTone} />
+      <FigmaStepProgress screen={screen} tone={tone} />
+      <FigmaBackChevron color={backColor} fontSize={30} onPress={onBack} x={30} y={103} />
+    </>
+  );
+}
+
 function FigmaImageFull({ opacity, source }: { opacity: number; source: ImageSourcePropType }) {
   return <Image resizeMode="cover" source={source} style={[styles.figmaFullImage, { opacity }]} />;
+}
+
+function ImageWash({ color, opacity }: { color: string; opacity: number }) {
+  return <FigmaRect color={color} h={852} opacity={opacity} w={393} x={0} y={0} />;
+}
+
+function AssetBackplate({
+  opacity = 1,
+  source,
+  washColor,
+  washOpacity = 0
+}: {
+  opacity?: number;
+  source: ImageSourcePropType;
+  washColor?: string;
+  washOpacity?: number;
+}) {
+  return (
+    <>
+      <FigmaImageFull opacity={opacity} source={source} />
+      {washColor && washOpacity > 0 ? <ImageWash color={washColor} opacity={washOpacity} /> : null}
+    </>
+  );
+}
+
+function AmbientImageCrop({
+  h,
+  opacity = 1,
+  radius = 0,
+  rotate,
+  source,
+  w,
+  x,
+  y
+}: {
+  h: number;
+  opacity?: number;
+  radius?: number;
+  rotate?: string;
+  source: ImageSourcePropType;
+  w: number;
+  x: number;
+  y: number;
+}) {
+  return (
+    <View
+      style={[
+        styles.figmaAbsolute,
+        {
+          borderRadius: radius,
+          height: h,
+          left: x,
+          opacity,
+          overflow: "hidden",
+          top: y,
+          transform: rotate ? [{ rotate }] : undefined,
+          width: w
+        }
+      ]}
+    >
+      <Image resizeMode="cover" source={source} style={styles.figmaImageSlotImage} />
+    </View>
+  );
+}
+
+function FigmaLightBackdrop({
+  accentOpacity = 0.22,
+  accentSource = onboardingAssets.dailyTextureB,
+  washOpacity = 0.94
+}: {
+  accentOpacity?: number;
+  accentSource?: ImageSourcePropType;
+  washOpacity?: number;
+}) {
+  return (
+    <>
+      <FigmaImageFull opacity={accentOpacity} source={accentSource} />
+      <FigmaImageFull opacity={0.12} source={onboardingAssets.dailyTextureB} />
+      <FigmaRect color="#F7F5EF" h={852} opacity={washOpacity} w={393} x={0} y={0} />
+    </>
+  );
+}
+
+function FigmaAscendantBackdrop() {
+  return (
+    <>
+      <FigmaRect color="#F7F5EF" h={852} w={393} x={0} y={0} />
+      <FigmaImageFull opacity={0.1} source={onboardingAssets.birthData83} />
+      <AmbientImageCrop h={440} opacity={0.09} radius={220} source={onboardingAssets.ascendantHorizon} w={440} x={-24} y={188} />
+      <AmbientImageCrop h={360} opacity={0.08} radius={180} source={onboardingAssets.orbitalChart} w={360} x={17} y={250} />
+      <FigmaRect color="#F7F5EF" h={852} opacity={0.74} w={393} x={0} y={0} />
+      <FigmaEllipse borderColor="#FFFFFF" borderOpacity={0.3} borderWidth={6} h={560} w={560} x={-84} y={150} />
+      <FigmaEllipse borderColor="#FFFFFF" borderOpacity={0.64} borderWidth={1} h={524} w={524} x={-65} y={161} />
+      <FigmaEllipse borderColor="#FFFFFF" borderOpacity={0.46} borderWidth={1} h={418} w={418} x={-12} y={214} />
+      <FigmaEllipse borderColor="#FFFFFF" borderOpacity={0.34} borderWidth={1} h={278} w={278} x={58} y={284} />
+      <FigmaEllipse borderColor="#FFFFFF" borderOpacity={0.46} borderWidth={1} h={220} w={220} x={86} y={313} />
+      <FigmaEllipse borderColor="#C46A3A" borderOpacity={0.12} borderWidth={1} h={300} w={300} x={46} y={273} />
+      <FigmaEllipse color="#FFFFFF" h={30} opacity={0.22} w={30} x={348} y={200} />
+      <FigmaLine color="rgba(255, 255, 255, 0.5)" w={393} x={0} y={423} />
+      <FigmaLine color="rgba(196, 106, 58, 0.06)" w={393} x={0} y={424} />
+    </>
+  );
+}
+
+function FigmaNatalChartBackdrop() {
+  return (
+    <>
+      <FigmaRect color="#F7F5EF" h={852} w={393} x={0} y={0} />
+      <FigmaImageFull opacity={0.14} source={onboardingAssets.baseChart47} />
+      <AmbientImageCrop h={410} opacity={0.11} radius={205} source={onboardingAssets.baseChart46} w={410} x={-8} y={206} />
+      <FigmaImageFull opacity={0.1} source={onboardingAssets.birthChartDiagram} />
+      <FigmaImageFull opacity={0.08} source={onboardingAssets.figmaBg11} />
+      <FigmaRect color="#F7F5EF" h={852} opacity={0.74} w={393} x={0} y={0} />
+      <FigmaAstroGrid />
+    </>
+  );
+}
+
+function FigmaAstroGrid() {
+  const centerX = 197;
+  const centerY = 421;
+  const lineColor = "rgba(255, 255, 255, 0.48)";
+  const softLineColor = "rgba(255, 255, 255, 0.34)";
+
+  return (
+    <>
+      <FigmaEllipse borderColor="#FFFFFF" borderOpacity={0.5} borderWidth={1} h={540} w={540} x={centerX - 270} y={centerY - 270} />
+      <FigmaEllipse borderColor="#FFFFFF" borderOpacity={0.4} borderWidth={1} h={458} w={458} x={centerX - 229} y={centerY - 229} />
+      <FigmaEllipse borderColor="#FFFFFF" borderOpacity={0.36} borderWidth={1} h={372} w={372} x={centerX - 186} y={centerY - 186} />
+      <FigmaEllipse borderColor="#FFFFFF" borderOpacity={0.28} borderWidth={1} h={280} w={280} x={centerX - 140} y={centerY - 140} />
+      <FigmaEllipse borderColor="#FFFFFF" borderOpacity={0.2} borderWidth={1} h={188} w={188} x={centerX - 94} y={centerY - 94} />
+      {[0, 30, 60, 90, 120, 150].map((angle) => (
+        <FigmaRotatedLine
+          key={angle}
+          color={angle % 90 === 0 ? lineColor : softLineColor}
+          opacity={angle % 90 === 0 ? 1 : 0.88}
+          rotate={`${angle}deg`}
+          w={660}
+          x={centerX - 330}
+          y={centerY}
+        />
+      ))}
+      <FigmaEllipse color="#FFFFFF" h={12} opacity={0.36} w={12} x={191} y={271} />
+      <FigmaEllipse color="#FFFFFF" h={8} opacity={0.26} w={8} x={108} y={347} />
+      <FigmaEllipse color="#FFFFFF" h={14} opacity={0.32} w={14} x={376} y={253} />
+    </>
+  );
+}
+
+function FigmaImageCrop({
+  h,
+  opacity = 1,
+  radius = 0,
+  source,
+  w,
+  x,
+  y
+}: {
+  h: number;
+  opacity?: number;
+  radius?: number;
+  source: ImageSourcePropType;
+  w: number;
+  x: number;
+  y: number;
+}) {
+  return (
+    <View style={[styles.figmaAbsolute, { borderRadius: radius, height: h, left: x, opacity, overflow: "hidden", top: y, width: w }]}>
+      <Image resizeMode="cover" source={source} style={styles.figmaImageSlotImage} />
+    </View>
+  );
 }
 
 function FigmaImageSlot({ h, source, w, x, y }: { h: number; source: ImageSourcePropType; w: number; x: number; y: number }) {
@@ -942,6 +1559,58 @@ function FigmaImageSlot({ h, source, w, x, y }: { h: number; source: ImageSource
       <Image resizeMode="cover" source={source} style={styles.figmaImageSlotImage} />
     </View>
   );
+}
+
+function FigmaLine({ color, w, x, y }: { color: string; w: number; x: number; y: number }) {
+  return <FigmaRect color={color} h={1} w={w} x={x} y={y} />;
+}
+
+function FigmaNativeDateTimePicker({
+  h,
+  maximumDate,
+  minimumDate,
+  mode,
+  onChange,
+  value,
+  w,
+  x,
+  y
+}: {
+  h: number;
+  maximumDate?: Date;
+  minimumDate?: Date;
+  mode: "date" | "time";
+  onChange: (date: Date) => void;
+  value: Date;
+  w: number;
+  x: number;
+  y: number;
+}) {
+  return (
+    <View style={[styles.figmaNativePickerWrap, { height: h, left: x, top: y, width: w }]}>
+      <DateTimePicker
+        accentColor="#C46A3A"
+        display={Platform.OS === "ios" ? "spinner" : "default"}
+        locale="es-AR"
+        maximumDate={maximumDate}
+        minimumDate={minimumDate}
+        mode={mode}
+        onChange={(_, selectedDate) => {
+          if (selectedDate) {
+            onChange(selectedDate);
+          }
+        }}
+        style={styles.figmaNativePicker}
+        textColor="#111111"
+        themeVariant="light"
+        value={value}
+      />
+    </View>
+  );
+}
+
+function FigmaRotatedLine({ color, opacity = 1, rotate, w, x, y }: { color: string; opacity?: number; rotate: string; w: number; x: number; y: number }) {
+  return <View style={[styles.figmaAbsolute, { backgroundColor: color, height: 1, left: x, opacity, top: y, transform: [{ rotate }], width: w }]} />;
 }
 
 function FigmaRect({
@@ -1043,7 +1712,7 @@ function FigmaText({
   x,
   y
 }: {
-  align?: "left" | "center";
+  align?: "left" | "center" | "right";
   color: string;
   family: string;
   fontSize: number;
@@ -1093,7 +1762,7 @@ function FigmaStatusBar({
   timeSize?: number;
   timeX?: number;
   timeY?: number;
-  tone: "light";
+  tone: "light" | "dark";
   wifiX?: number;
   y?: number;
 }) {
@@ -1112,21 +1781,68 @@ function FigmaHomeIndicator({ color, opacity = 1, y = 834 }: { color: string; op
   return <FigmaRect color={color} h={5} opacity={opacity} radius={3} w={127} x={133} y={y} />;
 }
 
-function FigmaCTA({ h, label, onPress, y }: { h: number; label: string; onPress: () => void; y: number }) {
-  const fill = h === 48 ? "#F5F3EE" : "#DCE8FF";
+function FigmaCTA({
+  fill,
+  h,
+  label,
+  onPress,
+  radius,
+  textColor,
+  w = 329,
+  x = 32,
+  y
+}: {
+  fill?: string;
+  h: number;
+  label: string;
+  onPress: () => void;
+  radius?: number;
+  textColor?: string;
+  w?: number;
+  x?: number;
+  y: number;
+}) {
+  const backgroundColor = fill ?? (h === 48 ? "#F5F3EE" : "#DCE8FF");
+  const foregroundColor = textColor ?? "#111111";
 
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={[styles.figmaCta, { backgroundColor: fill, borderRadius: h / 2, height: h, top: y }]}>
-      <FigmaText align="center" color="#111111" family="Inter_700Bold" fontSize={h === 48 ? 15 : 16} lineHeight={18} text={label} w={329} x={0} y={h === 48 ? 15 : 19} />
-    </Pressable>
+    <Button
+      fill={backgroundColor}
+      onPress={onPress}
+      radius={radius ?? 12}
+      style={[styles.figmaCta, { height: h, left: x, top: y, width: w }]}
+      textColor={foregroundColor}
+      variant="figma"
+    >
+      <FigmaText align="center" color={foregroundColor} family="Inter_700Bold" fontSize={h === 48 ? 15 : 16} lineHeight={18} text={label} w={w} x={0} y={h === 48 ? 15 : 19} />
+    </Button>
   );
 }
 
-function FigmaBackChevron({ fontSize = 28, onPress, x, y }: { fontSize?: number; onPress: () => void; x: number; y: number }) {
+function FigmaBackChevron({
+  color = "#F7F5EF",
+  fontSize = 28,
+  onPress,
+  x,
+  y
+}: {
+  color?: string;
+  fontSize?: number;
+  onPress: () => void;
+  x: number;
+  y: number;
+}) {
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={[styles.figmaBackHit, { left: x - 12, top: y - 10 }]}>
-      <FigmaText align="center" color="#F7F5EF" family={fontSize > 28 ? "Inter_700Bold" : "Inter_400Regular"} fontSize={fontSize} lineHeight={fontSize === 30 ? 28 : 33} text="‹" w={24} x={12} y={10} />
-    </Pressable>
+    <Button
+      accessibilityLabel="Volver"
+      fill="transparent"
+      onPress={onPress}
+      radius={28}
+      style={[styles.figmaBackHit, { left: x - 12, top: y - 10 }]}
+      variant="figma"
+    >
+      <FigmaText align="center" color={color} family={fontSize > 28 ? "Inter_700Bold" : "Inter_400Regular"} fontSize={fontSize} lineHeight={fontSize === 30 ? 28 : 33} text="‹" w={24} x={12} y={10} />
+    </Button>
   );
 }
 
@@ -1156,24 +1872,36 @@ function FigmaBenefitPill({ label, w, x, y }: { label: string; w: number; x: num
   );
 }
 
-function FigmaIdentityOption({ label, onPress, selected, y }: { label: string; onPress: () => void; selected: boolean; y: number }) {
+function FigmaIdentityOption({
+  label,
+  onPress,
+  selected,
+  value,
+  y
+}: {
+  label: string;
+  onPress: () => void;
+  selected: boolean;
+  value: Identity;
+  y: number;
+}) {
   return (
-    <Pressable
-      accessibilityRole="button"
+    <SelectableRow
+      accessibilityLabel={label}
+      backgroundColor="#1E1F26"
+      borderColor="#2A2B34"
+      label={label}
+      labelStyle={styles.figmaIdentityLabel}
       onPress={onPress}
-      style={[
-        styles.figmaIdentityOption,
-        {
-          backgroundColor: selected ? "#262730" : "#1E1F26",
-          borderColor: selected ? "#C46A3A" : "#2A2B34",
-          borderWidth: selected ? 1.5 : 1,
-          top: y
-        }
-      ]}
-    >
-      <Text style={styles.figmaIdentityLabel}>{label}</Text>
-      <View style={[styles.figmaRadio, { borderColor: selected ? "#C46A3A" : "#504E56" }]}>{selected ? <View style={styles.figmaRadioFill} /> : null}</View>
-    </Pressable>
+      radioPosition="right"
+      radioStyle={styles.figmaRadio}
+      radioValue={value}
+      selected={selected}
+      selectedBackgroundColor="#262730"
+      selectedBorderColor="#C46A3A"
+      style={[styles.figmaIdentityOption, { top: y }]}
+      variant="dark"
+    />
   );
 }
 
@@ -1196,6 +1924,333 @@ function FigmaGuidanceBadge({
     <View style={[styles.figmaGuidanceBadge, { left: x, top: y, transform: [{ rotate }], width: w }]}>
       <Text style={styles.figmaGuidanceSymbol}>{symbol}</Text>
       <Text style={styles.figmaGuidanceLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function FigmaStepProgress({ screen, tone }: { screen: number; tone: ScreenTone }) {
+  const active = clamp(screen - 1, 1, 13);
+  const activeColor = tone === "light" ? "#111111" : "#F5F3EE";
+  const inactiveColor = tone === "light" ? "rgba(17, 17, 17, 0.18)" : "rgba(247, 245, 239, 0.2)";
+
+  return (
+    <>
+      {Array.from({ length: 13 }).map((_, index) => (
+        <FigmaRect key={index} color={index < active ? activeColor : inactiveColor} h={2} radius={2} w={21} x={32 + index * 25} y={84} />
+      ))}
+    </>
+  );
+}
+
+function FigmaUnknownSplitButton({ onPress, selected }: { onPress: () => void; selected: boolean }) {
+  return (
+    <ToggleRow
+      body="Usamos una carta aproximada."
+      bodyStyle={styles.figmaUnknownSplitBody}
+      dotStyle={styles.figmaUnknownSplitDot}
+      onPress={onPress}
+      selected={selected}
+      selectedTitleStyle={styles.figmaUnknownSplitTitleSelected}
+      style={styles.figmaUnknownSplitButton}
+      title="No sé la hora"
+      titleStyle={styles.figmaUnknownSplitTitle}
+      variant="light"
+    />
+  );
+}
+
+function FigmaMetricText({ label, value, y }: { label: string; value: string; y: number }) {
+  return (
+    <>
+      <FigmaText color="#C46A3A" family="Inter_700Bold" fontSize={10} lineHeight={12} text={label} w={72} x={54} y={y} />
+      <FigmaText color="#111111" family="Newsreader_500Medium" fontSize={18} lineHeight={22} text={value} w={220} x={132} y={y - 4} />
+    </>
+  );
+}
+
+function FigmaBaseMetricText({ label, value, y }: { label: string; value: string; y: number }) {
+  return (
+    <>
+      <FigmaText color="#5C5852" family="Inter_700Bold" fontSize={8} lineHeight={12} text={label} w={95} x={32} y={y} />
+      <FigmaText color="#111111" family="Newsreader_500Medium" fontSize={17} lineHeight={24} text={value} w={220} x={132} y={y - 3} />
+    </>
+  );
+}
+
+function FigmaDarkMetric({ label, value, y }: { label: string; value: string; y: number }) {
+  return (
+    <>
+      <FigmaRect borderColor="rgba(247, 245, 239, 0.2)" color="rgba(10, 11, 15, 0.82)" h={78} radius={8} w={329} x={32} y={y} />
+      <FigmaText color="#D69A6A" family="Inter_700Bold" fontSize={11} lineHeight={13} text={label} w={82} x={54} y={y + 30} />
+      <FigmaText align="right" color="#F7F5EF" family="Inter_700Bold" fontSize={20} lineHeight={24} text={value} w={190} x={148} y={y + 27} />
+    </>
+  );
+}
+
+function FigmaPlaceResult({
+  label,
+  onPress,
+  selected,
+  y
+}: {
+  label: string;
+  onPress: () => void;
+  selected: boolean;
+  y: number;
+}) {
+  return (
+    <>
+      <SelectableRow
+        backgroundColor="transparent"
+        borderColor="transparent"
+        borderWidth={0}
+        label={label}
+        labelStyle={styles.figmaPlaceText}
+        onPress={onPress}
+        radioPosition="none"
+        selected={selected}
+        selectedBackgroundColor="transparent"
+        selectedBorderColor="transparent"
+        selectedBorderWidth={0}
+        selectedLabelStyle={styles.figmaPlaceTextSelected}
+        style={[styles.figmaAbsolute, { height: 30, left: 32, top: y - 6, width: 329 }]}
+        variant="figma"
+      />
+      <FigmaLine color="rgba(17, 17, 17, 0.14)" w={329} x={32} y={y + 30} />
+    </>
+  );
+}
+
+function FigmaTimeColumn({
+  label,
+  onDown,
+  onUp,
+  value,
+  x
+}: {
+  label: string;
+  onDown: () => void;
+  onUp: () => void;
+  value: string;
+  x: number;
+}) {
+  return (
+    <View style={[styles.figmaTimeColumn, { left: x }]}>
+      <Text style={styles.figmaTimeLabel}>{label}</Text>
+      <Pressable accessibilityRole="button" onPress={onUp} style={styles.figmaTimeHitTop}>
+        <Text style={styles.figmaTimeChevron}>⌃</Text>
+      </Pressable>
+      <Text adjustsFontSizeToFit numberOfLines={1} style={styles.figmaTimeValue}>
+        {value}
+      </Text>
+      <Pressable accessibilityRole="button" onPress={onDown} style={styles.figmaTimeHitBottom}>
+        <Text style={styles.figmaTimeChevron}>⌄</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function FigmaProgressMeter({ label, value, y }: { label: string; value: number; y: number }) {
+  return (
+    <>
+      <FigmaText color="#F7F5EF" family="Inter_700Bold" fontSize={17} lineHeight={22} text={label} w={238} x={32} y={y} />
+      <FigmaText align="right" color="#F7F5EF" family="Inter_700Bold" fontSize={17} lineHeight={22} text={`${value}%`} w={60} x={292} y={y} />
+      <FigmaRect color="rgba(247, 245, 239, 0.14)" h={4} radius={2} w={329} x={32} y={y + 34} />
+      {value > 0 ? <FigmaRect color="#C46A3A" h={4} radius={2} w={(329 * value) / 100} x={32} y={y + 34} /> : null}
+    </>
+  );
+}
+
+function FigmaBeforeAfterPanel({
+  highlight = false,
+  items,
+  rotate = "0deg",
+  title,
+  x,
+  y
+}: {
+  highlight?: boolean;
+  items: string[];
+  rotate?: string;
+  title: string;
+  x: number;
+  y: number;
+}) {
+  const width = highlight ? 184 : 158;
+  const height = highlight ? 364 : 324;
+  const rowYs = highlight ? [72, 128, 184, 240, 296] : [78, 123, 168, 213, 258];
+  const textWidth = highlight ? 124 : 88;
+  const textX = highlight ? 45 : 47;
+  const markX = highlight ? 20 : 22;
+  const titleWidth = highlight ? 132 : 112;
+  const itemFontSize = highlight ? 12.2 : 12.5;
+
+  return (
+    <View
+      style={[
+        styles.figmaBeforeAfterPanel,
+        {
+          backgroundColor: highlight ? "#24252C" : "#1B1C23",
+          borderColor: highlight ? "rgba(196, 106, 58, 0.45)" : "rgba(75, 79, 92, 0.72)",
+          height,
+          left: x,
+          top: y,
+          transform: [{ rotate }],
+          width
+        }
+      ]}
+    >
+      <Text style={[styles.figmaBeforeAfterTitle, { width: titleWidth }, highlight && styles.figmaBeforeAfterTitleHighlight]}>{title}</Text>
+      {items.map((item, index) => (
+        <View key={item} style={[styles.figmaBeforeAfterRow, { top: rowYs[index] }]}>
+          <Text style={[styles.figmaBeforeAfterMark, { left: markX }, highlight && styles.figmaBeforeAfterMarkHighlight]}>{highlight ? "✓" : "×"}</Text>
+          <Text style={[styles.figmaBeforeAfterCopy, { fontSize: itemFontSize, left: textX, width: textWidth }]}>{item}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function FigmaSocialButton({ label, y }: { label: string; y: number }) {
+  return (
+    <Button
+      fill="transparent"
+      label={label}
+      radius={0}
+      style={[styles.figmaSocialButton, { top: y }]}
+      textColor="#111111"
+      textStyle={styles.figmaSocialButtonText}
+      variant="figma"
+    />
+  );
+}
+
+function FigmaPaymentPlanRows({
+  onSelectPlan,
+  selectedPlan
+}: {
+  onSelectPlan: (plan: PlanId) => void;
+  selectedPlan: PlanId;
+}) {
+  return (
+    <RadioGroup onValueChange={(value) => onSelectPlan(value as PlanId)} style={styles.figmaPaymentPlans} value={selectedPlan}>
+      <FigmaPaymentPlanRow
+        caption="Flexible para probar"
+        label="Semanal"
+        onPress={() => onSelectPlan("weekly")}
+        price="$5"
+        selected={selectedPlan === "weekly"}
+        subprice="por semana"
+        value="weekly"
+        y={0}
+      />
+      <FigmaLine color="rgba(247, 245, 239, 0.16)" w={297} x={24} y={74} />
+      <FigmaPaymentPlanRow
+        badge="MEJOR VALOR"
+        caption="$0.58 por semana"
+        label="Anual"
+        onPress={() => onSelectPlan("annual")}
+        price="$30"
+        selected={selectedPlan === "annual"}
+        subprice="por año"
+        value="annual"
+        y={82}
+      />
+    </RadioGroup>
+  );
+}
+
+function FigmaPaymentPlanRow({
+  badge,
+  caption,
+  label,
+  onPress,
+  price,
+  selected,
+  subprice,
+  value,
+  y
+}: {
+  badge?: string;
+  caption: string;
+  label: string;
+  onPress: () => void;
+  price: string;
+  selected: boolean;
+  subprice: string;
+  value: PlanId;
+  y: number;
+}) {
+  return (
+    <PlanOption
+      badge={badge}
+      caption={caption}
+      label={label}
+      onPress={onPress}
+      price={price}
+      selected={selected}
+      style={{ top: y }}
+      subprice={subprice}
+      value={value}
+    />
+  );
+}
+
+function FigmaUnlockPanel() {
+  return (
+    <View style={styles.figmaUnlockPanel}>
+      <Text style={styles.figmaPanelTitle}>Todo lo que desbloqueás</Text>
+      <FigmaBenefitChip label="Carta natal completa" w={142} x={23} y={59} />
+      <FigmaBenefitChip fontSize={8.5} label="Guía diaria personalizada" lineHeight={12} w={148} x={173} y={59} />
+      <FigmaBenefitChip label="Tránsitos en tu carta" w={146} x={23} y={95} />
+      <FigmaBenefitChip label="Preguntale a Órbita" w={128} x={177} y={95} />
+      <FigmaBenefitChip fontSize={9.5} label="Sueños, vínculos y calendario" w={174} x={23} y={131} />
+    </View>
+  );
+}
+
+function FigmaBenefitChip({
+  fontSize = 10.5,
+  label,
+  lineHeight = 13,
+  w,
+  x,
+  y
+}: {
+  fontSize?: number;
+  label: string;
+  lineHeight?: number;
+  w: number;
+  x: number;
+  y: number;
+}) {
+  return (
+    <View style={[styles.figmaPaymentBenefitChip, { left: x, top: y, width: w }]}>
+      <Text adjustsFontSizeToFit ellipsizeMode="clip" minimumFontScale={0.72} numberOfLines={1} style={[styles.figmaPaymentBenefitText, { fontSize, lineHeight, width: w - 4 }]}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+function FigmaHowItWorksPanel() {
+  return (
+    <View style={styles.figmaHowPanel}>
+      <Text style={styles.figmaHowPanelTitle}>Cómo funciona</Text>
+      <FigmaRect color="rgba(196, 106, 58, 0.42)" h={118} w={1} x={9} y={60} />
+      <FigmaPaymentStep index="01" title="Tu carta completa" body="Sol, Luna, ascendente, casas y aspectos en lenguaje claro." y={42} />
+      <FigmaPaymentStep index="02" title="Tu día con contexto" body="Lecturas y tránsitos personalizados según tu mapa." y={106} />
+      <FigmaPaymentStep index="03" title="Preguntas más profundas" body="Consultas, sueños y vínculos conectados con tu cielo." y={170} />
+    </View>
+  );
+}
+
+function FigmaPaymentStep({ body, index, title, y }: { body: string; index: string; title: string; y: number }) {
+  return (
+    <View style={[styles.figmaPaymentStep, { top: y }]}>
+      <Text style={styles.figmaPaymentStepIndex}>{index}</Text>
+      <Text style={styles.figmaPaymentStepTitle}>{title}</Text>
+      <Text style={styles.figmaPaymentStepBody}>{body}</Text>
     </View>
   );
 }
@@ -1627,6 +2682,13 @@ const styles = StyleSheet.create({
     position: "absolute",
     width: 329
   },
+  figmaIdentityGroup: {
+    height: FIGMA_CANVAS_HEIGHT,
+    left: 0,
+    position: "absolute",
+    top: 0,
+    width: FIGMA_CANVAS_WIDTH
+  },
   figmaIdentityLabel: {
     color: "#F7F5EF",
     fontFamily: "Inter_700Bold",
@@ -1688,6 +2750,560 @@ const styles = StyleSheet.create({
     lineHeight: 14,
     position: "absolute",
     top: 11
+  },
+  figmaBirthplaceInput: {
+    color: "#111111",
+    fontFamily: "Inter_700Bold",
+    fontSize: 20,
+    height: 34,
+    includeFontPadding: false,
+    left: 32,
+    letterSpacing: 0,
+    lineHeight: 24,
+    padding: 0,
+    position: "absolute",
+    top: 291,
+    width: 270
+  },
+  figmaBirthplaceInputText: {
+    color: "#111111",
+    fontFamily: "Inter_700Bold",
+    fontSize: 20,
+    height: 34,
+    includeFontPadding: false,
+    letterSpacing: 0,
+    lineHeight: 24,
+    padding: 0,
+    width: 270
+  },
+  figmaPlaceText: {
+    color: "#111111",
+    fontFamily: "Inter_700Bold",
+    fontSize: 13,
+    includeFontPadding: false,
+    letterSpacing: 0,
+    lineHeight: 18,
+    padding: 0
+  },
+  figmaPlaceTextSelected: {
+    color: "#C46A3A"
+  },
+  figmaDateNudge: {
+    height: 44,
+    opacity: 0,
+    position: "absolute",
+    width: 128
+  },
+  figmaNativePickerWrap: {
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    position: "absolute"
+  },
+  figmaNativePicker: {
+    backgroundColor: "transparent",
+    height: "100%",
+    width: "100%"
+  },
+  figmaTimeWheelHit: {
+    height: 92,
+    position: "absolute"
+  },
+  figmaUnknownSplitButton: {
+    backgroundColor: "rgba(255, 252, 246, 0.88)",
+    borderRadius: 8,
+    boxShadow: "0 8px 18px rgba(20, 15, 10, 0.06)",
+    height: 64,
+    left: 31,
+    overflow: "hidden",
+    position: "absolute",
+    top: 597,
+    width: 329
+  },
+  figmaUnknownSplitTitle: {
+    color: "#111111",
+    fontFamily: "Inter_700Bold",
+    fontSize: 13,
+    includeFontPadding: false,
+    left: 17,
+    letterSpacing: 0,
+    lineHeight: 18,
+    position: "absolute",
+    top: 12
+  },
+  figmaUnknownSplitTitleSelected: {
+    color: "#C46A3A"
+  },
+  figmaUnknownSplitBody: {
+    color: "#6E675E",
+    fontFamily: "Inter_500Medium",
+    fontSize: 10.5,
+    includeFontPadding: false,
+    left: 17,
+    letterSpacing: 0,
+    lineHeight: 14,
+    position: "absolute",
+    top: 35
+  },
+  figmaUnknownSplitDot: {
+    backgroundColor: "#D08355",
+    borderRadius: 4.5,
+    height: 9,
+    left: 291,
+    position: "absolute",
+    top: 26,
+    width: 9
+  },
+  figmaUnknownSplitDotSelected: {
+    backgroundColor: "#C46A3A"
+  },
+  figmaTimeColumn: {
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.78)",
+    borderColor: "rgba(17, 17, 17, 0.12)",
+    borderRadius: 8,
+    borderWidth: 1,
+    height: 244,
+    position: "absolute",
+    top: 280,
+    width: 101
+  },
+  figmaTimeLabel: {
+    color: "rgba(17, 17, 17, 0.48)",
+    fontFamily: "Inter_700Bold",
+    fontSize: 12,
+    includeFontPadding: false,
+    left: 0,
+    letterSpacing: 0,
+    lineHeight: 14,
+    position: "absolute",
+    textAlign: "center",
+    top: 20,
+    width: 101
+  },
+  figmaTimeHitTop: {
+    alignItems: "center",
+    height: 56,
+    justifyContent: "center",
+    left: 0,
+    position: "absolute",
+    top: 48,
+    width: 101
+  },
+  figmaTimeHitBottom: {
+    alignItems: "center",
+    height: 56,
+    justifyContent: "center",
+    left: 0,
+    position: "absolute",
+    top: 158,
+    width: 101
+  },
+  figmaTimeChevron: {
+    color: "#C46A3A",
+    fontFamily: "Inter_700Bold",
+    fontSize: 29,
+    includeFontPadding: false,
+    lineHeight: 30,
+    textAlign: "center"
+  },
+  figmaTimeValue: {
+    color: "#111111",
+    fontFamily: "Inter_700Bold",
+    fontSize: 30,
+    includeFontPadding: false,
+    left: 8,
+    letterSpacing: 0,
+    lineHeight: 34,
+    position: "absolute",
+    textAlign: "center",
+    top: 112,
+    width: 85
+  },
+  figmaUnknownTimeButton: {
+    backgroundColor: "rgba(255, 255, 255, 0.82)",
+    borderRadius: 8,
+    height: 96,
+    left: 32,
+    position: "absolute",
+    top: 558,
+    width: 329
+  },
+  figmaUnknownTimeTitle: {
+    color: "#111111",
+    fontFamily: "Inter_700Bold",
+    fontSize: 18,
+    includeFontPadding: false,
+    left: 20,
+    letterSpacing: 0,
+    lineHeight: 22,
+    position: "absolute",
+    top: 27
+  },
+  figmaUnknownTimeBody: {
+    color: "rgba(17, 17, 17, 0.52)",
+    fontFamily: "Inter_700Bold",
+    fontSize: 13,
+    includeFontPadding: false,
+    left: 20,
+    letterSpacing: 0,
+    lineHeight: 17,
+    position: "absolute",
+    top: 53
+  },
+  figmaUnknownTimeCheck: {
+    position: "absolute",
+    right: 18,
+    top: 37
+  },
+  figmaBeforeAfterPanel: {
+    backgroundColor: "rgba(18, 20, 26, 0.78)",
+    borderRadius: 24,
+    borderWidth: 1,
+    overflow: "hidden",
+    position: "absolute"
+  },
+  figmaBeforeAfterTitle: {
+    color: "#F7F5EF",
+    fontFamily: "Inter_700Bold",
+    fontSize: 20,
+    includeFontPadding: false,
+    letterSpacing: 0,
+    left: 20,
+    lineHeight: 24,
+    position: "absolute",
+    top: 24
+  },
+  figmaBeforeAfterTitleHighlight: {
+    color: "#F7F5EF"
+  },
+  figmaBeforeAfterRow: {
+    height: 32,
+    left: 0,
+    position: "absolute",
+    width: "100%"
+  },
+  figmaBeforeAfterMark: {
+    color: "#F7F5EF",
+    fontFamily: "Inter_700Bold",
+    fontSize: 15,
+    includeFontPadding: false,
+    lineHeight: 16,
+    position: "absolute",
+    textAlign: "center",
+    width: 14
+  },
+  figmaBeforeAfterMarkHighlight: {
+    color: "#F7F5EF",
+    fontSize: 14
+  },
+  figmaBeforeAfterCopy: {
+    color: "#F7F5EF",
+    fontFamily: "Inter_500Medium",
+    includeFontPadding: false,
+    letterSpacing: 0,
+    lineHeight: 15,
+    position: "absolute"
+  },
+  figmaAccountInput: {
+    color: "#111111",
+    fontFamily: "Newsreader_500Medium",
+    fontSize: 20,
+    height: 34,
+    includeFontPadding: false,
+    left: 32,
+    letterSpacing: 0,
+    lineHeight: 24,
+    padding: 0,
+    position: "absolute",
+    top: 341,
+    width: 270
+  },
+  figmaAccountInputText: {
+    color: "#111111",
+    fontFamily: "Newsreader_500Medium",
+    fontSize: 20,
+    height: 34,
+    includeFontPadding: false,
+    letterSpacing: 0,
+    lineHeight: 24,
+    padding: 0,
+    width: 270
+  },
+  figmaAccountAvatar: {
+    backgroundColor: "rgba(255, 252, 246, 0.82)",
+    borderColor: "rgba(196, 106, 58, 0.32)",
+    borderRadius: 28,
+    borderWidth: 1,
+    height: 56,
+    left: 304,
+    overflow: "hidden",
+    position: "absolute",
+    top: 318,
+    width: 56
+  },
+  figmaAccountAvatarFallback: {
+    color: "#C46A3A",
+    fontFamily: "Newsreader_500Medium",
+    fontSize: 25,
+    includeFontPadding: false,
+    lineHeight: 29,
+    textAlign: "center"
+  },
+  figmaSocialButton: {
+    alignItems: "center",
+    backgroundColor: "transparent",
+    borderColor: "#111111",
+    borderRadius: 0,
+    borderWidth: 1,
+    height: 48,
+    justifyContent: "center",
+    left: 32,
+    position: "absolute",
+    width: 329
+  },
+  figmaSocialButtonText: {
+    color: "#111111",
+    fontFamily: "Inter_700Bold",
+    fontSize: 12,
+    includeFontPadding: false,
+    letterSpacing: 0,
+    lineHeight: 16
+  },
+  figmaPaymentScrollContent: {
+    height: 1180,
+    width: FIGMA_CANVAS_WIDTH
+  },
+  figmaPaymentContent: {
+    height: 1180,
+    overflow: "hidden",
+    position: "relative",
+    width: FIGMA_CANVAS_WIDTH
+  },
+  figmaPaymentBg: {
+    height: 1180,
+    left: 0,
+    position: "absolute",
+    top: 0,
+    width: FIGMA_CANVAS_WIDTH
+  },
+  figmaPaymentPlans: {
+    backgroundColor: "rgba(13, 14, 18, 0.7)",
+    borderColor: "rgba(247, 245, 239, 0.14)",
+    borderRadius: 10,
+    borderWidth: 1,
+    height: 174,
+    left: 24,
+    overflow: "hidden",
+    position: "absolute",
+    top: 384,
+    width: 345
+  },
+  figmaPaymentPlusBadge: {
+    borderColor: "#C46A3A",
+    borderRadius: 4,
+    borderWidth: 1,
+    height: 20,
+    left: 116,
+    position: "absolute",
+    top: 139,
+    width: 38
+  },
+  figmaPaymentPlusText: {
+    color: "#F2D7C7",
+    fontFamily: "Inter_700Bold",
+    fontSize: 9,
+    includeFontPadding: false,
+    lineHeight: 11,
+    textAlign: "center"
+  },
+  figmaPaymentPlanRow: {
+    borderRadius: 8,
+    left: 0,
+    position: "absolute",
+    width: 345
+  },
+  figmaPaymentRadio: {
+    alignItems: "center",
+    borderColor: "rgba(247, 245, 239, 0.5)",
+    borderWidth: 1,
+    justifyContent: "center",
+    position: "absolute",
+  },
+  figmaPaymentRadioSelected: {
+    borderColor: "#C46A3A"
+  },
+  figmaPaymentRadioDot: {
+    backgroundColor: "#C46A3A",
+    borderRadius: 4,
+    height: 8,
+    width: 8
+  },
+  figmaPaymentPlanLabel: {
+    color: "#F7F5EF",
+    fontFamily: "Inter_700Bold",
+    fontSize: 16,
+    includeFontPadding: false,
+    left: 54,
+    lineHeight: 20,
+    position: "absolute",
+    top: 16
+  },
+  figmaPaymentPlanCaption: {
+    color: "rgba(247, 245, 239, 0.58)",
+    fontFamily: "Inter_500Medium",
+    fontSize: 12,
+    includeFontPadding: false,
+    left: 54,
+    lineHeight: 15,
+    position: "absolute",
+    top: 40
+  },
+  figmaPaymentBadge: {
+    backgroundColor: "transparent",
+    borderColor: "#C46A3A",
+    borderRadius: 4,
+    borderWidth: 1,
+    color: "#F5E8D8",
+    fontFamily: "Inter_700Bold",
+    fontSize: 8.5,
+    height: 18,
+    includeFontPadding: false,
+    left: 150,
+    lineHeight: 11,
+    overflow: "hidden",
+    paddingTop: 4,
+    position: "absolute",
+    textAlign: "center",
+    top: 20,
+    width: 86
+  },
+  figmaPaymentPlanPrice: {
+    color: "#F7F5EF",
+    fontFamily: "Inter_700Bold",
+    fontSize: 17,
+    includeFontPadding: false,
+    lineHeight: 22,
+    position: "absolute",
+    right: 22,
+    textAlign: "right",
+    top: 15,
+    width: 62
+  },
+  figmaPaymentPlanSubprice: {
+    color: "rgba(247, 245, 239, 0.58)",
+    fontFamily: "Inter_500Medium",
+    fontSize: 10.5,
+    includeFontPadding: false,
+    lineHeight: 15,
+    position: "absolute",
+    right: 22,
+    textAlign: "right",
+    top: 40,
+    width: 98
+  },
+  figmaUnlockPanel: {
+    backgroundColor: "rgba(14, 16, 20, 0.58)",
+    borderColor: "rgba(240, 208, 180, 0.16)",
+    borderRadius: 10,
+    borderWidth: 1,
+    boxShadow: "0 18px 32px rgba(0, 0, 0, 0.18)",
+    height: 178,
+    left: 23,
+    overflow: "hidden",
+    position: "absolute",
+    top: 585,
+    width: 345
+  },
+  figmaPanelTitle: {
+    color: "#F7F5EF",
+    fontFamily: "Inter_700Bold",
+    fontSize: 18,
+    includeFontPadding: false,
+    lineHeight: 22,
+    left: 23,
+    position: "absolute",
+    top: 21,
+    width: 300
+  },
+  figmaPaymentBenefitChip: {
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    borderColor: "rgba(243, 230, 214, 0.14)",
+    borderRadius: 6,
+    borderWidth: 1,
+    height: 28,
+    justifyContent: "center",
+    position: "absolute"
+  },
+  figmaPaymentBenefitText: {
+    color: "#E8DDD1",
+    fontFamily: "Inter_500Medium",
+    includeFontPadding: false,
+    letterSpacing: 0,
+    textAlign: "center"
+  },
+  figmaHowPanel: {
+    left: 31,
+    minHeight: 240,
+    position: "absolute",
+    top: 797,
+    width: 329
+  },
+  figmaHowPanelTitle: {
+    color: "#F7F5EF",
+    fontFamily: "Inter_700Bold",
+    fontSize: 22,
+    includeFontPadding: false,
+    lineHeight: 26,
+    width: 329
+  },
+  figmaPaymentStep: {
+    minHeight: 52,
+    left: 0,
+    position: "absolute",
+    width: 329
+  },
+  figmaPaymentStepIndex: {
+    backgroundColor: "transparent",
+    borderColor: "#C46A3A",
+    borderRadius: 9.5,
+    borderWidth: 1,
+    color: "#C46A3A",
+    fontFamily: "Inter_700Bold",
+    fontSize: 8.5,
+    height: 19,
+    includeFontPadding: false,
+    left: 0,
+    lineHeight: 10,
+    overflow: "hidden",
+    paddingTop: 4,
+    position: "absolute",
+    textAlign: "center",
+    top: 4,
+    width: 19
+  },
+  figmaPaymentStepTitle: {
+    color: "#F7F5EF",
+    fontFamily: "Inter_700Bold",
+    fontSize: 14.5,
+    includeFontPadding: false,
+    left: 36,
+    lineHeight: 18,
+    position: "absolute",
+    top: 0,
+    width: 260
+  },
+  figmaPaymentStepBody: {
+    color: "rgba(247, 245, 239, 0.6)",
+    fontFamily: "Inter_500Medium",
+    fontSize: 11.5,
+    includeFontPadding: false,
+    left: 36,
+    lineHeight: 15,
+    position: "absolute",
+    top: 24,
+    width: 264
   },
   backgroundFill: {
     flex: 1

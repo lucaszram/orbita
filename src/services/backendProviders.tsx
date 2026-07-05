@@ -7,6 +7,12 @@ const extra = Constants.expoConfig?.extra as Record<string, string | undefined> 
 const convexUrl = process.env.EXPO_PUBLIC_CONVEX_URL ?? extra?.convexUrl;
 const clerkPublishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ?? extra?.clerkPublishableKey;
 
+export const backendConfig = {
+  convexUrl,
+  clerkPublishableKey,
+  isConfigured: Boolean(convexUrl && clerkPublishableKey)
+};
+
 export function BackendProviders({ children }: { children: ReactNode }) {
   const convex = useMemo(() => (convexUrl ? new ConvexReactClient(convexUrl) : null), []);
 
@@ -14,8 +20,8 @@ export function BackendProviders({ children }: { children: ReactNode }) {
     return <>{children}</>;
   }
 
-  const { ClerkProvider, useAuth } = require("@clerk/clerk-expo");
-  const { tokenCache } = require("@clerk/clerk-expo/token-cache");
+  const { ClerkProvider, useAuth } = require("@clerk/expo");
+  const { tokenCache } = require("@clerk/expo/token-cache");
   const { ConvexProviderWithClerk } = require("convex/react-clerk");
 
   return (
