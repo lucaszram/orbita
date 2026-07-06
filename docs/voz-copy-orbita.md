@@ -71,3 +71,16 @@ Para iterar los prompts del backend (`dailyLlmReadings` / editorial diario). El 
 3. Marcamos qué chirría → refinamos el prompt → repetimos.
 
 Esta guía es la **iteración 1**. Se va afinando con cada review.
+
+---
+
+## Iteración 2 — pendiente (para Codex)
+
+**Bug de contenido:** en la Home, `modules.energy` ("Energía del día") sale **idéntico a `header.subheadline`** — ambos muestran el tema de la casa (ej. "Casa 8: profundidad, confianza y cambio"). Se ve repetido.
+
+**Fix:** que `modules.energy` sea un **read propio de energía del día** (nivel/carácter energético), distinto del subtítulo. Ejemplos de tono objetivo:
+- "Media, más para sostener que para arrancar."
+- "En subida: rinde el foco largo, no los sprints."
+- "Baja y densa: mejor cerrar que abrir."
+
+Debe seguir la voz vos/LATAM de arriba. El subtítulo puede quedarse con el tema de la casa; la energía es otra cosa.
