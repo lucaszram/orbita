@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { orbita } from "@/theme/orbita";
 
 /**
@@ -32,9 +32,9 @@ export function glyphFor(title: string): string {
   return best ?? "☉";
 }
 
-export function GlyphRow({ title, body }: { title: string; body: string }) {
+export function GlyphRow({ title, body, onPress }: { title: string; body: string; onPress?: () => void }) {
   return (
-    <View style={styles.row}>
+    <Pressable onPress={onPress} disabled={!onPress} style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
       <View style={styles.head}>
         <View style={styles.marker}>
           <Text style={styles.glyph}>{glyphFor(title)}</Text>
@@ -43,12 +43,13 @@ export function GlyphRow({ title, body }: { title: string; body: string }) {
         <Text style={styles.arrow}>→</Text>
       </View>
       <Text style={styles.body}>{body}</Text>
-    </View>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   row: { borderBottomColor: orbita.colors.line, borderBottomWidth: 1, paddingVertical: orbita.spacing.xl },
+  pressed: { opacity: 0.6 },
   head: { alignItems: "center", flexDirection: "row" },
   marker: {
     alignItems: "center",

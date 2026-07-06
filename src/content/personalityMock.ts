@@ -2,7 +2,7 @@ import type { PersonalityReadingPayload } from "@/services/appRefs";
 
 /** Mock tipado del horóscopo de personalidad (forma = charts.personalityReading). */
 export const personalityMock: PersonalityReadingPayload = {
-  headline: "Quién sos, en tu propio cielo.",
+  headline: "Tu carta, leída como carácter.",
   sections: [
     {
       key: "identidad",

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { router } from "expo-router";
 import { DetailScreen } from "@/components/home/DetailScreen";
 import { Divider, Eyebrow, TabStrip } from "@/components/orbita/kit";
 import { GlyphRow } from "@/components/orbita/GlyphRow";
@@ -24,7 +25,7 @@ export default function TransitosPorAreaScreen() {
       <Divider />
       <Eyebrow>TRÁNSITOS POR ÁREA</Eyebrow>
       {transitos.porArea.map((t) => (
-        <GlyphRow key={t.title} title={t.title} body={t.body} />
+        <GlyphRow key={t.title} title={t.title} body={t.body} onPress={() => router.push("/reading/transito")} />
       ))}
     </DetailScreen>
   );

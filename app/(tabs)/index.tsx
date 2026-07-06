@@ -64,6 +64,16 @@ export default function HomeScreen() {
           <Eyebrow>TAMBIÉN HOY</Eyebrow>
           <InsightRow title="Una pregunta para hoy" body="El Vacío · una pregunta por día" onPress={() => router.push("/reading/void")} />
           <InsightRow title="Fase lunar y calendario" body="Luna creciente · tu mes en energía" onPress={() => router.push("/reading/luna")} />
+          <InsightRow
+            title="Tu carta, leída como carácter"
+            body="Horóscopo de personalidad · identidad, amor, crecimiento"
+            onPress={() => router.push("/reading/personalidad")}
+          />
+          <InsightRow
+            title="Qué te impulsa, qué te pesa"
+            body="Mapa de valores · una foto, no una sentencia"
+            onPress={() => router.push("/reading/valores")}
+          />
         </Section>
       </ScrollView>
     </View>

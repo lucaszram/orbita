@@ -2,7 +2,7 @@ import type { TransitDetailPayload } from "@/services/appRefs";
 
 /** Mock tipado del tránsito destacado del día para la Web B0. */
 export const transitMock: TransitDetailPayload = {
-  title: "Mercurio está tocando tu Venus.",
+  title: "Mercurio cruza tu Venus.",
   aspect: { type: "Conjunción", angleLabel: "0°" },
   scene: {
     transitingBody: { name: "Mercurio", label: "MERCURIO · HOY" },
@@ -19,10 +19,10 @@ export const transitMock: TransitDetailPayload = {
   frequency: {
     label: "Una vez por año, más o menos.",
     timeline: [
-      { label: "Ppios 2024", current: false },
-      { label: "Ppios 2025", current: false },
-      { label: "Ppios 2026", current: true },
-      { label: "Ppios 2027", current: false }
+      { label: "Ene 2024", current: false },
+      { label: "Ene 2025", current: false },
+      { label: "Ene 2026", current: true },
+      { label: "Ene 2027", current: false }
     ]
   },
   earth: {
