@@ -1,11 +1,11 @@
-import { useQuery } from "convex/react";
-import React from "react";
+import { useAction, useMutation, useQuery } from "convex/react";
+import React, { useState } from "react";
 import { Inter_400Regular, Inter_500Medium, Inter_700Bold } from "@expo-google-fonts/inter";
 import { Newsreader_500Medium } from "@expo-google-fonts/newsreader";
 import { useFonts } from "expo-font";
 import { Link } from "expo-router";
-import { AlertCircle, ArrowRight } from "lucide-react-native";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { AlertCircle, ArrowRight, Clock } from "lucide-react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
 import Svg, { Circle, Line, Text as SvgText } from "react-native-svg";
 import { ImmersiveScreen } from "@/components/web/immersive-bg";
 import { LiveGate } from "@/components/web/live";
@@ -30,7 +30,8 @@ const SIGN_ABBR: Record<string, string> = {
   Libra: "LIB", Escorpio: "ESC", Sagitario: "SAG", Capricornio: "CAP", Acuario: "ACU", Piscis: "PIS"
 };
 const PLANET_ABBR: Record<string, string> = {
-  Sol: "Sol", Luna: "Luna", Mercurio: "Mer", Venus: "Ven", Marte: "Mar", "Júpiter": "Júp", Saturno: "Sat"
+  Sol: "Sol", Luna: "Luna", Mercurio: "Mer", Venus: "Ven", Marte: "Mar", "Júpiter": "Júp", Saturno: "Sat",
+  Urano: "Ura", Neptuno: "Nep", "Plutón": "Plu"
 };
 // Ángulos fijos (mismo layout que el diseño Figma), por orden de placements.
 const PLANET_ANGLES = [35, 200, 60, 12, 315, 145, 240];
@@ -48,7 +49,14 @@ function NatalWheel({ payload, size }: { payload: NatalChartPayload; size: numbe
   const romans = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
   const signOrder = ["ARI", "TAU", "GÉM", "CÁN", "LEO", "VIR", "LIB", "ESC", "SAG", "CAP", "ACU", "PIS"];
 
-  const planets = payload.placements.slice(0, 7).map((p, i) => ({ ...p, deg: PLANET_ANGLES[i % PLANET_ANGLES.length] }));
+  // Posición real por longitud eclíptica (fullDegree): ángulo de rueda = 180 - grado.
+  // Fallback a ángulos fijos para el mock (sin `degree`).
+  const planets = payload.placements
+    .filter((p) => PLANET_ABBR[p.planet])
+    .map((p, i) => ({
+      ...p,
+      deg: typeof p.degree === "number" ? (180 - p.degree + 360) % 360 : PLANET_ANGLES[i % PLANET_ANGLES.length]
+    }));
   const angleOf: Record<string, number> = {};
   planets.forEach((p) => { angleOf[p.planet] = p.deg; });
 
@@ -126,7 +134,128 @@ function ChartWithBackend() {
   const data = useQuery(appApi.charts.current, {});
   if (data === undefined) return <Status kind="loading" />;
   if (data === null) return <Status kind="empty" />;
-  return <ChartScreen payload={data.payload} />;
+  const payload = mapNatalChart(data);
+  const birth = (data as { payload?: { birth?: BirthInfo } })?.payload?.birth;
+  const needsTime = payload.triad.ascendant.sign === "—" && !!birth;
+  return <ChartScreen payload={payload} topSlot={needsTime ? <BirthTimeFixer birth={birth as BirthInfo} /> : undefined} />;
+}
+
+type BirthInfo = {
+  birthDate: string;
+  birthPlaceLabel: string;
+  latitude?: number;
+  longitude?: number;
+  timezone: string;
+};
+
+/** Campo para corregir/agregar la hora de nacimiento y recalcular sin re-hacer el onboarding. */
+function BirthTimeFixer({ birth }: { birth: BirthInfo }) {
+  const complete = useMutation(appApi.onboarding.completeBirthData);
+  const calc = useAction(appApi.charts.calculateOrCreateNatalChart);
+  const [time, setTime] = useState("");
+  const [state, setState] = useState<"idle" | "saving" | "error">("idle");
+  const valid = /^([01]?\d|2[0-3]):[0-5]\d$/.test(time.trim());
+
+  async function save() {
+    if (!valid || state === "saving") return;
+    setState("saving");
+    try {
+      await complete({
+        birthDate: birth.birthDate,
+        birthPlaceLabel: birth.birthPlaceLabel,
+        latitude: birth.latitude,
+        longitude: birth.longitude,
+        timezone: birth.timezone,
+        birthTime: time.trim(),
+        birthTimePrecision: "known"
+      });
+      await calc({});
+      // charts.current se actualiza solo (reactividad) → aparece el Ascendente.
+    } catch {
+      setState("error");
+    }
+  }
+
+  return (
+    <View style={styles.fixer}>
+      <View style={styles.fixerHead}>
+        <Clock color={colors.copperSoft} size={18} strokeWidth={1.8} />
+        <Text style={styles.fixerTitle}>Agregá tu hora de nacimiento</Text>
+      </View>
+      <Text style={styles.fixerBody}>Sin la hora exacta no podemos calcular tu Ascendente ni tus casas. Ingresala en 24h y recalculamos.</Text>
+      <View style={styles.fixerRow}>
+        <TextInput
+          value={time}
+          onChangeText={setTime}
+          placeholder="10:40"
+          placeholderTextColor={colors.boneDim}
+          style={styles.fixerInput}
+          keyboardType="numbers-and-punctuation"
+        />
+        <Pressable onPress={save} style={[styles.fixerBtn, (!valid || state === "saving") && styles.fixerBtnOff]} disabled={!valid || state === "saving"}>
+          <Text style={styles.fixerBtnText}>{state === "saving" ? "Recalculando…" : "Guardar y recalcular"}</Text>
+        </Pressable>
+      </View>
+      {state === "error" && <Text style={styles.fixerError}>No se pudo recalcular. Probá de nuevo.</Text>}
+    </View>
+  );
+}
+
+const cap = (s?: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : "");
+const HARMONY_BY_TYPE: Record<string, "harmony" | "tension"> = {
+  trine: "harmony", sextile: "harmony", conjunction: "harmony",
+  square: "tension", opposition: "tension", quincunx: "tension", inconjunct: "tension"
+};
+
+/** Traduce el payload real de `charts.current` (AstrologyAPI) a `NatalChartPayload`. */
+function mapNatalChart(doc: unknown): NatalChartPayload {
+  const p = ((doc as { payload?: unknown })?.payload ?? doc ?? {}) as Record<string, unknown>;
+  const raw: Array<Record<string, unknown>> = Array.isArray(p.placements) ? (p.placements as Array<Record<string, unknown>>) : [];
+  const noon = p.calculationTimeSource === "noon_fallback";
+  const find = (k: string) => raw.find((x) => x.key === k);
+  const signOf = (x?: Record<string, unknown>) => cap((x?.signEs as string) ?? (x?.sign as string));
+  const houseOf = (x?: Record<string, unknown>) => (typeof x?.house === "number" ? (x.house as number) : undefined);
+
+  // Sin hora válida no hay Asc/casas fiables → los sacamos de la lista.
+  const skip = new Set(noon ? ["ascendant", "midheaven"] : []);
+  const placements = raw
+    .filter((x) => !skip.has(x.key as string))
+    .map((x) => ({
+      planet: (x.label as string) ?? (x.key as string),
+      sign: signOf(x),
+      house: houseOf(x),
+      degree: typeof x.fullDegree === "number" ? (x.fullDegree as number) : undefined
+    }));
+
+  const sun = find("sun"), moon = find("moon"), asc = find("ascendant");
+  const triad = {
+    sun: { planet: "Sol", sign: signOf(sun) || "—", house: houseOf(sun) },
+    moon: { planet: "Luna", sign: signOf(moon) || "—", house: houseOf(moon) },
+    ascendant: { planet: "Ascendente", sign: noon || !asc ? "—" : signOf(asc) }
+  };
+
+  const byKey: Record<string, string> = {};
+  raw.forEach((x) => { byKey[x.key as string] = (x.label as string) ?? (x.key as string); });
+  const aspects = (Array.isArray(p.aspects) ? (p.aspects as Array<Record<string, unknown>>) : [])
+    .filter((a) => byKey[a.from as string] && byKey[a.to as string])
+    .map((a) => ({
+      from: byKey[a.from as string],
+      to: byKey[a.to as string],
+      type: ((a.typeEs as string) ?? (a.type as string)) || "",
+      harmony: HARMONY_BY_TYPE[a.type as string] ?? "harmony"
+    }));
+
+  const houses = (Array.isArray(p.houses) ? (p.houses as Array<Record<string, unknown>>) : [])
+    .map((h) => ({ house: (h.house as number) ?? (h.number as number), sign: signOf(h) }));
+
+  return {
+    triad,
+    placements,
+    houses,
+    aspects,
+    accuracy: noon ? "Hora aproximada · ascendente y casas pendientes" : "Hora exacta · ascendente afinado",
+    limitations: []
+  };
 }
 
 function Status({ kind }: { kind: "loading" | "empty" }) {
@@ -153,7 +282,7 @@ function Status({ kind }: { kind: "loading" | "empty" }) {
   );
 }
 
-export function ChartScreen({ payload }: { payload: NatalChartPayload }) {
+export function ChartScreen({ payload, topSlot }: { payload: NatalChartPayload; topSlot?: React.ReactNode }) {
   const { width } = useWindowDimensions();
   const isNarrow = width < 900;
   const [fontsLoaded] = useFonts({ Inter_400Regular, Inter_500Medium, Inter_700Bold, Newsreader_500Medium });
@@ -176,8 +305,10 @@ export function ChartScreen({ payload }: { payload: NatalChartPayload }) {
       <View style={[styles.header, { paddingHorizontal: pad }]}>
         <Text style={styles.eyebrow}>Carta natal</Text>
         <Text style={[styles.title, isNarrow && styles.titleNarrow]}>Estos son tus puntos de partida.</Text>
-        <Text style={styles.sub}>Tu cielo en el momento en que naciste. El punto de partida de todas las lecturas.</Text>
+        <Text style={styles.sub}>Tu cielo exacto en el instante en que naciste. Sobre esto se calcula todo lo demás.</Text>
       </View>
+
+      {topSlot ? <View style={{ paddingHorizontal: pad }}>{topSlot}</View> : null}
 
       <View style={[styles.content, { paddingHorizontal: pad }, isNarrow && styles.stack]}>
         <View style={styles.wheelWrap}>
@@ -275,13 +406,23 @@ const styles = StyleSheet.create({
   titleNarrow: { fontSize: 32, lineHeight: 38 },
   sub: { color: colors.boneMuted, fontFamily: "Inter_400Regular", fontSize: 18, lineHeight: 27, maxWidth: 640 },
 
-  content: { flexDirection: "row", gap: 56, paddingBottom: 40, paddingTop: 40 },
-  stack: { flexDirection: "column", alignItems: "center" },
-  wheelWrap: { alignItems: "center", justifyContent: "center" },
+  content: { alignItems: "flex-start", flexDirection: "row", gap: 56, paddingBottom: 40, paddingTop: 40 },
+  stack: { alignItems: "center", flexDirection: "column" },
+  wheelWrap: { alignItems: "center" },
   side: { flex: 1, gap: 16, minWidth: 300 },
 
   card: { backgroundColor: colors.panel, borderColor: colors.line, borderRadius: 12, borderWidth: 1, gap: 14, padding: 22 },
   cardLabel: { color: colors.copperSoft, fontFamily: "Inter_700Bold", fontSize: 12, letterSpacing: 1 },
+  fixer: { backgroundColor: "rgba(196,106,58,0.08)", borderColor: "rgba(214,154,106,0.35)", borderRadius: 12, borderWidth: 1, gap: 12, marginBottom: 24, padding: 20 },
+  fixerHead: { alignItems: "center", flexDirection: "row", gap: 9 },
+  fixerTitle: { color: colors.bone, fontFamily: "Inter_700Bold", fontSize: 15 },
+  fixerBody: { color: colors.boneMuted, fontFamily: "Inter_400Regular", fontSize: 14, lineHeight: 21 },
+  fixerRow: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  fixerInput: { backgroundColor: "rgba(7,8,10,0.5)", borderColor: colors.line, borderRadius: 8, borderWidth: 1, color: colors.bone, fontFamily: "Inter_500Medium", fontSize: 16, paddingHorizontal: 14, paddingVertical: 11, width: 110 },
+  fixerBtn: { backgroundColor: colors.bone, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 12 },
+  fixerBtnOff: { opacity: 0.4 },
+  fixerBtnText: { color: colors.black, fontFamily: "Inter_700Bold", fontSize: 14 },
+  fixerError: { color: colors.copperSoft, fontFamily: "Inter_500Medium", fontSize: 13 },
 
   triadRow: { gap: 3 },
   triadRole: { color: colors.copperSoft, fontFamily: "Inter_700Bold", fontSize: 10, letterSpacing: 0.6 },

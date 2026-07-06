@@ -1,5 +1,5 @@
 import { ComponentType, useEffect, useMemo, useRef, useState } from "react";
-import { useMutation } from "convex/react";
+import { useAction, useMutation } from "convex/react";
 import { Inter_400Regular, Inter_500Medium, Inter_700Bold } from "@expo-google-fonts/inter";
 import { Newsreader_400Regular, Newsreader_500Medium } from "@expo-google-fonts/newsreader";
 import { useFonts } from "expo-font";
@@ -8,6 +8,7 @@ import { useRouter } from "expo-router";
 import { ArrowLeft, ArrowRight, Check, Diamond, Heart, Moon, Orbit, Sparkles, Sun } from "lucide-react-native";
 import {
   ActivityIndicator,
+  Animated,
   ImageBackground,
   Pressable,
   ScrollView,
@@ -28,7 +29,7 @@ import {
   type PlanId
 } from "@/content/onboardingSteps";
 import { formatSign, getZodiacSign } from "@/domain/zodiac";
-import { appApi } from "@/services/appRefs";
+import { appApi, proposedApi } from "@/services/appRefs";
 import { useOrbitaAuth } from "@/hooks/useOrbitaAuth";
 
 const colors = {
@@ -67,6 +68,11 @@ const BENEFIT_TILES = [
 
 type TimeState = { hour: string; minute: string; period: "AM" | "PM" };
 const pad2 = (s: string) => String(Number(s)).padStart(2, "0");
+function to24h(t: TimeState): string {
+  const h = Number(t.hour) % 12;
+  const h24 = t.period === "PM" ? h + 12 : h;
+  return `${pad2(String(h24))}:${pad2(t.minute)}`;
+}
 
 export type OnboardingData = {
   identity?: Identity;
@@ -114,6 +120,13 @@ export function OrbitaOnboarding({ backend }: { backend?: OnboardingBackend } = 
     return formatSign(getZodiacSign(`${year}-${pad2(month)}-${pad2(day)}`));
   }, [day, month, year]);
 
+  // Transición suave al cambiar de paso (fade + slide sutil).
+  const fade = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    fade.setValue(0);
+    Animated.timing(fade, { toValue: 1, duration: 340, useNativeDriver: true }).start();
+  }, [index]);
+
   const calcRef = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
     if (step.kind !== "calc") return;
@@ -131,7 +144,8 @@ export function OrbitaOnboarding({ backend }: { backend?: OnboardingBackend } = 
     return {
       identity,
       birthDate: `${year}-${pad2(month)}-${pad2(day)}`,
-      birthTime: timeUnknown ? undefined : `${time.hour}:${time.minute} ${time.period}`,
+      // 24h "HH:MM" (el backend no parsea "8:30 AM").
+      birthTime: timeUnknown ? undefined : to24h(time),
       birthTimePrecision: timeUnknown ? "unknown" : "known",
       birthPlaceLabel: place ?? placeQuery,
       timezone:
@@ -193,7 +207,15 @@ export function OrbitaOnboarding({ backend }: { backend?: OnboardingBackend } = 
           </View>
 
           <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-            {renderStep()}
+            <Animated.View
+              style={{
+                width: "100%",
+                opacity: fade,
+                transform: [{ translateY: fade.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }]
+              }}
+            >
+              {renderStep()}
+            </Animated.View>
           </ScrollView>
 
           {step.kind !== "calc" && (
@@ -267,7 +289,7 @@ export function OrbitaOnboarding({ backend }: { backend?: OnboardingBackend } = 
             {IDENTITY_OPTIONS.map((o) => (
               <Pressable key={o.value} onPress={() => setIdentity(o.value)} style={[styles.option, identity === o.value && styles.optionOn]}>
                 <Text style={[styles.optionText, identity === o.value && styles.optionTextOn]}>{o.label}</Text>
-                {identity === o.value && <Check color={colors.black} size={18} strokeWidth={2.4} />}
+                {identity === o.value && <Check color={colors.copperSoft} size={18} strokeWidth={2.4} />}
               </Pressable>
             ))}
           </QBlock>
@@ -506,10 +528,10 @@ const styles = StyleSheet.create({
   sunHintStrong: { fontFamily: "Newsreader_500Medium", fontSize: 17 },
   privacy: { color: colors.boneDim, fontFamily: "Inter_400Regular", fontSize: 12, lineHeight: 18, marginTop: 6, textAlign: "center" },
 
-  option: { alignItems: "center", backgroundColor: colors.cardSolid, borderColor: colors.line, borderRadius: 14, borderWidth: 1, flexDirection: "row", justifyContent: "space-between", minHeight: 58, paddingHorizontal: 20 },
-  optionOn: { backgroundColor: colors.bone, borderColor: colors.bone },
+  option: { alignItems: "center", backgroundColor: colors.cardSolid, borderColor: colors.line, borderRadius: 14, borderWidth: 1, flexDirection: "row", justifyContent: "space-between", minHeight: 60, paddingHorizontal: 20 },
+  optionOn: { backgroundColor: "rgba(196,106,58,0.16)", borderColor: colors.copperSoft, shadowColor: "#C46A3A", shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.35, shadowRadius: 18 },
   optionText: { color: colors.bone, fontFamily: "Inter_500Medium", fontSize: 17 },
-  optionTextOn: { color: colors.black, fontFamily: "Inter_700Bold" },
+  optionTextOn: { color: colors.bone, fontFamily: "Inter_700Bold" },
 
   suggestion: { borderColor: "rgba(244,238,228,0.1)", borderTopWidth: 1, paddingVertical: 12 },
   suggestionText: { color: colors.bone, fontFamily: "Inter_400Regular", fontSize: 15 },
@@ -571,8 +593,9 @@ const styles = StyleSheet.create({
 export function OnboardingWithBackend() {
   const auth = useOrbitaAuth();
   const completeBirthData = useMutation(appApi.onboarding.completeBirthData);
-  const calcChart = useMutation(appApi.charts.calculateOrCreateNatalChart);
+  const calcChart = useAction(appApi.charts.calculateOrCreateNatalChart);
   const genToday = useMutation(appApi.readings.generateToday);
+  const resolvePlace = useAction(proposedApi.resolvePlace);
   const { SignIn } = require("@clerk/expo/web") as { SignIn: ComponentType<Record<string, unknown>> };
 
   const backend: OnboardingBackend = {
@@ -588,17 +611,38 @@ export function OnboardingWithBackend() {
       />
     ),
     complete: async (data) => {
+      // Resolvemos el lugar → coordenadas + timezone reales para una carta precisa.
+      // Defensivo: si el backend todavía no resuelve (o falla), caemos al timezone del browser.
+      let latitude: number | undefined;
+      let longitude: number | undefined;
+      let placeId: string | undefined;
+      let timezone = data.timezone;
+      try {
+        const res = await resolvePlace({ query: data.birthPlaceLabel });
+        const place = res?.status === "success" ? res.places?.[0] : undefined;
+        if (place) {
+          if (typeof place.latitude === "number") latitude = place.latitude;
+          if (typeof place.longitude === "number") longitude = place.longitude;
+          if (place.timezone) timezone = place.timezone;
+          if (place.placeId) placeId = place.placeId;
+        }
+      } catch {
+        // fallback: timezone del browser, sin coordenadas
+      }
       await completeBirthData({
         birthDate: data.birthDate,
         birthTime: data.birthTime,
         birthTimePrecision: data.birthTimePrecision,
         birthPlaceLabel: data.birthPlaceLabel,
-        timezone: data.timezone
+        placeId,
+        latitude,
+        longitude,
+        timezone
       });
       await calcChart({});
       const now = new Date();
       const localDate = `${now.getFullYear()}-${pad2(String(now.getMonth() + 1))}-${pad2(String(now.getDate()))}`;
-      await genToday({ localDate, timezone: data.timezone });
+      await genToday({ localDate, timezone });
     }
   };
 

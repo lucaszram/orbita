@@ -231,6 +231,11 @@ export const appApi = {
       null
     >
   },
+  home: {
+    // Read path de la Home real (público-safe: null sin sesión). Se lee DESPUÉS de
+    // llamar la action `transits.getToday`, que actualiza dailyReadings.
+    getDaily: anyApi.home.getDaily as FunctionReference<"query", "public", { localDate: string }, unknown>
+  },
   charts: {
     // Carta natal
     current: anyApi.charts.current as FunctionReference<"query", "public", Empty, NatalChartDoc | null>,

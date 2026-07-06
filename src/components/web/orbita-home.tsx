@@ -1,4 +1,5 @@
-import { useQuery } from "convex/react";
+import { useAction, useQuery } from "convex/react";
+import { useEffect, useState } from "react";
 import { Inter_400Regular, Inter_500Medium, Inter_700Bold } from "@expo-google-fonts/inter";
 import { Newsreader_400Regular, Newsreader_500Medium } from "@expo-google-fonts/newsreader";
 import { useFonts } from "expo-font";
@@ -14,11 +15,13 @@ import {
   useWindowDimensions,
   View
 } from "react-native";
-import { LiveGate } from "@/components/web/live";
+import { ImmersiveScreen } from "@/components/web/immersive-bg";
+import { LiveGate, LiveLoading } from "@/components/web/live";
+import { useOrbitaAuth } from "@/hooks/useOrbitaAuth";
 import { WebNav } from "@/components/web/web-nav";
 import { webAssets } from "@/content/webAssets";
 import { homeMock } from "@/content/homeMock";
-import { appApi } from "@/services/appRefs";
+import { appApi, proposedApi } from "@/services/appRefs";
 import type { PublicDailyHome } from "@/services/publicLabRefs";
 
 const colors = {
@@ -86,53 +89,78 @@ function placeFromTz(tz: string): string {
   return last.replace(/_/g, " ");
 }
 
-export function toHomeView(payload: PublicDailyHome): HomeView {
-  const secondary = Array.isArray(payload.transits.secondary)
-    ? payload.transits.secondary.map((t) => readString(t)).filter(Boolean)
+const capSign = (s?: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : "—");
+
+/** Triángulo Sol/Luna/Asc desde el payload real de `charts.current`. */
+export function triadFromChart(chart: unknown): HomeView["triad"] | undefined {
+  const placements = (chart as { payload?: { placements?: unknown; calculationTimeSource?: string } })?.payload?.placements;
+  if (!Array.isArray(placements)) return undefined;
+  const noon = (chart as { payload?: { calculationTimeSource?: string } })?.payload?.calculationTimeSource === "noon_fallback";
+  const find = (k: string) => (placements as Array<Record<string, unknown>>).find((p) => p.key === k);
+  const sun = find("sun"), moon = find("moon"), asc = find("ascendant");
+  return [
+    { role: "Sol", sign: capSign(sun?.signEs as string) },
+    { role: "Luna", sign: capSign(moon?.signEs as string) },
+    { role: "Asc", sign: noon || !asc ? "—" : capSign(asc?.signEs as string) }
+  ];
+}
+
+const ACCURACY_LABEL: Record<string, string> = {
+  calculated: "Hora exacta · ascendente afinado",
+  noon_fallback: "Hora aproximada · sin ascendente",
+  approximate: "Hora aproximada"
+};
+
+/** Defensivo: mapea el payload real de `home.getDaily` (shape flat) a HomeView, sin crashear. */
+export function toHomeView(payload: unknown, triadOverride?: HomeView["triad"], greetingName?: string): HomeView {
+  const p = (asRecord(payload) ?? {}) as Record<string, unknown>;
+  const header = asRecord(p.header) ?? {};
+  const modules = asRecord(p.modules) ?? {};
+  const natal = asRecord(p.natalBase) ?? {};
+  const ht = asRecord(p.highlightedTransit) ?? {};
+  const transitsObj = asRecord(p.transits) ?? {};
+  const longRead = asRecord(p.longRead) ?? {};
+  const futureSelf = asRecord(p.futureSelf) ?? {};
+  const voidBlock = asRecord(p.void) ?? {};
+
+  const secondary = Array.isArray(transitsObj.secondary)
+    ? transitsObj.secondary.map((t) => readString(t)).filter(Boolean)
     : [];
-  const topics = Array.isArray(payload.topics)
-    ? payload.topics.map((t) => {
+  const topics = Array.isArray(p.topics)
+    ? (p.topics as unknown[]).map((t) => {
         const r = asRecord(t);
-        return {
-          title: readString(r?.title, "Tema"),
-          oneLine: readString(r?.oneLine ?? r?.body),
-          question: readString(r?.question)
-        };
+        return { title: readString(r?.title, "Tema"), oneLine: readString(r?.oneLine ?? r?.body), question: readString(r?.question) };
       })
     : [];
-  const longRead = asRecord(payload.longRead);
-  const futureSelf = asRecord(payload.futureSelf);
-  const voidBlock = asRecord(payload.void);
+
   return {
-    dateLabel: formatDate(payload.header.localDate),
-    place: placeFromTz(payload.header.timezone),
-    greeting: payload.header.greeting,
-    headline: payload.header.headline,
-    subheadline: payload.header.subheadline,
-    triad: [
-      { role: "Sol", sign: readString(payload.natalBase.sun, "—") },
-      { role: "Luna", sign: readString(payload.natalBase.moon, "—") },
-      { role: "Asc", sign: readString(payload.natalBase.ascendant, "—") }
-    ],
-    accuracy: payload.natalBase.accuracy,
-    do: payload.modules.do,
-    avoid: payload.modules.avoid,
-    energy: payload.modules.energy,
-    action: payload.modules.action,
-    question: payload.modules.question,
+    dateLabel: formatDate(readString(header.localDate) || readString(p.localDate)),
+    place: placeFromTz(readString(header.timezone)),
+    greeting: greetingName ? `Buenas, ${greetingName}.` : readString(header.greeting, "Hola"),
+    headline: readString(header.headline),
+    subheadline: readString(header.subheadline),
+    triad:
+      triadOverride ?? [
+        { role: "Sol", sign: readString(natal.sun, "—") },
+        { role: "Luna", sign: readString(natal.moon, "—") },
+        { role: "Asc", sign: readString(natal.ascendant, "—") }
+      ],
+    accuracy: ACCURACY_LABEL[readString(natal.accuracy)] ?? (triadOverride ? "Hora exacta · ascendente afinado" : ""),
+    do: Array.isArray(modules.do) ? (modules.do as string[]) : [],
+    avoid: Array.isArray(modules.avoid) ? (modules.avoid as string[]) : [],
+    energy: readString(modules.energy),
+    action: readString(modules.action),
+    question: readString(modules.question) || readString(voidBlock.questionOfDay),
     transit: {
-      headline: readString(payload.transits.highlighted, "Sin tránsito destacado."),
-      explanation: payload.transits.explanation,
+      headline: readString(ht.displayText) || readString(transitsObj.highlighted, "Sin tránsito destacado."),
+      explanation: readString(transitsObj.explanation) || readString(longRead.body),
       secondary
     },
     topics,
-    deepDive: {
-      title: readString(longRead?.title, "Deep Dive"),
-      body: readString(longRead?.body)
-    },
+    deepDive: { title: readString(longRead.title, "Deep Dive"), body: readString(longRead.body) },
     closing: {
-      prompt: readString(futureSelf?.prompt ?? voidBlock?.questionOfDay, "¿Qué te movió hoy?"),
-      placeholder: readString(futureSelf?.placeholder, "Hoy noto que…")
+      prompt: readString(futureSelf.prompt ?? voidBlock.questionOfDay, "¿Qué te movió hoy?"),
+      placeholder: readString(futureSelf.placeholder, "Hoy noto que…")
     }
   };
 }
@@ -152,15 +180,22 @@ export function OrbitaHome() {
 }
 
 function HomeWithBackend() {
-  const data = useQuery(appApi.readings.getToday, { localDate: todayLocalDate() });
+  const { name, email } = useOrbitaAuth();
+  const genTransits = useAction(proposedApi.transitToday);
+  const data = useQuery(appApi.home.getDaily, { localDate: todayLocalDate() });
+  const chart = useQuery(appApi.charts.current, {});
+  const [genDone, setGenDone] = useState(false);
+  const greetingName = name || (email ? email.split("@")[0] : undefined);
 
-  if (data === undefined) {
-    return <StatusScreen kind="loading" />;
-  }
-  if (data === null) {
-    return <StatusScreen kind="empty" />;
-  }
-  return <HomeScreen view={toHomeView(data.payload)} source="live" />;
+  useEffect(() => {
+    // dispara la generación de tránsitos → actualiza dailyReadings (que lee home.getDaily)
+    genTransits({ localDate: todayLocalDate() }).then(() => setGenDone(true)).catch(() => setGenDone(true));
+  }, []);
+
+  if (data === undefined) return <LiveLoading />;
+  if (data === null) return genDone ? <StatusScreen kind="empty" /> : <LiveLoading />;
+  const triad = chart ? triadFromChart(chart) : undefined;
+  return <HomeScreen view={toHomeView(data, triad, greetingName)} source="live" />;
 }
 
 function StatusScreen({ kind }: { kind: "loading" | "empty" | "error" }) {
@@ -224,6 +259,7 @@ export function HomeScreen({ view, source }: { view: HomeView; source: "demo" | 
   const pad = isNarrow ? 24 : 120;
 
   return (
+    <ImmersiveScreen asset="dailyTexture" opacity={0.24}>
     <ScrollView style={styles.page} contentContainerStyle={styles.pageContent} showsVerticalScrollIndicator={false}>
       {/* Top bar */}
       <WebNav active="hoy" meta={`${view.dateLabel.split(" ").slice(0, 3).join(" ")} · ${view.place}`} />
@@ -353,6 +389,7 @@ export function HomeScreen({ view, source }: { view: HomeView; source: "demo" | 
         </Text>
       </View>
     </ScrollView>
+    </ImmersiveScreen>
   );
 }
 
@@ -395,8 +432,8 @@ function TextCard({ title, body, highlight }: { title: string; body: string; hig
 }
 
 const styles = StyleSheet.create({
-  page: { backgroundColor: colors.black, flex: 1 },
-  pageContent: { backgroundColor: colors.black },
+  page: { backgroundColor: "transparent", flex: 1 },
+  pageContent: { backgroundColor: "transparent" },
   center: { alignItems: "center", backgroundColor: colors.black, flex: 1, gap: 14, justifyContent: "center", padding: 24 },
   statusText: { color: colors.boneMuted, fontFamily: "Inter_500Medium", fontSize: 14 },
   statusCard: { alignItems: "flex-start", backgroundColor: colors.panel, borderColor: colors.line, borderRadius: 12, borderWidth: 1, gap: 8, maxWidth: 420, padding: 24 },

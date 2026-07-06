@@ -1,42 +1,36 @@
 import { ReactNode } from "react";
 import { LinearGradient } from "expo-linear-gradient";
-import { Image, StyleSheet, useWindowDimensions, View } from "react-native";
+import { ImageBackground, StyleSheet, useWindowDimensions, View } from "react-native";
 import { webAssets } from "@/content/webAssets";
 
 type BgKey = keyof typeof webAssets;
 
 /**
- * Capa de fondo cósmico: base negra + imagen tenue + scrim sólido + glows.
- * Debe montarse dentro de un contenedor con ALTURA DEFINIDA (ver ImmersiveScreen),
- * porque en react-native-web un `top:0/bottom:0` sin altura de padre colapsa y el
- * scrim no cubre — dejando la imagen a brillo pleno abajo.
+ * Envuelve una pantalla con fondo cósmico FIJO.
+ *
+ * Clave: la raíz tiene ALTURA EXPLÍCITA = viewport (`useWindowDimensions`), no
+ * `flex:1`. En la web el layout de Expo hace que el documento scrollee y un
+ * `flex:1` crece con el contenido → el `absoluteFill` del scrim colapsa y deja la
+ * imagen a brillo pleno. Con altura fija, el ScrollView hijo scrollea internamente
+ * y el fondo (imagen + scrim) queda fijo y parejo detrás.
  */
-export function ImmersiveBg({ asset = "heroOrbital", opacity = 0.28 }: { asset?: BgKey; opacity?: number }) {
-  const src = webAssets[asset];
-  return (
-    <View style={styles.fill} pointerEvents="none">
-      <Image source={src.require} resizeMode="cover" style={[styles.fill, { opacity }]} />
-      <View style={styles.scrim} />
-      <LinearGradient colors={["rgba(196,106,58,0.18)", "rgba(196,106,58,0)"]} style={styles.glowTop} />
-    </View>
-  );
-}
-
-/** Envuelve una pantalla: base negra + fondo inmersivo FIJO (alto = viewport) detrás del contenido. */
 export function ImmersiveScreen({
   children,
   asset = "heroOrbital",
-  opacity = 0.28
+  opacity = 0.3
 }: {
   children: ReactNode;
   asset?: BgKey;
   opacity?: number;
 }) {
-  const { height } = useWindowDimensions();
+  const { height, width } = useWindowDimensions();
   return (
-    <View style={styles.root}>
-      <View style={[styles.bgBox, { height }]} pointerEvents="none">
-        <ImmersiveBg asset={asset} opacity={opacity} />
+    <View style={[styles.root, { height, width }]}>
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+        <ImageBackground source={webAssets[asset].require} resizeMode="cover" style={StyleSheet.absoluteFill} imageStyle={{ opacity }}>
+          <View style={styles.scrim} />
+          <LinearGradient colors={["rgba(196,106,58,0.16)", "rgba(196,106,58,0)"]} style={styles.glow} />
+        </ImageBackground>
       </View>
       {children}
     </View>
@@ -44,11 +38,9 @@ export function ImmersiveScreen({
 }
 
 const styles = StyleSheet.create({
-  root: { backgroundColor: "#07080A", flex: 1 },
-  bgBox: { left: 0, position: "absolute", right: 0, top: 0 },
-  fill: { bottom: 0, left: 0, position: "absolute", right: 0, top: 0 },
-  scrim: { backgroundColor: "rgba(7,8,10,0.64)", bottom: 0, left: 0, position: "absolute", right: 0, top: 0 },
-  glowTop: { height: 460, left: 0, position: "absolute", right: 0, top: 0 }
+  root: { backgroundColor: "#07080A", overflow: "hidden" },
+  scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(7,8,10,0.66)" },
+  glow: { height: 460, left: 0, position: "absolute", right: 0, top: 0 }
 });
 
-export default ImmersiveBg;
+export default ImmersiveScreen;

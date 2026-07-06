@@ -6,7 +6,7 @@ import { Link } from "expo-router";
 import { ArrowRight, Heart, Sparkles, Sun } from "lucide-react-native";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { ImmersiveScreen } from "@/components/web/immersive-bg";
-import { LiveGate } from "@/components/web/live";
+import { LiveGate, LiveLoading } from "@/components/web/live";
 import { WebNav } from "@/components/web/web-nav";
 import { personalityMock } from "@/content/personalityMock";
 import { proposedApi, type PersonalityReadingPayload, type PersonalitySection } from "@/services/appRefs";
@@ -31,7 +31,8 @@ export function OrbitaPersonality() {
 
 function PersonalityWithBackend() {
   const data = useQuery(proposedApi.personalityReading, {});
-  if (data === undefined || data === null) return <PersonalityScreen payload={personalityMock} />;
+  if (data === undefined) return <LiveLoading />;
+  if (data === null) return <PersonalityScreen payload={personalityMock} />;
   return <PersonalityScreen payload={data} />;
 }
 

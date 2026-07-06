@@ -69,7 +69,7 @@ export const homeMock: PublicDailyHome = {
   longRead: {
     title: "El tránsito de hoy, con más contexto.",
     body:
-      "Cuando la Luna toca a Mercurio, lo que sentís pesa más que lo que pensás. Te contamos por qué hoy conviene posponer las definiciones finas y qué mirar en cambio."
+      "Cuando la Luna toca a Mercurio, lo que sentís pesa más que lo que pensás. Por eso hoy conviene posponer las definiciones finas y prestar atención a lo que aparece entre líneas."
   },
   void: {
     questionOfDay: "¿Qué estás sosteniendo por costumbre más que por deseo?"

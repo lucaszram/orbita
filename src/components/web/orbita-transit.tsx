@@ -1,5 +1,5 @@
-import { useQuery } from "convex/react";
-import React from "react";
+import { useAction } from "convex/react";
+import React, { useEffect, useState } from "react";
 import { Inter_400Regular, Inter_500Medium, Inter_700Bold } from "@expo-google-fonts/inter";
 import { Newsreader_500Medium } from "@expo-google-fonts/newsreader";
 import { useFonts } from "expo-font";
@@ -7,6 +7,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Check } from "lucide-react-native";
 import { ActivityIndicator, ImageBackground, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import Svg, { Circle, Line, Path, Rect, Text as SvgText } from "react-native-svg";
+import { ImmersiveScreen } from "@/components/web/immersive-bg";
 import { LiveGate } from "@/components/web/live";
 import { WebNav } from "@/components/web/web-nav";
 import { transitMock } from "@/content/transitMock";
@@ -81,11 +82,24 @@ function todayLocalDate() {
 }
 
 function TransitWithBackend() {
-  const data = useQuery(proposedApi.transitToday, { localDate: todayLocalDate() });
-  if (data === undefined || data === null) {
-    return <TransitScreen payload={transitMock} />;
+  const getToday = useAction(proposedApi.transitToday);
+  const [state, setState] = useState<{ kind: "loading" } | { kind: "error" } | { kind: "ok"; data: unknown }>({ kind: "loading" });
+
+  useEffect(() => {
+    let alive = true;
+    getToday({ localDate: todayLocalDate() })
+      .then((r) => { if (alive) setState({ kind: "ok", data: r }); })
+      .catch(() => { if (alive) setState({ kind: "error" }); });
+    return () => { alive = false; };
+  }, []);
+
+  if (state.kind === "loading") {
+    return <View style={styles.center}><ActivityIndicator color={colors.copperSoft} /><Text style={styles.loadingText}>Leyendo el cielo de hoy…</Text></View>;
   }
-  return <TransitScreen payload={data} />;
+  if (state.kind === "error") return <TransitScreen payload={transitMock} />;
+  const data = state.data;
+  if (!data) return <TransitScreen payload={transitMock} />;
+  return <TransitScreen payload={data as TransitDetailPayload} />;
 }
 
 export function TransitScreen({ payload }: { payload: TransitDetailPayload }) {
@@ -98,6 +112,7 @@ export function TransitScreen({ payload }: { payload: TransitDetailPayload }) {
   const pad = isNarrow ? 24 : 120;
 
   return (
+    <ImmersiveScreen asset="heroOrbital" opacity={0.26}>
     <ScrollView style={styles.page} contentContainerStyle={styles.pageContent} showsVerticalScrollIndicator={false}>
       <WebNav active="transitos" />
       <View style={[styles.header, { paddingHorizontal: pad }]}>
@@ -168,13 +183,15 @@ export function TransitScreen({ payload }: { payload: TransitDetailPayload }) {
         </View>
       </View>
     </ScrollView>
+    </ImmersiveScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { backgroundColor: colors.black, flex: 1 },
-  pageContent: { backgroundColor: colors.black, paddingBottom: 96 },
+  page: { backgroundColor: "transparent", flex: 1 },
+  pageContent: { backgroundColor: "transparent", paddingBottom: 96 },
   center: { alignItems: "center", backgroundColor: colors.black, flex: 1, justifyContent: "center" },
+  loadingText: { color: colors.boneMuted, fontFamily: "Inter_500Medium", fontSize: 14, marginTop: 12 },
 
   header: { gap: 14, paddingBottom: 24, paddingTop: 56 },
   eyebrow: { color: colors.copperSoft, fontFamily: "Inter_700Bold", fontSize: 12, letterSpacing: 1.2, textTransform: "uppercase" },

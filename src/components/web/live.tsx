@@ -1,10 +1,27 @@
 import React, { ReactNode, useEffect, useState } from "react";
 import { useMutation } from "convex/react";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { appApi } from "@/services/appRefs";
 import { backendConfig } from "@/services/backendProviders";
 import { useOrbitaAuth } from "@/hooks/useOrbitaAuth";
 
-/** Error boundary: si una query real falla, muestra el fallback en vez de blanquear la página. */
+/** Spinner estable sobre fondo oscuro — evita mostrar el mock mientras resuelve auth/query. */
+export function LiveLoading() {
+  return (
+    <View style={loadingStyles.wrap}>
+      <ActivityIndicator color="#D69A6A" />
+    </View>
+  );
+}
+const loadingStyles = StyleSheet.create({
+  wrap: { alignItems: "center", backgroundColor: "#07080A", flex: 1, justifyContent: "center" }
+});
+
+function urlForcedLive() {
+  return typeof window !== "undefined" && new URLSearchParams(window.location.search).get("live") === "1";
+}
+
+/** Error boundary: si una query real falla, cae al fallback (mock) para no romper la página. */
 class LiveBoundary extends React.Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
   static getDerivedStateFromError() {
@@ -15,16 +32,12 @@ class LiveBoundary extends React.Component<{ fallback: ReactNode; children: Reac
   }
 }
 
-function urlForcedLive() {
-  return typeof window !== "undefined" && new URLSearchParams(window.location.search).get("live") === "1";
-}
-
 /**
- * Elige entre datos mock y datos reales:
+ * Elige entre datos mock y datos reales, **auth-aware**:
  * - Sin Convex → mock.
  * - Con Convex, sin Clerk → live solo con ?live=1.
- * - Con Convex + Clerk → live automático cuando el usuario está autenticado (o ?live=1).
- * Envuelve el live en un error boundary que cae al mock si la query falla.
+ * - Con Convex + Clerk → **logueado ves live por defecto** (sin ?live); sin sesión, mock (demo).
+ * Mientras carga, spinner estable (nunca el mock) para no saltar mock→real.
  */
 export function LiveGate({ mock, live }: { mock: ReactNode; live: () => ReactNode }) {
   if (!backendConfig.hasConvex) return <>{mock}</>;
@@ -33,7 +46,7 @@ export function LiveGate({ mock, live }: { mock: ReactNode; live: () => ReactNod
 }
 
 function AuthGate({ mock, live }: { mock: ReactNode; live: () => ReactNode }) {
-  const { isLoaded, isAuthenticated } = useOrbitaAuth();
+  const { isLoaded, isSignedIn, isAuthenticated } = useOrbitaAuth();
   const ensureUser = useMutation(appApi.users.getOrCreateCurrentUser);
   const [userReady, setUserReady] = useState(false);
 
@@ -43,11 +56,14 @@ function AuthGate({ mock, live }: { mock: ReactNode; live: () => ReactNode }) {
     ensureUser({}).then(() => setUserReady(true)).catch(() => setUserReady(true));
   }, [isAuthenticated]);
 
-  if (!isLoaded) return <>{mock}</>;
-  if (isAuthenticated) {
-    if (!userReady) return <>{mock}</>; // breve, mientras se asegura el usuario
-    return <LiveBoundary fallback={mock}>{live()}</LiveBoundary>;
+  if (!isLoaded) return <LiveLoading />;
+  // Decidimos mock vs live por la sesión de CLERK (isSignedIn), que resuelve rápido.
+  if (!isSignedIn) {
+    // Sin sesión → demo mock (estable). ?live=1 fuerza el intento live (para testing).
+    return urlForcedLive() ? <LiveBoundary fallback={mock}>{live()}</LiveBoundary> : <>{mock}</>;
   }
-  if (urlForcedLive()) return <LiveBoundary fallback={mock}>{live()}</LiveBoundary>;
-  return <>{mock}</>;
+  // Logueado en Clerk: esperamos el handshake de Convex + la fila users con SPINNER,
+  // nunca el mock (así no hay salto mock→real durante ese instante).
+  if (!isAuthenticated || !userReady) return <LiveLoading />;
+  return <LiveBoundary fallback={mock}>{live()}</LiveBoundary>;
 }

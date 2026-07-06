@@ -5,7 +5,7 @@ import { useFonts } from "expo-font";
 import { ActivityIndicator, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import Svg, { Circle, Line, Polygon, Text as SvgText } from "react-native-svg";
 import { ImmersiveScreen } from "@/components/web/immersive-bg";
-import { LiveGate } from "@/components/web/live";
+import { LiveGate, LiveLoading } from "@/components/web/live";
 import { WebNav } from "@/components/web/web-nav";
 import { valuesMock } from "@/content/valuesMock";
 import { proposedApi, type ValuesMapPayload } from "@/services/appRefs";
@@ -57,7 +57,8 @@ export function OrbitaValues() {
 
 function ValuesWithBackend() {
   const data = useQuery(proposedApi.valuesMap, {});
-  if (data === undefined || data === null) return <ValuesScreen payload={valuesMock} />;
+  if (data === undefined) return <LiveLoading />;
+  if (data === null) return <ValuesScreen payload={valuesMock} />;
   return <ValuesScreen payload={data} />;
 }
 
