@@ -164,7 +164,7 @@ export function TopicsSection({
           <Pressable
             key={t.topic}
             onPress={() => onOpenTopic(t)}
-            style={({ pressed }) => [styles.insightRow, !active && styles.insightRowDim, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.insightRow, pressed && styles.pressed]}
           >
             <View style={styles.insightHead}>
               <View style={styles.topicMarker}>
@@ -345,23 +345,22 @@ const styles = StyleSheet.create({
   tabsTop: { marginTop: 0 },
   topicMarker: {
     alignItems: "center",
-    borderColor: orbita.colors.line,
-    borderRadius: 12,
+    borderColor: "rgba(244,238,228,0.28)",
+    borderRadius: 13,
     borderWidth: 1,
-    height: 24,
+    height: 26,
     justifyContent: "center",
     marginRight: orbita.spacing.md,
-    width: 24
+    width: 26
   },
-  topicGlyph: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 12 },
-  insightBody: { marginLeft: 24 + orbita.spacing.md },
+  topicGlyph: { color: orbita.colors.bone, fontFamily: orbita.fonts.body, fontSize: 13 },
+  insightBody: { marginLeft: 26 + orbita.spacing.md },
   tab: { alignItems: "center" },
   tabLabel: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.mono, fontSize: 13 },
   tabLabelActive: { color: orbita.colors.copper },
   tabUnderline: { backgroundColor: orbita.colors.copper, borderRadius: 1, height: 2, marginTop: orbita.spacing.sm, width: 34 },
 
-  insightRow: { paddingVertical: orbita.spacing.xl, borderBottomColor: orbita.colors.line, borderBottomWidth: 1 },
-  insightRowDim: { opacity: 0.5 },
+  insightRow: { paddingVertical: 28, borderBottomColor: orbita.colors.line, borderBottomWidth: 1 },
   insightHead: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
   insightTitle: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 24, lineHeight: 30, flex: 1 },
   arrow: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 20, marginLeft: orbita.spacing.md },

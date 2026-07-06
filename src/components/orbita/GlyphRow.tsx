@@ -53,15 +53,15 @@ const styles = StyleSheet.create({
   head: { alignItems: "center", flexDirection: "row" },
   marker: {
     alignItems: "center",
-    borderColor: orbita.colors.line,
-    borderRadius: 12,
+    borderColor: "rgba(244,238,228,0.28)",
+    borderRadius: 13,
     borderWidth: 1,
-    height: 24,
+    height: 26,
     justifyContent: "center",
     marginRight: orbita.spacing.md,
-    width: 24
+    width: 26
   },
-  glyph: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 12 },
+  glyph: { color: orbita.colors.bone, fontFamily: orbita.fonts.body, fontSize: 13 },
   title: { color: orbita.colors.bone, flex: 1, fontFamily: orbita.fonts.serif, fontSize: 24, lineHeight: 30 },
   arrow: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 20, marginLeft: orbita.spacing.md },
   body: {
@@ -69,7 +69,7 @@ const styles = StyleSheet.create({
     fontFamily: orbita.fonts.body,
     fontSize: 14,
     lineHeight: 20,
-    marginLeft: 24 + orbita.spacing.md,
+    marginLeft: 26 + orbita.spacing.md,
     marginTop: orbita.spacing.sm
   }
 });
