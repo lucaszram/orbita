@@ -84,6 +84,21 @@ Variable de Convex dev:
 pnpm exec convex env set ORBITA_BACKOFFICE_ALLOWED_EMAILS lucaszramos11@gmail.com
 ```
 
+## Lab público-dev
+
+`/lab` usa acciones Convex públicas-dev sin sesión para cargar datos natales, previsualizar la Home diaria y ver el mapa de horóscopo completo por perfil. Queda apagado por defecto.
+
+Variables de Convex dev:
+
+```bash
+pnpm exec convex env set ORBITA_PUBLIC_LAB_ENABLED true
+pnpm exec convex env set ORBITA_PUBLIC_LAB_KEY "<codigo-opcional>"
+```
+
+Si `ORBITA_PUBLIC_LAB_KEY` queda vacío, alcanza con `ORBITA_PUBLIC_LAB_ENABLED=true`. Si se define una key, la web debe enviar ese código desde el campo `Código lab`.
+
+El lab no guarda usuarios, sujetos, runs ni lecturas. Para guardar, revisar y aprobar contenido sigue existiendo `/backoffice`. El raw completo de proveedor tampoco vuelve por `/lab`; queda reservado para `/backoffice`.
+
 ## Expo
 
 `.env.local` ya fue creado por Clerk/Convex. No imprimirlo ni commitearlo.
@@ -99,12 +114,15 @@ pnpm exec expo start --web
 Abrir:
 
 ```text
+http://localhost:8081/lab
 http://localhost:8081/backoffice
 ```
 
 ## Resultado esperado
 
 - Si faltan envs, `/backoffice` muestra un estado de setup.
+- Si `/lab` está apagado en Convex, muestra error de lab deshabilitado al generar.
+- Si `/lab` genera `Horóscopo completo`, muestra los bloques Identity, Carta, Daily, Cielo actual, Futuro y Extras con fuente A/B/C, estado y faltantes.
 - Si Clerk está configurado pero no hay sesión, muestra login web de Clerk.
 - Si Clerk inició sesión pero Convex todavía no confirmó identidad, muestra `Conectando Convex` o `Falta conectar Clerk con Convex`.
 - Si el email está allowlisted, muestra el lab para crear personas, correr el modelo stub e inspeccionar runs.

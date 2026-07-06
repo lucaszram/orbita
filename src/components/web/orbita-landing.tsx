@@ -109,7 +109,7 @@ export function OrbitaLanding() {
               Tu día con contexto astrológico. Carta natal, tránsitos y guía diaria con tono editorial, sin promesas raras.
             </Text>
             <View style={[styles.ctaRow, isNarrow && styles.ctaRowNarrow]}>
-              <WebLinkButton href="/onboarding" icon={ArrowRight} label="Empezar" />
+              <WebLinkButton href="/empezar" icon={ArrowRight} label="Empezar" />
               <WebLinkButton href="/studio" icon={LockKeyhole} label="Entrar al Studio" variant="secondary" />
             </View>
           </View>
@@ -225,14 +225,14 @@ function WebLinkButton({
   label,
   variant = "primary"
 }: {
-  href: "/onboarding" | "/studio";
+  href: "/empezar" | "/onboarding" | "/studio";
   icon: IconComponent;
   label: string;
   variant?: "primary" | "secondary";
 }) {
   return (
     <Link href={href} asChild>
-      <Pressable style={[styles.ctaButton, variant === "secondary" && styles.ctaButtonSecondary]}>
+      <Pressable style={StyleSheet.flatten([styles.ctaButton, variant === "secondary" && styles.ctaButtonSecondary])}>
         <Text selectable style={[styles.ctaText, variant === "secondary" && styles.ctaTextSecondary]}>{label}</Text>
         <Icon color={variant === "secondary" ? colors.bone : colors.black} size={17} strokeWidth={2} />
       </Pressable>

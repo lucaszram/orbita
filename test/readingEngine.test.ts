@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   createActiveTransit,
   createDailyReading,
+  createHomeReading,
   createRelationshipReading,
   createWeeklyEnergy,
   createWeeklyReading
@@ -83,6 +84,33 @@ describe("daily reading engine", () => {
     assert.equal(energy.weekStart, "2026-06-29");
     assert.equal(reading.weekStart, "2026-06-29");
     assert.ok(reading.luckyNumber >= 1 && reading.luckyNumber <= 99);
+  });
+
+  it("builds a stable Home reading with the four home topics", () => {
+    const first = createHomeReading(baseProfile, "2026-07-01");
+    const second = createHomeReading(baseProfile, "2026-07-01");
+
+    assert.deepEqual(first, second);
+    assert.deepEqual(
+      first.topics.map((topic) => topic.topic),
+      ["amor", "trabajo", "familia", "vinculos"]
+    );
+    assert.ok(first.headline.length > 0);
+    assert.ok(first.hace.length > 0 && first.evita.length > 0);
+    assert.equal(first.triad.sun.sign, "aries");
+  });
+
+  it("marks the triad approximate when birth time is missing", () => {
+    const approximate = createHomeReading(baseProfile, "2026-07-01");
+    const exact = createHomeReading(
+      { ...baseProfile, birthTime: "10:48", birthPlace: "Buenos Aires" },
+      "2026-07-01"
+    );
+
+    assert.equal(approximate.triad.accuracy, "approximate");
+    assert.ok(approximate.triad.accuracyNote);
+    assert.equal(exact.triad.accuracy, "calculated");
+    assert.equal(exact.triad.accuracyNote, null);
   });
 
   it("creates transit and relationship readings with safe bounded scores", () => {

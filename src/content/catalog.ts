@@ -309,6 +309,12 @@ const topicCopy: Record<Topic, Omit<ContentTemplate, "id" | "kind" | "topic">> =
     body: "Una dinamica vieja no necesita repetirse para pertenecer. Podes amar con un limite.",
     action: "Responde desde lo que hoy podes sostener, no desde la culpa."
   },
+  vinculos: {
+    tone: "suave",
+    title: "Vinculos con claridad",
+    body: "La conexion se ordena cuando bajas la expectativa a una frase simple. Menos interpretacion, mas presencia.",
+    action: "Deci lo que necesitas en una linea, sin adornar ni exigir."
+  },
   decisiones: {
     tone: "directo",
     title: "Decision limpia",

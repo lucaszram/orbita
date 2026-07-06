@@ -8,6 +8,7 @@ The active project work is broader than this file: continue planning/designing t
 
 ## Status
 
+- 2026-07-05 App Core V4.7 EAS Update published to branch/channel `preview`: group `9e5b5f49-969f-45a4-b964-5017ab3f242e`, runtime `exposdk:54.0.0`, iOS update `019f33ff-069a-7369-8c6a-3a98b348b9a7`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/9e5b5f49-969f-45a4-b964-5017ab3f242e`, message `App core V4.7 — 5 tabs + detalles + estados`. Publish required explicitly adding `@babel/plugin-transform-react-jsx@7.29.7` because EAS export could not resolve the Babel JSX transform. Simulator Expo Go was updated to `54.0.7`; screenshots were taken from Expo Go preview after seeding a local-only test profile in Simulator AsyncStorage. First visual note: bottom tab labels are clipping/truncating near the edges on iPhone 17 Pro Simulator.
 - Startup memory files have been added: `AGENTS.md`, `PROJECT_CONTEXT.md`, `CURRENT_TASK.md`, and `docs/architecture.md`.
 - `README.md`, `docs/contexto-actual.md`, `docs/figma-context.md`, and `docs/decision-log.md` were adjusted so the new bootstrap files are discoverable and the old prompt-only Figma page is treated as historical.
 - Existing context docs already describe the current product direction, Figma file, onboarding flow, Home V1.1, asset library, Archive 7, Archive 9, and the symbolic asset library.
@@ -113,6 +114,49 @@ The active project work is broader than this file: continue planning/designing t
 - A web asset manifest now curates Home core assets, onboarding optimized assets, and Archive 10 symbols as a shared web visual language. The assets are used as integrated hero/texture/backplate/symbol material, not as a wholesale gallery.
 - `convex/studio.ts` adds a local `checkAccess` query, but it is not synced to Convex dev yet. The sync command was blocked by policy because it uploads local backend code externally; the user must run `pnpm exec convex dev --once --typecheck disable` locally before `/studio` can validate against the live dev deployment.
 - The consumer app still uses local/stub behavior; real astrology is intentionally limited to `/backoffice` until outputs are reviewed and approved.
+- Órbita Web B0 (Home diaria) is now designed in Figma as the source of truth on a new page `WEB B0 - Órbita Home Web` (file `BEB5v6SbgJn2Nipm8Qa0wE`, wrapper frame node `225:10`). It is a desktop dark-premium daily Home built from the current app language (not the legacy warm MVP theme): tokens negro `#07080A`, cobre `#C46A3A`/`#D69A6A`, hueso `#F4EEE4`, Newsreader (títulos) + Inter (UI), captured in a local Figma variable collection `Órbita Web` (colors bg/charcoal/panel/copper/copper-soft/bone). Content structure mirrors the `PublicDailyHome` shape from `src/components/web/orbita-lab.tsx`.
+- Home B0 sections built and screenshot-verified: Top bar (marca orbital + nav `Hoy · Carta · Tránsitos · Diario` + fecha/zona + avatar), Hero/Titular del día (eyebrow fecha, saludo Newsreader, titular, subtítulo, chips tríada natal Sol/Luna/Asc + nota de precisión), Guía diaria (2 col: Hacé/Evitá tabla editorial + Energía/Acción/Pregunta destacada), Tránsito destacado (banda charcoal + secundarios), Temas grid 2×2 (Amor/Trabajo/Familia/Vínculos con línea + pregunta), Deep Dive (visual + título + CTA), Cierre (prompt de diario + input + guardar + disclaimer), Footer.
+- Real Órbita assets integrated into Home B0 via `upload_assets`: `assets/orbita/core/orbita_daily_texture_b.png` as hero background (imageHash `08d5a1cefa31f275148b77a2926c100bead696e2`, dark overlay for legibility) and `assets/orbita/core/orbita_long_read_thumbnail_a.png` in the Deep Dive slot (imageHash `6ba780e033b70ebf332f572c422e5f76bf4997ab`).
+- Figma render gotchas found while building Home B0: zodiac unicode glyphs (♌♓♎) render as color emoji — use text labels instead; and low-opacity fills on frames bound to a color variable render at full opacity — use plain SOLID paints with `opacity` for tints/hairline fills (variable-bound opacity still works for text fills and strokes).
+- Home B0 immersive pass applied after user feedback ("podría ser mucho más inmersivo"): hero rebuilt as a tall cinematic cosmic scene (hero orbital image `4061046a3880d77c4104c6b1883b02329e59c596`, bottom-anchored content, blurred copper glow, 780px), Tránsito destacado turned into a cosmic scene (daily texture bg + scrim + glow), a faint global texture added behind the whole wrapper (daily texture at 6%), copper blur-glows added to Guía/Temas/Cierre, and Temas got an orbital ring-system backplate (`f01be82e91d78c2d2c75f3729fee4e3d5dbaef5a`, 16%) with glassy translucent topic cards. Immersion technique: full-bleed image fills + layered dark scrims + absolute blurred copper ellipses (LAYER_BLUR) as glows.
+- Carta Natal screen (B0) built as a new immersive desktop frame `Carta Natal / Desktop` on the same `WEB B0` page (node `252:2`, at canvas x=1640). Left: a natal wheel (`252:12`) built as an SVG vector (`figma.createNodeFromSvg`) — outer copper ring with degree ticks, 12 sign sectors + labels (ARI…PIS), inner house ring with Roman numerals I–XII, 7 planet dots (Sol/Luna/Mer/Ven/Mar/Júp/Sat) with copper labels, and 4 aspect lines (blue=armonía, copper=tensión) crossing the center. Geometry computed by angle in JS; sign glyphs avoided (emoji issue) in favor of text abbreviations. Right: interpretation panel with Tu tríada, Posiciones clave list, Aspectos legend, and "Cómo leerla" note + `Ver mi día` CTA. Immersive bg (faint texture + central copper glow) consistent with Home.
+- Mapa de valores screen (B0) built as new immersive desktop frame `Mapa de valores / Desktop` (node `260:2`, canvas x=3280). Left: an 8-axis radar chart (`260:12`) as SVG geometry (grid rings, spokes, two overlaid data polygons — Armonía copper, Tensión blue — with vertex dots) plus 8 icon+label axis groups (Amor/Familia/Trabajo/Dinero/Libertad/Creatividad/Estabilidad/Vínculos) using inline lucide SVGs. Right: reading panel with Referencias legend, Te impulsa (copper bars) and Te pesa (blue bars) using fixed-width track+fill bars, and a Cómo leerlo note. Immersive bg consistent with Home/Carta.
+- Entrada de datos screen (B0) built as new immersive desktop frame `Entrada de datos / Desktop` (node `266:2`, canvas x=4920). Two columns: left = intro + three why-points (Fecha→Sol, Lugar→ascendente/casas, Hora→afina, con íconos lucide en cajas cobre) + privacy line; right = glass form card with date/place/time input-styled fields (con íconos calendar/pin/clock), "No sé la hora exacta" toggle, and `Ver mi carta` CTA. No real inputs — es maqueta de diseño.
+- Tránsito en el espacio screen (B0, Co-Star style) built as new immersive desktop frame `Tránsito en el espacio / Desktop` (node `271:70`, canvas x=6560). Centerpiece is a cosmic scene panel (`271:80`, hero orbital image bg + scrim) with an SVG dashed connection line Vos→Mercurio→tu Venus, glowing planet dots/rings, and label chips (VOS, MERCURIO · HOY, TU VENUS · LEO, CONJUNCIÓN · 0°). Below: left col = "La lectura" sentence-builder (source-labeled fragments in Newsreader) + "Cada cuánto pasa" timeline (4 year dots, current = copper); right col = copper-tinted "Cómo se juega en la tierra" card with checklist + "La ventana ~5 días" card.
+- Horóscopo de personalidad screen (B0, editorial long-read) built as new immersive desktop frame `Horóscopo de personalidad / Desktop` (node `280:2`, canvas x=8200). Centered 760px reading column: header + 3 sections (Identidad/Sol en Leo, Amor y relaciones/Venus en Libra, Crecimiento y expansión/Júpiter en casa 12), each with a circular icon marker (sun/heart/sparkles), centered Newsreader title + intro, and a glass interpretation card (icon heading + body). Delicate SVG diamond dividers between sections; closing disclaimer + `Ver mi día` CTA. Tone guardrails applied: Júpiter casa 12 reframed as inner growth (no money/business claims), explicit "tendencias, no un destino" disclaimer.
+- WEB B0 design library COMPLETE (6 screens) on `WEB B0 - Órbita Home Web` (left→right on canvas): Home (`225:10`, x0), Carta Natal (`252:2`, x1640), Mapa de valores (`260:2`, x3280), Entrada de datos (`266:2`, x4920), Tránsito en el espacio (`271:70`, x6560), Horóscopo de personalidad (`280:2`, x8200). Next new screen would go at x≈9740.
+- WEB B0 flow reorganized in Figma to the real user journey (frames repositioned left→right: Entrada `266:2` x0 → Carta `252:2` x1640 → Home `225:10` x3280 → Tránsito `271:70` x4920 → Mapa `260:2` x6560 → Personalidad `280:2` x8200) with a page title `Órbita — Web B0` + numbered step labels above each screen (branch: desde Home se abren tránsito/valores/personalidad).
+- Web B0 backend-connection layer prepared (frontend side). `convex/_generated/` is empty in this worktree, so the front binds Convex via `anyApi` + hand-declared types (same pattern as `publicLabRefs.ts`):
+  - `src/services/appRefs.ts` — typed `appApi` bindings to EXISTING functions (`users.*`, `birthData.*`, `onboarding.*`, `charts.current`/`calculateOrCreateNatalChart`, `readings.getToday`/`generateToday`/`save`/`unsave`, `subscriptions.getCurrent`) + payload shapes (`NatalChartPayload`, reuse `PublicDailyHome`), and `proposedApi` for 4 NOT-YET-EXISTING functions with payload shapes (`ValuesMapPayload`, `PersonalityReadingPayload`, `TransitDetailPayload`, `PlaceLookup`).
+  - `docs/web-b0-backend-map.md` — pantalla→dato→función mapping table + flow diagram + list of missing functions.
+  - `convex/CHANGELOG.md` (2026-07-05) + `// TODO: pendiente backend — Web B0` block in `convex/schema.ts` proposing the 4 functions: `charts.valuesMap`, `charts.personalityReading`, `transits.getToday`, `places.resolve`. These need no new tables (derive from `natalCharts`/`transitReadings`, payload v.any()).
+  - `pnpm typecheck` (tsc --noEmit) passes with the new layer.
+- WEB B0 remaining: backend (Codex) implements the 4 proposed functions; front builds each screen in code (`app/` + `src/components/web/`) against `appApi`/`proposedApi` + typed mocks; estados loading/empty/error; variante mobile/narrow.
+- Home diaria bajada a código (Expo Web) — primera pantalla B0 implementada:
+  - `src/components/web/orbita-home.tsx` — traduce el diseño Figma `Home Web / Desktop` a RN/Expo Web (top bar, hero con `webAssets.dailyTexture` + overlay, guía diaria 2 col, tránsito band, temas grid, deep dive con `webAssets.longRead`, cierre, footer). Incluye `toHomeView(payload: PublicDailyHome): HomeView` (mapper defensivo con `asRecord`/`readString`) y responsive (`isNarrow < 900`). Container `OrbitaHome`: sin Convex → renderiza el mock; con Convex → `HomeWithBackend` que usa `useQuery(appApi.readings.getToday, { localDate })` con estados loading/empty/error (`StatusScreen`).
+  - `src/content/homeMock.ts` — mock tipado `PublicDailyHome` con el copy del diseño.
+  - `app/home.tsx` — ruta web (`/home`), redirect a `/` en native (mismo patrón que `app/lab.tsx`).
+  - Verificado: `tsc --noEmit` ✓, `expo export --platform web` ✓ (bundlea sin errores de runtime, ruta `/home` incluida), `tsx --test test/*.test.ts` 14/14 ✓. Falta screenshot en navegador (entorno sin browser headless) — previsualizar con `pnpm web` → abrir `/home`.
+- Navegación web + más pantallas en código:
+  - `src/components/web/web-nav.tsx` — `WebNav` compartida con `Link` de expo-router (Hoy→/home, Carta→/carta, Tránsitos→/transito, Diario→/diario). Reemplazó el top bar inline de la Home.
+  - Carta natal en código: `src/components/web/orbita-chart.tsx` (rueda con `react-native-svg` — anillos/signos/casas/planetas/aspectos — + panel tríada/posiciones/aspectos/cómo leerla), `src/content/chartMock.ts` (`NatalChartPayload`), ruta `app/carta.tsx`. Mock-first + `?live=1` (usa `appApi.charts.current`).
+  - Tránsito en código: `src/components/web/orbita-transit.tsx` (escena cósmica: ImageBackground `heroOrbital` + SVG línea/puntos/labels + lectura por fragmentos + timeline + tierra/checklist + ventana), `src/content/transitMock.ts` (`TransitDetailPayload`), ruta `app/transito.tsx` (reemplazó placeholder). Mock-first + `?live=1` (usa `proposedApi.transitToday`).
+  - Placeholder `src/components/web/orbita-soon.tsx` para `/diario` (diseño aún solo en Figma).
+  - Verificado: `tsc --noEmit` limpio para mis archivos; dev server `expo start --web` bundlea OK (3198 módulos), rutas `/home /carta /transito /diario` responden 200.
+- Onboarding web (gamification) en código — MISMAS preguntas/copy que el onboarding de la app (`app/onboarding.tsx` V4.4): identidad (¿Cómo te identificás? Ella/Él/Prefiero no decirlo), fecha (¿Cuándo naciste?), lugar (¿Dónde naciste? + sugerencias mock), hora (¿A qué hora naciste? + "No sé la hora" → carta aproximada), + promesas, calculando (progreso animado), reveal ("Estos son tus puntos de partida" + tríada), antes/después, cuenta ("Guardá tu carta"), pago (Semanal $5 / Anual $30 · MEJOR VALOR + beneficios + legal).
+  - `src/content/onboardingSteps.ts` — steps + opciones + copy (fuente única para no divergir con la app).
+  - `src/components/web/orbita-onboarding.tsx` — máquina de estados con barra de progreso, cards seleccionables, y CTA por paso. Mock-first; al final `router.replace("/home")`. TODO wiring: `appApi.onboarding.saveDraft`/`completeBirthData`/`markPaymentState`.
+  - Ruta `app/empezar.tsx` (`/empezar`, redirect a `/onboarding` en native). Landing: CTA "Empezar" ahora → `/empezar`.
+  - Verificado: `tsc` limpio (mis archivos), dev server bundlea OK (3275 módulos), `/empezar` responde 200.
+  - REWORK tras feedback ("se ve muy feo, perdió los componentes del app, es mobile con cards"): `orbita-onboarding.tsx` ahora es un flujo **mobile enmarcado** (frame tipo teléfono centrado en stage oscuro, redondeado en desktop, full-screen en mobile) con **assets reales full-bleed por paso** (`assets/orbita/optimized/onboarding-v44/*.jpg`: logo_orbe, identify_bg, daily_base, birth_data, ascendant_horizon, personalizing, orbital_chart, before_after, account_seal, payment) + scrim. Se mantienen/agregan **cards**: opciones de identidad, tiles de beneficio con imagen (benefit_lunar/guide/practice/decisions), planes, antes/después, tríada, y las inputs dentro de un card. Chips con íconos lucide (no unicode). El **Sol sale real de la fecha** vía `getZodiacSign` (muestra "Tu Sol es X" en el paso fecha y en el reveal); Luna/Ascendente quedan honestos ("se afinan con tu hora y lugar en la carta completa") porque no hay efemérides en el cliente.
+- OJO worktree compartido: otra sesión de Claude agregó `src/components/orbita/` (TabBar.tsx + kit.tsx, untracked) y modificó `app/(tabs)/_layout.tsx` para importar `@react-navigation/bottom-tabs`, que NO está instalado. Rompe el `tsc` global (solo tipos) pero metro igual bundlea el web. No tocar esos archivos; coordinar que instalen la dep.
+- Home B0 pending: (A) pantalla de entrada de datos de nacimiento (fecha/lugar/hora) que personaliza el Home; (B) más módulos — tránsito en el espacio estilo Co-Star, secciones editoriales (Amor y relaciones, Su suerte, horóscopo de personalidad) [rueda de carta natal ✔, mapa de valores ✔]; (C) estados loading/empty/error + variante mobile/narrow; (D) bajar el diseño a Expo Web (`src/components/web` + ruta) consumiendo `PublicDailyHome`. User references for the rich modules were Co-Star transit-in-space screens + a personality-horoscope PDF.
+- Figma bar gotcha (radar): `layoutSizingHorizontal/Vertical = "FILL"` only works on children of AUTO-LAYOUT frames; a rectangle inside a plain `createFrame()` track can't be FILL — use fixed pixel widths (track fixed width + fill width = value*trackWidth).
+- Public-dev Home Lab is now implemented locally at `/lab`: it is a no-login Expo Web route for entering birth date/place/time and previewing the Home daily output without saving users, subjects, runs, or readings.
+- Backend function `convex/publicLab.ts` adds `previewDailyHome` and `resolvePlace`, both gated by `ORBITA_PUBLIC_LAB_ENABLED=true` and optional `ORBITA_PUBLIC_LAB_KEY`; the response is sanitized for Home review and does not return raw AstrologyAPI payloads.
+- Frontend `/lab` uses Convex without requiring Clerk, shows manual natal inputs, optional place lookup, loading/error/disabled states, and result tabs for Summary, Home, Chart, Transits, Questions, and Gaps.
+- Public-dev Complete Horoscope preview is now implemented in `feature/api`: `publicLab.previewCompleteHoroscope(args)` returns a full per-profile feature map for Identity, Natal Chart, Daily, Current Sky, Future, and Extras, including source model A/B/C/dataset, entitlement, status, missing backend needs, cache plan, raw policy, provider status, and embedded `dailyHome`.
+- Frontend `/lab` now has a `Generar horóscopo completo` action and `Completo` tab so a test person can show what is ready, stubbed, provider-dependent, LLM-dependent, input-dependent, or planned before user dailies are persisted.
 
 ## Decisions Made
 
@@ -134,6 +178,7 @@ The active project work is broader than this file: continue planning/designing t
 - Home Lab output decision: Co-Star-style `Do/Don't` maps to three `Hacé` items and three `Evitá` items. Every run must expose a visible `personalization` block so editorial review can tell what came from real user astrology and what is still maqueta.
 - Web V0 decision: `/` is the public landing on Expo Web only; iOS/Android keep the existing app redirect. `/studio` is the private web surface for visual/content operations.
 - Studio V0 decision: video drop/upload is mock-only for now. Do not add storage, transcoding, file persistence, or public user uploads until the visual workflow is approved.
+- Public-dev Lab decision: `/lab` is a fast no-login development surface for Home daily previews and complete profile capability maps. It must stay disabled by default in Convex and must not persist inputs or outputs; `/backoffice` remains the review/persistence surface.
 - Web asset decision: use the full Órbita asset library as a curated language system. Do not show every asset at once or treat RGB PNGs as transparent stickers.
 - Backoffice astrology provider decision: use AstrologyAPI first for backend lab calculations, keep Órbita-owned editorial text, keep the adapter isolated, and do not expose provider credentials through app/client envs.
 - Backoffice access decision: use Clerk directly with `lucaszramos11@gmail.com` allowlisted in Convex. Do not use a generic internal-code shortcut.
@@ -166,6 +211,7 @@ The active project work is broader than this file: continue planning/designing t
 - `docs/home-contenidos-personalizados.md`
 - `docs/backend-todo.md`
 - `docs/backend-setup.md`
+- `app/lab.tsx`
 - `docs/decision-log.md`
 - `docs/architecture.md`
 - `docs/symbolic-asset-library.md`
@@ -186,6 +232,7 @@ The active project work is broader than this file: continue planning/designing t
 - `supabase/schema.sql`
 - `app/index.tsx`
 - `app/backoffice.tsx`
+- `src/components/web/orbita-lab.tsx`
 - `app/studio.tsx`
 - `app/_layout.tsx`
 - `convex/schema.ts`
@@ -193,6 +240,7 @@ The active project work is broader than this file: continue planning/designing t
 - `convex/auth.config.ts`
 - `convex/backoffice.ts`
 - `convex/studio.ts`
+- `convex/publicLab.ts`
 - `convex/users.ts`
 - `convex/onboarding.ts`
 - `convex/birthData.ts`
@@ -250,13 +298,15 @@ The active project work is broader than this file: continue planning/designing t
 4. If continuing asset work, inspect `assets/orbita/higgsfield/`, `assets/orbita/symbolic-library/`, and any new batch mentioned by the user. Preserve raw files and create manifests/contact sheets/classification folders.
 5. If the user wants more exact local Archive 7/9/10 PNGs applied to Figma, use the same explicit-approval upload route that succeeded for `05-09`; do not silently fall back to old in-file fills unless the user asks.
 6. If continuing onboarding app implementation, inspect `app/onboarding.tsx` and the RNR/NativeWind config. Next practical slice is to fix the NativeWind/Reanimated export failure, launch the app on physical iPhone/Expo Go, verify `05` and `09` native pickers, `03`/`15` radio behavior, `14` avatar/input behavior, then publish a new EAS `preview` update only after it opens locally.
-7. If continuing Web V0, start from `/`, `/studio`, `src/components/web/`, `src/content/webAssets.ts`, and `convex/studio.ts`. Next practical slice: run `pnpm exec convex dev --once --typecheck disable` locally to publish the Studio access query, then open `/` and `/studio` in Expo Web with and without a Clerk session.
-8. If continuing backend work, start from `docs/backend-todo.md`, `docs/backend-setup.md`, `/backoffice`, and the existing `convex/` modules. Next practical slice: set AstrologyAPI envs in Convex, rerun `pnpm exec convex dev --once --typecheck disable` if backend files changed, rerun `Generar Home Lab` for `Lucas prueba`, review chart/Home/Deep Dive/transits/Void/Future Self output, edit text, and mark runs approved/rejected. Do not connect this to the app until lab outputs are approved.
+7. If continuing Web V0 or `/lab`, start from `/`, `/lab`, `/studio`, `src/components/web/`, `src/content/webAssets.ts`, `src/services/publicLabRefs.ts`, `convex/publicLab.ts`, and `convex/studio.ts`. Next practical slice: use `/lab` to generate the Lucas base case and `Horóscopo completo`, then verify that each feature block shows source, status, missing needs, and provider state.
+8. If continuing backend work, start in `../orbita-backend` (`feature/api`). Next practical slice: choose/configure the real astrology provider or Kerykeion/FastAPI service, configure location lookup, add a global daily sky job, add per-profile natal/daily transit cache, and define the LLM prompt/cache policy. Do not connect provider-real astrology to the app until lab outputs are approved.
 9. If continuing content/product planning, start from `docs/home-contenidos-personalizados.md`, then use `docs/textos-analisis-personalizacion.md` and `docs/referencias-costar-moonly-orbita.md` as broader references. Next practical slice: replace demo editorial strings with a real Orbita P0 editorial bank for headline, topics, three `Hacé`, three `Evitá`, action, question, Deep Dive, Void prompts, Future Self prompts, and personalization trace copy.
 10. If continuing device distribution, first unblock `expo export --platform all` for the RNR/native picker pass. The latest failure is a Worklets Babel transform exception while bundling Reanimated; the next likely fix is aligning `@babel/plugin-transform-react-jsx` with Babel 7 instead of the accidentally installed 8.x package, then rerunning export and `eas update --branch preview`.
 11. After any meaningful step, update this file with status, decisions, relevant files, next steps, and verification.
 
 ## Verification
+
+- Public-dev complete horoscope verification: `pnpm typecheck` passed in `../orbita-frontend`; Expo Web is running at `http://127.0.0.1:8081/lab`; HTTP checks to both `localhost:8081/lab` and `127.0.0.1:8081/lab` returned 200 after starting Expo outside the sandbox.
 
 - `docs/api-astrologica-orbita.md` documents the current AstrologyAPI choice, the provider endpoints, what data comes from the API, what Orbita must own, and why the provider output is not the final user-facing reading.
 - `docs/referencias-costar-moonly-orbita.md` documents Co-Star vs Moonly feature/copy/product patterns, the Orbita decision matrix, and why onboarding, natal chart, daily readings, calendar, payment, relationships, and CMS/backoffice need separate implementation paths.
@@ -531,3 +581,67 @@ The active project work is broader than this file: continue planning/designing t
 - Onboarding immersive asset pass verification: `expo export --platform ios --output-dir /private/tmp/orbita-onboarding-asset-pass-export-final` completed successfully and bundled the new selected Archive 7/10 asset layers.
 - Onboarding immersive asset pass EAS Update verification: `npx eas-cli update --branch preview --message "Onboarding immersive asset pass" --platform all` published update group `b087be8e-061d-4907-95c2-3d446bc56807` for Android and iOS, runtime `exposdk:54.0.0`, dashboard `https://expo.dev/accounts/lucasssram/projects/orbita/updates/b087be8e-061d-4907-95c2-3d446bc56807`.
 - Onboarding immersive asset pass EAS Update verification: `npx eas-cli update:list --branch preview --limit 3 --json` shows group `b087be8e-061d-4907-95c2-3d446bc56807` first on branch `preview`, above `Onboarding 06 sun emblem cleanup` and `Onboarding 11 radial chart grid`.
+
+## Home V4.5 (App Core) redesign — 2026-07-05
+
+Working in worktree `../orbita-frontend` (branch `feature/web`). Local/stub only (no Convex).
+
+### What was built
+- **Reanimated/Worklets export blocker fixed (Next Step #10):** removed the errant `@babel/plugin-transform-react-jsx@^8.0.1` from `package.json` devDependencies. It was breaking `react-native-worklets`' Babel transform (`[Worklets] Babel plugin exception: Cannot read properties of undefined (reading 'length')`) because babel-preset-expo expects the 7.x plugin. After `pnpm install`, `expo export --platform ios` bundles the full app again.
+- **New Órbita dark editorial design system** (`src/theme/orbita.ts`): tokens taken 1:1 from Figma `UX V4.5 - Órbita App Core` (fondo `#111`, bone `#f7f5ef`, muted `#a49f96`/`#777169`, copper `#c46a3a`, line `#39352f`; fonts Newsreader/Inter/Roboto Mono). Does not touch legacy `theme.ts`.
+- **Roboto Mono** added (`@expo-google-fonts/roboto-mono`) + shared `src/hooks/useOrbitaFonts.ts`.
+- **Home redesigned** (`app/(tabs)/index.tsx`): single dark scroll matching the 4 Figma frames (nodes `92:58/89/128/163`): Top (tríada natal + hero orbital SVG + señal del día + CTA Profundizar), Guía diaria (Hacé/Evitá/Energía + banda Acción), Topics (tabs Amor/Trabajo/Familia/Vínculos + filas tappables), End (lectura larga + módulo educativo + Guardar/Ver historial), plus a secondary **Extras** block keeping the legacy tarot/color/número restyled.
+- **Section components** in `src/components/home/` (`sections.tsx`, `OrbitalHero.tsx` SVG hero + mini chart, `DetailScreen.tsx` shell).
+- **Detail routes** (`app/reading/_layout.tsx` + `deep-dive.tsx`, `topic.tsx`, `long-read.tsx`), registered in `app/_layout.tsx`. CTAs: Profundizar → deep-dive, topic row → topic detail, Leer análisis → long-read, Guardar → `saveTodayReading`, Ver historial → `/(tabs)/journal`.
+- **Tab bar** restyled dark (`app/(tabs)/_layout.tsx`): surface `#151515`, active copper. NOTE: tab labels/routes unchanged (Hoy/Señales/Vínculo/Diario/Perfil); the other 4 tabs are still light content under a dark bar until migrated.
+- **Data model** (`src/domain/types.ts`): added `vinculos` topic + `homeTopicOrder`, and `HomeReading`/`Triad`/`HomeTopic`/`Placement` types. `readingEngine.ts` adds `createHomeReading` + `createTriad` (Sun real from birthDate; Moon/Asc deterministic stub, marked `approximate` when birthTime/place missing). Editorial banks in new `src/content/homeCatalog.ts` (Figma copy as first variant). `useAppState` exposes `homeReading`.
+
+### Decisions (from user)
+- Alcance: **solo la Home** a fondo; otras 4 pantallas después.
+- Legacy tarot/color/número: **se conserva** en bloque "Extras" al final, reestilizado.
+- Estilo: **migrar al lenguaje del onboarding** (dark editorial Órbita).
+- Workflows: **construir las rutas de detalle** (Profundizar / topic / lectura larga).
+
+### Verification
+- `pnpm exec tsc --noEmit`: passed.
+- `pnpm exec tsx --test test/*.test.ts`: 14 tests, 0 failures (added 2 for `createHomeReading`: determinism + 4 home topics + approximate/calculated triad).
+- Guardrail search on new Home content: clean (no destino/salud/dinero/legal claims, no NASA/védica, no unaccented `senal`).
+- `expo export --platform ios --output-dir /private/tmp/orbita-home-export`: **succeeded** after the babel fix (bundle 8.81 MB). Full app (incl. onboarding + new Home) bundles.
+- PENDING: visual/device verification. Not yet published to EAS preview. Simulator Expo Go is on a newer SDK than this SDK 54 project, so device review goes through EAS Update on branch `preview` (previous latest was the SDK 51-era `809f8cfb...`; a fresh SDK 54 update was not yet published for this Home pass).
+
+### Next steps
+1. Publish an EAS `preview` update for phone review, then compare against Figma frames (screenshots saved in scratchpad: home_top/daily/topics/end).
+2. Iterate spacing/hero fidelity from the on-device screenshots.
+3. Then migrate the other 4 tabs + consider the tab rename to Inicio/Carta/Tránsitos/Vínculo/Perfil.
+
+## App Core V4.7 — Figma flows + full frontend + backend handoff — 2026-07-05
+
+### Figma
+- New page `UX V4.7 - Órbita App Core Flows` (file `BEB5v6SbgJn2Nipm8Qa0wE`): 21 screens across 7 titled Sections with arrows (Inicio / Carta / Tránsitos / Vínculo / Perfil / Luna·Calendario / Estados). Built from `Home V1.1` visual language + real assets (uploaded a moon phase from Archive 10). Dark editorial, Newsreader/Inter/Roboto Mono, copper.
+
+### Frontend (coded to match V4.7, worktree `feature/web`, local/stub)
+- **UI kit** `src/components/orbita/kit.tsx` (OrbitaScreen, TopBar, Eyebrow, H1/H2/H3, Body, Triad, Pill, GuideRow, ActionBand, InsightRow, TabStrip, MonoLine, Note) + `TabBar.tsx` (custom 5-tab dark nav) + `states.tsx` (Cargando/Vacío/Error/Bloqueado).
+- **Tabs** restructured to Inicio/Carta/Tránsitos/Vínculo/Perfil (`app/(tabs)/`); legacy explore/relationship/profile removed, journal → `app/reading/saved.tsx`.
+- **Detail routes** `app/reading/`: carta (Posiciones), transitos (Por área), vinculo-add (form), vinculo-result, calendario (grid), void, plus (paywall), saved + existing deep-dive/topic/long-read.
+- **Data** `src/domain/appData.ts` (typed mock: CartaData/TransitosData/VinculoData/PerfilData/LunarData) + existing `readingEngine` HomeReading.
+- Verified: `tsc` OK, `tsx --test` 14/14, `expo export --platform ios` OK (bundle 8.86 MB). Not yet reviewed on device.
+
+### Backend handoff (contract — for Codex)
+- Most app-core screens map to existing/Web-B0-proposed functions. **3 new functions proposed** (Vínculo + Calendario): `relationships.add`, `relationships.synastry` -> `SynastryPayload`, `calendar.getMonth` -> `CalendarMonthPayload`.
+- Contract: `src/services/appCoreRefs.ts` (payload types), `docs/app-core-backend-map.md` (screen->function map), `convex/CHANGELOG.md` (2026-07-05 App Core entry), `// TODO: pendiente backend — App Core V4.7` block in `convex/schema.ts`.
+- Front stays on `appData.ts` mock until the 3 functions exist. Wiring = replace `buildAppData` with `useQuery(api.x.y)`.
+
+### Visual fix pass — 2026-07-05 (after first device review)
+- First `preview` publish (group `9e5b5f49-969f-45a4-b964-5017ab3f242e`, published by user) looked wrong vs Figma: screens used a hand-drawn SVG ellipse placeholder instead of the real hero assets, and the tab bar truncated labels.
+- Fixed: new `src/components/orbita/HeroImage.tsx` renders the REAL core assets per screen (home=orbital_b eclipse, carta=natal diagram, transitos=transitos_visual, vinculo=vinculo_symbol, perfil=orbital_a, longRead=editorial thumbnail) from new optimized derivatives `assets/orbita/optimized/core/*.jpg` (1024px JPEG, ~250 KB each vs 2.5 MB PNGs). Swapped in all 5 tabs, states, paywall thumb, long-read.
+- Tab bar: `flex:1` items, font 10, `numberOfLines=1`, `allowFontScaling=false` — no more truncation.
+- Header aligned to Figma: mono `ÓRBITA` + `HOY ˅` + divider (was serif "Órbita").
+- Inicio copy aligned to V4.7: eyebrow `TU DÍA EN UNA FRASE`, label `CLIMA DEL DÍA`, hero above centered triad.
+- User env notes: `@babel/plugin-transform-react-jsx@7.29.7` pinned in devDependencies (EAS export needed it); Simulator Expo Go updated to 54.0.7 with a seeded local test profile.
+- Verified: `tsc` OK, tests OK, `expo export --platform ios` OK (8.93 MB; hero asset confirmed in bundle by md5).
+- Added missing 21st screen: `app/reading/luna.tsx` (Fase lunar — real Archive 10 moon at `optimized/core/orbita_moon_phase_waxing.jpg` 92 KB, week strip, ACCIÓN LUNAR, CTA → calendario). Home "Fase lunar y calendario" now routes luna → calendario like the Figma flow. Export re-verified with moon asset in bundle.
+
+### Pending / next
+- User to republish for device review: `npx eas-cli update --branch preview --message "App core V4.7 — heros reales + tab bar fix" --platform ios` (auto-mode classifier blocks Claude from publishing).
+- Iterate fidelity from next device screenshots.
+- Backend: implement the 3 proposed functions, then front swaps mock -> Convex.

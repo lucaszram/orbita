@@ -9,6 +9,7 @@ export const topicLabels: Record<Topic, string> = {
   dinero: "Dinero",
   energia: "Energia",
   familia: "Familia",
+  vinculos: "Vinculos",
   decisiones: "Decisiones",
   claridad: "Claridad",
   proteccion: "Proteccion",

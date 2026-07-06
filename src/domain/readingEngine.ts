@@ -13,19 +13,46 @@ import {
 } from "../content/catalog";
 import {
   DailyReading,
+  HomeReading,
+  HomeTopic,
   PickCardOption,
+  Placement,
   Recommendation,
   RelationshipReading,
   ShareCard,
   Topic,
+  Triad,
   TransitEvent,
   UserProfile,
   WeeklyEnergy,
   WeeklyReading,
-  ZodiacSign
+  ZodiacSign,
+  zodiacSigns
 } from "./types";
+import {
+  dailyQuestions,
+  educationalTitles,
+  energiaFromLabel,
+  guideHeadlines,
+  guideIntros,
+  homeEndLines,
+  homeTopicCopy,
+  homeTopicKeys,
+  longReadBodies,
+  longReadTitles,
+  signalBodies,
+  signalCopies,
+  signalHeadlines
+} from "../content/homeCatalog";
 import { numberInRange, pickStable } from "./random";
 import { formatSign } from "./zodiac";
+
+const homeTopicLabels: Record<string, string> = {
+  amor: "Amor",
+  trabajo: "Trabajo",
+  familia: "Familia",
+  vinculos: "Vínculos"
+};
 
 const energyLabels = ["Baja suave", "Estable", "Intuitiva", "Movida", "Expansiva"] as const;
 
@@ -261,6 +288,89 @@ export function createDailyReading(profile: UserProfile, date = toISODate()): Da
   return {
     ...baseReading,
     shareCard: createDailyShareCard(baseReading)
+  };
+}
+
+function buildPlacement(body: Placement["body"], glyph: string, sign: ZodiacSign): Placement {
+  return { body, glyph, sign, label: formatSign(sign) };
+}
+
+/**
+ * Tríada natal. El Sol sale real de la fecha; Luna y Ascendente son un stub
+ * determinístico (todavía no hay cálculo astronómico real). Si falta hora o
+ * lugar, la tríada queda marcada como aproximada.
+ */
+export function createTriad(profile: UserProfile, date = toISODate()): Triad {
+  const seed = `${buildSeed(profile, date)}:triad`;
+  const moonSign = pickStable(zodiacSigns, `${seed}:moon`);
+  const ascSign = pickStable(zodiacSigns, `${seed}:asc`);
+  const hasFullData = Boolean(profile.birthTime && profile.birthPlace);
+
+  return {
+    sun: buildPlacement("sol", "☉", profile.zodiacSign),
+    moon: buildPlacement("luna", "☽", moonSign),
+    ascendant: buildPlacement("ascendente", "↑", ascSign),
+    accuracy: hasFullData ? "calculated" : "approximate",
+    accuracyNote: hasFullData ? null : "Lectura aproximada: sumá tu hora de nacimiento para afinar Luna y Ascendente."
+  };
+}
+
+function buildHomeTopics(seed: string): HomeTopic[] {
+  return homeTopicKeys.map((topic) => {
+    const copy = homeTopicCopy[topic as keyof typeof homeTopicCopy];
+    return {
+      topic,
+      label: homeTopicLabels[topic] ?? formatSign(topic as ZodiacSign),
+      title: copy.title,
+      oneLine: copy.oneLine,
+      detail: copy.detail,
+      hace: copy.hace,
+      evita: copy.evita,
+      question: copy.question
+    };
+  });
+}
+
+export function createHomeReading(profile: UserProfile, date = toISODate()): HomeReading {
+  const seed = `${buildSeed(profile, date)}:home`;
+  const topic = resolveTopic(profile, seed);
+  const recommendation = resolveRecommendation(topic, seed);
+  const transit = createActiveTransit(profile, date);
+  const energyScore = numberInRange(`${seed}:energy`, 42, 96);
+  const energyLabel = energyLabels[Math.min(energyLabels.length - 1, Math.floor((energyScore - 1) / 20))];
+
+  return {
+    id: `${profile.id}-${date}-home`,
+    date,
+    dateLabel: formatDateLabel(date),
+    sign: profile.zodiacSign,
+    greeting: `Hola, ${profile.name}`,
+    triad: createTriad(profile, date),
+    headline: pickStable(signalHeadlines, `${seed}:headline`),
+    body: pickStable(signalBodies, `${seed}:body`),
+    signalLabel: "CLIMA DEL DÍA",
+    signalCopy: pickStable(signalCopies, `${seed}:signal`),
+    guideEyebrow: "GUÍA DIARIA",
+    guideHeadline: pickStable(guideHeadlines, `${seed}:guide-headline`),
+    guideIntro: pickStable(guideIntros, `${seed}:guide-intro`),
+    hace: transit.doThis,
+    evita: transit.avoid,
+    energia: energiaFromLabel(energyLabel),
+    accion: recommendation.action,
+    topics: buildHomeTopics(seed),
+    longReadEyebrow: "LECTURA LARGA",
+    longReadTitle: pickStable(longReadTitles, `${seed}:long-title`),
+    longReadBody: pickStable(longReadBodies, `${seed}:long-body`),
+    educationalEyebrow: "MÓDULO EDUCATIVO",
+    educationalTitle: pickStable(educationalTitles, `${seed}:edu`),
+    endLine: pickStable(homeEndLines, `${seed}:end`),
+    question: pickStable(dailyQuestions, `${seed}:question`),
+    extras: {
+      tarotCard: pickStable(tarotCards, `${seed}:tarot`),
+      color: pickStable(colors, `${seed}:color`),
+      luckyNumber: numberInRange(`${seed}:number`, 1, 99),
+      mantra: pickStable(mantras, `${seed}:mantra`)
+    }
   };
 }
 

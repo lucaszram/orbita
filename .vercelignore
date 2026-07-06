@@ -1,0 +1,19 @@
+# Not needed for the Vercel web build (Vercel reinstalls deps + builds)
+node_modules
+.git
+.expo
+dist
+web-build
+android
+ios
+
+# Secrets — never upload
+.env
+.env.local
+
+# Raw source assets not used by the web build (~1.3 GB)
+assets/orbita/higgsfield/archive-7
+assets/orbita/higgsfield/archive-9
+assets/orbita/higgsfield/archive-10/inbox
+assets/orbita/higgsfield/archive-10/needs-review
+assets/orbita/higgsfield/archive-10/contact-sheets

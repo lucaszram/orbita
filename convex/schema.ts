@@ -192,3 +192,33 @@ export default defineSchema({
     .index("by_kind_status", ["kind", "status"])
     .index("by_locale_status", ["locale", "status"])
 });
+
+// ---------------------------------------------------------------------------
+// TODO: pendiente backend — Web B0 (propuesto por frontend, 2026-07-05)
+//
+// Las pantallas de módulos de la Web B0 necesitan estas funciones públicas.
+// No requieren tablas nuevas: derivan de `natalCharts` / `transitReadings`
+// (payload v.any()). Las formas de payload son el contrato TS del front en
+// `src/services/appRefs.ts`. Detalle en `convex/CHANGELOG.md` (2026-07-05) y
+// `docs/web-b0-backend-map.md`.
+//
+//   charts.valuesMap():                 ValuesMapPayload         // Mapa de valores
+//   charts.personalityReading():        PersonalityReadingPayload// Horóscopo de personalidad
+//   transits.getToday({ localDate }):   TransitDetailPayload     // Tránsito en el espacio
+//   places.resolve({ query }):          PlaceLookup              // geocoding real onboarding
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// TODO: pendiente backend — App Core V4.7 (propuesto por frontend, 2026-07-05)
+//
+// Las tabs Vínculo y el módulo Calendario del app core necesitan estas
+// funciones. Vínculo usa la tabla `relationshipProfiles` existente; Calendario
+// deriva de tránsitos por fecha (no requiere tabla nueva; opcional cache). Las
+// formas de payload son el contrato TS en `src/services/appCoreRefs.ts`.
+// Detalle en `convex/CHANGELOG.md` (2026-07-05) y `docs/app-core-backend-map.md`.
+//
+//   relationships.add({ name, birthDate, birthTime?, birthPlaceLabel? })
+//                                       : { relationshipProfileId }
+//   relationships.synastry({ relationshipProfileId }): SynastryPayload
+//   calendar.getMonth({ month }):       CalendarMonthPayload
+// ---------------------------------------------------------------------------

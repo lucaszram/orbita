@@ -3,6 +3,7 @@ import {
   createActiveTransit,
   createDailyReading,
   createFallbackProfile,
+  createHomeReading,
   createRelationshipReading,
   createWeeklyEnergy,
   createWeeklyReading,
@@ -10,6 +11,7 @@ import {
 } from "@/domain/readingEngine";
 import {
   DailyReading,
+  HomeReading,
   JournalEntry,
   OnboardingProfile,
   RelationshipReading,
@@ -36,6 +38,7 @@ type AppStateValue = {
   isReady: boolean;
   profile: UserProfile | null;
   todayReading: DailyReading;
+  homeReading: HomeReading;
   weeklyEnergy: WeeklyEnergy;
   weeklyReading: WeeklyReading;
   transitEvent: TransitEvent;
@@ -109,6 +112,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       saved: savedReadings.some((saved) => saved.id === reading.id)
     };
   }, [profile, savedReadings]);
+
+  const homeReading = useMemo(() => createHomeReading(profile ?? createFallbackProfile(), toISODate()), [profile]);
 
   const weeklyEnergy = useMemo(() => createWeeklyEnergy(profile ?? createFallbackProfile(), toISODate()), [profile]);
 
@@ -218,6 +223,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       isReady,
       profile,
       todayReading,
+      homeReading,
       weeklyEnergy,
       weeklyReading,
       transitEvent,
@@ -234,6 +240,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     [
       addJournalNote,
       createProfile,
+      homeReading,
       isReady,
       journalEntries,
       profile,
