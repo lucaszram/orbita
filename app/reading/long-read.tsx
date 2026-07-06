@@ -1,6 +1,7 @@
 import { View } from "react-native";
 import { DetailScreen } from "@/components/home/DetailScreen";
 import { Eyebrow, MutedBody, SerifTitle } from "@/components/home/sections";
+import { Note } from "@/components/orbita/kit";
 import { EditorialThumb } from "@/components/orbita/HeroImage";
 import { useAppState } from "@/hooks/useAppState";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
@@ -23,6 +24,7 @@ export default function LongReadScreen() {
       </View>
       <MutedBody>{homeReading.longReadBody}</MutedBody>
       <MutedBody>{homeReading.guideIntro}</MutedBody>
+      <Note>Basado en el tránsito destacado de hoy.</Note>
 
       <View style={{ height: orbita.spacing.xxl }} />
       <Eyebrow>{homeReading.educationalEyebrow}</Eyebrow>

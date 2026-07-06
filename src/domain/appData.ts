@@ -62,6 +62,10 @@ export type LunarData = {
   startCol: number;
   daysInMonth: number;
   intense: number[];
+  /** Día del mes que corresponde a hoy (anillo ○ en el calendario). */
+  today: number;
+  /** Días con fase lunar clave (☾ en el calendario). */
+  moonPhases: number[];
 };
 
 export type AppData = {
@@ -151,7 +155,9 @@ export function buildLunar(): LunarData {
     monthLabel: "JULIO 2026",
     startCol: 2,
     daysInMonth: 31,
-    intense: [3, 8, 14, 20, 27]
+    intense: [3, 8, 14, 20, 27],
+    today: 6,
+    moonPhases: [4, 11, 19, 26]
   };
 }
 

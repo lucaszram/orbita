@@ -33,7 +33,7 @@ export default function PlusScreen() {
       <View style={{ height: orbita.spacing.xl }} />
       {BENEFITS.map((b) => (
         <View key={b} style={styles.benefit}>
-          <Text style={styles.benefitDash}>—</Text>
+          <Text style={styles.benefitDash}>✓</Text>
           <Text style={styles.benefitText}>{b}</Text>
         </View>
       ))}

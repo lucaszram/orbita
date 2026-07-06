@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
 import { orbita } from "@/theme/orbita";
 
 const LABELS: Record<string, string> = {
@@ -22,6 +23,12 @@ type OrbitaTabBarProps = {
 /** Bottom nav matching the Órbita V4.7 Figma: dark bar, mono labels, copper active underline. */
 export function OrbitaTabBar({ state, navigation }: OrbitaTabBarProps) {
   const insets = useSafeAreaInsets();
+  // Sin las fonts cargadas, la fallback del sistema mide distinto y los labels
+  // se truncan ("Ini…"); mantenemos la altura del bar pero sin labels.
+  const fontsLoaded = useOrbitaFonts();
+  if (!fontsLoaded) {
+    return <View style={[styles.bar, { paddingBottom: insets.bottom + 10, height: insets.bottom + 42 }]} />;
+  }
   return (
     <View style={[styles.bar, { paddingBottom: insets.bottom + 10 }]}>
       {state.routes.map((route, index) => {
