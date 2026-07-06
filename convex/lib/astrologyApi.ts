@@ -80,6 +80,10 @@ function hasAstrologyApiCredentials(config: AstrologyApiConfig) {
   return Boolean(config.userId && config.apiKey);
 }
 
+function getAstrologyApiLocationKey(_config: AstrologyApiConfig) {
+  return process.env.ASTROLOGY_API_LOCATION_KEY ?? process.env.ASTROLOGY_API_ACCESS_TOKEN;
+}
+
 function encodeBasicAuth(userId: string, apiKey: string) {
   if (typeof Buffer !== "undefined") {
     return Buffer.from(`${userId}:${apiKey}`).toString("base64");
@@ -219,6 +223,43 @@ async function postAstrologyApi(config: AstrologyApiConfig, endpoint: string, bo
       Accept: "application/json",
       "Accept-Language": config.language,
       Authorization: `Basic ${encodeBasicAuth(config.userId, config.apiKey)}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(body)
+  });
+
+  const text = await response.text();
+  let json: unknown = null;
+  if (text) {
+    try {
+      json = JSON.parse(text);
+    } catch {
+      json = { rawText: text };
+    }
+  }
+
+  if (!response.ok) {
+    const detail = typeof json === "object" && json !== null ? JSON.stringify(json).slice(0, 500) : text.slice(0, 500);
+    throw new Error(`AstrologyAPI ${endpoint} failed with ${response.status}: ${detail}`);
+  }
+
+  return json;
+}
+
+async function postAstrologyApiLocation(config: AstrologyApiConfig, endpoint: string, body: Record<string, unknown>) {
+  const url = endpoint.startsWith("http") ? endpoint : `${config.baseUrl}/${endpoint.replace(/^\//, "")}`;
+  const locationKey = getAstrologyApiLocationKey(config);
+
+  if (!locationKey) {
+    throw new Error("AstrologyAPI location credentials are missing.");
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Accept-Language": config.language,
+      "x-astrologyapi-key": locationKey,
       "Content-Type": "application/json"
     },
     body: JSON.stringify(body)
@@ -522,11 +563,12 @@ function readNumber(record: Record<string, unknown>, keys: string[]) {
 function normalizePlaceResult(rawPlace: unknown) {
   const record = asRecord(rawPlace);
   const label =
-    readString(record, ["label", "name", "display_name", "full_name", "city", "place"]) ?? "Lugar sin nombre";
+    readString(record, ["label", "name", "display_name", "full_name", "city", "place", "place_name"]) ??
+    "Lugar sin nombre";
 
   return {
     label,
-    placeId: readString(record, ["place_id", "placeId", "id"]),
+    placeId: readString(record, ["place_id", "placeId", "id", "geoname_id"]),
     latitude: readNumber(record, ["lat", "latitude"]),
     longitude: readNumber(record, ["lon", "lng", "longitude"]),
     timezone: readString(record, ["timezone", "timezone_id", "timeZoneId", "iana_timezone"]),
@@ -535,43 +577,92 @@ function normalizePlaceResult(rawPlace: unknown) {
   };
 }
 
+export function normalizeAstrologyApiPlaceResults(raw: unknown) {
+  const container = asRecord(raw);
+  const items = Array.isArray(raw)
+    ? raw
+    : Array.isArray(container.results)
+      ? container.results
+      : Array.isArray(container.places)
+        ? container.places
+        : Array.isArray(container.geonames)
+          ? container.geonames
+          : Array.isArray(container.data)
+            ? container.data
+            : [];
+
+  return items.map(normalizePlaceResult);
+}
+
+function buildPlaceLookupRequests(query: string) {
+  const requests: Array<Record<string, unknown>> = [{ place: query, maxRows: 5 }];
+  const simplePlace = query.split(",")[0]?.trim();
+
+  if (simplePlace && simplePlace !== query) {
+    requests.push({ place: simplePlace, maxRows: 5 });
+  }
+
+  requests.push({ query });
+
+  return requests.filter((request, index, all) => {
+    const serialized = JSON.stringify(request);
+    return all.findIndex((candidate) => JSON.stringify(candidate) === serialized) === index;
+  });
+}
+
 export async function resolvePlaceWithAstrologyApi(query: string): Promise<PlaceLookupResult> {
   const config = getAstrologyApiConfig();
   const endpoint = process.env.ASTROLOGY_API_LOCATION_URL;
   const trimmed = query.trim();
+  const hasLocationCredentials = Boolean(getAstrologyApiLocationKey(config));
 
-  if (!endpoint || !hasAstrologyApiCredentials(config)) {
+  if (!endpoint || !hasLocationCredentials) {
     return {
       status: "not_configured",
       provider: "astrologyapi",
       query: trimmed,
       endpoint: endpoint ?? "",
       places: [],
-      error: "Set ASTROLOGY_API_LOCATION_URL plus ASTROLOGY_API_USER_ID and ASTROLOGY_API_KEY to enable place lookup."
+      error: "Set ASTROLOGY_API_LOCATION_URL plus ASTROLOGY_API_LOCATION_KEY to enable place lookup."
     };
   }
 
   try {
-    const raw = await postAstrologyApi(config, endpoint, { query: trimmed });
-    const container = asRecord(raw);
-    const items =
-      Array.isArray(raw)
-        ? raw
-        : Array.isArray(container.results)
-          ? container.results
-          : Array.isArray(container.places)
-            ? container.places
-            : Array.isArray(container.data)
-              ? container.data
-              : [];
+    let lastRaw: unknown = null;
+    let lastError: unknown = null;
+
+    for (const request of buildPlaceLookupRequests(trimmed)) {
+      try {
+        const raw = await postAstrologyApiLocation(config, endpoint, request);
+        const places = normalizeAstrologyApiPlaceResults(raw);
+        lastRaw = raw;
+
+        if (places.length > 0 || "query" in request) {
+          return toSerializable({
+            status: "success",
+            provider: "astrologyapi",
+            query: trimmed,
+            endpoint,
+            places,
+            raw
+          }) as PlaceLookupResult;
+        }
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    if (lastError && lastRaw === null) {
+      throw lastError;
+    }
 
     return toSerializable({
       status: "success",
       provider: "astrologyapi",
       query: trimmed,
       endpoint,
-      places: items.map(normalizePlaceResult),
-      raw
+      places: [],
+      raw: lastRaw
     }) as PlaceLookupResult;
   } catch (error) {
     return {

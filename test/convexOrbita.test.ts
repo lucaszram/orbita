@@ -22,7 +22,7 @@ import {
   selectRelevantTransits,
   userFieldsFromIdentity
 } from "../convex/lib/orbita";
-import { getTimezoneOffsetHours } from "../convex/lib/astrologyApi";
+import { getTimezoneOffsetHours, normalizeAstrologyApiPlaceResults } from "../convex/lib/astrologyApi";
 import {
   buildNatalInterpretationGatewayPlan,
   generateDailyHomeWithGateway,
@@ -307,6 +307,26 @@ test("computes numeric timezone offsets for AstrologyAPI requests", () => {
   );
 
   assert.equal(offset, -3);
+});
+
+test("normalizes AstrologyAPI geonames place lookup results", () => {
+  const places = normalizeAstrologyApiPlaceResults({
+    geonames: [
+      {
+        place_name: "Buenos Aires",
+        latitude: "-34.61315",
+        longitude: "-58.37723",
+        country_code: "AR",
+        timezone_id: "America/Argentina/Buenos_Aires"
+      }
+    ]
+  });
+
+  assert.equal(places.length, 1);
+  assert.equal(places[0].label, "Buenos Aires");
+  assert.equal(places[0].latitude, -34.61315);
+  assert.equal(places[0].longitude, -58.37723);
+  assert.equal(places[0].timezone, "America/Argentina/Buenos_Aires");
 });
 
 test("normalizes AstrologyAPI natal chart responses into Órbita chart data", () => {

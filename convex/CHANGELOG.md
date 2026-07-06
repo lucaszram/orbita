@@ -21,6 +21,12 @@ El puente de tipos (`convex/_generated/`) se deriva de acá y lo commitea el bac
 
 ---
 
+## 2026-07-06 — Location API via `geo_details`
+- **Qué cambió:** `places.resolve({ query })` mantiene la misma firma, pero el adapter de AstrologyAPI ahora envía `place` a `ASTROLOGY_API_LOCATION_URL`, soporta respuestas `geonames`, normaliza `place_name`, `latitude`, `longitude` y `timezone_id`, acepta `ASTROLOGY_API_LOCATION_KEY` para el header `x-astrologyapi-key`, y hace fallback para queries con coma como `Buenos Aires, Argentina`.
+- **Por qué:** conectar onboarding/lugar real al shape confirmado por el MCP de AstrologyAPI sin cambiar el contrato frontend ni mezclar la access key de Location con la Basic Auth de charts.
+- **Quién lo pidió:** backend.
+- **Estado:** implementado.
+
 ## 2026-07-05 — Seed QA Web B0 autenticado
 - **Qué cambió:** se agrega `webB0Seed.persistCurrentUserSnapshot({ localDate, timezone, birthData, chartPayload, dailyReadingPayload, markPlus? })`, una mutación pública restringida por allowlist de backoffice. Persiste snapshots QA para el usuario autenticado en `birthData`, `natalCharts`, `dailyReadings`, `transitReadings` y opcionalmente `subscriptions`; sanitiza `raw` y `request` antes de escribir payloads app-facing. `charts.current()` ahora devuelve la carta vigente más reciente.
 - **Por qué:** permitir que Claude pruebe Web B0 en modo live con la cuenta QA sin exponer raw del proveedor ni depender de mocks.
