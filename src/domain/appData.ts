@@ -105,7 +105,7 @@ export function buildCarta(profile: UserProfile, date = toISODate()): CartaData 
 export function buildTransitos(): TransitosData {
   return {
     planetsRow: "☿ Mercurio    ♀ Venus    ☾ Luna",
-    headline: "El cielo se\nmueve hoy.",
+    headline: "Qué se mueve,\nqué te toca.",
     intro: "El tránsito destacado marca el clima. Los secundarios matizan trabajo, vínculos y energía.",
     destacado: "Venus armoniza tu Sol · deseo y valor.",
     porArea: [
