@@ -99,7 +99,7 @@ function sanitizeTransits(value: unknown) {
     return {
       highlighted: null,
       secondary: [],
-      explanation: "Sin transitos disponibles para este preview."
+      explanation: "Sin tránsitos disponibles para este preview."
     };
   }
 
@@ -109,7 +109,7 @@ function sanitizeTransits(value: unknown) {
     explanation:
       typeof transits.explanation === "string"
         ? transits.explanation
-        : "Sin explicacion de transitos disponible."
+        : "Sin explicación de tránsitos disponible."
   };
 }
 
@@ -145,8 +145,8 @@ const signMeta: Record<string, { element: string; modality: string; ruler: strin
   leo: { element: "fuego", modality: "fijo", ruler: "Sol" },
   virgo: { element: "tierra", modality: "mutable", ruler: "Mercurio" },
   libra: { element: "aire", modality: "cardinal", ruler: "Venus" },
-  escorpio: { element: "agua", modality: "fijo", ruler: "Pluton" },
-  sagitario: { element: "fuego", modality: "mutable", ruler: "Jupiter" },
+  escorpio: { element: "agua", modality: "fijo", ruler: "Plutón" },
+  sagitario: { element: "fuego", modality: "mutable", ruler: "Júpiter" },
   capricornio: { element: "tierra", modality: "cardinal", ruler: "Saturno" },
   acuario: { element: "aire", modality: "fijo", ruler: "Urano" },
   piscis: { element: "agua", modality: "mutable", ruler: "Neptuno" }
@@ -298,7 +298,7 @@ export function buildCompleteHoroscopeProfile(args: {
     sourceModel: {
       A: "Onboarding / carta natal fija. Se calcula una vez y se cachea.",
       B: "Interpretacion editorial en español rioplatense. Pendiente de LLM/cache.",
-      C: "Cielo actual y transitos. Se recalcula por fecha; global + cruce per-user."
+      C: "Cielo actual y tránsitos. Se recalcula por fecha; global + cruce per-user."
     },
     provider,
     cachePlan: {
@@ -414,7 +414,7 @@ export function buildCompleteHoroscopeProfile(args: {
           source: ["A", "B"],
           status: "needs_llm",
           entitlement: "premium",
-          summary: "Jupiter/casas/aspectos como dato; interpretacion propia como B.",
+          summary: "Júpiter/casas/aspectos como dato; interpretación propia como B.",
           missing: [...(hasProviderChart ? [] : missingProvider), ...missingLlm]
         }),
         feature({
@@ -423,7 +423,7 @@ export function buildCompleteHoroscopeProfile(args: {
           source: ["A", "B", "C"],
           status: "needs_provider",
           entitlement: "premium",
-          summary: "La fecha del evento sale de transitos, no de la carta natal fija.",
+          summary: "La fecha del evento sale de tránsitos, no de la carta natal fija.",
           missing: ["long_range_transits_window", ...missingLlm]
         }),
         feature({
@@ -473,7 +473,7 @@ export function buildCompleteHoroscopeProfile(args: {
           source: ["C"],
           status: "needs_provider",
           entitlement: "free",
-          summary: "Debe calcularse una vez por dia y reutilizarse para todos.",
+          summary: "Debe calcularse una vez por día y reutilizarse para todos.",
           missing: ["global_daily_sky_job"]
         }),
         feature({
@@ -511,7 +511,7 @@ export function buildCompleteHoroscopeProfile(args: {
         }),
         feature({
           id: "4.6",
-          title: "Timeline de transitos próximos",
+          title: "Timeline de tránsitos próximos",
           source: ["C", "A"],
           status: hasTimeline ? "ready" : "needs_provider",
           entitlement: "freemium",
@@ -639,7 +639,7 @@ export function buildPublicDailyHomeResponse(args: {
     status: "maqueta_no_personalizada_completa",
     mode: dailyReading.mode ?? "demo_without_provider",
     source: dailyReading.source ?? "stub_fallback",
-    explanation: "Esta salida es maqueta editorial hasta que haya proveedor y revision.",
+    explanation: "Esta salida es maqueta editorial hasta que haya proveedor y revisión.",
     basedOn: [],
     missing: [],
     confidence: "baja_maqueta"
@@ -664,9 +664,9 @@ export function buildPublicDailyHomeResponse(args: {
     header: {
       localDate: dailyReading.localDate ?? args.input.localDate,
       timezone: dailyReading.timezone ?? args.input.runTimezone ?? args.input.timezone,
-      greeting: args.input.displayName?.trim() ? `Hola, ${args.input.displayName.trim()}` : "Tu guia diaria",
+      greeting: args.input.displayName?.trim() ? `Hola, ${args.input.displayName.trim()}` : "Tu guía diaria",
       headline: home.headline ?? "Tu cielo de hoy pide una lectura simple.",
-      subheadline: home.energy ?? "Contexto diario para mirarte con mas claridad."
+      subheadline: home.energy ?? "Contexto diario para mirarte con más claridad."
     },
     natalBase: {
       sun: natalSummary?.sun ?? triad[0] ?? null,
@@ -677,11 +677,11 @@ export function buildPublicDailyHomeResponse(args: {
     },
     highlightedTransit: transits.highlighted,
     modules: {
-      do: stringList(home.doList, home.do || "Elegir una accion chica y concreta."),
-      avoid: stringList(home.avoidList, home.avoid || "Leer el dia como prediccion cerrada."),
+      do: stringList(home.doList, home.do || "Elegí una acción chica y concreta."),
+      avoid: stringList(home.avoidList, home.avoid || "Leer el día como predicción cerrada."),
       energy: home.energy ?? "Contexto diario en modo maqueta.",
-      action: home.action ?? "Anota una pregunta simple antes de responder en automatico.",
-      question: home.question ?? "Que dato simple estas pasando por alto?"
+      action: home.action ?? "Anotá una pregunta simple antes de responder en automático.",
+      question: home.question ?? "¿Qué dato simple estás pasando por alto?"
     },
     topics: Array.isArray(dailyReading.topics) ? dailyReading.topics : [],
     longRead: sanitizeLongRead(dailyReading.longRead),

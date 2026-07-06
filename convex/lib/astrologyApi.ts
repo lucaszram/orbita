@@ -606,7 +606,7 @@ export async function runAstrologyApiDailyTransits(args: {
     return toSerializable({
       status: "not_configured",
       provider: "astrologyapi",
-      providerVersion: "astrologyapi-western-daily-transits-v1",
+      providerVersion: "astrologyapi-western-daily-transits-v2",
       houseSystem: config.houseSystem,
       localDate: args.localDate,
       warnings: ["astrologyapi_credentials_not_configured"],
@@ -618,7 +618,7 @@ export async function runAstrologyApiDailyTransits(args: {
     return toSerializable({
       status: "missing_input",
       provider: "astrologyapi",
-      providerVersion: "astrologyapi-western-daily-transits-v1",
+      providerVersion: "astrologyapi-western-daily-transits-v2",
       houseSystem: config.houseSystem,
       localDate: args.localDate,
       warnings: prepared.warnings,
@@ -633,7 +633,7 @@ export async function runAstrologyApiDailyTransits(args: {
     return toSerializable({
       status: "success",
       provider: "astrologyapi",
-      providerVersion: "astrologyapi-western-daily-transits-v1",
+      providerVersion: "astrologyapi-western-daily-transits-v2",
       houseSystem: config.houseSystem,
       localDate: args.localDate,
       warnings: [
@@ -652,7 +652,7 @@ export async function runAstrologyApiDailyTransits(args: {
     return toSerializable({
       status: "error",
       provider: "astrologyapi",
-      providerVersion: "astrologyapi-western-daily-transits-v1",
+      providerVersion: "astrologyapi-western-daily-transits-v2",
       houseSystem: config.houseSystem,
       localDate: args.localDate,
       warnings: prepared.warnings,

@@ -461,7 +461,7 @@ test("adapts value radar to the Web B0 map contract", () => {
   assert.equal(payload.topStressors.length, 3);
   assert.equal(payload.axes.every((axis) => axis.harmony >= 0 && axis.harmony <= 1), true);
   assert.equal(payload.axes.every((axis) => axis.tension >= 0 && axis.tension <= 1), true);
-  assert.equal(payload.note.includes("diagnostico"), true);
+  assert.equal(payload.note.includes("diagnóstico"), true);
 });
 
 test("builds Web B0 personality reading sections from a normalized chart", () => {
@@ -799,7 +799,11 @@ test("builds provider-backed lab payloads with editorial daily modules", () => {
   assert.equal(payload.dailyReading.home.avoidList.length, 3);
   assert.equal(payload.dailyReading.personalization.status, "personalizado_con_carta_y_transitos");
   assert.equal(payload.dailyReading.chartProfile.triad.length >= 2, true);
-  assert.equal(payload.dailyReading.deepDive.title, "Deep Dive del dia");
+  assert.equal(payload.dailyReading.deepDive.title, "Deep Dive del día");
+  assert.equal(payload.dailyReading.topics[0].oneLine, "Hoy tu deseo busca claridad antes que intensidad.");
+  assert.equal(payload.dailyReading.topics[0].question, "¿Qué estás queriendo cuidar sin sobreactuar?");
+  assert.equal(payload.dailyReading.topics[1].oneLine, "Si elegís bien una prioridad, se te ordena el día.");
+  assert.equal(payload.dailyReading.topics[1].question, "¿Qué tarea te aliviana el resto del día?");
   assert.equal(payload.dailyReading.transits.highlighted.displayText.includes("Saturno"), true);
   assert.equal(payload.dailyReading.futureSelf.prompt.length > 0, true);
   assert.equal(payload.modelGaps.includes("editorial_review_required_before_app_release"), true);

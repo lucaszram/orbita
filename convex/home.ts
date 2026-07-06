@@ -83,7 +83,7 @@ function toDailyHomeReading(reading: DailyReadingDoc) {
     status: "maqueta_no_personalizada_completa",
     mode: payload.mode ?? "demo_without_provider",
     source: "stub_fallback",
-    explanation: "Esta salida es maqueta editorial hasta que haya proveedor y revision.",
+    explanation: "Esta salida es maqueta editorial hasta que haya proveedor y revisión.",
     basedOn: [],
     missing: FALLBACK_MODEL_GAPS,
     confidence: "baja_maqueta"
@@ -103,9 +103,9 @@ function toDailyHomeReading(reading: DailyReadingDoc) {
     header: {
       localDate: payload.localDate ?? reading.localDate,
       timezone: payload.timezone ?? reading.timezone,
-      greeting: "Tu guia diaria",
+      greeting: "Tu guía diaria",
       headline: home.headline ?? "Tu cielo de hoy pide una lectura simple.",
-      subheadline: home.energy ?? "Contexto diario para mirarte con mas claridad."
+      subheadline: home.energy ?? "Contexto diario para mirarte con más claridad."
     },
     natalBase: {
       sun: payload.natalSummary?.sun ?? chartProfile.triad?.[0] ?? null,
@@ -116,11 +116,11 @@ function toDailyHomeReading(reading: DailyReadingDoc) {
     },
     highlightedTransit,
     modules: {
-      do: ensureThreeItems(home.doList, home.do ?? "Elegir una accion chica y concreta."),
-      avoid: ensureThreeItems(home.avoidList, home.avoid ?? "Leer el dia como prediccion cerrada."),
+      do: ensureThreeItems(home.doList, home.do ?? "Elegí una acción chica y concreta."),
+      avoid: ensureThreeItems(home.avoidList, home.avoid ?? "Leer el día como predicción cerrada."),
       energy: home.energy ?? "Contexto diario en modo maqueta.",
-      action: home.action ?? "Anota una pregunta simple antes de responder en automatico.",
-      question: home.question ?? "Que dato simple estas pasando por alto?"
+      action: home.action ?? "Anotá una pregunta simple antes de responder en automático.",
+      question: home.question ?? "¿Qué dato simple estás pasando por alto?"
     },
     topics: Array.isArray(payload.topics) ? payload.topics : [],
     longRead: payload.longRead

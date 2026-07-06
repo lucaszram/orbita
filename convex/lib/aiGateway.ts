@@ -1,5 +1,5 @@
 const AI_GATEWAY_CHAT_COMPLETIONS_URL = "https://ai-gateway.vercel.sh/v1/chat/completions";
-const DEFAULT_PROMPT_VERSION = "orbita-lab-daily-home-llm-v1";
+const DEFAULT_PROMPT_VERSION = "orbita-lab-daily-home-llm-v2";
 const DEFAULT_CACHE_VERSION = "orbita-llm-daily-cache-v1";
 const DEFAULT_NATAL_PROMPT_VERSION = "orbita-natal-profile-llm-v1";
 const DEFAULT_NATAL_CACHE_VERSION = "orbita-natal-profile-cache-v1";
@@ -198,20 +198,20 @@ export function parseLlmDailyHomeText(text: string): LlmDailyHomeText | null {
     const parsed = JSON.parse(stripJsonFence(text));
     const record = asRecord(parsed);
     const longRead = asRecord(record.longRead);
-    const fallbackDo = ["Elegir una accion chica y concreta.", "Nombrar el foco del dia.", "Volver a un dato verificable."];
-    const fallbackAvoid = ["Leer el dia como sentencia.", "Forzar una conclusion.", "Prometer mas de lo sostenible."];
+    const fallbackDo = ["Elegí una acción chica y concreta.", "Nombrá el foco del día.", "Volvé a un dato verificable."];
+    const fallbackAvoid = ["Leer el día como sentencia.", "Forzar una conclusión.", "Prometer más de lo sostenible."];
 
     return {
       headline: readString(record.headline, "Tu cielo de hoy pide una lectura simple."),
       do: readStringList(record.do, fallbackDo),
       avoid: readStringList(record.avoid, fallbackAvoid),
-      action: readString(record.action, "Escribi una linea sobre lo que pide atencion."),
-      question: readString(record.question, "Que dato simple estas pasando por alto?"),
+      action: readString(record.action, "Escribí una línea sobre lo que pide atención."),
+      question: readString(record.question, "¿Qué dato simple estás pasando por alto?"),
       longRead: {
-        title: readString(longRead.title, "Lectura del dia"),
-        body: readString(longRead.body, "Usalo como contexto simbolico, no como prediccion cerrada.")
+        title: readString(longRead.title, "Lectura del día"),
+        body: readString(longRead.body, "Usalo como contexto simbólico, no como predicción cerrada.")
       },
-      personalizationNote: readString(record.personalizationNote, "Texto generado desde carta, transito destacado y guardrails de Orbita.")
+      personalizationNote: readString(record.personalizationNote, "Texto generado desde tu carta, tu tránsito destacado y los guardrails de Órbita.")
     };
   } catch {
     return null;
@@ -224,14 +224,18 @@ function compactForPrompt(value: unknown, maxChars = 7000) {
 }
 
 export function buildDailyHomeGatewayPrompt(dailyHome: Record<string, unknown>) {
-  return `Genera una Home diaria para Orbita en espanol rioplatense con voseo.
+  return `Generá una Home diaria para Órbita en español rioplatense con voseo.
 
 Reglas:
 - Producto de entretenimiento, autoconocimiento y contexto.
-- No hagas promesas de destino, salud, dinero, legal, psicologia clinica ni resultados garantizados.
+- Escribile a la persona: usá "vos", "tu", "te", "elegís", "querés", "podés".
+- Todo texto visible debe tener tildes y signos de apertura: ¿? y ¡! cuando correspondan.
+- Las preguntas tienen que ser personales: "¿Qué estás...?", "¿Qué te...?", "¿Dónde sentís...?".
+- Evitá frases abstractas impersonales como "El deseo pide..." o "Una prioridad ordena...".
+- No hagas promesas de destino, salud, dinero, legal, psicología clínica ni resultados garantizados.
 - No copies voz de proveedores externos.
 - Frases breves, editoriales y naturales.
-- Devolve SOLO JSON valido.
+- Devolvé SOLO JSON válido.
 - El JSON debe tener esta forma:
 {
   "headline": "string",
@@ -243,7 +247,7 @@ Reglas:
   "personalizationNote": "string"
 }
 
-Datos normalizados de Orbita:
+Datos normalizados de Órbita:
 ${compactForPrompt({
     header: asRecord(dailyHome.header),
     natalBase: asRecord(dailyHome.natalBase),
@@ -365,7 +369,7 @@ export async function generateDailyHomeWithGateway(args: GenerateDailyHomeWithGa
   }
 
   const system =
-    "Sos la capa editorial de Orbita. Escribis en espanol rioplatense, con voseo, precision y guardrails estrictos.";
+    "Sos la capa editorial de Órbita. Escribís en español rioplatense, con voseo, tildes, signos de apertura, precisión y guardrails estrictos.";
   const prompt = buildDailyHomeGatewayPrompt(args.dailyHome);
 
   try {

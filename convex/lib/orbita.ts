@@ -1,7 +1,7 @@
 export const CHART_CALCULATION_VERSION = "orbita-stub-v1";
 export const DAILY_READING_CONTENT_VERSION = "orbita-daily-stub-v1";
 export const ASTROLOGY_API_CHART_CALCULATION_VERSION = "orbita-astrologyapi-western-v1";
-export const DAILY_READING_EDITORIAL_VERSION = "orbita-daily-editorial-p0-v1";
+export const DAILY_READING_EDITORIAL_VERSION = "orbita-daily-editorial-p0-v2";
 export const CHART_WHEEL_DATA_VERSION = "orbita-chart-wheel-v1";
 export const VALUE_RADAR_VERSION = "orbita-value-radar-v1";
 export const LONG_RANGE_TIMELINE_CONTRACT_VERSION = "orbita-long-range-timeline-provider-v1";
@@ -530,7 +530,7 @@ export function buildDailyReadingPayload(args: {
     transits: {
       highlighted: null,
       secondary: [],
-      explanation: "Modo maqueta: faltan credenciales o transitos reales del proveedor.",
+      explanation: "Modo maqueta: faltan credenciales o tránsitos reales del proveedor.",
       rawNormalized: []
     },
     voidPreview: buildVoidPreview(editorial.question, null),
@@ -538,7 +538,7 @@ export function buildDailyReadingPayload(args: {
     longRead: {
       ...buildEducationalLongRead(),
       dailyTitle: "Contexto para volver al centro",
-      body: "Esta lectura es una guia simbolica para mirar el dia con mas contexto. No decide por vos."
+      body: "Esta lectura es una guía simbólica para mirar tu día con más contexto. No decide por vos."
     },
     guardrails: dailyGuardrails
   };
@@ -565,22 +565,22 @@ const planetLabels: Record<string, string> = {
   mercury: "Mercurio",
   venus: "Venus",
   mars: "Marte",
-  jupiter: "Jupiter",
+  jupiter: "Júpiter",
   saturn: "Saturno",
   uranus: "Urano",
   neptune: "Neptuno",
-  pluto: "Pluton",
+  pluto: "Plutón",
   node: "Nodo",
-  chiron: "Quiron",
+  chiron: "Quirón",
   ascendant: "Ascendente",
   part_of_fortune: "Parte de Fortuna"
 };
 
 const aspectLabels: Record<string, string> = {
-  conjunction: "conjuncion",
-  opposition: "oposicion",
+  conjunction: "conjunción",
+  opposition: "oposición",
   square: "cuadratura",
-  trine: "trigono",
+  trine: "trígono",
   sextile: "sextil",
   quincunx: "quincuncio",
   semi_sextile: "semisextil",
@@ -593,13 +593,13 @@ const houseThemes: Record<number, string> = {
   1: "identidad y forma de entrar al mundo",
   2: "recursos, cuerpo y valor propio",
   3: "mente, palabra y entorno cercano",
-  4: "raiz, casa e intimidad",
-  5: "deseo, juego y expresion",
-  6: "habitos, cuidado y trabajo cotidiano",
-  7: "vinculos, acuerdos y espejo",
+  4: "raíz, casa e intimidad",
+  5: "deseo, juego y expresión",
+  6: "hábitos, cuidado y trabajo cotidiano",
+  7: "vínculos, acuerdos y espejo",
   8: "profundidad, confianza y cambio",
-  9: "sentido, busqueda y expansion",
-  10: "direccion, vocacion y exposicion",
+  9: "sentido, búsqueda y expansión",
+  10: "dirección, vocación y exposición",
   11: "redes, futuro y pertenencia",
   12: "descanso, cierre y mundo interno"
 };
@@ -608,10 +608,10 @@ const valueRadarDimensions = [
   { id: "identity", label: "Identidad", houseFocus: [1] },
   { id: "body_resources", label: "Cuerpo y recursos", houseFocus: [2, 6] },
   { id: "communication", label: "Palabra y entorno", houseFocus: [3] },
-  { id: "roots", label: "Raiz e intimidad", houseFocus: [4] },
+  { id: "roots", label: "Raíz e intimidad", houseFocus: [4] },
   { id: "love_creativity", label: "Amor y deseo", houseFocus: [5, 7] },
-  { id: "work_direction", label: "Trabajo y direccion", houseFocus: [6, 10] },
-  { id: "community_expansion", label: "Expansion y red", houseFocus: [9, 11] },
+  { id: "work_direction", label: "Trabajo y dirección", houseFocus: [6, 10] },
+  { id: "community_expansion", label: "Expansión y red", houseFocus: [9, 11] },
   { id: "inner_world", label: "Profundidad y cierre", houseFocus: [8, 12] }
 ] as const;
 
@@ -793,7 +793,7 @@ export function buildValueRadar(chart: NormalizedAstroChart | null): ValueRadarD
         harmony: "Trigonos y sextiles suman armonia a las casas/puntos involucrados.",
         stress: "Cuadraturas y oposiciones suman estres a las casas/puntos involucrados.",
         restrictions: "Saturno, casas activadas por Saturno y aspectos duros suman restricciones.",
-        disclaimer: "Score editorial interno para ordenar la experiencia; no es diagnostico ni prediccion."
+        disclaimer: "Score editorial interno para ordenar la experiencia; no es diagnóstico ni predicción."
       },
       dimensions: baseDimensions,
       totals: {
@@ -874,7 +874,7 @@ export function buildValueRadar(chart: NormalizedAstroChart | null): ValueRadarD
       harmony: "Trigonos y sextiles suman armonia a las casas/puntos involucrados.",
       stress: "Cuadraturas y oposiciones suman estres a las casas/puntos involucrados.",
       restrictions: "Saturno, casas activadas por Saturno y aspectos duros suman restricciones.",
-      disclaimer: "Score editorial interno para ordenar la experiencia; no es diagnostico ni prediccion."
+      disclaimer: "Score editorial interno para ordenar la experiencia; no es diagnóstico ni predicción."
     },
     dimensions,
     totals: {
@@ -950,7 +950,7 @@ export function buildWebB0ValuesMapPayload(chartPayload: unknown): WebB0ValuesMa
     topStressors,
     note:
       radar.status === "ready"
-        ? "Mapa editorial derivado de casas, aspectos mayores y activaciones de Saturno. No es diagnostico ni prediccion."
+        ? "Mapa editorial derivado de casas, aspectos mayores y activaciones de Saturno. No es diagnóstico ni predicción."
         : "Mapa en modo maqueta hasta que exista una carta natal calculada con proveedor real."
   };
 }
@@ -966,39 +966,39 @@ type WebB0Placement = {
 
 const personalityTemplates: Record<string, { title: string; intro: string; body: string }> = {
   sun: {
-    title: "Nucleo",
-    intro: "Lo que organiza tu energia de base.",
+    title: "Núcleo",
+    intro: "Lo que organiza tu energía de base.",
     body: "Marca una forma de orientar deseo, orgullo y vitalidad sin convertirlo en destino fijo."
   },
   moon: {
     title: "Clima interno",
-    intro: "Como registra el cuerpo lo que pasa.",
+    intro: "Cómo registrás lo que pasa.",
     body: "Habla de necesidades, memoria emocional y ritmo de cuidado."
   },
   ascendant: {
     title: "Entrada al mundo",
-    intro: "La primera capa con la que respondes al entorno.",
-    body: "Ordena estilo, reaccion inicial y modo de ocupar espacio."
+    intro: "La primera capa con la que respondés al entorno.",
+    body: "Ordena tu estilo, tu reacción inicial y tu modo de ocupar espacio."
   },
   mercury: {
     title: "Mente y palabra",
-    intro: "Como pensas, nombras y conectas datos.",
-    body: "Ayuda a leer tu manera de preguntar, explicar y procesar senales."
+    intro: "Cómo pensás, nombrás y conectás datos.",
+    body: "Ayuda a leer tu manera de preguntar, explicar y procesar señales."
   },
   venus: {
-    title: "Deseo y vinculo",
+    title: "Deseo y vínculo",
     intro: "Lo que busca afinidad, belleza y acuerdo.",
-    body: "No define tus relaciones: muestra que tipo de clima suele abrir disponibilidad."
+    body: "No define tus relaciones: muestra qué tipo de clima suele abrirte disponibilidad."
   },
   mars: {
     title: "Impulso",
-    intro: "Como arranca la accion cuando algo importa.",
-    body: "Senala ritmo, friccion y energia para moverte sin entrar en automatico."
+    intro: "Cómo arrancás la acción cuando algo importa.",
+    body: "Señala ritmo, fricción y energía para moverte sin entrar en automático."
   },
   saturn: {
     title: "Borde y oficio",
     intro: "Donde la carta pide estructura y paciencia.",
-    body: "Muestra una zona de practica: limite, responsabilidad y forma propia."
+    body: "Muestra una zona de práctica: límite, responsabilidad y forma propia."
   }
 };
 
@@ -1060,8 +1060,8 @@ function formatWebB0Placement(placement: WebB0Placement) {
 function buildPersonalitySection(placement: WebB0Placement) {
   const template = personalityTemplates[placement.key] ?? {
     title: placement.label,
-    intro: "Una pieza mas del mapa natal.",
-    body: "Sirve para ordenar contexto simbolico sin cerrar una conclusion sobre vos."
+    intro: "Una pieza más del mapa natal.",
+    body: "Sirve para ordenar contexto simbólico sin cerrar una conclusión sobre vos."
   };
   const sign = placement.sign ? ` en ${placement.sign}` : " con signo pendiente";
   const house = placement.house ? ` y casa ${placement.house}` : "";
@@ -1086,9 +1086,9 @@ export function buildWebB0PersonalityReadingPayload(chartPayload: unknown): WebB
   const sun = placements.find((placement) => placement.key === "sun");
 
   return toSerializable({
-    headline: sun ? `Tu carta empieza por ${formatWebB0Placement(sun)}.` : "Tu carta personal esta en preparacion.",
+    headline: sun ? `Tu carta empieza por ${formatWebB0Placement(sun)}.` : "Tu carta personal está en preparación.",
     sections: placements.map(buildPersonalitySection),
-    disclaimer: "Lectura simbolica para entretenimiento, autoconocimiento y contexto diario. No reemplaza consejo profesional ni predice resultados."
+    disclaimer: "Lectura simbólica para entretenimiento, autoconocimiento y contexto diario. No reemplaza consejo profesional ni predice resultados."
   }) as WebB0PersonalityReadingPayload;
 }
 
@@ -1164,7 +1164,7 @@ function angleLabelForAspect(aspectType: string) {
     trine: "120 grados",
     sextile: "60 grados"
   };
-  return angles[aspectType] ?? "angulo variable";
+  return angles[aspectType] ?? "ángulo variable";
 }
 
 function compactWindowLabel(value: string | null) {
@@ -1188,9 +1188,9 @@ export function buildWebB0TransitDetailPayload(payload: unknown, localDate: stri
   const transit = extractHighlightedTransitFromPayload(payload);
 
   if (!transit) {
-    const text = "Todavia no hay transito destacado para esta fecha. La pantalla puede mostrar estructura, pero falta proveedor diario.";
+    const text = "Todavía no hay un tránsito destacado para esta fecha. Podés ver la estructura, pero falta proveedor diario.";
     return toSerializable({
-      title: "Transito del dia pendiente",
+      title: "Tránsito del día pendiente",
       aspect: { type: "pending", angleLabel: "pendiente" },
       scene: {
         transitingBody: { name: "pending", label: "Cielo actual" },
@@ -1205,16 +1205,16 @@ export function buildWebB0TransitDetailPayload(payload: unknown, localDate: stri
         timeline: [{ label: localDate, current: true }]
       },
       earth: {
-        headline: "Usalo como placeholder editorial hasta que haya transitos reales.",
+        headline: "Usalo como placeholder editorial hasta que tengas tránsitos reales.",
         suggestions: [
-          "Mostrar estado vacio claro.",
+          "Mostrar un estado vacío claro.",
           "Evitar una lectura inventada.",
-          "Pedir generar lectura diaria si falta el dato."
+          "Pedir generar la lectura diaria si falta el dato."
         ]
       },
       window: {
         label: "Pendiente",
-        note: "La ventana exacta tiene que venir del proveedor astrologico."
+        note: "La ventana exacta tiene que venir del proveedor astrológico."
       }
     }) as WebB0TransitDetailPayload;
   }
@@ -1230,8 +1230,8 @@ export function buildWebB0TransitDetailPayload(payload: unknown, localDate: stri
       source: "carta",
       text:
         transit.natalHouse !== null
-          ? `La activacion cae en casa ${transit.natalHouse}: ${houseThemes[transit.natalHouse] ?? "area de vida activa"}.`
-          : "La casa natal queda pendiente de confirmacion."
+          ? `La activación cae en tu casa ${transit.natalHouse}: ${houseThemes[transit.natalHouse] ?? "área de vida activa"}.`
+          : "Tu casa natal queda pendiente de confirmación."
     },
     {
       source: "ritmo",
@@ -1303,7 +1303,7 @@ export function buildLongRangeTimelineContract() {
       },
       {
         endpoint: "life_forecast_report/tropical",
-        role: "inspeccion opcional de proveedor; no voz final Orbita",
+        role: "inspección opcional de proveedor; no voz final Órbita",
         status: "needs_review"
       },
       {
@@ -1437,7 +1437,7 @@ export function normalizeAstrologyApiNatalChart(args: {
           sign: String(house.sign ?? ""),
           signEs: signEs(house.sign),
           degree: roundDegree(house.degree ?? house.start_degree),
-          theme: houseThemes[houseNumber] ?? "area de vida"
+          theme: houseThemes[houseNumber] ?? "área de vida"
         };
       })
     : [];
@@ -1746,14 +1746,14 @@ const dailyGuardrails = [
 function getTransitEditorial(transit: NormalizedAstroTransit | null) {
   if (!transit) {
     const doList = [
-      "Elegir una accion chica y concreta.",
-      "Anotar una pregunta simple antes de responder en automatico.",
-      "Volver al dato verificable antes de interpretar de mas."
+      "Elegí una acción chica y concreta.",
+      "Anotá una pregunta simple antes de responder en automático.",
+      "Volvé al dato verificable antes de interpretar de más."
     ];
     const avoidList = [
-      "Convertir una sensacion en una conclusion definitiva.",
+      "Convertir una sensación en una conclusión definitiva.",
       "Forzar una respuesta para cerrar la incomodidad.",
-      "Leer el dia como prediccion cerrada."
+      "Leer el día como predicción cerrada."
     ];
 
     return {
@@ -1762,9 +1762,9 @@ function getTransitEditorial(transit: NormalizedAstroTransit | null) {
       doList,
       avoid: avoidList[0],
       avoidList,
-      energy: "Baja el ruido y mira que patron se repite.",
-      action: "Anota una pregunta simple antes de responder en automatico.",
-      question: "Que dato simple estas pasando por alto?",
+      energy: "Bajá el ruido y mirá qué patrón se repite.",
+      action: "Anotá una pregunta simple antes de responder en automático.",
+      question: "¿Qué dato simple estás pasando por alto?",
       theme: "contexto diario",
       tone: "suave"
     };
@@ -1775,32 +1775,32 @@ function getTransitEditorial(transit: NormalizedAstroTransit | null) {
   const ease = transit.aspectType === "trine" || transit.aspectType === "sextile";
   const doList = tension
     ? [
-        "Elegir una respuesta concreta antes de subir el volumen.",
-        "Separar lo que sentis de lo que ya sabes.",
-        "Bajar una conversacion a una pregunta simple."
+        "Elegí una respuesta concreta antes de subir el volumen.",
+        "Separá lo que sentís de lo que ya sabés.",
+        "Bajá una conversación a una pregunta simple."
       ]
     : ease
       ? [
-          "Usar la apertura para ordenar algo que ya estaba disponible.",
-          "Decir que si a una ayuda o senal clara.",
-          "Convertir la facilidad en un paso visible."
+          "Usá la apertura para ordenar algo que ya estaba disponible.",
+          "Decí que sí a una ayuda o señal clara.",
+          "Convertí la facilidad en un paso visible."
         ]
       : [
-          "Observar que tema vuelve al centro y darle forma simple.",
-          "Nombrar lo importante sin dramatizarlo.",
-          "Elegir un gesto chico que acompane el foco del dia."
+          "Observá qué tema vuelve al centro y dale una forma simple.",
+          "Nombrá lo importante sin dramatizarlo.",
+          "Elegí un gesto chico que acompañe el foco del día."
         ];
   const avoidList = tension
     ? [
-        "Tomar friccion como prueba definitiva de algo.",
+        "Tomar fricción como prueba definitiva de algo.",
         "Responder desde orgullo o apuro.",
-        "Forzar una definicion cuando todavia falta contexto."
+        "Forzar una definición cuando todavía falta contexto."
       ]
     : ease
       ? [
-          "Dejar pasar una senal util por esperar una confirmacion perfecta.",
-          "Dispersar la energia en demasiadas opciones.",
-          "Prometer mas de lo que realmente queres sostener."
+          "Dejar pasar una señal útil por esperar una confirmación perfecta.",
+          "Dispersar tu energía en demasiadas opciones.",
+          "Prometer más de lo que realmente querés sostener."
         ]
       : [
           "Convertir intensidad en mandato.",
@@ -1809,32 +1809,32 @@ function getTransitEditorial(transit: NormalizedAstroTransit | null) {
         ];
 
   return {
-    headline: `${title}: contexto para mirar el dia sin apurarlo.`,
+    headline: `${title}: hoy tenés contexto para mirar tu día sin apurarlo.`,
     do: doList[0],
     doList,
     avoid: avoidList[0],
     avoidList,
     energy:
       transit.natalHouse !== null
-        ? `Casa ${transit.natalHouse}: ${houseThemes[transit.natalHouse] ?? "area de vida activa"}.`
-        : `${transit.transitPlanetEs} marca el tono del dia.`,
-    action: "Escribi una linea: que pide atencion y que puede esperar.",
+        ? `Casa ${transit.natalHouse}: ${houseThemes[transit.natalHouse] ?? "área de vida activa"}.`
+        : `${transit.transitPlanetEs} marca el tono de tu día.`,
+    action: "Escribí una línea: qué pide atención y qué puede esperar.",
     question: tension
-      ? "Que estas queriendo resolver demasiado rapido?"
+      ? "¿Qué estás queriendo resolver demasiado rápido?"
       : ease
-        ? "Que puerta se abre si no forces la respuesta?"
-        : "Que parte de este tema pide presencia antes que definicion?",
+        ? "¿Qué puerta se abre si no forzás la respuesta?"
+        : "¿Qué parte de este tema te pide presencia antes que definición?",
     theme:
       transit.natalHouse !== null
-        ? houseThemes[transit.natalHouse] ?? "area de vida activa"
+        ? houseThemes[transit.natalHouse] ?? "área de vida activa"
         : `${transit.transitPlanetEs} y ${transit.natalPointEs}`,
-    tone: tension ? "tension constructiva" : ease ? "apertura" : "foco"
+    tone: tension ? "tensión constructiva" : ease ? "apertura" : "foco"
   };
 }
 
 function formatTransitDisplay(transit: NormalizedAstroTransit | null) {
   if (!transit) {
-    return "Sin transito destacado disponible.";
+    return "Sin tránsito destacado disponible.";
   }
 
   const house = transit.natalHouse !== null ? ` en casa ${transit.natalHouse}` : "";
@@ -1848,28 +1848,28 @@ function buildTopicReadings(transit: NormalizedAstroTransit | null) {
     {
       topic: "amor",
       title: "Amor",
-      oneLine: transit ? "El deseo pide claridad antes que intensidad." : "Presencia primero; interpretacion despues.",
+      oneLine: transit ? "Hoy tu deseo busca claridad antes que intensidad." : "Hoy te conviene presencia primero; interpretación después.",
       body: transit
-        ? "Mira el vinculo sin exigirle una conclusion inmediata."
-        : "Presencia primero; interpretacion despues.",
+        ? "Mirá el vínculo sin exigirle una conclusión inmediata."
+        : "Presencia primero; interpretación después.",
       detail: transit
-        ? "Si algo se mueve en lo afectivo, bajalo a una pregunta concreta antes de convertirlo en definicion."
-        : "La lectura afectiva queda en modo suave hasta tener transitos reales.",
-      do: "Nombrar una necesidad sin convertirla en reclamo.",
+        ? "Si algo se mueve en lo afectivo, bajalo a una pregunta concreta antes de convertirlo en definición."
+        : "Tu lectura afectiva queda en modo suave hasta tener tránsitos reales.",
+      do: "Nombrá una necesidad sin convertirla en reclamo.",
       avoid: "Confundir intensidad con acuerdo.",
-      question: "Que queres cuidar sin sobreactuar?",
+      question: "¿Qué estás queriendo cuidar sin sobreactuar?",
       basedOn,
       lockedForPlus: false
     },
     {
       topic: "trabajo",
       title: "Trabajo",
-      oneLine: "Una prioridad bien elegida ordena el dia.",
-      body: "Una prioridad bien elegida ordena mejor que diez pendientes abiertos.",
-      detail: "Usa el foco del dia para elegir una tarea concreta y medir avance por claridad, no por cantidad.",
-      do: "Definir el primer paso antes de abrir otro frente.",
-      avoid: "Responder todo en automatico.",
-      question: "Que tarea vuelve mas liviano el resto del dia?",
+      oneLine: "Si elegís bien una prioridad, se te ordena el día.",
+      body: "Una prioridad bien elegida te ordena más que diez pendientes abiertos.",
+      detail: "Usá el foco del día para elegir una tarea concreta y medir avance por claridad, no por cantidad.",
+      do: "Definí el primer paso antes de abrir otro frente.",
+      avoid: "Responder todo en automático.",
+      question: "¿Qué tarea te aliviana el resto del día?",
       basedOn,
       lockedForPlus: false
     },
@@ -1877,23 +1877,23 @@ function buildTopicReadings(transit: NormalizedAstroTransit | null) {
       topic: "familia",
       title: "Familia",
       oneLine: "Cuidar no significa absorberlo todo.",
-      body: "Podes cuidar sin absorber todo lo que pasa alrededor.",
-      detail: "Si aparece una demanda del entorno cercano, separa presencia de responsabilidad total.",
-      do: "Poner un limite chico y amable.",
-      avoid: "Resolver por otros para calmar la incomodidad.",
-      question: "Que parte de esto realmente te corresponde?",
+      body: "Podés cuidar sin absorber todo lo que pasa alrededor.",
+      detail: "Si aparece una demanda del entorno cercano, separá presencia de responsabilidad total.",
+      do: "Poné un límite chico y amable.",
+      avoid: "Resolver por otros para calmar tu incomodidad.",
+      question: "¿Qué parte de esto realmente te corresponde?",
       basedOn,
       lockedForPlus: false
     },
     {
       topic: "vinculos",
-      title: "Vinculos",
-      oneLine: "La claridad mejora cuando baja la reaccion.",
-      body: "La claridad aparece cuando baja la reaccion automatica.",
-      detail: "Antes de interpretar el gesto de otra persona, chequea si falta contexto o si sobra velocidad.",
-      do: "Hacer una pregunta antes de completar la historia.",
+      title: "Vínculos",
+      oneLine: "Tu claridad mejora cuando baja la reacción.",
+      body: "Tu claridad aparece cuando baja la reacción automática.",
+      detail: "Antes de interpretar el gesto de otra persona, chequeá si falta contexto o si sobra velocidad.",
+      do: "Hacé una pregunta antes de completar la historia.",
       avoid: "Leer silencio como sentencia.",
-      question: "Que conversacion necesita menos defensa y mas precision?",
+      question: "¿Qué conversación necesita menos defensa y más precisión?",
       basedOn,
       lockedForPlus: false
     }
@@ -1906,23 +1906,23 @@ function buildVoidPreview(question: string, transit: NormalizedAstroTransit | nu
     suggestedQuestions: [
       {
         id: "day-focus",
-        category: "dia",
-        text: "Que necesito mirar hoy?"
+        category: "día",
+        text: "¿Qué necesito mirar hoy?"
       },
       {
         id: "work-focus",
         category: "trabajo",
-        text: "Donde conviene poner foco hoy?"
+        text: "¿Dónde te conviene poner foco hoy?"
       },
       {
         id: "relationship-pattern",
-        category: "vinculos",
-        text: "Que patron vincular se activa hoy?"
+        category: "vínculos",
+        text: "¿Qué patrón vincular se activa hoy?"
       },
       {
         id: "ignored-data",
-        category: "decision",
-        text: "Que dato estoy ignorando?"
+        category: "decisión",
+        text: "¿Qué dato estás ignorando?"
       }
     ],
     basedOn: transit ? [formatTransitDisplay(transit)] : ["Lectura diaria en modo maqueta"],
@@ -1934,8 +1934,8 @@ function buildFutureSelfPrompt(editorial: ReturnType<typeof getTransitEditorial>
   return {
     title: "Nota a tu yo futuro",
     prompt: `Dejale una nota a tu yo futuro: ${editorial.question}`,
-    placeholder: "Escribi que queres recordar cuando vuelvas a este dia.",
-    suggestedDateLabel: "Volver a leer mas adelante",
+    placeholder: "Escribí qué querés recordar cuando vuelvas a este día.",
+    suggestedDateLabel: "Volver a leer más adelante",
     savedNote: null
   };
 }
@@ -1948,18 +1948,18 @@ function buildDeepDive(args: {
   const transitText = formatTransitDisplay(args.transit);
 
   return {
-    title: args.transit ? "Deep Dive del dia" : "Deep Dive en modo maqueta",
+    title: args.transit ? "Deep Dive del día" : "Deep Dive en modo maqueta",
     intro:
       args.source === "provider_transits"
         ? `${transitText} Esta es la pieza que ordena el resto de la lectura.`
-        : "Todavia falta el proveedor real para leer transitos precisos; este deep dive sirve para pulir tono y estructura.",
+        : "Todavía falta el proveedor real para leer tránsitos precisos; este deep dive sirve para pulir tono y estructura.",
     why: args.transit
-      ? `El aspecto marca un tono de ${args.editorial.tone}. La casa o punto activado define el area que conviene observar.`
-      : "La maqueta usa signo solar y reglas editoriales base hasta que haya transitos reales.",
+      ? `El aspecto marca un tono de ${args.editorial.tone}. La casa o punto activado define el área que te conviene observar.`
+      : "La maqueta usa signo solar y reglas editoriales base hasta que haya tránsitos reales.",
     do: args.editorial.do,
     avoid: args.editorial.avoid,
     reflection: args.editorial.question,
-    disclaimer: "Usalo como contexto simbolico, no como instruccion ni prediccion cerrada."
+    disclaimer: "Usalo como contexto simbólico, no como instrucción ni predicción cerrada."
   };
 }
 
@@ -1982,7 +1982,7 @@ function buildPersonalizationTrace(args: {
     args.chartSummary.sun ? `Sol: ${args.chartSummary.sun}.` : null,
     args.chartSummary.moon ? `Luna: ${args.chartSummary.moon}.` : null,
     args.chartSummary.ascendant ? `Ascendente: ${args.chartSummary.ascendant}.` : null,
-    args.transit ? `Transito destacado: ${formatTransitDisplay(args.transit)}` : null
+    args.transit ? `Tránsito destacado: ${formatTransitDisplay(args.transit)}` : null
   ].filter((item): item is string => Boolean(item));
 
   return {
@@ -1990,10 +1990,10 @@ function buildPersonalizationTrace(args: {
     mode: args.mode,
     source: args.source,
     explanation: realProvider
-      ? "Esta salida combina la carta natal calculada con transitos diarios seleccionados por prioridad."
+      ? "Esta salida combina tu carta natal calculada con tránsitos diarios seleccionados por prioridad."
       : hasNatalFallback
-        ? "Esta salida usa carta natal calculada, pero no tiene transito diario destacado disponible."
-        : "Esta salida es maqueta editorial: sirve para pulir textos, pero todavia no representa una lectura astrologica completa del perfil.",
+        ? "Esta salida usa tu carta natal calculada, pero no tiene tránsito diario destacado disponible."
+        : "Esta salida es maqueta editorial: sirve para pulir textos, pero todavía no representa una lectura astrológica completa del perfil.",
     basedOn,
     missing: args.modelGaps?.length
       ? args.modelGaps
@@ -2009,7 +2009,7 @@ function buildEducationalLongRead() {
     title: "Las casas, explicadas",
     eyebrow: "Lectura editorial",
     body:
-      "Hay mas que planetas y signos: las casas ordenan en que area de vida se expresa cada simbolo. En Orbita este contenido vive como biblioteca editorial, separado del calculo diario.",
+      "Hay más que planetas y signos: las casas ordenan en qué área de vida se expresa cada símbolo. En Órbita este contenido vive como biblioteca editorial, separado del cálculo diario.",
     ctaLabel: "Todo sobre casas",
     access: "free"
   };
@@ -2104,7 +2104,7 @@ function buildChartProfileFromStub(chart: ReturnType<typeof buildNatalChartSnaps
     placements: triad,
     houses: [],
     mainAspects: [],
-    limitations: ["Modo maqueta: faltan Luna, Ascendente, casas, aspectos y transitos reales."]
+    limitations: ["Modo maqueta: faltan Luna, Ascendente, casas, aspectos y tránsitos reales."]
   };
 }
 
@@ -2178,18 +2178,18 @@ export function buildDailyReadingPayloadFromAstrology(args: {
         displayText: formatTransitDisplay(transit)
       })),
       explanation: highlightedTransit
-        ? "Estos transitos se seleccionan por planeta, punto natal, aspecto, casa y prioridad."
-        : "Sin transitos diarios disponibles; se usa fallback natal para pulir estructura editorial.",
+        ? "Estos tránsitos se seleccionan por planeta, punto natal, aspecto, casa y prioridad."
+        : "Sin tránsitos diarios disponibles; se usa fallback natal para pulir estructura editorial.",
       rawNormalized: selectedTransits
     },
     voidPreview: buildVoidPreview(editorial.question, highlightedTransit),
     futureSelf: buildFutureSelfPrompt(editorial),
     longRead: {
       ...buildEducationalLongRead(),
-      dailyTitle: highlightedTransit ? "El punto activo del dia" : "Contexto para volver al centro",
+      dailyTitle: highlightedTransit ? "Tu punto activo del día" : "Contexto para volver al centro",
       body: highlightedTransit
-        ? `${highlightedTransit.transitPlanetEs} activa tu ${highlightedTransit.natalPointEs}. Tomalo como contexto simbolico para elegir mejor el ritmo del dia, no como una orden.`
-        : "Esta lectura es una guia simbolica para mirar el dia con mas contexto. No decide por vos."
+        ? `${highlightedTransit.transitPlanetEs} activa tu ${highlightedTransit.natalPointEs}. Tomalo como contexto simbólico para elegir mejor el ritmo del día, no como una orden.`
+        : "Esta lectura es una guía simbólica para mirar tu día con más contexto. No decide por vos."
     },
     guardrails: dailyGuardrails
   };
