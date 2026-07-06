@@ -1405,8 +1405,13 @@ export function normalizeAstrologyApiNatalChart(args: {
   natalChartInterpretation: unknown;
   westernChartData: unknown;
 }): NormalizedAstroChart {
-  const interpretation = asRecord(args.natalChartInterpretation);
-  const chartData = asRecord(args.westernChartData);
+  const interpretationRoot = asRecord(args.natalChartInterpretation);
+  const chartDataRoot = asRecord(args.westernChartData);
+  const interpretationData = asRecord(interpretationRoot.data);
+  const chartData = asRecord(chartDataRoot.data);
+  const interpretation = Object.keys(interpretationData).length > 0 ? interpretationData : interpretationRoot;
+  const chartSource = Object.keys(chartData).length > 0 ? chartData : chartDataRoot;
+  const hasKnownTime = args.input.birthTimePrecision !== "unknown" && args.calculationTimeSource === "birth_time";
   const placements = asArray(interpretation.planets).map((rawPlanet) => {
     const planet = asRecord(rawPlanet);
     const key = normalizeKey(planet.name);
@@ -1417,23 +1422,25 @@ export function normalizeAstrologyApiNatalChart(args: {
       signEs: signEs(planet.sign),
       degree: roundDegree(planet.norm_degree),
       fullDegree: roundDegree(planet.full_degree),
-      house: roundDegree(planet.house),
+      house: hasKnownTime ? roundDegree(planet.house) : null,
       isRetrograde: boolFromApi(planet.is_retro),
       source: "astrologyapi" as const
     };
   });
 
-  const houses = asArray(interpretation.houses).map((rawHouse) => {
-    const house = asRecord(rawHouse);
-    const houseNumber = Number(house.house ?? house.house_id);
-    return {
-      house: Number.isFinite(houseNumber) ? houseNumber : 0,
-      sign: String(house.sign ?? ""),
-      signEs: signEs(house.sign),
-      degree: roundDegree(house.degree ?? house.start_degree),
-      theme: houseThemes[houseNumber] ?? "area de vida"
-    };
-  });
+  const houses = hasKnownTime
+    ? asArray(interpretation.houses).map((rawHouse) => {
+        const house = asRecord(rawHouse);
+        const houseNumber = Number(house.house ?? house.house_id);
+        return {
+          house: Number.isFinite(houseNumber) ? houseNumber : 0,
+          sign: String(house.sign ?? ""),
+          signEs: signEs(house.sign),
+          degree: roundDegree(house.degree ?? house.start_degree),
+          theme: houseThemes[houseNumber] ?? "area de vida"
+        };
+      })
+    : [];
 
   const ascendantHouse = houses.find((house) => house.house === 1);
   const ascendant: NormalizedAstroPlacement | null = ascendantHouse
@@ -1451,7 +1458,7 @@ export function normalizeAstrologyApiNatalChart(args: {
     : null;
 
   const placementsWithAscendant = ascendant ? [...placements, ascendant] : placements;
-  const aspects = asArray(chartData.aspects).map((rawAspect) => {
+  const aspects = asArray(chartSource.aspects).map((rawAspect) => {
     const aspect = asRecord(rawAspect);
     const type = normalizeKey(aspect.type);
     return {

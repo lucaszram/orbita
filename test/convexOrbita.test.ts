@@ -386,6 +386,40 @@ test("normalizes AstrologyAPI natal chart responses into Órbita chart data", ()
   assert.equal(chart.placements.some((placement) => placement.key === "ascendant"), true);
 });
 
+test("omits ascendant and houses for provider charts without birth time", () => {
+  const input = normalizeBirthInput({
+    birthDate: "1996-01-15",
+    birthTimePrecision: "unknown",
+    birthPlaceLabel: "Buenos Aires, Argentina",
+    latitude: -34.6037,
+    longitude: -58.3816,
+    timezone: "America/Argentina/Buenos_Aires"
+  });
+
+  const chart = normalizeAstrologyApiNatalChart({
+    input,
+    houseSystem: "placidus",
+    timezoneOffset: -3,
+    calculationTimeSource: "noon_fallback",
+    natalChartInterpretation: {
+      planets: [
+        { name: "Sun", full_degree: 294.4, norm_degree: 24.4, is_retro: "false", sign: "Capricorn", house: 11 },
+        { name: "Moon", full_degree: 208.1, norm_degree: 28.1, is_retro: "false", sign: "Libra", house: 8 }
+      ],
+      houses: [{ house: 1, sign: "Pisces", degree: 340.2 }]
+    },
+    westernChartData: {
+      aspects: [{ aspecting_planet: "Sun", aspected_planet: "Moon", type: "Square", orb: 1.2, diff: 91.2 }]
+    }
+  });
+
+  assert.equal(chart.summary.accuracy, "approximate_without_birth_time");
+  assert.equal(chart.summary.ascendant, null);
+  assert.equal(chart.houses.length, 0);
+  assert.equal(chart.placements.find((placement) => placement.key === "ascendant"), undefined);
+  assert.equal(chart.placements.find((placement) => placement.key === "sun")?.house, null);
+});
+
 test("builds chart wheel data for the frontend renderer", () => {
   const chart = buildFixtureAstrologyChart();
   const wheel = buildChartWheelData(chart);

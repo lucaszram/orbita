@@ -67,6 +67,12 @@ export type ExtendedTransitProviderResult = {
   error?: string;
 };
 
+export type NatalChartProviderResult = Omit<AstrologyProviderRunResult, "normalized"> & {
+  normalized?: {
+    chart: NonNullable<AstrologyProviderRunResult["normalized"]>["chart"];
+  };
+};
+
 function getAstrologyApiConfig(): AstrologyApiConfig {
   return {
     baseUrl: (process.env.ASTROLOGY_API_BASE_URL ?? DEFAULT_ASTROLOGY_API_BASE_URL).replace(/\/$/, ""),
@@ -488,6 +494,97 @@ export async function runAstrologyApiProvider(args: {
       request: prepared.request,
       error: error instanceof Error ? error.message : "Unknown AstrologyAPI error"
     }) as AstrologyProviderRunResult;
+  }
+}
+
+export async function runAstrologyApiNatalChart(args: {
+  input: BirthChartInput;
+  localDate: string;
+}): Promise<NatalChartProviderResult> {
+  const config = getAstrologyApiConfig();
+  const prepared = buildBirthRequest(args.input, config.houseSystem);
+
+  if (!hasAstrologyApiCredentials(config)) {
+    return toSerializable({
+      status: "not_configured",
+      provider: "astrologyapi",
+      providerVersion: "astrologyapi-western-v1",
+      houseSystem: config.houseSystem,
+      localDate: args.localDate,
+      warnings: ["astrologyapi_credentials_not_configured"],
+      request: prepared.status === "ready" ? prepared.request : null
+    }) as NatalChartProviderResult;
+  }
+
+  if (prepared.status !== "ready") {
+    return toSerializable({
+      status: "missing_input",
+      provider: "astrologyapi",
+      providerVersion: "astrologyapi-western-v1",
+      houseSystem: config.houseSystem,
+      localDate: args.localDate,
+      warnings: prepared.warnings,
+      request: null
+    }) as NatalChartProviderResult;
+  }
+
+  const warnings = [...prepared.warnings];
+
+  try {
+    let natalChartInterpretation: unknown;
+    let westernChartData: unknown;
+    const preferredEndpoint = process.env.ASTROLOGY_API_NATAL_CHART_ENDPOINT ?? "western_horoscope";
+
+    try {
+      const westernHoroscope = await postAstrologyApi(config, preferredEndpoint, prepared.request);
+      natalChartInterpretation = westernHoroscope;
+      westernChartData = westernHoroscope;
+    } catch {
+      warnings.push("western_horoscope_unavailable_used_legacy_natal_endpoints");
+      [natalChartInterpretation, westernChartData] = await Promise.all([
+        postAstrologyApi(config, "natal_chart_interpretation", prepared.request),
+        postAstrologyApi(config, "western_chart_data", prepared.request)
+      ]);
+    }
+
+    const chart = normalizeAstrologyApiNatalChart({
+      input: prepared.normalized,
+      houseSystem: config.houseSystem,
+      timezoneOffset: prepared.timezoneOffset,
+      calculationTimeSource: prepared.calculationTimeSource,
+      natalChartInterpretation,
+      westernChartData
+    });
+
+    return toSerializable({
+      status: "success",
+      provider: "astrologyapi",
+      providerVersion: "astrologyapi-western-v1",
+      houseSystem: config.houseSystem,
+      localDate: args.localDate,
+      warnings,
+      request: {
+        natal: prepared.request
+      },
+      normalized: {
+        chart
+      },
+      raw: {
+        natalChartInterpretation,
+        westernChartData
+      }
+    }) as NatalChartProviderResult;
+  } catch (error) {
+    return toSerializable({
+      status: "error",
+      provider: "astrologyapi",
+      providerVersion: "astrologyapi-western-v1",
+      houseSystem: config.houseSystem,
+      localDate: args.localDate,
+      warnings,
+      request: prepared.request,
+      error: error instanceof Error ? error.message : "Unknown AstrologyAPI natal chart error"
+    }) as NatalChartProviderResult;
   }
 }
 
