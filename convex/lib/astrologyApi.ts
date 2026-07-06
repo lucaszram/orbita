@@ -12,6 +12,7 @@ import {
 const DEFAULT_ASTROLOGY_API_BASE_URL = "https://json.astrologyapi.com/v1";
 const DEFAULT_HOUSE_SYSTEM = "placidus";
 const DEFAULT_ASTROLOGY_API_LANGUAGE = "en";
+const DEFAULT_LOCATION_MAX_ROWS = 10;
 
 type AstrologyApiConfig = {
   baseUrl: string;
@@ -260,6 +261,12 @@ async function postAstrologyApiLocation(config: AstrologyApiConfig, endpoint: st
     "x-astrologyapi-key": locationKey
   };
 
+  try {
+    return await postAstrologyApiLocationMcp(config, body);
+  } catch {
+    // Fall through to REST because some AstrologyAPI accounts expose geo_details there.
+  }
+
   const parseResponse = async (response: Response) => {
     const text = await response.text();
     let json: unknown = null;
@@ -332,7 +339,8 @@ async function postAstrologyApiLocationMcp(config: AstrologyApiConfig, body: Rec
     throw new Error("AstrologyAPI location place is missing.");
   }
 
-  const maxRows = typeof body.maxRows === "number" && Number.isFinite(body.maxRows) ? body.maxRows : 5;
+  const maxRows =
+    typeof body.maxRows === "number" && Number.isFinite(body.maxRows) ? body.maxRows : DEFAULT_LOCATION_MAX_ROWS;
   const response = await fetch(process.env.ASTROLOGY_API_MCP_URL ?? "https://mcp.astrologyapi.com/mcp", {
     method: "POST",
     headers: {
@@ -708,12 +716,12 @@ export function normalizeAstrologyApiPlaceResults(raw: unknown) {
   return items.map(normalizePlaceResult);
 }
 
-function buildPlaceLookupRequests(query: string) {
-  const requests: Array<Record<string, unknown>> = [{ place: query, maxRows: 5 }];
+export function buildPlaceLookupRequests(query: string) {
+  const requests: Array<Record<string, unknown>> = [{ place: query, maxRows: DEFAULT_LOCATION_MAX_ROWS }];
   const simplePlace = query.split(",")[0]?.trim();
 
   if (simplePlace && simplePlace !== query) {
-    requests.push({ place: simplePlace, maxRows: 5 });
+    requests.push({ place: simplePlace, maxRows: DEFAULT_LOCATION_MAX_ROWS });
   }
 
   return requests.filter((request, index, all) => {
