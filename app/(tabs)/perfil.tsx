@@ -1,7 +1,7 @@
 import { Pressable, View } from "react-native";
 import { router } from "expo-router";
 import { Body, Divider, Eyebrow, H2, MonoLine, Note, OrbitaScreen, Pill, Section } from "@/components/orbita/kit";
-import { HeroImage } from "@/components/orbita/HeroImage";
+import { FullBleedHero } from "@/components/orbita/ImmersiveHero";
 import { useAppData } from "@/domain/appData";
 import { orbita } from "@/theme/orbita";
 
@@ -9,16 +9,14 @@ export default function PerfilScreen() {
   const { perfil } = useAppData();
   return (
     <OrbitaScreen>
-      <Section>
-        <View style={{ alignItems: "center", marginBottom: orbita.spacing.xl }}>
-          <HeroImage kind="perfil" size={200} />
-        </View>
+      <FullBleedHero kind="perfil">
         <MonoLine>{perfil.birthLine}</MonoLine>
-        <Note>{perfil.privacy}</Note>
-        <View style={{ height: orbita.spacing.lg }} />
+      </FullBleedHero>
+      <Section style={{ paddingTop: orbita.spacing.lg }}>
         <Eyebrow>PERFIL</Eyebrow>
         <H2>Tu carta,{"\n"}tus datos.</H2>
         <Body>Tus datos de nacimiento afinan toda la lectura. Editá tu cuenta, notificaciones y suscripción.</Body>
+        <Note>{perfil.privacy}</Note>
         <Divider />
         <Pressable onPress={() => router.push("/reading/plus")} accessibilityRole="button">
           <Eyebrow>SUSCRIPCIÓN</Eyebrow>
