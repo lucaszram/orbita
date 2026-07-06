@@ -22,8 +22,8 @@ El puente de tipos (`convex/_generated/`) se deriva de acá y lo commitea el bac
 ---
 
 ## 2026-07-06 — Location API via `geo_details`
-- **Qué cambió:** `places.resolve({ query })` mantiene la misma firma, pero el adapter de AstrologyAPI ahora envía `place` a `ASTROLOGY_API_LOCATION_URL`, soporta respuestas `geonames`, normaliza `place_name`, `latitude`, `longitude` y `timezone_id`, acepta `ASTROLOGY_API_LOCATION_KEY` para el header `x-astrologyapi-key`, y hace fallback para queries con coma como `Buenos Aires, Argentina`.
-- **Por qué:** conectar onboarding/lugar real al shape confirmado por el MCP de AstrologyAPI sin cambiar el contrato frontend ni mezclar la access key de Location con la Basic Auth de charts.
+- **Qué cambió:** `places.resolve({ query })` mantiene la misma firma, pero el adapter de AstrologyAPI ahora envía `place` a `ASTROLOGY_API_LOCATION_URL`, soporta respuestas `geonames`, normaliza `place_name`, `latitude`, `longitude` y `timezone_id`, usa `ASTROLOGY_API_KEY` para el header `x-astrologyapi-key` con `ASTROLOGY_API_LOCATION_KEY` como override opcional, puede caer al MCP `geo_details`, y hace fallback para queries con coma como `Buenos Aires, Argentina`.
+- **Por qué:** conectar onboarding/lugar real al shape confirmado por el MCP de AstrologyAPI sin cambiar el contrato frontend ni duplicar configuración cuando la sandbox/API key sirve para Location.
 - **Quién lo pidió:** backend.
 - **Estado:** implementado.
 

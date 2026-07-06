@@ -33,10 +33,11 @@ pnpm exec convex env set ASTROLOGY_API_BASE_URL "https://json.astrologyapi.com/v
 pnpm exec convex env set ASTROLOGY_API_LANGUAGE "en"
 pnpm exec convex env set ASTROLOGY_API_HOUSE_SYSTEM "placidus"
 pnpm exec convex env set ASTROLOGY_API_LOCATION_URL "geo_details"
+# Optional only if Location uses a different access token:
 pnpm exec convex env set ASTROLOGY_API_LOCATION_KEY "<location_access_token>"
 ```
 
-Location API usa `geo_details` y autentica con `x-astrologyapi-key`, separado de la Basic Auth de charts. Sin `ASTROLOGY_API_LOCATION_URL` + `ASTROLOGY_API_LOCATION_KEY`, el lookup de lugar del backoffice muestra estado `not_configured`, pero se pueden cargar lat/lon/timezone manualmente.
+Location API usa `geo_details` y autentica con `x-astrologyapi-key`. Por defecto usa `ASTROLOGY_API_KEY`; `ASTROLOGY_API_LOCATION_KEY` queda sólo como override si la cuenta entrega un access token distinto. Sin `ASTROLOGY_API_LOCATION_URL` + key, el lookup de lugar del backoffice muestra estado `not_configured`, pero se pueden cargar lat/lon/timezone manualmente.
 
 `ASTROLOGY_API_LONG_RANGE_URL` queda opcional/futuro hasta confirmar con AstrologyAPI un endpoint de rango o forecast que devuelva ventanas largas confirmadas: inicio, exacto, fin, frecuencia y próximas ocurrencias. Órbita no debe inventar con LLM frases tipo `vuelve en 2027` o `dura hasta marzo`; esas fechas tienen que venir del proveedor o de un motor astronómico explícito aprobado.
 

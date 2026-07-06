@@ -80,8 +80,8 @@ function hasAstrologyApiCredentials(config: AstrologyApiConfig) {
   return Boolean(config.userId && config.apiKey);
 }
 
-function getAstrologyApiLocationKey(_config: AstrologyApiConfig) {
-  return process.env.ASTROLOGY_API_LOCATION_KEY ?? process.env.ASTROLOGY_API_ACCESS_TOKEN;
+function getAstrologyApiLocationKey(config: AstrologyApiConfig) {
+  return process.env.ASTROLOGY_API_LOCATION_KEY ?? process.env.ASTROLOGY_API_ACCESS_TOKEN ?? config.apiKey;
 }
 
 function encodeBasicAuth(userId: string, apiKey: string) {
@@ -254,33 +254,147 @@ async function postAstrologyApiLocation(config: AstrologyApiConfig, endpoint: st
     throw new Error("AstrologyAPI location credentials are missing.");
   }
 
-  const response = await fetch(url, {
+  const baseHeaders = {
+    Accept: "application/json",
+    "Accept-Language": config.language,
+    "x-astrologyapi-key": locationKey
+  };
+
+  const parseResponse = async (response: Response) => {
+    const text = await response.text();
+    let json: unknown = null;
+    if (text) {
+      try {
+        json = JSON.parse(text);
+      } catch {
+        json = { rawText: text };
+      }
+    }
+
+    return { json, text };
+  };
+
+  const jsonResponse = await fetch(url, {
     method: "POST",
     headers: {
-      Accept: "application/json",
-      "Accept-Language": config.language,
-      "x-astrologyapi-key": locationKey,
+      ...baseHeaders,
       "Content-Type": "application/json"
     },
     body: JSON.stringify(body)
   });
 
+  const jsonResult = await parseResponse(jsonResponse);
+  if (jsonResponse.ok) {
+    return jsonResult.json;
+  }
+
+  const form = new URLSearchParams();
+  for (const [key, value] of Object.entries(body)) {
+    if (value !== undefined && value !== null) {
+      form.set(key, String(value));
+    }
+  }
+
+  const formResponse = await fetch(url, {
+    method: "POST",
+    headers: {
+      ...baseHeaders
+    },
+    body: form
+  });
+
+  const formResult = await parseResponse(formResponse);
+  if (formResponse.ok) {
+    return formResult.json;
+  }
+
+  try {
+    return await postAstrologyApiLocationMcp(config, body);
+  } catch {
+    // Keep the REST error because it points at the configured Location endpoint.
+  }
+
+  const detail =
+    typeof formResult.json === "object" && formResult.json !== null
+      ? JSON.stringify(formResult.json).slice(0, 500)
+      : formResult.text.slice(0, 500);
+  throw new Error(`AstrologyAPI ${endpoint} failed with ${formResponse.status}: ${detail}`);
+}
+
+async function postAstrologyApiLocationMcp(config: AstrologyApiConfig, body: Record<string, unknown>) {
+  const locationKey = getAstrologyApiLocationKey(config);
+  if (!locationKey) {
+    throw new Error("AstrologyAPI location credentials are missing.");
+  }
+
+  const place = typeof body.place === "string" ? body.place : typeof body.query === "string" ? body.query : "";
+  if (!place) {
+    throw new Error("AstrologyAPI location place is missing.");
+  }
+
+  const maxRows = typeof body.maxRows === "number" && Number.isFinite(body.maxRows) ? body.maxRows : 5;
+  const response = await fetch(process.env.ASTROLOGY_API_MCP_URL ?? "https://mcp.astrologyapi.com/mcp", {
+    method: "POST",
+    headers: {
+      Accept: "application/json, text/event-stream",
+      "Content-Type": "application/json",
+      "x-astrologyapi-key": locationKey
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: {
+        name: "geo_details",
+        arguments: {
+          place,
+          maxRows,
+          language: config.language
+        }
+      }
+    })
+  });
+
   const text = await response.text();
-  let json: unknown = null;
-  if (text) {
+  const eventData = text
+    .split("\n")
+    .find((line) => line.startsWith("data: "))
+    ?.slice("data: ".length);
+  const payloadText = eventData ?? text;
+  let payload: unknown = null;
+
+  if (payloadText) {
     try {
-      json = JSON.parse(text);
+      payload = JSON.parse(payloadText);
     } catch {
-      json = { rawText: text };
+      payload = { rawText: payloadText };
     }
   }
 
   if (!response.ok) {
-    const detail = typeof json === "object" && json !== null ? JSON.stringify(json).slice(0, 500) : text.slice(0, 500);
-    throw new Error(`AstrologyAPI ${endpoint} failed with ${response.status}: ${detail}`);
+    const detail =
+      typeof payload === "object" && payload !== null
+        ? JSON.stringify(payload).slice(0, 500)
+        : payloadText.slice(0, 500);
+    throw new Error(`AstrologyAPI MCP geo_details failed with ${response.status}: ${detail}`);
   }
 
-  return json;
+  const result = asRecord(asRecord(payload).result);
+  const content = Array.isArray(result.content) ? result.content : [];
+  const firstText = content
+    .map((item) => asRecord(item))
+    .map((item) => item.text)
+    .find((value): value is string => typeof value === "string");
+
+  if (!firstText) {
+    return payload;
+  }
+
+  try {
+    return JSON.parse(firstText);
+  } catch {
+    return { rawText: firstText };
+  }
 }
 
 export async function runAstrologyApiProvider(args: {
@@ -602,8 +716,6 @@ function buildPlaceLookupRequests(query: string) {
     requests.push({ place: simplePlace, maxRows: 5 });
   }
 
-  requests.push({ query });
-
   return requests.filter((request, index, all) => {
     const serialized = JSON.stringify(request);
     return all.findIndex((candidate) => JSON.stringify(candidate) === serialized) === index;
@@ -623,7 +735,7 @@ export async function resolvePlaceWithAstrologyApi(query: string): Promise<Place
       query: trimmed,
       endpoint: endpoint ?? "",
       places: [],
-      error: "Set ASTROLOGY_API_LOCATION_URL plus ASTROLOGY_API_LOCATION_KEY to enable place lookup."
+      error: "Set ASTROLOGY_API_LOCATION_URL plus ASTROLOGY_API_KEY or ASTROLOGY_API_LOCATION_KEY to enable place lookup."
     };
   }
 
