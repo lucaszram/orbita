@@ -1,7 +1,7 @@
 import { View } from "react-native";
 import { router } from "expo-router";
 import { Body, Divider, Eyebrow, H2, OrbitaScreen, Pill, Section, Triad } from "@/components/orbita/kit";
-import { HeroImage } from "@/components/orbita/HeroImage";
+import { FullBleedHero } from "@/components/orbita/ImmersiveHero";
 import { useAppData } from "@/domain/appData";
 import { orbita } from "@/theme/orbita";
 
@@ -9,12 +9,10 @@ export default function CartaScreen() {
   const { carta } = useAppData();
   return (
     <OrbitaScreen>
-      <Section>
-        <View style={{ alignItems: "center", marginBottom: orbita.spacing.xl }}>
-          <HeroImage kind="carta" size={200} />
-        </View>
+      <FullBleedHero kind="carta">
         <Triad triad={carta.triad} />
-        <View style={{ height: orbita.spacing.xl }} />
+      </FullBleedHero>
+      <Section style={{ paddingTop: orbita.spacing.lg }}>
         <Eyebrow>TU CARTA BASE</Eyebrow>
         <H2>Tus puntos{"\n"}de partida.</H2>
         <Body>{carta.intro}</Body>

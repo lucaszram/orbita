@@ -82,9 +82,13 @@ export function Triad({ triad }: { triad: TriadData }) {
 }
 
 export function Pill({ label, onPress }: { label: string; onPress?: () => void }) {
+  // Bugfix: backgroundColor directo sobre Pressable no pinta en iOS new-arch;
+  // el estilo visual va en el View interno.
   return (
-    <Pressable style={({ pressed }) => [styles.pill, pressed && styles.pressed]} onPress={onPress} accessibilityRole="button">
-      <Text style={styles.pillText}>{label}</Text>
+    <Pressable style={({ pressed }) => [styles.pillWrap, pressed && styles.pressed]} onPress={onPress} accessibilityRole="button">
+      <View style={styles.pill}>
+        <Text style={styles.pillText}>{label}</Text>
+      </View>
     </Pressable>
   );
 }
@@ -197,6 +201,7 @@ export const styles = StyleSheet.create({
   triad: { color: orbita.colors.muted, fontFamily: orbita.fonts.mono, fontSize: 13, lineHeight: 18 },
   note: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.body, fontSize: 12, lineHeight: 17, marginTop: orbita.spacing.sm },
 
+  pillWrap: { alignSelf: "flex-start" },
   pill: {
     alignSelf: "flex-start",
     backgroundColor: orbita.colors.bone,
