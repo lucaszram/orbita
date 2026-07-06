@@ -74,6 +74,9 @@ function to24h(t: TimeState): string {
   return `${pad2(String(h24))}:${pad2(t.minute)}`;
 }
 
+// Pasos de pregunta: contenido anclado abajo (visual arriba) — mata el espacio muerto.
+const ANCHORED_KINDS = new Set(["identity", "date", "place", "time", "account"]);
+
 export type OnboardingData = {
   identity?: Identity;
   birthDate: string;
@@ -109,6 +112,7 @@ export function OrbitaOnboarding({ backend }: { backend?: OnboardingBackend } = 
   const [calc, setCalc] = useState(0);
 
   const step = ONBOARDING_STEPS[index];
+  const anchored = ANCHORED_KINDS.has(step.kind);
   const countedTotal = ONBOARDING_STEPS.filter((s) => s.counts).length;
   const countedDone = ONBOARDING_STEPS.slice(0, index + 1).filter((s) => s.counts).length;
   const progress = step.counts
@@ -206,7 +210,7 @@ export function OrbitaOnboarding({ backend }: { backend?: OnboardingBackend } = 
             <Text style={styles.stepCount}>{step.counts ? `${countedDone}/${countedTotal}` : ""}</Text>
           </View>
 
-          <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <ScrollView contentContainerStyle={[styles.content, anchored && styles.contentAnchored]} showsVerticalScrollIndicator={false}>
             <Animated.View
               style={{
                 width: "100%",
@@ -366,13 +370,22 @@ export function OrbitaOnboarding({ backend }: { backend?: OnboardingBackend } = 
         );
       case "reveal":
         return (
-          <View style={styles.hero}>
+          <View style={styles.revealWrap}>
             <Kicker>Tu carta base</Kicker>
-            <H1>{"Estos son tus\npuntos de partida."}</H1>
-            <View style={styles.triad}>
-              <TriadCard icon={Sun} role="Sol" sign={sunSign ?? "—"} note="tu identidad" strong />
-              <TriadCard icon={Moon} role="Luna" sign="con tu hora" note="tu emoción" />
-              <TriadCard icon={Orbit} role="Asc" sign="con tu lugar" note="cómo te ves" />
+            <View style={styles.sunEmblem}><Sun color={colors.copperSoft} size={46} strokeWidth={1.3} /></View>
+            <Text style={styles.revealSign}>{sunSign ?? "—"}</Text>
+            <Text style={styles.revealRole}>Tu Sol</Text>
+            <View style={styles.revealSecondary}>
+              <View style={styles.revealMini}>
+                <Moon color={colors.copperSoft} size={15} strokeWidth={1.7} />
+                <Text style={styles.revealMiniRole}>Luna</Text>
+                <Text style={styles.revealMiniNote}>con tu hora</Text>
+              </View>
+              <View style={styles.revealMini}>
+                <Orbit color={colors.copperSoft} size={15} strokeWidth={1.7} />
+                <Text style={styles.revealMiniRole}>Asc</Text>
+                <Text style={styles.revealMiniNote}>con tu lugar</Text>
+              </View>
             </View>
             <Sub>El Sol sale de tu fecha. Luna y ascendente se afinan con tu hora y lugar en la carta completa.</Sub>
           </View>
@@ -489,6 +502,16 @@ const styles = StyleSheet.create({
   stepCount: { color: colors.boneDim, fontFamily: "Inter_700Bold", fontSize: 12, minWidth: 30, textAlign: "right" },
 
   content: { flexGrow: 1, justifyContent: "center", paddingVertical: 24 },
+  contentAnchored: { justifyContent: "flex-end", paddingBottom: 6, paddingTop: 24 },
+
+  revealWrap: { alignItems: "center", gap: 12 },
+  sunEmblem: { alignItems: "center", backgroundColor: "rgba(196,106,58,0.1)", borderColor: colors.copperSoft, borderRadius: 52, borderWidth: 1, height: 104, justifyContent: "center", marginTop: 6, shadowColor: "#C46A3A", shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.55, shadowRadius: 46, width: 104 },
+  revealSign: { color: colors.bone, fontFamily: "Newsreader_500Medium", fontSize: 54, lineHeight: 60, marginTop: 8 },
+  revealRole: { color: colors.copperSoft, fontFamily: "Inter_700Bold", fontSize: 12, letterSpacing: 1.4, textTransform: "uppercase" },
+  revealSecondary: { flexDirection: "row", gap: 12, marginTop: 12 },
+  revealMini: { alignItems: "center", backgroundColor: colors.cardSolid, borderColor: colors.line, borderRadius: 12, borderWidth: 1, gap: 4, paddingHorizontal: 20, paddingVertical: 12 },
+  revealMiniRole: { color: colors.bone, fontFamily: "Inter_700Bold", fontSize: 13 },
+  revealMiniNote: { color: colors.boneMuted, fontFamily: "Inter_400Regular", fontSize: 11 },
   hero: { alignItems: "center", gap: 16 },
   heroTop: { alignItems: "center", gap: 16, paddingTop: 8 },
   logoRing: { alignItems: "center", borderColor: colors.line, borderRadius: 60, borderWidth: 1, height: 96, justifyContent: "center", width: 96 },
