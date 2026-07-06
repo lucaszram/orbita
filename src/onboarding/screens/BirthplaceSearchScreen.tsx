@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -17,83 +17,107 @@ import { Screen } from "../components/Screen";
 import { Body, Caption, Label, Title } from "../components/Type";
 import { font, GUTTER, orbita } from "../theme";
 
-// Interim local list — real geocoding autocomplete llega por contrato de backend.
-const CITIES = [
+export type PlaceOption = {
+  label: string;
+  latitude?: number;
+  longitude?: number;
+  timezone?: string;
+};
+
+// Fallback offline (si el geocoding no responde).
+const FALLBACK_CITIES = [
   "Buenos Aires, Argentina",
   "Córdoba, Argentina",
   "Rosario, Argentina",
   "Mendoza, Argentina",
-  "La Plata, Argentina",
-  "Mar del Plata, Argentina",
-  "Tucumán, Argentina",
-  "Salta, Argentina",
-  "Santa Fe, Argentina",
-  "Neuquén, Argentina",
-  "Bariloche, Argentina",
-  "Corrientes, Argentina",
-  "Posadas, Argentina",
-  "Bahía Blanca, Argentina",
-  "San Juan, Argentina",
   "Montevideo, Uruguay",
-  "Punta del Este, Uruguay",
   "Santiago, Chile",
-  "Valparaíso, Chile",
-  "Asunción, Paraguay",
-  "La Paz, Bolivia",
-  "Santa Cruz, Bolivia",
   "Lima, Perú",
-  "Cusco, Perú",
   "Bogotá, Colombia",
-  "Medellín, Colombia",
-  "Cali, Colombia",
-  "Quito, Ecuador",
-  "Guayaquil, Ecuador",
-  "Caracas, Venezuela",
   "Ciudad de México, México",
-  "Guadalajara, México",
-  "Monterrey, México",
-  "San José, Costa Rica",
-  "Ciudad de Panamá, Panamá",
-  "La Habana, Cuba",
-  "Santo Domingo, República Dominicana",
-  "San Juan, Puerto Rico",
-  "São Paulo, Brasil",
-  "Río de Janeiro, Brasil",
-  "Porto Alegre, Brasil",
-  "Florianópolis, Brasil",
   "Madrid, España",
   "Barcelona, España",
-  "Valencia, España",
-  "Sevilla, España",
   "Miami, Estados Unidos",
-  "Nueva York, Estados Unidos",
-  "Los Ángeles, Estados Unidos",
-  "Houston, Estados Unidos",
 ];
+
+function norm(s: string): string {
+  return s
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase();
+}
+
+function fallbackResults(query: string): PlaceOption[] {
+  const q = norm(query.trim());
+  if (!q) return [];
+  return FALLBACK_CITIES.filter((c) => norm(c).includes(q))
+    .slice(0, 5)
+    .map((label) => ({ label }));
+}
+
+/** Geocoding real: Open-Meteo (gratis, sin key). Devuelve ciudad + país + coords + timezone. */
+async function searchPlaces(query: string, signal: AbortSignal): Promise<PlaceOption[]> {
+  const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=6&language=es&format=json`;
+  const res = await fetch(url, { signal });
+  if (!res.ok) throw new Error(`geocoding ${res.status}`);
+  const data = (await res.json()) as {
+    results?: Array<{ name: string; country?: string; admin1?: string; latitude: number; longitude: number; timezone?: string }>;
+  };
+  return (data.results ?? []).map((r) => {
+    const parts = [r.name];
+    if (r.admin1 && r.admin1 !== r.name) parts.push(r.admin1);
+    if (r.country) parts.push(r.country);
+    return {
+      label: parts.join(", "),
+      latitude: r.latitude,
+      longitude: r.longitude,
+      timezone: r.timezone,
+    };
+  });
+}
 
 type Props = {
   step: number;
   query: string;
   onQuery: (q: string) => void;
-  onSelect: (place: string) => void;
+  onSelect: (place: PlaceOption) => void;
   onBack: () => void;
 };
 
-/** 07 — Birthplace search (real input + suggestions; empty / results / no-results states). */
+/** 07 — Birthplace search: autocomplete real con estados empty/buscando/resultados/sin-resultados. */
 export function BirthplaceSearchScreen({ step, query, onQuery, onSelect, onBack }: Props) {
-  const results = useMemo(() => {
-    const norm = (s: string) =>
-      s
-        .normalize("NFD")
-        .replace(/\p{Diacritic}/gu, "")
-        .toLowerCase();
-    const q = norm(query.trim());
-    if (!q) return [];
-    return CITIES.filter((c) => norm(c).includes(q)).slice(0, 5);
+  const [results, setResults] = useState<PlaceOption[]>([]);
+  const [searching, setSearching] = useState(false);
+  const requestId = useRef(0);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) {
+      setResults([]);
+      setSearching(false);
+      return;
+    }
+    const id = ++requestId.current;
+    const controller = new AbortController();
+    setSearching(true);
+    const t = setTimeout(async () => {
+      try {
+        const places = await searchPlaces(q, controller.signal);
+        if (requestId.current === id) setResults(places);
+      } catch {
+        if (requestId.current === id) setResults(fallbackResults(q));
+      } finally {
+        if (requestId.current === id) setSearching(false);
+      }
+    }, 350);
+    return () => {
+      clearTimeout(t);
+      controller.abort();
+    };
   }, [query]);
 
-  const showEmpty = query.trim().length === 0;
-  const showNoResults = !showEmpty && results.length === 0;
+  const showEmpty = query.trim().length < 2;
+  const showNoResults = !showEmpty && !searching && results.length === 0;
 
   return (
     <Screen bg={A.dailyTexture} wash={0.52}>
@@ -123,12 +147,14 @@ export function BirthplaceSearchScreen({ step, query, onQuery, onSelect, onBack 
 
           {showEmpty ? (
             <Caption style={styles.hint}>Empezá a escribir para ver ciudades.</Caption>
+          ) : searching && results.length === 0 ? (
+            <Caption style={styles.hint}>Buscando…</Caption>
           ) : showNoResults ? (
-            <Caption style={styles.hint}>Sin resultados. Probá con otra ciudad.</Caption>
+            <Caption style={styles.hint}>Sin resultados. Probá agregando el país o con otra ciudad.</Caption>
           ) : (
-            results.map((city) => (
-              <Pressable key={city} onPress={() => onSelect(city)} style={styles.result}>
-                <Text style={styles.resultTxt}>{city}</Text>
+            results.map((place) => (
+              <Pressable key={place.label} onPress={() => onSelect(place)} style={styles.result}>
+                <Text style={styles.resultTxt}>{place.label}</Text>
                 <View style={styles.resultLine} />
               </Pressable>
             ))

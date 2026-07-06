@@ -14,7 +14,7 @@ import { BaseChartScreen } from "./screens/BaseChartScreen";
 import { BeforeAfterScreen } from "./screens/BeforeAfterScreen";
 import { type BirthDateParts, BirthdateScreen, MONTHS } from "./screens/BirthdateScreen";
 import { BirthdateSelectedScreen } from "./screens/BirthdateSelectedScreen";
-import { BirthplaceSearchScreen } from "./screens/BirthplaceSearchScreen";
+import { BirthplaceSearchScreen, type PlaceOption } from "./screens/BirthplaceSearchScreen";
 import { BirthplaceSelectedScreen } from "./screens/BirthplaceSelectedScreen";
 import { type BirthTime, BirthTimeScreen } from "./screens/BirthTimeScreen";
 import { BirthTimeSelectedScreen } from "./screens/BirthTimeSelectedScreen";
@@ -56,7 +56,7 @@ export function OnboardingFlow() {
   const [identity, setIdentity] = useState<Identity>("ella");
   const [birthDate, setBirthDate] = useState<BirthDateParts>({ day: 15, month: 1, year: 1996 });
   const [placeQuery, setPlaceQuery] = useState("");
-  const [birthPlace, setBirthPlace] = useState<string | undefined>();
+  const [birthPlace, setBirthPlace] = useState<PlaceOption | undefined>();
   const [birthTime, setBirthTime] = useState<BirthTime>({ hour: 8, minute: 30, period: "AM" });
   const [timeUnknown, setTimeUnknown] = useState(false);
   const [email, setEmail] = useState("");
@@ -87,7 +87,7 @@ export function OnboardingFlow() {
   const timeLabel = timeUnknown
     ? "Sin hora"
     : `${String(birthTime.hour).padStart(2, "0")}:${String(birthTime.minute).padStart(2, "0")} ${birthTime.period}`;
-  const placeShort = birthPlace?.split(",")[0] ?? "";
+  const placeShort = birthPlace?.label.split(",")[0] ?? "";
 
   const accountNext = async () => {
     if (!account || account.isSignedIn) {
@@ -110,7 +110,7 @@ export function OnboardingFlow() {
       name: "Visitante",
       birthDate: birthDateISO,
       birthTime: birthTimeValue,
-      birthPlace,
+      birthPlace: birthPlace?.label,
       interests: DEFAULT_TOPICS,
       guidanceTone: "protectora",
       notificationTime: "09:00",
@@ -120,7 +120,10 @@ export function OnboardingFlow() {
       void persistBackend({
         birthDate: birthDateISO,
         birthTime: birthTimeValue,
-        birthPlaceLabel: birthPlace,
+        birthPlaceLabel: birthPlace?.label,
+        latitude: birthPlace?.latitude,
+        longitude: birthPlace?.longitude,
+        timezone: birthPlace?.timezone,
       });
     }
     router.replace("/(tabs)");
@@ -179,7 +182,7 @@ export function OnboardingFlow() {
       screen = (
         <BirthplaceSelectedScreen
           step={step}
-          place={birthPlace ?? "Buenos Aires, Argentina"}
+          place={birthPlace?.label ?? "Buenos Aires, Argentina"}
           onNext={next}
           onBack={back}
         />

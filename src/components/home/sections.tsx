@@ -158,13 +158,15 @@ export function TopicsSection({
       <View style={styles.divider} />
       <Eyebrow>TU DÍA POR ÁREA</Eyebrow>
 
-      {reading.topics.map((t) => {
+      {[...reading.topics]
+        .sort((a, b) => (a.topic === activeTopic ? -1 : b.topic === activeTopic ? 1 : 0))
+        .map((t) => {
         const active = t.topic === activeTopic;
         return (
           <Pressable
             key={t.topic}
             onPress={() => onOpenTopic(t)}
-            style={({ pressed }) => [styles.insightRow, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.insightRow, !active && styles.insightRowDim, pressed && styles.pressed]}
           >
             <View style={styles.insightHead}>
               <View style={styles.topicMarker}>
@@ -361,6 +363,7 @@ const styles = StyleSheet.create({
   tabUnderline: { backgroundColor: orbita.colors.copper, borderRadius: 1, height: 2, marginTop: orbita.spacing.sm, width: 34 },
 
   insightRow: { paddingVertical: 28, borderBottomColor: orbita.colors.line, borderBottomWidth: 1 },
+  insightRowDim: { opacity: 0.55 },
   insightHead: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
   insightTitle: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 24, lineHeight: 30, flex: 1 },
   arrow: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 20, marginLeft: orbita.spacing.md },

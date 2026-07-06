@@ -14,6 +14,7 @@ import { useAppState } from "@/hooks/useAppState";
 import { LiveAppDocs, useLiveApp, useLiveAppDocs } from "@/hooks/useLiveApp";
 import { createFallbackProfile, createTriad, toISODate } from "./readingEngine";
 import { Triad, UserProfile } from "./types";
+import { formatSign } from "./zodiac";
 
 // --- Types ---
 
@@ -27,6 +28,8 @@ export type CartaData = {
 };
 
 export type TransitosData = {
+  /** Micro-label sobre la fila de planetas (aclara que es el cielo de hoy, no tu carta). */
+  skyLabel: string;
   planetsRow: string;
   headline: string;
   intro: string;
@@ -109,12 +112,15 @@ export function buildCarta(profile: UserProfile, date = toISODate()): CartaData 
   };
 }
 
-export function buildTransitos(): TransitosData {
+export function buildTransitos(profile: UserProfile): TransitosData {
+  const sunLabel = formatSign(profile.zodiacSign);
   return {
-    planetsRow: "☿ Mercurio    ♀ Venus    ☾ Luna",
+    // Dónde está cada planeta HOY (no es tu carta: es el cielo de todos).
+    skyLabel: "HOY EN EL CIELO",
+    planetsRow: "☿ en Sagitario   ♀ en Leo   ☾ en Tauro",
     headline: "Qué se mueve,\nqué te toca.",
     intro: "El tránsito destacado marca el clima. Los secundarios matizan trabajo, vínculos y energía.",
-    destacado: "Venus armoniza tu Sol · deseo y valor.",
+    destacado: `Venus armoniza tu Sol en ${sunLabel} · deseo y valor.`,
     porArea: [
       { title: "Venus armoniza al Sol", body: "Amor: se nota lo que ya funciona sin esfuerzo." },
       { title: "Mercurio roza la Luna", body: "Trabajo: cuidá el mensaje mandado en caliente." },
@@ -168,7 +174,7 @@ export function buildLunar(): LunarData {
 export function buildAppData(profile: UserProfile, date = toISODate()): AppData {
   return {
     carta: buildCarta(profile, date),
-    transitos: buildTransitos(),
+    transitos: buildTransitos(profile),
     vinculo: buildVinculo(),
     perfil: buildPerfil(profile),
     lunar: buildLunar()

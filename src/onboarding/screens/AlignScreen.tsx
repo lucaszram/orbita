@@ -18,18 +18,19 @@ export function AlignScreen({ onNext, onBack }: { onNext: () => void; onBack: ()
         <Title style={styles.title}>Alineate con el ritmo del universo</Title>
         <Body style={styles.sub}>Descifrá amor, trabajo y camino personal desde tu carta.</Body>
 
-        <View style={styles.grid}>
-          <View style={styles.col}>
-            <Tile img={A.tileLunar} label="☾  Influencia lunar" h={150} />
-            <Tile img={A.tilePractice} label="◇  Práctica diaria" h={162} />
-          </View>
-          <View style={[styles.col, styles.colOffset]}>
-            <Tile img={A.tileGuide} label="✦  Guía personal" h={168} />
-            <Tile img={A.tileDecisions} label="Decisiones" h={146} />
+        <View style={styles.gridZone}>
+          <View style={styles.grid}>
+            <View style={styles.col}>
+              <Tile img={A.tileLunar} label="☾  Influencia lunar" h={188} />
+              <Tile img={A.tilePractice} label="◇  Práctica diaria" h={202} />
+            </View>
+            <View style={[styles.col, styles.colOffset]}>
+              <Tile img={A.tileGuide} label="✦  Guía personal" h={208} />
+              <Tile img={A.tileDecisions} label="◈  Decisiones" h={182} />
+            </View>
           </View>
         </View>
 
-        <View style={styles.spacer} />
         <Caption style={styles.note}>Órbita ordena señales, no dicta destino.</Caption>
         <View style={styles.footer}>
           <CTA label="Empezar el viaje" onPress={onNext} />
@@ -53,9 +54,10 @@ function Tile({ img, label, h }: { img: ImageSourcePropType; label: string; h: n
 const styles = StyleSheet.create({
   body: { flex: 1, paddingHorizontal: GUTTER, paddingTop: 20 },
   col: { flex: 1, gap: 14 },
-  colOffset: { marginTop: 20 },
+  colOffset: { marginTop: 22 },
   footer: { paddingBottom: 12, paddingTop: 12 },
-  grid: { flexDirection: "row", gap: 14, marginTop: 28 },
+  grid: { flexDirection: "row", gap: 14 },
+  gridZone: { flex: 1, justifyContent: "center" },
   note: { color: orbita.faint, marginBottom: 6, textAlign: "center" },
   pill: {
     backgroundColor: "rgba(10,11,14,0.72)",
@@ -69,7 +71,6 @@ const styles = StyleSheet.create({
     top: -14,
   },
   pillTxt: { color: orbita.bone, fontFamily: font.sansMed, fontSize: 12.5 },
-  spacer: { flex: 1, minHeight: 16 },
   sub: { marginTop: 10, textAlign: "center" },
   tile: { borderRadius: 16 },
   tileImg: { borderRadius: 16 },

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Alert, ScrollView, StyleSheet, View } from "react-native";
+import { Alert, LayoutAnimation, ScrollView, StyleSheet, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -33,6 +33,11 @@ export default function HomeScreen() {
     router.push({ pathname: "/reading/topic", params: { topic: topic.topic } });
   }
 
+  function selectTab(topic: Topic) {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setActiveTopic(topic);
+  }
+
   async function guardar() {
     await saveTodayReading();
     Alert.alert("Guardado", "Tu lectura de hoy quedó en guardadas.");
@@ -51,7 +56,7 @@ export default function HomeScreen() {
         <TopicsSection
           reading={homeReading}
           activeTopic={activeTopic}
-          onSelectTab={setActiveTopic}
+          onSelectTab={selectTab}
           onOpenTopic={openTopic}
         />
         <LongReadEnd

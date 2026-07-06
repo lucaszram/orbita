@@ -131,6 +131,10 @@ export type PersistBirthData = (input: {
   birthDate: string;
   birthTime?: string;
   birthPlaceLabel?: string;
+  latitude?: number;
+  longitude?: number;
+  /** Timezone del lugar de nacimiento (del geocoding); fallback: la del dispositivo. */
+  timezone?: string;
 }) => Promise<void>;
 
 export function useBackendPersist(): PersistBirthData | null {
@@ -153,17 +157,19 @@ function useBackendPersistInner(): PersistBirthData {
     async (input) => {
       if (!isSignedIn) return;
       try {
-        const timezone = deviceTimezone();
+        const birthTimezone = input.timezone ?? deviceTimezone();
         await ensureUser({});
         await completeBirthData({
           birthDate: input.birthDate,
           birthTime: input.birthTime,
           birthTimePrecision: input.birthTime ? "known" : "unknown",
           birthPlaceLabel: input.birthPlaceLabel ?? "Sin especificar",
-          timezone
+          latitude: input.latitude,
+          longitude: input.longitude,
+          timezone: birthTimezone
         });
         await calculateChart({});
-        await generateToday({ localDate: new Date().toISOString().slice(0, 10), timezone });
+        await generateToday({ localDate: new Date().toISOString().slice(0, 10), timezone: deviceTimezone() });
       } catch (e) {
         // La copia local ya existe: el backend puede fallar sin romper el flujo.
         console.warn("Órbita: persistencia backend falló (la app sigue local)", e);

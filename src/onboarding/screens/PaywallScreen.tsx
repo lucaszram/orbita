@@ -103,11 +103,12 @@ export function PaywallScreen({ plan, onPlan, onUnlock, onBack }: Props) {
             Cancelás cuando quieras · Renovación automática · Entretenimiento y autoconocimiento.
           </Text>
         </View>
-
-        <View style={styles.footer}>
-          <CTA label="Desbloquear Órbita" onPress={onUnlock} />
-        </View>
       </ScrollView>
+
+      {/* CTA fijo: siempre visible, elijas el plan que elijas (feedback Lucas). */}
+      <View style={styles.stickyFooter}>
+        <CTA label="Desbloquear Órbita" onPress={onUnlock} />
+      </View>
     </Screen>
   );
 }
@@ -243,7 +244,15 @@ const styles = StyleSheet.create({
   },
   radioDot: { backgroundColor: orbita.copper, borderRadius: 4, height: 8, width: 8 },
   restore: { color: orbita.muted, fontFamily: font.sansMed, fontSize: 14 },
-  scroll: { paddingBottom: 34, paddingHorizontal: GUTTER },
+  scroll: { paddingBottom: 16, paddingHorizontal: GUTTER },
+  stickyFooter: {
+    backgroundColor: "rgba(10,11,14,0.92)",
+    borderTopColor: orbita.line,
+    borderTopWidth: 1,
+    paddingBottom: 26,
+    paddingHorizontal: GUTTER,
+    paddingTop: 14,
+  },
   sectionTitle: { color: orbita.bone, fontFamily: font.sansBold, fontSize: 18 },
   stepBody: { color: orbita.muted, fontFamily: font.sans, fontSize: 13, lineHeight: 18, marginTop: 3 },
   stepNum: {
