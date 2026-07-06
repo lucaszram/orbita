@@ -6,6 +6,7 @@ import {
   normalizeBirthInput,
   toSerializable,
   type AstrologyProviderRunResult,
+  type NormalizedAstroTransit,
   type NormalizedAstroTimeline
 } from "./orbita";
 
@@ -70,6 +71,12 @@ export type ExtendedTransitProviderResult = {
 export type NatalChartProviderResult = Omit<AstrologyProviderRunResult, "normalized"> & {
   normalized?: {
     chart: NonNullable<AstrologyProviderRunResult["normalized"]>["chart"];
+  };
+};
+
+export type DailyTransitProviderResult = Omit<AstrologyProviderRunResult, "normalized"> & {
+  normalized?: {
+    transits: NormalizedAstroTransit[];
   };
 };
 
@@ -585,6 +592,73 @@ export async function runAstrologyApiNatalChart(args: {
       request: prepared.request,
       error: error instanceof Error ? error.message : "Unknown AstrologyAPI natal chart error"
     }) as NatalChartProviderResult;
+  }
+}
+
+export async function runAstrologyApiDailyTransits(args: {
+  input: BirthChartInput;
+  localDate: string;
+}): Promise<DailyTransitProviderResult> {
+  const config = getAstrologyApiConfig();
+  const prepared = buildBirthRequest(args.input, config.houseSystem);
+
+  if (!hasAstrologyApiCredentials(config)) {
+    return toSerializable({
+      status: "not_configured",
+      provider: "astrologyapi",
+      providerVersion: "astrologyapi-western-daily-transits-v1",
+      houseSystem: config.houseSystem,
+      localDate: args.localDate,
+      warnings: ["astrologyapi_credentials_not_configured"],
+      request: prepared.status === "ready" ? prepared.request : null
+    }) as DailyTransitProviderResult;
+  }
+
+  if (prepared.status !== "ready") {
+    return toSerializable({
+      status: "missing_input",
+      provider: "astrologyapi",
+      providerVersion: "astrologyapi-western-daily-transits-v1",
+      houseSystem: config.houseSystem,
+      localDate: args.localDate,
+      warnings: prepared.warnings,
+      request: null
+    }) as DailyTransitProviderResult;
+  }
+
+  try {
+    const natalTransitsDaily = await postAstrologyApi(config, "natal_transits/daily", prepared.request);
+    const transits = normalizeAstrologyApiTransits(natalTransitsDaily);
+
+    return toSerializable({
+      status: "success",
+      provider: "astrologyapi",
+      providerVersion: "astrologyapi-western-daily-transits-v1",
+      houseSystem: config.houseSystem,
+      localDate: args.localDate,
+      warnings: [
+        ...prepared.warnings,
+        "natal_transits_daily_endpoint_date_scope_needs_provider_verification"
+      ],
+      request: {
+        dailyTransits: prepared.request
+      },
+      normalized: {
+        transits
+      },
+      raw: natalTransitsDaily
+    }) as DailyTransitProviderResult;
+  } catch (error) {
+    return toSerializable({
+      status: "error",
+      provider: "astrologyapi",
+      providerVersion: "astrologyapi-western-daily-transits-v1",
+      houseSystem: config.houseSystem,
+      localDate: args.localDate,
+      warnings: prepared.warnings,
+      request: prepared.request,
+      error: error instanceof Error ? error.message : "Unknown AstrologyAPI daily transit error"
+    }) as DailyTransitProviderResult;
   }
 }
 
