@@ -62,9 +62,37 @@ export const webAssets = {
   studioBackplate: {
     key: "studioBackplate",
     role: "studio",
+    source: "assets/orbita/optimized/onboarding-v44/identify_bg_idx21.jpg",
+    require: require("../../assets/orbita/optimized/onboarding-v44/identify_bg_idx21.jpg"),
+    alt: "Atmósfera de eclipse tenue como backplate del Studio."
+  },
+  homePreview: {
+    key: "homePreview",
+    role: "studio",
+    source: "assets/orbita/web/orbita-home-preview.jpg",
+    require: require("../../assets/orbita/web/orbita-home-preview.jpg"),
+    alt: "Captura real de la Home diaria de Órbita."
+  },
+  moduleChartRings: {
+    key: "moduleChartRings",
+    role: "module",
+    source: "assets/orbita/optimized/onboarding-v44/orbital_chart_idx15.jpg",
+    require: require("../../assets/orbita/optimized/onboarding-v44/orbital_chart_idx15.jpg"),
+    alt: "Anillos orbitales de cobre para la carta base."
+  },
+  moduleTransitsSwirl: {
+    key: "moduleTransitsSwirl",
+    role: "module",
     source: "assets/orbita/optimized/onboarding-v44/transits_idx30.jpg",
     require: require("../../assets/orbita/optimized/onboarding-v44/transits_idx30.jpg"),
-    alt: "Backplate orbital dinámico para el Studio."
+    alt: "Remolino orbital dinámico para los tránsitos del día."
+  },
+  moduleHorizon: {
+    key: "moduleHorizon",
+    role: "module",
+    source: "assets/orbita/optimized/onboarding-v44/ascendant_horizon_idx27.jpg",
+    require: require("../../assets/orbita/optimized/onboarding-v44/ascendant_horizon_idx27.jpg"),
+    alt: "Horizonte cálido al amanecer para el ritmo diario."
   },
   paymentField: {
     key: "paymentField",

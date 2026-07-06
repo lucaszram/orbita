@@ -4,7 +4,7 @@ import { Newsreader_400Regular, Newsreader_500Medium } from "@expo-google-fonts/
 import { useFonts } from "expo-font";
 import { LinearGradient } from "expo-linear-gradient";
 import { Link } from "expo-router";
-import { ArrowRight, LockKeyhole, Orbit, ShieldCheck, Sparkles } from "lucide-react-native";
+import { ArrowRight, LockKeyhole, Orbit, ShieldCheck } from "lucide-react-native";
 import {
   ActivityIndicator,
   Image,
@@ -44,17 +44,17 @@ const featureTiles = [
   {
     title: "Carta base",
     body: "Fecha, lugar y hora como punto de partida para una lectura personal.",
-    asset: webAssets.natalChart
+    asset: webAssets.moduleChartRings
   },
   {
     title: "Tránsitos",
     body: "El día leído contra tu carta, con prioridad editorial y límites claros.",
-    asset: webAssets.transits
+    asset: webAssets.moduleTransitsSwirl
   },
   {
     title: "Ritmo diario",
     body: "Hacé, evitá, acción y pregunta: breve, concreto, revisable.",
-    asset: webAssets.dailyTexture
+    asset: webAssets.moduleHorizon
   }
 ];
 
@@ -148,7 +148,7 @@ export function OrbitaLanding() {
             <View style={styles.dailyCopy}>
               <Text selectable style={styles.eyebrow}>Home diaria</Text>
               <Text selectable style={[styles.sectionTitle, isNarrow && styles.sectionTitleNarrow]}>
-                El backend devuelve texto editable. La pantalla lo vuelve ritmo.
+                Una lectura diaria con ritmo editorial, hecha para tu carta.
               </Text>
               <Text selectable style={styles.body}>
                 Cada módulo nace de carta, fecha local y revisión editorial de Órbita. La lectura se mantiene como entretenimiento,
@@ -176,12 +176,13 @@ export function OrbitaLanding() {
             source={webAssets.studioBackplate.require}
             style={styles.studioVisual}
           >
-            <LinearGradient colors={["rgba(7,8,10,0.2)", "rgba(7,8,10,0.82)"]} style={styles.studioVisualOverlay}>
-              <View style={styles.dropMini}>
-                <Sparkles color={colors.copperSoft} size={18} strokeWidth={1.6} />
-                <Text selectable style={styles.dropMiniTitle}>video-daily-cut.mp4</Text>
-                <Text selectable style={styles.dropMiniMeta}>draft / review / published</Text>
-              </View>
+            <LinearGradient colors={["rgba(7,8,10,0.2)", "rgba(7,8,10,0.72)"]} style={styles.studioVisualOverlay}>
+              <Image
+                accessibilityLabel={webAssets.homePreview.alt}
+                resizeMode="cover"
+                source={webAssets.homePreview.require}
+                style={styles.homeShot}
+              />
             </LinearGradient>
           </ImageBackground>
           <View style={styles.studioCopy}>
@@ -190,8 +191,8 @@ export function OrbitaLanding() {
               Un lugar para probar material sin ensuciar producción.
             </Text>
             <Text selectable style={styles.body}>
-              El primer Studio es visual: drop de videos, metadata local, estados editoriales y acceso protegido. Cuando el flujo
-              cierre, se conecta storage real.
+              El espacio interno donde Órbita prepara y revisa su material visual antes de publicarlo, con estados editoriales y
+              acceso protegido.
             </Text>
             <Link href="/studio" asChild>
               <Pressable style={styles.inlineButton}>
@@ -259,7 +260,7 @@ function FeatureTile({ asset, body, title }: { asset: WebAssetSlot; body: string
         source={asset.require}
         style={styles.featureMedia}
       >
-        <LinearGradient colors={["rgba(7,8,10,0.04)", "rgba(7,8,10,0.68)"]} style={styles.featureMediaOverlay} />
+        <LinearGradient colors={["rgba(7,8,10,0)", "rgba(7,8,10,0.32)"]} style={styles.featureMediaOverlay} />
       </ImageBackground>
       <View style={styles.featureCopy}>
         <Text selectable style={styles.featureTitle}>{title}</Text>
@@ -295,8 +296,13 @@ const styles = StyleSheet.create({
   heroNarrow: {
     minHeight: 690
   },
+  // width/height/resizeMode explícitos: en RNW el layer default del ImageBackground
+  // se pierde con imageStyle registrado y el <img> queda a tamaño natural.
   heroImage: {
-    opacity: 0.92
+    height: "100%",
+    opacity: 0.92,
+    resizeMode: "cover",
+    width: "100%"
   },
   heroOverlay: {
     flex: 1,
@@ -488,7 +494,10 @@ const styles = StyleSheet.create({
     minHeight: 250
   },
   featureImage: {
-    opacity: 0.92
+    height: "100%",
+    opacity: 0.98,
+    resizeMode: "cover",
+    width: "100%"
   },
   featureMediaOverlay: {
     flex: 1
@@ -516,7 +525,10 @@ const styles = StyleSheet.create({
     width: "100%"
   },
   dailyImage: {
-    opacity: 0.78
+    height: "100%",
+    opacity: 0.78,
+    resizeMode: "cover",
+    width: "100%"
   },
   dailyOverlay: {
     flex: 1,
@@ -580,32 +592,23 @@ const styles = StyleSheet.create({
     overflow: "hidden"
   },
   studioPreviewImage: {
-    opacity: 0.92
+    height: "100%",
+    opacity: 0.92,
+    resizeMode: "cover",
+    width: "100%"
   },
   studioVisualOverlay: {
+    alignItems: "center",
     flex: 1,
-    justifyContent: "flex-end",
-    padding: 18
+    justifyContent: "center",
+    padding: 24
   },
-  dropMini: {
-    backgroundColor: "rgba(7, 8, 10, 0.74)",
-    borderColor: "rgba(214, 154, 106, 0.28)",
-    borderRadius: 8,
+  homeShot: {
+    borderColor: "rgba(247, 245, 239, 0.16)",
+    borderRadius: 24,
     borderWidth: 1,
-    gap: 6,
-    padding: 16
-  },
-  dropMiniTitle: {
-    color: colors.bone,
-    fontFamily: "Inter_700Bold",
-    fontSize: 15,
-    letterSpacing: 0
-  },
-  dropMiniMeta: {
-    color: colors.boneMuted,
-    fontFamily: "Inter_400Regular",
-    fontSize: 13,
-    letterSpacing: 0
+    height: 560,
+    width: 264
   },
   studioCopy: {
     flex: 1,
