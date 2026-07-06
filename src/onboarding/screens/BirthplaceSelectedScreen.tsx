@@ -14,7 +14,7 @@ type Props = { step: number; place: string; onNext: () => void; onBack: () => vo
 /** 08 — Birthplace confirmed (ascendant/horizon). */
 export function BirthplaceSelectedScreen({ step, place, onNext, onBack }: Props) {
   return (
-    <Screen bg={A.dailyTexture} wash={0.55}>
+    <Screen bg={A.dailyTexture} wash={0.48}>
       <Header step={step} total={15} onBack={onBack} />
       <View style={styles.body}>
         <Title>Horizonte definido.</Title>

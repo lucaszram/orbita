@@ -14,7 +14,7 @@ type Props = { step: number; timeLabel: string; onNext: () => void; onBack: () =
 /** 10 — Birth time confirmed (ascendant refined). */
 export function BirthTimeSelectedScreen({ step, timeLabel, onNext, onBack }: Props) {
   return (
-    <Screen bg={A.dailyTexture} wash={0.55}>
+    <Screen bg={A.dailyTexture} wash={0.48}>
       <Header step={step} total={15} onBack={onBack} />
       <View style={styles.body}>
         <Title>Ascendente afinado.</Title>

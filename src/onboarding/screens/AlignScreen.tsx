@@ -12,7 +12,7 @@ import { font, GUTTER, orbita } from "../theme";
 /** 02 — Align with the universe (value pitch + benefit tiles). */
 export function AlignScreen({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
   return (
-    <Screen bg={A.dailyTexture} wash={0.5}>
+    <Screen bg={A.dailyTexture} wash={0.44}>
       <Header step={1} total={15} onBack={onBack} />
       <View style={styles.body}>
         <Title style={styles.title}>Alineate con el ritmo del universo</Title>

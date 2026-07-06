@@ -96,7 +96,7 @@ export function BirthplaceSearchScreen({ step, query, onQuery, onSelect, onBack 
   const showNoResults = !showEmpty && results.length === 0;
 
   return (
-    <Screen bg={A.dailyTexture} wash={0.6}>
+    <Screen bg={A.dailyTexture} wash={0.52}>
       <Header step={step} total={15} onBack={onBack} />
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}

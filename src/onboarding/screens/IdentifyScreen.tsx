@@ -29,7 +29,7 @@ type Props = {
 /** 03 — Identity (tone personalization). */
 export function IdentifyScreen({ step, identity, onSelect, onNext, onBack }: Props) {
   return (
-    <Screen bg={A.identifyBg} wash={0.58}>
+    <Screen bg={A.identifyBg} wash={0.5}>
       <Header step={step} total={15} onBack={onBack} />
       <View style={styles.body}>
         <Title>¿Cómo te identificás?</Title>
@@ -47,7 +47,8 @@ export function IdentifyScreen({ step, identity, onSelect, onNext, onBack }: Pro
                 <Text style={styles.label}>{o.label}</Text>
                 <RadioGroupItem
                   value={o.value}
-                  style={[styles.radio, { borderColor: selected ? orbita.copper : orbita.faint }]}
+                  // rn-primitives renders a DOM node on web: style must be a plain object, not an array
+                  style={StyleSheet.flatten([styles.radio, { borderColor: selected ? orbita.copper : orbita.faint }])}
                   indicatorStyle={styles.radioDot}
                 />
               </Pressable>

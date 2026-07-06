@@ -30,7 +30,7 @@ type Props = {
 export function BirthdateScreen({ step, value, onChange, onNext, onBack }: Props) {
   const yearIndex = YEARS.indexOf(String(value.year));
   return (
-    <Screen bg={A.dailyTexture} wash={0.6}>
+    <Screen bg={A.dailyTexture} wash={0.52}>
       <Header step={step} total={15} onBack={onBack} />
       <View style={styles.body}>
         <Title>¿Cuándo naciste?</Title>

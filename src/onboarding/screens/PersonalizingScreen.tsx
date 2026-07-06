@@ -36,7 +36,7 @@ export function PersonalizingScreen({ step, onDone, onBack }: Props) {
   }, [chart, transits, onDone]);
 
   return (
-    <Screen bg={A.transitsBg} wash={0.55}>
+    <Screen bg={A.transitsBg} wash={0.48}>
       <Header step={step} total={15} onBack={onBack} />
       <View style={styles.body}>
         <Title style={styles.title}>Alineando tu cielo…</Title>

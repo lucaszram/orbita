@@ -29,7 +29,7 @@ type Props = {
 /** 09 — Birth time wheel picker + "No sé la hora". */
 export function BirthTimeScreen({ step, value, onChange, unknown, onToggleUnknown, onNext, onBack }: Props) {
   return (
-    <Screen bg={A.dailyTexture} wash={0.6}>
+    <Screen bg={A.dailyTexture} wash={0.52}>
       <Header step={step} total={15} onBack={onBack} />
       <View style={styles.body}>
         <Title>¿A qué hora naciste?</Title>

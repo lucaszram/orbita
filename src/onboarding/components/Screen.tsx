@@ -33,11 +33,12 @@ export function Screen({ bg, bgOpacity = 1, wash = 0.55, children }: Props) {
         >
           <LinearGradient
             colors={[
-              `rgba(6,7,10,${Math.max(0, wash - 0.2)})`,
+              `rgba(6,7,10,${Math.max(0, wash - 0.38)})`,
+              `rgba(6,7,10,${Math.max(0, wash - 0.12)})`,
               `rgba(6,7,10,${wash})`,
-              "rgba(6,7,10,0.92)",
+              "rgba(6,7,10,0.88)",
             ]}
-            locations={[0, 0.55, 1]}
+            locations={[0, 0.42, 0.68, 1]}
             style={StyleSheet.absoluteFill}
           />
         </ImageBackground>

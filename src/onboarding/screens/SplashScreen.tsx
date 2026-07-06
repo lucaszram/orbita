@@ -7,7 +7,7 @@ import { font, orbita } from "../theme";
 /** 01 — Logo splash. Tap anywhere to enter. */
 export function SplashScreen({ onNext }: { onNext: () => void }) {
   return (
-    <Screen bg={A.splashBg} wash={0.42}>
+    <Screen bg={A.splashBg} wash={0.36}>
       <Pressable style={styles.root} onPress={onNext} accessibilityRole="button" accessibilityLabel="Entrar a Órbita">
         <View style={styles.mark}>
           <View style={styles.orbit} />

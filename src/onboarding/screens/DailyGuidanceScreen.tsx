@@ -13,7 +13,7 @@ import { font, GUTTER, orbita } from "../theme";
 /** 04 — Daily guidance (value before asking data). Central emblem + orbiting topics. */
 export function DailyGuidanceScreen({ step, onNext, onBack }: { step: number; onNext: () => void; onBack: () => void }) {
   return (
-    <Screen bg={A.guidanceBg} wash={0.5}>
+    <Screen bg={A.guidanceBg} wash={0.44}>
       <Header step={step} total={15} onBack={onBack} />
       <View style={styles.body}>
         <Title style={styles.title}>Guía diaria,{"\n"}ajustada a vos</Title>
