@@ -1,87 +1,183 @@
-import { StyleSheet, View } from "react-native";
-import { EditorialThumb, HeroImage } from "@/components/orbita/HeroImage";
+import { ReactNode } from "react";
+import { Image, StyleSheet, Text, View } from "react-native";
+import { EditorialThumb } from "@/components/orbita/HeroImage";
 import { orbita } from "@/theme/orbita";
-import { Body, Eyebrow, H2, Pill } from "./kit";
+import { Pill } from "./kit";
 
 /**
  * Content-only state blocks (drop inside an OrbitaScreen / DetailScreen).
- * Match the Órbita V4.7 "Estados" section: Cargando / Vacío / Error / Bloqueado.
+ * Figma V4.7 sección 07 · Estados: Cargando / Vacío / Error / Bloqueado —
+ * emblema circular con glow cobre y composición centrada.
  */
+
+const EMBLEMS = {
+  moon: require("../../../assets/orbita/optimized/core/orbita_home_hero_orbital_b.jpg"),
+  phase: require("../../../assets/orbita/optimized/core/orbita_moon_phase_waxing.jpg"),
+  texture: require("../../../assets/orbita/optimized/core/orbita_daily_texture_a.jpg")
+} as const;
+
+function Emblem({ kind, size = 170 }: { kind: keyof typeof EMBLEMS; size?: number }) {
+  return (
+    <View style={[styles.emblemGlow, { borderRadius: size / 2 }]}>
+      <Image
+        source={EMBLEMS[kind]}
+        style={{ borderRadius: size / 2, height: size, opacity: 0.92, width: size }}
+        resizeMode="cover"
+      />
+    </View>
+  );
+}
+
+function Centered({ children }: { children: ReactNode }) {
+  return <View style={styles.wrap}>{children}</View>;
+}
 
 export function LoadingState() {
   return (
-    <View style={styles.wrap}>
-      <View style={styles.hero}>
-        <HeroImage kind="home" size={200} />
+    <Centered>
+      <View style={styles.orbit}>
+        <Emblem kind="moon" />
+        <View style={styles.orbitRing} />
+        <View style={styles.orbitDot} />
       </View>
-      <Eyebrow>CALCULANDO</Eyebrow>
-      <H2>Leyendo tu{"\n"}cielo de hoy.</H2>
-      <Body>Cruzamos tu carta natal con los tránsitos de hoy. Un momento.</Body>
+      <Text style={styles.eyebrow}>UN MOMENTO</Text>
+      <Text style={styles.title}>Leyendo tu cielo.</Text>
+      <Text style={styles.body}>La lectura de hoy llega en segundos.</Text>
       <View style={styles.track}>
         <View style={styles.fill} />
       </View>
-    </View>
+    </Centered>
   );
 }
 
 export function EmptyState({ title, body, cta, onCta }: { title: string; body: string; cta?: string; onCta?: () => void }) {
   return (
-    <View style={styles.wrap}>
-      <View style={[styles.hero, { opacity: 0.12 }]}>
-        <HeroImage kind="home" size={200} />
+    <Centered>
+      <View style={styles.emblemZone}>
+        <Emblem kind="phase" />
       </View>
-      <H2>{title}</H2>
-      <Body>{body}</Body>
+      <Text style={styles.eyebrow}>GUARDADAS</Text>
+      <Text style={styles.title}>{title}</Text>
+      <Text style={styles.body}>{body}</Text>
       {cta ? (
-        <>
-          <View style={{ height: orbita.spacing.xl }} />
+        <View style={{ marginTop: orbita.spacing.xxl }}>
           <Pill label={cta} onPress={onCta} />
-        </>
+        </View>
       ) : null}
-    </View>
+    </Centered>
   );
 }
 
 export function ErrorState({ onRetry }: { onRetry?: () => void }) {
   return (
-    <View style={styles.wrap}>
-      <View style={[styles.hero, { opacity: 0.22 }]}>
-        <HeroImage kind="home" size={200} />
+    <Centered>
+      <View style={styles.emblemZone}>
+        <Emblem kind="texture" />
       </View>
-      <Eyebrow>SIN SEÑAL DEL CIELO</Eyebrow>
-      <H2>No pudimos{"\n"}leer tu día.</H2>
-      <Body>Hubo un problema al calcular los tránsitos. Probá de nuevo en un momento.</Body>
-      <View style={{ height: orbita.spacing.xl }} />
-      <Pill label="REINTENTAR" onPress={onRetry} />
-    </View>
+      <Text style={styles.eyebrow}>SEÑAL PERDIDA</Text>
+      <Text style={styles.title}>No pudimos{"\n"}traer tu cielo.</Text>
+      <Text style={styles.body}>Parece la conexión. Tu lectura sigue ahí: probá de nuevo en un momento.</Text>
+      <View style={{ marginTop: orbita.spacing.xxl }}>
+        <Pill label="REINTENTAR" onPress={onRetry} />
+      </View>
+    </Centered>
   );
 }
 
 export function LockedState({ onUnlock }: { onUnlock?: () => void }) {
   return (
-    <View style={styles.wrap}>
+    <View style={styles.lockedWrap}>
       <View style={styles.thumb}>
-        <EditorialThumb height={150} />
+        <EditorialThumb height={170} />
+        <View style={styles.plusChip}>
+          <Text style={styles.plusChipText}>PLUS</Text>
+        </View>
       </View>
-      <H2>El análisis{"\n"}completo de hoy.</H2>
-      <Body>Ves el resumen. La lectura completa, tus cuatro áreas y el calendario son parte de Órbita Plus.</Body>
-      <View style={{ height: orbita.spacing.xl }} />
-      <Pill label="DESBLOQUEAR · PLUS" onPress={onUnlock} />
+      <Text style={styles.lockedTitle}>El análisis{"\n"}completo de hoy.</Text>
+      <Text style={styles.lockedBody}>
+        Ves el resumen. La lectura completa, tus cuatro áreas y el calendario son parte de Órbita Plus.
+      </Text>
+      <View style={{ marginTop: orbita.spacing.xl }}>
+        <Pill label="DESBLOQUEAR CON PLUS" onPress={onUnlock} />
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { paddingTop: orbita.spacing.xl },
-  hero: { alignItems: "center", marginBottom: orbita.spacing.xxl },
-  thumb: {
-    alignItems: "center",
-    backgroundColor: orbita.colors.surfaceRaised,
-    borderRadius: orbita.radius.xl,
-    height: 150,
-    justifyContent: "center",
-    marginBottom: orbita.spacing.xl
+  wrap: { alignItems: "center", paddingTop: orbita.spacing.xxl },
+  emblemZone: { marginBottom: orbita.spacing.xxl },
+
+  emblemGlow: {
+    shadowColor: orbita.colors.copper,
+    shadowOffset: { height: 0, width: 0 },
+    shadowOpacity: 0.45,
+    shadowRadius: 46
   },
-  track: { backgroundColor: orbita.colors.line, borderRadius: 2, height: 4, marginTop: orbita.spacing.xxl, width: "100%" },
-  fill: { backgroundColor: orbita.colors.copper, borderRadius: 2, height: 4, width: "38%" }
+  orbit: { alignItems: "center", justifyContent: "center", marginBottom: orbita.spacing.xxl, padding: 22 },
+  orbitRing: {
+    borderColor: "rgba(244,238,228,0.22)",
+    borderRadius: 107,
+    borderWidth: 1,
+    height: 214,
+    position: "absolute",
+    width: 214
+  },
+  orbitDot: {
+    backgroundColor: orbita.colors.copper,
+    borderRadius: 3.5,
+    height: 7,
+    position: "absolute",
+    right: 24,
+    top: 34,
+    width: 7
+  },
+
+  eyebrow: {
+    color: orbita.colors.copper,
+    fontFamily: orbita.fonts.monoMedium,
+    fontSize: 11,
+    letterSpacing: 2,
+    marginBottom: orbita.spacing.md,
+    textAlign: "center"
+  },
+  title: {
+    color: orbita.colors.bone,
+    fontFamily: orbita.fonts.serif,
+    fontSize: 32,
+    lineHeight: 38,
+    textAlign: "center"
+  },
+  body: {
+    color: orbita.colors.muted,
+    fontFamily: orbita.fonts.body,
+    fontSize: 15,
+    lineHeight: 22,
+    marginTop: orbita.spacing.lg,
+    maxWidth: 300,
+    textAlign: "center"
+  },
+  track: {
+    backgroundColor: orbita.colors.line,
+    borderRadius: 2,
+    height: 4,
+    marginTop: orbita.spacing.xxl,
+    width: 240
+  },
+  fill: { backgroundColor: orbita.colors.copper, borderRadius: 2, height: 4, width: "40%" },
+
+  lockedWrap: { paddingTop: orbita.spacing.xl },
+  thumb: { marginBottom: orbita.spacing.xl },
+  plusChip: {
+    backgroundColor: orbita.colors.copper,
+    borderRadius: 12,
+    left: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    position: "absolute",
+    top: 12
+  },
+  plusChipText: { color: orbita.colors.onLight, fontFamily: orbita.fonts.monoMedium, fontSize: 11, letterSpacing: 1 },
+  lockedTitle: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 32, lineHeight: 38 },
+  lockedBody: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 15, lineHeight: 22, marginTop: orbita.spacing.lg }
 });
