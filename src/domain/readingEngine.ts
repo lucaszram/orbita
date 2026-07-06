@@ -44,6 +44,7 @@ import {
   signalCopies,
   signalHeadlines
 } from "../content/homeCatalog";
+import { signHomeBank } from "../content/signHomeBank";
 import { numberInRange, pickStable } from "./random";
 import { formatSign } from "./zodiac";
 
@@ -333,6 +334,16 @@ function buildHomeTopics(seed: string): HomeTopic[] {
 
 export function createHomeReading(profile: UserProfile, date = toISODate()): HomeReading {
   const seed = `${buildSeed(profile, date)}:home`;
+  // Bloque principal con voz por signo; los bancos genéricos quedan de fallback
+  // por si el perfil guardado trae un signo inválido.
+  const signVariants = signHomeBank[profile.zodiacSign];
+  const signVariant = signVariants
+    ? pickStable(signVariants, `${seed}:sign-mood`)
+    : {
+        headline: pickStable(signalHeadlines, `${seed}:headline`),
+        body: pickStable(signalBodies, `${seed}:body`),
+        clima: pickStable(signalCopies, `${seed}:signal`)
+      };
   const topic = resolveTopic(profile, seed);
   const recommendation = resolveRecommendation(topic, seed);
   const transit = createActiveTransit(profile, date);
@@ -346,10 +357,10 @@ export function createHomeReading(profile: UserProfile, date = toISODate()): Hom
     sign: profile.zodiacSign,
     greeting: `Hola, ${profile.name}`,
     triad: createTriad(profile, date),
-    headline: pickStable(signalHeadlines, `${seed}:headline`),
-    body: pickStable(signalBodies, `${seed}:body`),
+    headline: signVariant.headline,
+    body: signVariant.body,
     signalLabel: "CLIMA DEL DÍA",
-    signalCopy: pickStable(signalCopies, `${seed}:signal`),
+    signalCopy: signVariant.clima,
     guideEyebrow: "GUÍA DE HOY",
     guideHeadline: pickStable(guideHeadlines, `${seed}:guide-headline`),
     guideIntro: pickStable(guideIntros, `${seed}:guide-intro`),
