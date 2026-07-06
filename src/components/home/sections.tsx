@@ -1,9 +1,12 @@
 import { ReactNode } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { HomeReading, HomeTopic, Topic } from "@/domain/types";
 import { orbita } from "@/theme/orbita";
-import { EditorialThumb, HeroImage } from "@/components/orbita/HeroImage";
+import { EditorialThumb } from "@/components/orbita/HeroImage";
 import { MiniChart } from "./OrbitalHero";
+
+const HERO_HOME = require("../../../assets/orbita/optimized/core/orbita_home_hero_orbital_b.jpg");
 
 const G = orbita.spacing.gutter;
 
@@ -45,31 +48,39 @@ export function HomeHeader() {
   );
 }
 
-/** CTA pill bone → texto oscuro. */
+/** CTA pill bone → texto oscuro. El fondo va en un View interno (el bg directo
+ *  sobre Pressable no pinta en iOS con new arch). */
 export function PillButton({ label, onPress }: { label: string; onPress?: () => void }) {
   return (
-    <Pressable style={({ pressed }) => [styles.pill, pressed && styles.pressed]} onPress={onPress} accessibilityRole="button">
-      <Text style={styles.pillText}>{label}</Text>
+    <Pressable style={({ pressed }) => [styles.pillWrap, pressed && styles.pressed]} onPress={onPress} accessibilityRole="button">
+      <View style={styles.pill}>
+        <Text style={styles.pillText}>{label}</Text>
+      </View>
     </Pressable>
   );
 }
 
-/** Tramo 01 — Top (Figma V4.7): hero real, tríada, frase del día, CTA Profundizar. */
+/** Tramo 01 — Top (Figma V4.7): hero full-bleed con wash, tríada, frase del día, CTA. */
 export function SignalTop({ reading, onProfundizar }: { reading: HomeReading; onProfundizar: () => void }) {
   const { triad } = reading;
   return (
     <View style={styles.section}>
-      <View style={styles.heroWrap}>
-        <HeroImage kind="home" size={200} />
+      <View style={styles.heroBleed}>
+        <Image source={HERO_HOME} style={styles.heroImg} resizeMode="cover" />
+        <LinearGradient
+          colors={["rgba(10,11,14,0.1)", "rgba(10,11,14,0.55)", orbita.colors.background]}
+          locations={[0, 0.6, 1]}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={styles.heroTriad}>
+          <Text style={[styles.triad, styles.triadCentered]}>
+            {`${triad.sun.glyph} ${triad.sun.label}   ${triad.moon.glyph} ${triad.moon.label}   ${triad.ascendant.glyph} ${triad.ascendant.label}`}
+          </Text>
+          {triad.accuracyNote ? <Text style={[styles.triadNote, styles.triadCentered]}>{triad.accuracyNote}</Text> : null}
+        </View>
       </View>
 
-      <Text style={[styles.triad, styles.triadCentered]}>
-        {`${triad.sun.glyph} ${triad.sun.label}   ${triad.moon.glyph} ${triad.moon.label}   ${triad.ascendant.glyph} ${triad.ascendant.label}`}
-      </Text>
-      {triad.accuracyNote ? <Text style={styles.triadNote}>{triad.accuracyNote}</Text> : null}
-
-      <View style={{ height: orbita.spacing.xl }} />
-      <Eyebrow>TU DÍA EN UNA FRASE</Eyebrow>
+      <Eyebrow>{`HOY · PARA ${triad.sun.label.toUpperCase()}`}</Eyebrow>
       <Text style={styles.headline}>{reading.headline}</Text>
       <Text style={styles.body}>{reading.body}</Text>
 
@@ -77,7 +88,7 @@ export function SignalTop({ reading, onProfundizar }: { reading: HomeReading; on
       <Eyebrow>{reading.signalLabel}</Eyebrow>
       <Text style={styles.signalCopy}>{reading.signalCopy}</Text>
       <View style={{ height: orbita.spacing.xl }} />
-      <PillButton label="Profundizar" onPress={onProfundizar} />
+      <PillButton label="VER POR QUÉ" onPress={onProfundizar} />
     </View>
   );
 }
@@ -133,10 +144,7 @@ export function TopicsSection({
 }) {
   return (
     <View style={styles.section}>
-      <Eyebrow>PROFUNDIZÁ</Eyebrow>
-      <Text style={styles.headlineMd}>El mismo cielo, cuatro entradas.</Text>
-
-      <View style={styles.tabs}>
+      <View style={[styles.tabs, styles.tabsTop]}>
         {reading.topics.map((t) => {
           const active = t.topic === activeTopic;
           return (
@@ -148,6 +156,7 @@ export function TopicsSection({
         })}
       </View>
       <View style={styles.divider} />
+      <Eyebrow>TU DÍA POR ÁREA</Eyebrow>
 
       {reading.topics.map((t) => {
         const active = t.topic === activeTopic;
@@ -158,16 +167,27 @@ export function TopicsSection({
             style={({ pressed }) => [styles.insightRow, !active && styles.insightRowDim, pressed && styles.pressed]}
           >
             <View style={styles.insightHead}>
+              <View style={styles.topicMarker}>
+                <Text style={styles.topicGlyph}>{TOPIC_GLYPHS[t.topic] ?? "☉"}</Text>
+              </View>
               <Text style={styles.insightTitle}>{t.title}</Text>
               <Text style={styles.arrow}>→</Text>
             </View>
-            <Text style={styles.body}>{t.oneLine}</Text>
+            <Text style={[styles.body, styles.insightBody]}>{t.oneLine}</Text>
           </Pressable>
         );
       })}
     </View>
   );
 }
+
+/** Glifos por área para los marcadores de fila (Figma V4.7 Topics). */
+const TOPIC_GLYPHS: Partial<Record<Topic, string>> = {
+  amor: "♀",
+  trabajo: "♄",
+  familia: "☽",
+  vinculos: "☿"
+};
 
 /** Tramo 04 — End: lectura larga, módulo educativo, cierre y links. */
 export function LongReadEnd({
@@ -192,7 +212,7 @@ export function LongReadEnd({
 
       <Text style={styles.body}>{reading.longReadBody}</Text>
       <View style={{ height: orbita.spacing.xl }} />
-      <PillButton label="Leer análisis" onPress={onLeerAnalisis} />
+      <PillButton label="LEER AHORA" onPress={onLeerAnalisis} />
 
       <View style={{ height: orbita.spacing.xxl }} />
       <Eyebrow>{reading.educationalEyebrow}</Eyebrow>
@@ -206,7 +226,7 @@ export function LongReadEnd({
         </Pressable>
         <Text style={styles.linkDot}>·</Text>
         <Pressable onPress={onHistorial} accessibilityRole="button">
-          <Text style={styles.link}>Ver historial</Text>
+          <Text style={styles.link}>Ver lecturas guardadas</Text>
         </Pressable>
       </View>
     </View>
@@ -271,6 +291,16 @@ const styles = StyleSheet.create({
   triadCentered: { textAlign: "center" },
   triadNote: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.body, fontSize: 12, lineHeight: 16, marginTop: orbita.spacing.sm },
   heroWrap: { alignItems: "center", marginVertical: orbita.spacing.xl },
+  heroBleed: {
+    height: 330,
+    justifyContent: "flex-end",
+    marginBottom: orbita.spacing.xl,
+    marginHorizontal: -G,
+    marginTop: -orbita.spacing.xl,
+    paddingBottom: orbita.spacing.lg
+  },
+  heroImg: { ...StyleSheet.absoluteFillObject, height: "100%", width: "100%" },
+  heroTriad: { paddingHorizontal: G },
 
   headline: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 40, lineHeight: 45 },
   headlineMd: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 34, lineHeight: 41 },
@@ -281,6 +311,7 @@ const styles = StyleSheet.create({
   divider: { backgroundColor: orbita.colors.line, height: 1, marginVertical: orbita.spacing.xl },
   signalCopy: { color: orbita.colors.bone, fontFamily: orbita.fonts.bodyMedium, fontSize: 15, lineHeight: 21 },
 
+  pillWrap: { alignSelf: "flex-start" },
   pill: {
     alignSelf: "flex-start",
     backgroundColor: orbita.colors.bone,
@@ -311,6 +342,19 @@ const styles = StyleSheet.create({
   actionCopy: { color: orbita.colors.bone, fontFamily: orbita.fonts.body, fontSize: 15, flex: 1, lineHeight: 21 },
 
   tabs: { flexDirection: "row", gap: orbita.spacing.xl, marginTop: orbita.spacing.xl },
+  tabsTop: { marginTop: 0 },
+  topicMarker: {
+    alignItems: "center",
+    borderColor: orbita.colors.line,
+    borderRadius: 12,
+    borderWidth: 1,
+    height: 24,
+    justifyContent: "center",
+    marginRight: orbita.spacing.md,
+    width: 24
+  },
+  topicGlyph: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 12 },
+  insightBody: { marginLeft: 24 + orbita.spacing.md },
   tab: { alignItems: "center" },
   tabLabel: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.mono, fontSize: 13 },
   tabLabelActive: { color: orbita.colors.copper },

@@ -350,7 +350,7 @@ export function createHomeReading(profile: UserProfile, date = toISODate()): Hom
     body: pickStable(signalBodies, `${seed}:body`),
     signalLabel: "CLIMA DEL DÍA",
     signalCopy: pickStable(signalCopies, `${seed}:signal`),
-    guideEyebrow: "GUÍA DIARIA",
+    guideEyebrow: "GUÍA DE HOY",
     guideHeadline: pickStable(guideHeadlines, `${seed}:guide-headline`),
     guideIntro: pickStable(guideIntros, `${seed}:guide-intro`),
     hace: transit.doThis,

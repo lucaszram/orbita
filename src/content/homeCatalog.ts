@@ -10,6 +10,7 @@
 import { Topic } from "../domain/types";
 
 export const signalHeadlines = [
+  "Tu día pide menos ruido.",
   "Hoy tu energía necesita dirección.",
   "Hay una señal chica pidiendo lugar hoy.",
   "El día se ordena si elegís una cosa a la vez.",
@@ -19,6 +20,7 @@ export const signalHeadlines = [
 ] as const;
 
 export const signalBodies = [
+  "No necesitás resolver todo hoy: alcanza con una conversación dicha a tiempo y una decisión que puede esperar.",
   "Una señal concreta para elegir qué mirar primero y qué dejar para después.",
   "Un clima del día para leer con calma, no para obedecer.",
   "Menos interpretación y más presencia sobre lo que ya sabés.",
@@ -26,6 +28,7 @@ export const signalBodies = [
 ] as const;
 
 export const signalCopies = [
+  "Intuición alta, paciencia corta.",
   "No respondas desde cansancio. Esperá a tener una frase limpia.",
   "Antes de decidir, fijate qué dato te falta.",
   "Elegí una conversación y bajala a algo concreto.",
@@ -34,6 +37,7 @@ export const signalCopies = [
 ] as const;
 
 export const guideHeadlines = [
+  "Bajá la velocidad antes de responder.",
   "Una acción chica ordena el día.",
   "El foco de hoy cabe en una frase.",
   "Menos frentes, más precisión.",
@@ -57,6 +61,7 @@ export const energiaLines = [
 ] as const;
 
 export const longReadTitles = [
+  "Por qué se repite este clima.",
   "Cómo se mueve tu cielo hoy.",
   "Por qué el día se siente así.",
   "Lo que tu carta activa hoy.",
@@ -64,6 +69,7 @@ export const longReadTitles = [
 ] as const;
 
 export const longReadBodies = [
+  "Cinco minutos sobre el tránsito que marca tu semana y por qué lo venís sintiendo.",
   "Una lectura breve para entender por qué ciertas conversaciones se sienten más cargadas y qué hacer con eso.",
   "Un repaso corto del tránsito destacado y cómo aterriza en tu día concreto.",
   "Qué parte tuya se activa hoy y por dónde conviene empezar.",
@@ -93,8 +99,8 @@ export const homeTopicCopy: Record<
   { title: string; oneLine: string; detail: string; hace: string; evita: string; question: string }
 > = {
   amor: {
-    title: "Amor sin prueba",
-    oneLine: "El deseo no necesita examen. Mostrá algo simple y mirá qué responde.",
+    title: "Conversaciones que vuelven",
+    oneLine: "No es un tema nuevo: es la manera vieja de esquivarlo. Hoy podés decirlo en una frase.",
     detail:
       "Hoy el amor rinde más desde la reciprocidad visible que desde la intensidad. No midas por chispa: mirá dónde hay calma, presencia y continuidad. Una señal clara vale más que diez interpretaciones.",
     hace: "Elegí una señal concreta de afecto y dala sin esperar retorno inmediato.",
@@ -102,8 +108,8 @@ export const homeTopicCopy: Record<
     question: "¿Qué parte de este deseo pide escucha antes que acción?"
   },
   trabajo: {
-    title: "Trabajo pide foco",
-    oneLine: "Una tarea cerrada vale más que cinco ideas abiertas al mismo tiempo.",
+    title: "Trabajo sin dramatizar",
+    oneLine: "Antes de sumar tareas, ordená el próximo paso. Uno solo, por escrito.",
     detail:
       "La claridad laboral aparece cuando ordenás el método, no cuando abrís más frentes. Elegí la tarea que desbloquea al resto y dale veinte minutos reales antes de dispersarte.",
     hace: "Marcá la tarea que desbloquea el resto y empezala por veinte minutos.",
@@ -111,8 +117,8 @@ export const homeTopicCopy: Record<
     question: "¿Cuál es el primer paso concreto que estás evitando?"
   },
   familia: {
-    title: "Casa y familia",
-    oneLine: "Bajá el volumen de lo urgente. Hay algo doméstico que pide orden simple.",
+    title: "Una invitación simple",
+    oneLine: "Si no te pide explicaciones, es buena señal. Decí que sí sin justificarte.",
     detail:
       "Una dinámica vieja no necesita repetirse para pertenecer. Podés cuidar con un límite. Ordená un espacio concreto de tu casa como si ordenaras una emoción.",
     hace: "Respondé desde lo que hoy podés sostener, no desde la culpa.",
@@ -120,8 +126,8 @@ export const homeTopicCopy: Record<
     question: "¿Qué heredado no necesitás repetir hoy?"
   },
   vinculos: {
-    title: "Tensión en vínculos",
-    oneLine: "No todo silencio es distancia. Hoy mirá quién sostiene presencia sin espectáculo.",
+    title: "Cuidado con el impulso",
+    oneLine: "El cuerpo se da cuenta antes que la cabeza. Dejalo avisar, no manejar.",
     detail:
       "El vínculo se ordena cuando bajás la expectativa a una frase simple. Menos interpretación, más honestidad. Lo que no se pregunta se convierte en fantasía.",
     hace: "Decí lo que necesitás en una línea, sin adornar ni exigir.",
@@ -130,7 +136,12 @@ export const homeTopicCopy: Record<
   }
 };
 
-export const homeEndLines = ["Fin de la lectura de hoy.", "Eso es todo por hoy.", "Cerramos la lectura de hoy."] as const;
+export const homeEndLines = [
+  "Fin del recorrido de hoy.",
+  "Fin de la lectura de hoy.",
+  "Eso es todo por hoy.",
+  "Cerramos la lectura de hoy."
+] as const;
 
 /** Ayuda para etiquetar la energía a partir del label cualitativo existente. */
 export function energiaFromLabel(energyLabel: string): string {
