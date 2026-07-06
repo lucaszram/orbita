@@ -24,6 +24,7 @@ import { PaywallScreen, type PlanId } from "./screens/PaywallScreen";
 import { PersonalizingScreen } from "./screens/PersonalizingScreen";
 import { SplashScreen } from "./screens/SplashScreen";
 import { orbita } from "./theme";
+import { useAccountFlow, useBackendPersist } from "./useAccount";
 
 const TOTAL = 15;
 
@@ -59,7 +60,10 @@ export function OnboardingFlow() {
   const [birthTime, setBirthTime] = useState<BirthTime>({ hour: 8, minute: 30, period: "AM" });
   const [timeUnknown, setTimeUnknown] = useState(false);
   const [email, setEmail] = useState("");
+  const [accountCode, setAccountCode] = useState("");
   const [plan, setPlan] = useState<PlanId>("annual");
+  const account = useAccountFlow();
+  const persistBackend = useBackendPersist();
 
   // Dev preview: jump to any step via ?debugStep=N.
   useEffect(() => {
@@ -85,16 +89,40 @@ export function OnboardingFlow() {
     : `${String(birthTime.hour).padStart(2, "0")}:${String(birthTime.minute).padStart(2, "0")} ${birthTime.period}`;
   const placeShort = birthPlace?.split(",")[0] ?? "";
 
+  const accountNext = async () => {
+    if (!account || account.isSignedIn) {
+      next();
+      return;
+    }
+    const trimmed = email.trim().toLowerCase();
+    if (account.phase === "email") {
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(trimmed)) return;
+      await account.start(trimmed);
+      return;
+    }
+    const ok = await account.verify(accountCode.trim());
+    if (ok) next();
+  };
+
   const submit = async () => {
+    const birthTimeValue = timeUnknown ? undefined : timeLabel;
     await createProfile({
       name: "Visitante",
       birthDate: birthDateISO,
-      birthTime: timeUnknown ? undefined : timeLabel,
+      birthTime: birthTimeValue,
       birthPlace,
       interests: DEFAULT_TOPICS,
       guidanceTone: "protectora",
       notificationTime: "09:00",
     });
+    // Con sesión Clerk: persistir en Convex en background (no bloquea la entrada).
+    if (persistBackend) {
+      void persistBackend({
+        birthDate: birthDateISO,
+        birthTime: birthTimeValue,
+        birthPlaceLabel: birthPlace,
+      });
+    }
     router.replace("/(tabs)");
   };
 
@@ -192,7 +220,19 @@ export function OnboardingFlow() {
       screen = <BeforeAfterScreen step={step} onNext={next} onBack={back} />;
       break;
     case 13:
-      screen = <AccountScreen step={step} email={email} onEmail={setEmail} onNext={next} onBack={back} />;
+      screen = (
+        <AccountScreen
+          step={step}
+          email={email}
+          onEmail={setEmail}
+          code={accountCode}
+          onCode={setAccountCode}
+          account={account}
+          onNext={accountNext}
+          onSkip={next}
+          onBack={back}
+        />
+      );
       break;
     case 14:
     default:

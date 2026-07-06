@@ -222,3 +222,17 @@ export default defineSchema({
 //   relationships.synastry({ relationshipProfileId }): SynastryPayload
 //   calendar.getMonth({ month }):       CalendarMonthPayload
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// TODO: pendiente backend — El Vacío (propuesto por frontend, 2026-07-06)
+//
+// La pantalla Void (app nativa, 3 momentos: Entrada → Escuchando → Respuesta)
+// necesita una función que responda la pregunta del día. Guardrails duros:
+// NUNCA contesta sí/no; devuelve marco + mejor pregunta + un paso concreto;
+// sin claims de destino/salud/dinero/legal. Deriva de la carta natal +
+// tránsitos del día (placements reales en `basadoEn`). Límite: una pregunta
+// por día por usuario. Forma de payload en `src/services/appRefs.ts`
+// (`VoidAnswerPayload`). Front trabaja contra mock en `app/reading/void.tsx`.
+//
+//   void.ask({ question }):             VoidAnswerPayload
+// ---------------------------------------------------------------------------

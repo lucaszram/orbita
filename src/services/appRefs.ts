@@ -166,6 +166,18 @@ export type TransitDetailPayload = {
   window: { label: string; note: string };
 };
 
+export type VoidAnswerPayload = {
+  /** Pregunta del usuario, normalizada. */
+  question: string;
+  /** Respuesta editorial del Vacío (nunca sí/no; marco para decidir). */
+  answer: string;
+  /** Placements usados, en mayúsculas mono (ej. "TU LUNA EN SAGITARIO"). */
+  basadoEn: string[];
+  mejorPregunta: string;
+  /** Paso concreto y seguro (sin destino/salud/dinero/legal). */
+  paso: string;
+};
+
 export type PlaceLookup = {
   status: "success" | "not_configured" | "error";
   places: Array<{
@@ -222,8 +234,9 @@ export const appApi = {
   charts: {
     // Carta natal
     current: anyApi.charts.current as FunctionReference<"query", "public", Empty, NatalChartDoc | null>,
+    // Codex la pasó a Action (pega a AstrologyAPI): se invoca con useAction.
     calculateOrCreateNatalChart: anyApi.charts.calculateOrCreateNatalChart as FunctionReference<
-      "mutation",
+      "action",
       "public",
       Empty,
       NatalChartDoc
@@ -277,13 +290,15 @@ export const proposedApi = {
     Empty,
     PersonalityReadingPayload | null
   >,
-  // TODO: pendiente backend — transits.getToday({ localDate }): TransitDetailPayload
+  // transits.getToday es una ACTION live (genera + cachea con AstrologyAPI). Se invoca con useAction.
   transitToday: anyApi.transits.getToday as FunctionReference<
-    "query",
+    "action",
     "public",
     { localDate: string },
-    TransitDetailPayload | null
+    unknown
   >,
   // TODO: pendiente backend — places.resolve({ query }): geocoding real para onboarding
-  resolvePlace: anyApi.places.resolve as FunctionReference<"action", "public", { query: string }, PlaceLookup>
+  resolvePlace: anyApi.places.resolve as FunctionReference<"action", "public", { query: string }, PlaceLookup>,
+  // TODO: pendiente backend — void.ask({ question }): VoidAnswerPayload (El Vacío; guardrail: nunca sí/no)
+  voidAsk: anyApi.void.ask as FunctionReference<"action", "public", { question: string }, VoidAnswerPayload>
 } as const;

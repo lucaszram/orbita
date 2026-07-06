@@ -11,6 +11,7 @@
  */
 import { useMemo } from "react";
 import { useAppState } from "@/hooks/useAppState";
+import { LiveAppDocs, useLiveApp, useLiveAppDocs } from "@/hooks/useLiveApp";
 import { createFallbackProfile, createTriad, toISODate } from "./readingEngine";
 import { Triad, UserProfile } from "./types";
 
@@ -51,6 +52,8 @@ export type PerfilData = {
   birthLine: string;
   privacy: string;
   plan: string;
+  /** Email de la sesión Clerk cuando la app está en modo live; null = invitado. */
+  accountEmail: string | null;
 };
 
 export type LunarData = {
@@ -141,7 +144,8 @@ export function buildPerfil(profile: UserProfile): PerfilData {
   return {
     birthLine: formatBirthLine(profile),
     privacy: "Se usan solo para calcular tu carta. No los compartimos con nadie.",
-    plan: "Órbita Plus · activo."
+    plan: "Órbita Plus · activo.",
+    accountEmail: null
   };
 }
 
@@ -171,8 +175,62 @@ export function buildAppData(profile: UserProfile, date = toISODate()): AppData 
   };
 }
 
-/** Hook: app-core screen data derived from the current profile. */
+// --- Live merge (Convex) ---
+
+function capitalizeSign(sign: string): string {
+  return sign.charAt(0).toUpperCase() + sign.slice(1);
+}
+
+function readChartSunSign(chartPayload: unknown): string | null {
+  if (!chartPayload || typeof chartPayload !== "object") return null;
+  const placements = (chartPayload as Record<string, unknown>).placements;
+  if (!placements || typeof placements !== "object") return null;
+  const sun = (placements as Record<string, unknown>).sun;
+  if (!sun || typeof sun !== "object") return null;
+  const sign = (sun as Record<string, unknown>).sign;
+  return typeof sign === "string" && sign !== "pendiente" && sign.trim().length > 0 ? sign : null;
+}
+
+/** Superpone la data real de Convex sobre el mock; todo lo ausente queda local. */
+function mergeLiveAppData(base: AppData, docs: LiveAppDocs, email: string | null): AppData {
+  let carta = base.carta;
+  const sunSign = readChartSunSign(docs.chart?.payload);
+  if (sunSign) {
+    const label = capitalizeSign(sunSign);
+    carta = {
+      ...carta,
+      triad: { ...carta.triad, sun: { ...carta.triad.sun, label } },
+      positions: [{ ...carta.positions[0], title: `Sol en ${label}` }, ...carta.positions.slice(1)]
+    };
+  }
+
+  let perfil = { ...base.perfil, accountEmail: email };
+  if (docs.birthData?.birthDate) {
+    const [y, m, d] = docs.birthData.birthDate.split("-").map(Number);
+    const parts = [`${d} ${monthsShort[Math.max(0, Math.min(11, (m ?? 1) - 1))]} ${y}`];
+    if (docs.birthData.birthTime) parts.push(docs.birthData.birthTime);
+    if (docs.birthData.birthPlaceLabel) parts.push(docs.birthData.birthPlaceLabel);
+    perfil = { ...perfil, birthLine: parts.join("  ·  ") };
+  }
+  if (docs.subscription) {
+    perfil = {
+      ...perfil,
+      plan:
+        docs.subscription.entitlement === "plus"
+          ? `Órbita Plus · ${docs.subscription.status === "active" ? "activo" : docs.subscription.status ?? "activo"}.`
+          : "Plan gratuito."
+    };
+  }
+
+  return { ...base, carta, perfil };
+}
+
+/** Hook: app-core screen data derived from the current profile (+ live overlay). */
 export function useAppData(): AppData {
   const { profile } = useAppState();
-  return useMemo(() => buildAppData(profile ?? createFallbackProfile(), toISODate()), [profile]);
+  const base = useMemo(() => buildAppData(profile ?? createFallbackProfile(), toISODate()), [profile]);
+  const { isLive, auth } = useLiveApp();
+  const docs = useLiveAppDocs(isLive);
+  const email = auth?.email ?? null;
+  return useMemo(() => (isLive ? mergeLiveAppData(base, docs, email) : base), [isLive, base, docs, email]);
 }

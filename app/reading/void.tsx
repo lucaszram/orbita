@@ -11,7 +11,7 @@ import { orbita } from "@/theme/orbita";
 const TEXTURE = require("../../assets/orbita/optimized/core/orbita_daily_texture_b.jpg");
 const DEFAULT_QUESTION = "¿Qué estás apurando?";
 
-/** Respuesta editorial de maqueta (contrato pendiente backend: void.ask). */
+/** Respuesta editorial de maqueta. TODO: pendiente backend — proposedApi.voidAsk (VoidAnswerPayload). */
 const ORACLE = {
   answer: "Lo que apurás\nno es la respuesta:\nes el alivio.",
   mejorPregunta: "¿Qué cambiaría si esperás 24 horas?",
