@@ -1,11 +1,12 @@
 const AI_GATEWAY_CHAT_COMPLETIONS_URL = "https://ai-gateway.vercel.sh/v1/chat/completions";
-const DEFAULT_PROMPT_VERSION = "orbita-lab-daily-home-llm-v2";
+const DEFAULT_PROMPT_VERSION = "orbita-lab-daily-home-llm-v3";
 const DEFAULT_CACHE_VERSION = "orbita-llm-daily-cache-v1";
 const DEFAULT_NATAL_PROMPT_VERSION = "orbita-natal-profile-llm-v1";
 const DEFAULT_NATAL_CACHE_VERSION = "orbita-natal-profile-cache-v1";
 
 export type LlmDailyHomeText = {
   headline: string;
+  subheadline: string;
   do: string[];
   avoid: string[];
   action: string;
@@ -203,6 +204,7 @@ export function parseLlmDailyHomeText(text: string): LlmDailyHomeText | null {
 
     return {
       headline: readString(record.headline, "Tu cielo de hoy pide una lectura simple."),
+      subheadline: readString(record.subheadline, "Contexto diario para mirarte con más claridad."),
       do: readStringList(record.do, fallbackDo),
       avoid: readStringList(record.avoid, fallbackAvoid),
       action: readString(record.action, "Escribí una línea sobre lo que pide atención."),
@@ -232,6 +234,8 @@ Reglas:
 - Todo texto visible debe tener tildes y signos de apertura: ¿? y ¡! cuando correspondan.
 - Las preguntas tienen que ser personales: "¿Qué estás...?", "¿Qué te...?", "¿Dónde sentís...?".
 - Evitá frases abstractas impersonales como "El deseo pide..." o "Una prioridad ordena...".
+- "headline", "subheadline" y "energy" no pueden repetir la misma idea.
+- "subheadline" abre el contexto del día; "energy" debe nombrar el tono o área activa para el módulo Energía.
 - No hagas promesas de destino, salud, dinero, legal, psicología clínica ni resultados garantizados.
 - No copies voz de proveedores externos.
 - Frases breves, editoriales y naturales.
@@ -239,6 +243,7 @@ Reglas:
 - El JSON debe tener esta forma:
 {
   "headline": "string",
+  "subheadline": "string",
   "do": ["string", "string", "string"],
   "avoid": ["string", "string", "string"],
   "action": "string",
@@ -423,7 +428,7 @@ export function mergeDailyHomeWithLlm(args: MergeDailyHomeArgs) {
 
   if (generated) {
     header.headline = generated.headline;
-    header.subheadline = modules.energy ?? header.subheadline;
+    header.subheadline = generated.subheadline;
     modules.do = generated.do;
     modules.avoid = generated.avoid;
     modules.action = generated.action;

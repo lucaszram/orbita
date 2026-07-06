@@ -666,7 +666,7 @@ export function buildPublicDailyHomeResponse(args: {
       timezone: dailyReading.timezone ?? args.input.runTimezone ?? args.input.timezone,
       greeting: args.input.displayName?.trim() ? `Hola, ${args.input.displayName.trim()}` : "Tu guía diaria",
       headline: home.headline ?? "Tu cielo de hoy pide una lectura simple.",
-      subheadline: home.energy ?? "Contexto diario para mirarte con más claridad."
+      subheadline: home.subheadline ?? "Contexto diario para mirarte con más claridad."
     },
     natalBase: {
       sun: natalSummary?.sun ?? triad[0] ?? null,

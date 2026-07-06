@@ -1,7 +1,7 @@
 export const CHART_CALCULATION_VERSION = "orbita-stub-v1";
 export const DAILY_READING_CONTENT_VERSION = "orbita-daily-stub-v1";
 export const ASTROLOGY_API_CHART_CALCULATION_VERSION = "orbita-astrologyapi-western-v1";
-export const DAILY_READING_EDITORIAL_VERSION = "orbita-daily-editorial-p0-v2";
+export const DAILY_READING_EDITORIAL_VERSION = "orbita-daily-editorial-p0-v3";
 export const CHART_WHEEL_DATA_VERSION = "orbita-chart-wheel-v1";
 export const VALUE_RADAR_VERSION = "orbita-value-radar-v1";
 export const LONG_RANGE_TIMELINE_CONTRACT_VERSION = "orbita-long-range-timeline-provider-v1";
@@ -482,6 +482,7 @@ export function buildDailyReadingPayload(args: {
   const topics = buildTopicReadings(null);
   const home = {
     headline: `Tu cielo de hoy parte de ${sign}.`,
+    subheadline: "Una lectura simple para ubicarte antes de decidir.",
     do: editorial.do,
     doList: editorial.doList,
     avoid: editorial.avoid,
@@ -522,6 +523,7 @@ export function buildDailyReadingPayload(args: {
       editorial: {
         ...editorial,
         headline: home.headline,
+        subheadline: home.subheadline,
         energy: home.energy
       },
       transit: null,
@@ -1758,6 +1760,7 @@ function getTransitEditorial(transit: NormalizedAstroTransit | null) {
 
     return {
       headline: "Tu cielo de hoy pide una lectura simple.",
+      subheadline: "Un día para observar sin convertir cada señal en conclusión.",
       do: doList[0],
       doList,
       avoid: avoidList[0],
@@ -1810,6 +1813,7 @@ function getTransitEditorial(transit: NormalizedAstroTransit | null) {
 
   return {
     headline: `${title}: hoy tenés contexto para mirar tu día sin apurarlo.`,
+    subheadline: highlightedTransitSubheadline(transit),
     do: doList[0],
     doList,
     avoid: avoidList[0],
@@ -1830,6 +1834,11 @@ function getTransitEditorial(transit: NormalizedAstroTransit | null) {
         : `${transit.transitPlanetEs} y ${transit.natalPointEs}`,
     tone: tension ? "tensión constructiva" : ease ? "apertura" : "foco"
   };
+}
+
+function highlightedTransitSubheadline(transit: NormalizedAstroTransit) {
+  const house = transit.natalHouse !== null ? ` en casa ${transit.natalHouse}` : "";
+  return `Tu ${transit.natalPointEs}${house} queda en primer plano; vos elegís cómo responder.`;
 }
 
 function formatTransitDisplay(transit: NormalizedAstroTransit | null) {
@@ -2123,6 +2132,7 @@ export function buildDailyReadingPayloadFromAstrology(args: {
   const topics = buildTopicReadings(highlightedTransit);
   const home = {
     headline: editorial.headline,
+    subheadline: editorial.subheadline,
     do: editorial.do,
     doList: editorial.doList,
     avoid: editorial.avoid,

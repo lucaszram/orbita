@@ -105,7 +105,7 @@ function toDailyHomeReading(reading: DailyReadingDoc) {
       timezone: payload.timezone ?? reading.timezone,
       greeting: "Tu guía diaria",
       headline: home.headline ?? "Tu cielo de hoy pide una lectura simple.",
-      subheadline: home.energy ?? "Contexto diario para mirarte con más claridad."
+      subheadline: home.subheadline ?? "Contexto diario para mirarte con más claridad."
     },
     natalBase: {
       sun: payload.natalSummary?.sun ?? chartProfile.triad?.[0] ?? null,

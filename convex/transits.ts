@@ -186,7 +186,7 @@ export const getToday = action({
   },
   handler: async (ctx, args) => {
     const identity = await requireIdentity(ctx as any);
-    const providerVersion = "astrologyapi-western-daily-transits-v2";
+    const providerVersion = "astrologyapi-western-daily-transits-v3";
     const state: any = await ctx.runQuery(internalApi.transits.getTodayState, {
       tokenIdentifier: identity.tokenIdentifier,
       localDate: args.localDate,

@@ -650,6 +650,7 @@ test("AI Gateway error fallback adds explicit gap and keeps three-item modules",
 test("AI Gateway success parses JSON and merges Orbita copy", async () => {
   const parsed = parseLlmDailyHomeText(`{
     "headline": "Saturno pide foco sin dramatizar.",
+    "subheadline": "Hoy tu carta marca una zona para mirar con calma.",
     "do": ["Bajar el tema a una accion.", "Pedir precision.", "Elegir ritmo."],
     "avoid": ["Cerrar por orgullo.", "Prometer de mas.", "Leerlo como sentencia."],
     "action": "Escribi una linea concreta.",
@@ -661,6 +662,31 @@ test("AI Gateway success parses JSON and merges Orbita copy", async () => {
   assert.equal(parsed?.do.length, 3);
   assert.equal(parsed?.avoid.length, 3);
   assert.equal(parsed?.headline.includes("Saturno"), true);
+  assert.equal(parsed?.subheadline.includes("carta"), true);
+
+  const merged = mergeDailyHomeWithLlm({
+    dailyHome: {
+      header: { headline: "Base", subheadline: "Sub base" },
+      modules: { energy: "Módulo energía base" },
+      longRead: {},
+      personalization: {},
+      modelGaps: []
+    },
+    llm: {
+      status: "success",
+      provider: "vercel-ai-gateway",
+      promptVersion: "test",
+      cacheVersion: "test",
+      tags: [],
+      user: "lab",
+      warnings: [],
+      gaps: [],
+      generated: parsed!
+    }
+  }) as any;
+
+  assert.equal(merged.header.subheadline, parsed?.subheadline);
+  assert.notEqual(merged.header.subheadline, merged.modules.energy);
 });
 
 test("public lab timeline response hides provider raw payload", () => {
@@ -795,6 +821,8 @@ test("builds provider-backed lab payloads with editorial daily modules", () => {
   assert.equal(payload.dailyReading.source, "provider_transits");
   assert.equal(payload.dailyReading.mode, "provider_real");
   assert.equal(payload.dailyReading.modules.headline.includes("Saturno"), true);
+  assert.equal(payload.dailyReading.home.subheadline.includes("vos elegís"), true);
+  assert.notEqual(payload.dailyReading.home.subheadline, payload.dailyReading.home.energy);
   assert.equal(payload.dailyReading.home.doList.length, 3);
   assert.equal(payload.dailyReading.home.avoidList.length, 3);
   assert.equal(payload.dailyReading.personalization.status, "personalizado_con_carta_y_transitos");
@@ -909,6 +937,7 @@ test("public lab maps fallback payloads into stable Home output", () => {
   }) as any;
 
   assert.equal(publicOutput.header.greeting, "Hola, Lucas");
+  assert.notEqual(publicOutput.header.subheadline, publicOutput.modules.energy);
   assert.equal(publicOutput.modules.do.length, 3);
   assert.equal(publicOutput.modules.avoid.length, 3);
   assert.equal(publicOutput.provider.status, "not_configured");
