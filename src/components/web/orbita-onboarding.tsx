@@ -68,12 +68,11 @@ const BENEFIT_TILES = [
   { img: require("../../../assets/orbita/optimized/onboarding-v44/benefit_decisions_idx13.jpg"), icon: Heart, label: "Decisiones" }
 ];
 
-type TimeState = { hour: string; minute: string; period: "AM" | "PM" };
+type TimeState = { hour: string; minute: string };
 const pad2 = (s: string) => String(Number(s)).padStart(2, "0");
+/** La hora ya se ingresa en 24hs (0–23), así que solo formateamos. */
 function to24h(t: TimeState): string {
-  const h = Number(t.hour) % 12;
-  const h24 = t.period === "PM" ? h + 12 : h;
-  return `${pad2(String(h24))}:${pad2(t.minute)}`;
+  return `${pad2(t.hour)}:${pad2(t.minute)}`;
 }
 
 // Pasos de pregunta: contenido anclado abajo (visual arriba) — mata el espacio muerto.
@@ -119,12 +118,13 @@ export function OrbitaOnboarding({ backend, triad }: { backend?: OnboardingBacke
   const [placeResults, setPlaceResults] = useState<PlaceHit[]>([]);
   const [placeSearching, setPlaceSearching] = useState(false);
   const placeReq = useRef(0);
-  const [time, setTime] = useState<TimeState>({ hour: "", minute: "", period: "AM" });
+  const [time, setTime] = useState<TimeState>({ hour: "", minute: "" });
   const [timeUnknown, setTimeUnknown] = useState(false);
   const [email, setEmail] = useState("");
   const [plan, setPlan] = useState<PlanId>("annual");
   const [calc, setCalc] = useState(0);
   const [computedTriad, setComputedTriad] = useState<OnbTriad | undefined>();
+  const [computeError, setComputeError] = useState<string | null>(null);
   const [computing, setComputing] = useState(false);
 
   const step = ONBOARDING_STEPS[index];
@@ -151,9 +151,10 @@ export function OrbitaOnboarding({ backend, triad }: { backend?: OnboardingBacke
 
   // Calcula la tríada REAL (Sol/Luna/Asc) sin login, desde fecha+hora+lugar.
   // Endpoint público (previewDailyHome). Una sola fuente para "calc" y reveal.
-  const runCompute = useCallback(async () => {
-    if (!backend || computedTriad || !(day && month && year.length === 4)) return;
+  const runCompute = useCallback(async (force = false) => {
+    if (!backend || (!force && computedTriad) || !(day && month && year.length === 4)) return;
     setComputing(true);
+    setComputeError(null);
     try {
       let data = collectData();
       // Sin coords (tipeó la ciudad pero no la eligió del dropdown) el backend no
@@ -168,29 +169,50 @@ export function OrbitaOnboarding({ backend, triad }: { backend?: OnboardingBacke
             setPlaceHit(hit);
           }
         } catch {
-          // sin geocoding → el reveal degrada a Sol (nota honesta)
+          // sin geocoding → el reveal degrada al cartel de error
         }
       }
       const t = await backend.computeTriad(data);
       setComputedTriad(t);
+      // Éxito parcial: teníamos hora + lugar pero la API no devolvió Luna/Asc
+      // (rate-limit o "modo maqueta") → error explícito con reintento, no placeholders.
+      if (!t.moon && !t.ascendant && !timeUnknown && data.latitude != null) {
+        setComputeError("El servicio de cartas no devolvió tu Luna y Ascendente (puede ser un límite temporal de la API). Reintentá en unos segundos.");
+      }
     } catch {
-      // si falla, el reveal degrada a Sol + nota honesta
+      setComputeError("No pudimos contactar el servicio de cartas. Revisá tu conexión y reintentá.");
     } finally {
       setComputing(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [backend, computedTriad, day, month, year, place, placeQuery]);
+  }, [backend, computedTriad, day, month, year, place, placeQuery, time.hour, time.minute, timeUnknown]);
+
+  const retryCompute = useCallback(() => {
+    setComputedTriad(undefined);
+    setComputeError(null);
+    void runCompute(true);
+  }, [runCompute]);
+
+  // Si cambian los datos de nacimiento, invalidamos la tríada ya calculada para
+  // que se recalcule (si no, quedaba pegada la de una persona anterior → mostraba
+  // Luna/Asc equivocados con `yaCalc=true`).
+  useEffect(() => {
+    setComputedTriad(undefined);
+  }, [day, month, year, time.hour, time.minute, timeUnknown, place, placeQuery]);
 
   // Paso "Calculando": corre el cálculo real y ESPERA a que termine antes de
   // pasar al reveal (así no se ve el mock/placeholder primero). Mín 1.2s, máx 8s.
   useEffect(() => {
     if (step.kind !== "calc") return;
     setCalc(0);
+    // Sin caché: cada vez que se llega a "calc" se recalcula de cero (force).
+    setComputedTriad(undefined);
+    setComputeError(null);
     let cancelled = false;
     calcRef.current = setInterval(() => setCalc((c) => (c >= 92 ? 92 : c + 3)), 55);
     const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
     (async () => {
-      await Promise.race([Promise.all([runCompute(), delay(1200)]), delay(8000)]);
+      await Promise.race([Promise.all([runCompute(true), delay(1200)]), delay(8000)]);
       if (cancelled) return;
       if (calcRef.current) clearInterval(calcRef.current);
       setCalc(100);
@@ -431,17 +453,8 @@ export function OrbitaOnboarding({ backend, triad }: { backend?: OnboardingBacke
           <QBlock title="¿A qué hora naciste?" sub="La hora afina tu ascendente y tus casas.">
             <View style={styles.card}>
               <View style={[styles.row3, timeUnknown && styles.dim]}>
-                <Field label="HORA"><TextInput editable={!timeUnknown} keyboardType="number-pad" maxLength={2} onChangeText={(t) => setTime((s) => ({ ...s, hour: t }))} placeholder="08" placeholderTextColor={colors.boneDim} style={styles.input} value={time.hour} /></Field>
-                <Field label="MIN"><TextInput editable={!timeUnknown} keyboardType="number-pad" maxLength={2} onChangeText={(t) => setTime((s) => ({ ...s, minute: t }))} placeholder="30" placeholderTextColor={colors.boneDim} style={styles.input} value={time.minute} /></Field>
-                <Field label="AM/PM">
-                  <View style={styles.segmented}>
-                    {(["AM", "PM"] as const).map((p) => (
-                      <Pressable key={p} disabled={timeUnknown} onPress={() => setTime((s) => ({ ...s, period: p }))} style={[styles.seg, time.period === p && styles.segOn]}>
-                        <Text style={[styles.segText, time.period === p && styles.segTextOn]}>{p}</Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                </Field>
+                <Field label="HORA (0–23)"><TextInput editable={!timeUnknown} keyboardType="number-pad" maxLength={2} onChangeText={(t) => setTime((s) => ({ ...s, hour: t }))} placeholder="13" placeholderTextColor={colors.boneDim} style={styles.input} value={time.hour} /></Field>
+                <Field label="MIN"><TextInput editable={!timeUnknown} keyboardType="number-pad" maxLength={2} onChangeText={(t) => setTime((s) => ({ ...s, minute: t }))} placeholder="42" placeholderTextColor={colors.boneDim} style={styles.input} value={time.minute} /></Field>
               </View>
               <Pressable onPress={() => setTimeUnknown((u) => !u)} style={styles.toggle}>
                 <View style={[styles.checkbox, timeUnknown && styles.checkboxOn]}>{timeUnknown && <Check color={colors.black} size={13} strokeWidth={3} />}</View>
@@ -472,23 +485,39 @@ export function OrbitaOnboarding({ backend, triad }: { backend?: OnboardingBacke
             <View style={styles.sunEmblem}><Sun color={colors.copperSoft} size={46} strokeWidth={1.3} /></View>
             <Text style={styles.revealSign}>{sunLabel}</Text>
             <Text style={styles.revealRole}>Tu Sol</Text>
-            <View style={styles.revealSecondary}>
-              <View style={styles.revealMini}>
-                <Moon color={colors.copperSoft} size={15} strokeWidth={1.7} />
-                <Text style={styles.revealMiniRole}>Luna</Text>
-                <Text style={[styles.revealMiniNote, moonLabel ? styles.revealMiniValue : null]}>{moonLabel ?? (computing ? "…" : "con tu hora")}</Text>
+            {computeError ? (
+              <View style={styles.revealError}>
+                <Text style={styles.revealErrorTitle}>No pudimos calcular tu carta</Text>
+                <Text style={styles.revealErrorText}>{computeError}</Text>
+                <Pressable
+                  onPress={retryCompute}
+                  disabled={computing}
+                  style={({ pressed }) => [styles.revealRetry, (computing || pressed) && { opacity: 0.6 }]}
+                >
+                  <Text style={styles.revealRetryText}>{computing ? "Calculando…" : "Reintentar"}</Text>
+                </Pressable>
               </View>
-              <View style={styles.revealMini}>
-                <Orbit color={colors.copperSoft} size={15} strokeWidth={1.7} />
-                <Text style={styles.revealMiniRole}>Asc</Text>
-                <Text style={[styles.revealMiniNote, ascLabel ? styles.revealMiniValue : null]}>{ascLabel ?? (computing ? "…" : "con tu lugar")}</Text>
-              </View>
-            </View>
-            <Sub>
-              {hasReal
-                ? "Tu Sol, tu Luna y tu ascendente. Tu carta completa —casas, aspectos y más— te espera del otro lado."
-                : "El Sol sale de tu fecha. Luna y ascendente se afinan con tu hora y lugar en la carta completa."}
-            </Sub>
+            ) : (
+              <>
+                <View style={styles.revealSecondary}>
+                  <View style={styles.revealMini}>
+                    <Moon color={colors.copperSoft} size={15} strokeWidth={1.7} />
+                    <Text style={styles.revealMiniRole}>Luna</Text>
+                    <Text style={[styles.revealMiniNote, moonLabel ? styles.revealMiniValue : null]}>{moonLabel ?? (computing ? "…" : "con tu hora")}</Text>
+                  </View>
+                  <View style={styles.revealMini}>
+                    <Orbit color={colors.copperSoft} size={15} strokeWidth={1.7} />
+                    <Text style={styles.revealMiniRole}>Asc</Text>
+                    <Text style={[styles.revealMiniNote, ascLabel ? styles.revealMiniValue : null]}>{ascLabel ?? (computing ? "…" : "con tu lugar")}</Text>
+                  </View>
+                </View>
+                <Sub>
+                  {hasReal
+                    ? "Tu Sol, tu Luna y tu ascendente. Tu carta completa —casas, aspectos y más— te espera del otro lado."
+                    : "El Sol sale de tu fecha. Luna y ascendente se afinan con tu hora y lugar en la carta completa."}
+                </Sub>
+              </>
+            )}
           </View>
         );
       }
@@ -615,6 +644,11 @@ const styles = StyleSheet.create({
   revealMiniRole: { color: colors.copperSoft, fontFamily: "Inter_700Bold", fontSize: 11, letterSpacing: 0.6, textTransform: "uppercase" },
   revealMiniNote: { color: colors.boneMuted, fontFamily: "Inter_400Regular", fontSize: 11 },
   revealMiniValue: { color: colors.bone, fontFamily: "Newsreader_500Medium", fontSize: 16 },
+  revealError: { alignItems: "center", backgroundColor: "rgba(214,154,106,0.08)", borderColor: "rgba(214,154,106,0.35)", borderRadius: 14, borderWidth: 1, gap: 8, marginTop: 14, maxWidth: 340, paddingHorizontal: 20, paddingVertical: 16 },
+  revealErrorTitle: { color: colors.bone, fontFamily: "Newsreader_500Medium", fontSize: 18 },
+  revealErrorText: { color: colors.boneMuted, fontFamily: "Inter_400Regular", fontSize: 13, lineHeight: 19, textAlign: "center" },
+  revealRetry: { backgroundColor: colors.copperSoft, borderRadius: 10, marginTop: 4, paddingHorizontal: 24, paddingVertical: 10 },
+  revealRetryText: { color: colors.black, fontFamily: "Inter_700Bold", fontSize: 13, letterSpacing: 0.4 },
   hero: { alignItems: "center", gap: 16 },
   heroTop: { alignItems: "center", gap: 16, paddingTop: 8 },
   logoRing: { alignItems: "center", borderColor: colors.line, borderRadius: 60, borderWidth: 1, height: 96, justifyContent: "center", width: 96 },
