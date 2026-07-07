@@ -47,10 +47,9 @@ const ELEMENTS: Record<ZodiacSign, string> = {
 
 const DEFAULT_TOPICS: Topic[] = ["claridad", "energia"];
 
-/** {hour, minute, period} → "HH:MM" en 24h (lo que espera el backend). */
+/** {hour, minute} (hora ya en 24h, 0–23) → "HH:MM" (lo que espera el backend). */
 function to24hFromParts(t: BirthTime): string {
-  const h = t.period === "PM" ? (t.hour % 12) + 12 : t.hour % 12;
-  return `${String(h).padStart(2, "0")}:${String(t.minute).padStart(2, "0")}`;
+  return `${String(t.hour).padStart(2, "0")}:${String(t.minute).padStart(2, "0")}`;
 }
 
 /** Onboarding container — owns flow state and navigation, dispatches screens. */
@@ -65,7 +64,7 @@ export function OnboardingFlow() {
   const [birthDate, setBirthDate] = useState<BirthDateParts>({ day: 15, month: 1, year: 1996 });
   const [placeQuery, setPlaceQuery] = useState("");
   const [birthPlace, setBirthPlace] = useState<PlaceOption | undefined>();
-  const [birthTime, setBirthTime] = useState<BirthTime>({ hour: 8, minute: 30, period: "AM" });
+  const [birthTime, setBirthTime] = useState<BirthTime>({ hour: 12, minute: 0 });
   const [timeUnknown, setTimeUnknown] = useState(false);
   const [email, setEmail] = useState("");
   const [accountCode, setAccountCode] = useState("");
@@ -76,8 +75,9 @@ export function OnboardingFlow() {
   const chartPreview = useOnboardingChart();
   const computeTriad = useOnboardingComputeTriad();
   const [computed, setComputed] = useState<OnboardingChart | undefined>();
+  const [retryTick, setRetryTick] = useState(0);
   const calcFired = useRef(false);
-  const computeFired = useRef(false);
+  const computedSig = useRef<string | null>(null);
 
   // Dev preview: jump to any step via ?debugStep=N.
   useEffect(() => {
@@ -100,7 +100,7 @@ export function OnboardingFlow() {
   const dateShort = `${birthDate.day} ${MONTHS[birthDate.month - 1].slice(0, 3)} ${birthDate.year}`;
   const timeLabel = timeUnknown
     ? "Sin hora"
-    : `${String(birthTime.hour).padStart(2, "0")}:${String(birthTime.minute).padStart(2, "0")} ${birthTime.period}`;
+    : `${String(birthTime.hour).padStart(2, "0")}:${String(birthTime.minute).padStart(2, "0")}`;
   const placeShort = birthPlace?.label.split(",")[0] ?? "";
 
   // Al llegar al preview (paso 14) disparamos el cálculo REAL de la carta una vez.
@@ -123,21 +123,29 @@ export function OnboardingFlow() {
   // el endpoint público, para que el preview muestre Luna/Ascendente reales aunque
   // el usuario no se haya logueado todavía. Requiere lugar (coords del geocoding).
   useEffect(() => {
-    if (step < 11 || computeFired.current || !computeTriad || !birthPlace) return;
-    computeFired.current = true;
+    if (step < 11 || !computeTriad || !birthPlace) return;
+    const birthTimeStr = timeUnknown ? undefined : to24hFromParts(birthTime);
+    // Firma de los datos: si cambia (el usuario editó fecha/hora/lugar) recalcula;
+    // si es la misma, no vuelve a pegarle a la API. Antes un ref "fired" dejaba
+    // pegada la tríada de una persona anterior.
+    const sig = `${birthDateISO}|${birthTimeStr ?? "?"}|${birthPlace.label}`;
+    if (computedSig.current === sig) return;
+    computedSig.current = sig;
+    let cancelled = false;
     computeTriad({
       birthDate: birthDateISO,
-      birthTime: timeUnknown ? undefined : to24hFromParts(birthTime),
+      birthTime: birthTimeStr,
       birthTimePrecision: timeUnknown ? "unknown" : "known",
       birthPlaceLabel: birthPlace.label,
       latitude: birthPlace.latitude,
       longitude: birthPlace.longitude,
       timezone: birthPlace.timezone,
     })
-      .then(setComputed)
-      .catch(() => {});
+      .then((r) => { if (!cancelled) setComputed(r); })
+      .catch(() => { computedSig.current = null; });
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, computeTriad, birthPlace]);
+  }, [step, computeTriad, birthPlace, birthDateISO, timeUnknown, birthTime.hour, birthTime.minute, retryTick]);
 
   const accountNext = async () => {
     if (!account || account.isSignedIn) {
@@ -299,6 +307,12 @@ export function OnboardingFlow() {
           total={TOTAL}
           sunFallback={signLabel}
           chart={computed ?? chartPreview}
+          timeKnown={!timeUnknown}
+          onRetry={() => {
+            computedSig.current = null;
+            setComputed(undefined);
+            setRetryTick((t) => t + 1);
+          }}
           onNext={() => setPreviewSeen(true)}
           onBack={back}
         />
