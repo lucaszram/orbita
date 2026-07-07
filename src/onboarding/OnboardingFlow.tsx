@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -12,6 +12,7 @@ import { AccountScreen } from "./screens/AccountScreen";
 import { AlignScreen } from "./screens/AlignScreen";
 import { BaseChartScreen } from "./screens/BaseChartScreen";
 import { BeforeAfterScreen } from "./screens/BeforeAfterScreen";
+import { ChartPreviewScreen } from "./screens/ChartPreviewScreen";
 import { type BirthDateParts, BirthdateScreen, MONTHS } from "./screens/BirthdateScreen";
 import { BirthdateSelectedScreen } from "./screens/BirthdateSelectedScreen";
 import { BirthplaceSearchScreen, type PlaceOption } from "./screens/BirthplaceSearchScreen";
@@ -24,7 +25,7 @@ import { PaywallScreen, type PlanId } from "./screens/PaywallScreen";
 import { PersonalizingScreen } from "./screens/PersonalizingScreen";
 import { SplashScreen } from "./screens/SplashScreen";
 import { orbita } from "./theme";
-import { useAccountFlow, useBackendPersist } from "./useAccount";
+import { useAccountFlow, useBackendPersist, useOnboardingChart } from "./useAccount";
 
 const TOTAL = 15;
 
@@ -62,8 +63,11 @@ export function OnboardingFlow() {
   const [email, setEmail] = useState("");
   const [accountCode, setAccountCode] = useState("");
   const [plan, setPlan] = useState<PlanId>("annual");
+  const [previewSeen, setPreviewSeen] = useState(false);
   const account = useAccountFlow();
   const persistBackend = useBackendPersist();
+  const chartPreview = useOnboardingChart();
+  const calcFired = useRef(false);
 
   // Dev preview: jump to any step via ?debugStep=N.
   useEffect(() => {
@@ -88,6 +92,22 @@ export function OnboardingFlow() {
     ? "Sin hora"
     : `${String(birthTime.hour).padStart(2, "0")}:${String(birthTime.minute).padStart(2, "0")} ${birthTime.period}`;
   const placeShort = birthPlace?.label.split(",")[0] ?? "";
+
+  // Al llegar al preview (paso 14) disparamos el cálculo REAL de la carta una vez.
+  // Con sesión Clerk persiste birthData + carta + primera lectura; sin sesión no
+  // hace nada (persistBackend chequea isSignedIn) y el preview degrada a solo-Sol.
+  useEffect(() => {
+    if (step !== 14 || calcFired.current || !persistBackend) return;
+    calcFired.current = true;
+    void persistBackend({
+      birthDate: birthDateISO,
+      birthTime: timeUnknown ? undefined : timeLabel,
+      birthPlaceLabel: birthPlace?.label,
+      latitude: birthPlace?.latitude,
+      longitude: birthPlace?.longitude,
+      timezone: birthPlace?.timezone,
+    });
+  }, [step, persistBackend, birthDateISO, timeUnknown, timeLabel, birthPlace]);
 
   const accountNext = async () => {
     if (!account || account.isSignedIn) {
@@ -239,7 +259,20 @@ export function OnboardingFlow() {
       break;
     case 14:
     default:
-      screen = <PaywallScreen plan={plan} onPlan={setPlan} onUnlock={submit} onBack={back} />;
+      // Paso 14 = preview de la carta (real, cortada) → paywall. Mismo índice de
+      // progreso; el CTA del preview revela el paywall (no suma un paso numerado).
+      screen = previewSeen ? (
+        <PaywallScreen plan={plan} onPlan={setPlan} onUnlock={submit} onBack={() => setPreviewSeen(false)} />
+      ) : (
+        <ChartPreviewScreen
+          step={14}
+          total={TOTAL}
+          sunFallback={signLabel}
+          chart={chartPreview}
+          onNext={() => setPreviewSeen(true)}
+          onBack={back}
+        />
+      );
       break;
   }
 

@@ -21,6 +21,27 @@ El puente de tipos (`convex/_generated/`) se deriva de acá y lo commitea el bac
 
 ---
 
+## 2026-07-07 — Horóscopo de personalidad: pedido de interpretación natal por LLM
+- **Qué cambió (contrato):** `PersonalitySection` (en `src/services/appRefs.ts`) suma `questions?: string[]` (1-2 preguntas de reflexión por sector; el plan `buildNatalInterpretationGatewayPlan` ya las prevé). El front promovió `charts.personalityReading` y `charts.valuesMap` de `proposedApi`→`appApi` (ya estaban implementadas; el "propuesto" era obsoleto).
+- **Qué construyó el front:** la pantalla `/personalidad` (`src/components/web/orbita-personality.tsx`) es ahora la **lectura larga por sectores**: rueda natal real (`charts.current`) + 7 secciones interpretativas + mapa de valores (`charts.valuesMap`). El mock (`src/content/personalityMock.ts`) tiene la lectura rica de ejemplo = **target de calidad y taxonomía**.
+- **Pedido a backend (Codex):** cablear el **LLM natal** (GPT-5.4, `ORBITA_LLM_ENABLED=true`) para que `charts.personalityReading` genere las **7 secciones temáticas** desde la carta real, con guardrails, cacheadas en `natalInterpretations`, con **fallback a la plantilla** actual. Ejecutar el plan `buildNatalInterpretationGatewayPlan` (falta la action que llame al gateway, parsee y escriba en `natalInterpretations`).
+  - **Taxonomía de secciones (keys exactas que espera el front):** `identidad` (Sol+Asc), `emocional` (Luna), `mente` (Mercurio), `amor` (Venus+Marte), `impulso` (Marte), `expansion` (Júpiter — **reframe de "suerte"**, sin dinero/éxito), `estructura` (Saturno). Cada sección: `{ key, title, intro, placement:{label,planet,sign?,house?}, body (largo, ~4 párrafos, EXPLICATIVO/pedagógico: (1) qué es el planeta/placement en términos simples, (2) qué te da tu signo, (3) qué agrega la casa, (4) el borde de crecimiento), questions: 1-2 en CADA sección (promesa "por sector") }`. Ver `src/content/personalityMock.ts` como target de tono, largo y estructura. **No alargar más el body**; el enriquecimiento futuro va por sub-bloques opcionales por sección (ej. "Cómo se juega en tu día", "Para observar esta semana"), no por más párrafos. Evitar imperativos duros ("tenés que…").
+  - **Guardrails duros en el prompt:** entretenimiento/autoconocimiento; sin destino/dinero/salud/legal como consejo; sin órdenes ("le diremos lo que debe hacer" ❌); no copiar copy crudo del proveedor. Voseo rioplatense.
+- **Quién lo pidió:** frontend (Claude).
+- **Estado:** front implementado (contra plantilla + mock rico). Backend LLM natal: **pendiente (Codex)**.
+
+## 2026-07-07 — Capacidades ampliadas (endpoints AstrologyAPI disponibles sin cablear)
+- **Qué cambió:** el front propone 4 funciones públicas nuevas para exponer endpoints de AstrologyAPI que ya existen pero no están cableados. No requieren tablas nuevas (cache opcional, patrón `transits.getToday`). Formas de payload en `src/services/skyRefs.ts`; catálogo completo en `docs/api-capacidades-orbita.md`:
+  - `sky.getMoonPhase({ localDate, timezone })` → `MoonPhasePayload` — fase lunar del día (`moon_phase_report`/`lunar_metrics`). Módulo Home/onboarding. Free.
+  - `forecast.getLongRange()` → `LongRangeForecastPayload` — tránsitos lentos por ventanas (`life_forecast_report/tropical`). **Reemplaza** el contrato que hoy figura `needs_provider_endpoint` en `buildLongRangeTimelineContract`. Premium.
+  - `charts.solarReturn({ year })` → `SolarReturnPayload` — revolución solar anual (`solar_return_*`). Premium.
+  - `content.sunSignDaily({ sign, localDate })` → `SunSignContentPayload` — lectura diaria por signo sin carta (`sun_sign_prediction/daily/:signo`), para demo free / logueado-sin-carta / notificaciones. Free.
+- **Guardrail:** `sun_sign_prediction` y los reportes traen claims de salud/dinero/suerte/destino. Órbita toma el dato y reescribe en voz propia; nada del texto crudo va a app y todo pasa por `/backoffice`.
+- **Nota:** la sinastría (`relationships.synastry`, bloque App Core) queda reconfirmada — el motor existe (`synastry_horoscope` + `love_compatibility_report`), no era "falta proveedor" sino "falta cablear + input de 2da persona".
+- **Por qué:** ampliar lo mostrable con datos que ya se pueden sacar de la API (fase lunar, pronóstico largo, revolución solar, contenido por signo) sin depender de un motor nuevo.
+- **Quién lo pidió:** frontend (Claude).
+- **Estado:** propuesto (stub). Ver bloque `// TODO: pendiente backend — Capacidades ampliadas` en `convex/schema.ts`. Front trabaja contra mocks (`src/content/moonPhaseMock.ts`, `forecastMock.ts`, `solarReturnMock.ts`, `sunSignMock.ts`) hasta que existan.
+
 ## 2026-07-06 — Contrato de pagos v2 (RevenueCat app + Stripe web)
 - **Qué cambió:**
   - **`subscriptions` v2** — una fila por `(userId, provider)`. Campos nuevos: `clerkUserId?` (denormalizado para webhooks), `provider` ahora `"revenuecat"|"stripe"|"stub"`, `plan? "weekly"|"yearly"|"lifetime"`, `providerSubscriptionId?`, `isLifetime?`, `willRenew?`, `environment? "sandbox"|"production"`, `lastEventAt?`. `status` suma `"billing_issue"`. Índices nuevos: `by_user_provider`, `by_clerkUserId`, `by_providerCustomerId`, `by_providerSubscriptionId`.

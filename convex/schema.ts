@@ -416,3 +416,22 @@ export default defineSchema({
 //
 //   void.ask({ question }):             VoidAnswerPayload
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// TODO: pendiente backend — Capacidades ampliadas (propuesto por frontend, 2026-07-07)
+//
+// Endpoints de AstrologyAPI ya disponibles pero SIN cablear. No requieren tablas
+// nuevas (cache opcional, patrón `transits.getToday`). Formas de payload = contrato
+// TS del front en `src/services/skyRefs.ts`. Catálogo completo en
+// `docs/api-capacidades-orbita.md`; detalle en `convex/CHANGELOG.md` (2026-07-07).
+// Guardrail: la API trae claims de salud/dinero/suerte; se reescribe voz Órbita
+// y pasa por /backoffice antes de app.
+//
+//   sky.getMoonPhase({ localDate, timezone }): MoonPhasePayload   // moon_phase_report — free
+//   forecast.getLongRange():                   LongRangeForecastPayload // life_forecast_report — premium
+//   charts.solarReturn({ year }):              SolarReturnPayload   // solar_return_* — premium
+//   content.sunSignDaily({ sign, localDate }): SunSignContentPayload// sun_sign_prediction/daily — free
+//
+// (Sinastría `relationships.synastry` ya está propuesta en el bloque App Core;
+//  motor confirmado: synastry_horoscope + love_compatibility_report.)
+// ---------------------------------------------------------------------------

@@ -1,5 +1,5 @@
-import { ComponentType, useEffect, useMemo, useRef, useState } from "react";
-import { useAction, useMutation } from "convex/react";
+import { ComponentType, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { Inter_400Regular, Inter_500Medium, Inter_700Bold } from "@expo-google-fonts/inter";
 import { Newsreader_400Regular, Newsreader_500Medium } from "@expo-google-fonts/newsreader";
 import { useFonts } from "expo-font";
@@ -30,6 +30,8 @@ import {
 } from "@/content/onboardingSteps";
 import { formatSign, getZodiacSign } from "@/domain/zodiac";
 import { appApi, proposedApi } from "@/services/appRefs";
+import { publicLabApi } from "@/services/publicLabRefs";
+import { type PlaceHit, searchPlaces } from "@/services/geocoding";
 import { useOrbitaAuth } from "@/hooks/useOrbitaAuth";
 
 const colors = {
@@ -83,6 +85,9 @@ export type OnboardingData = {
   birthTime?: string;
   birthTimePrecision: "known" | "approximate" | "unknown";
   birthPlaceLabel: string;
+  /** Coordenadas reales del lugar elegido (del geocoding) — necesarias para el ascendente/casas. */
+  latitude?: number;
+  longitude?: number;
   timezone: string;
 };
 export type OnboardingBackend = {
@@ -90,9 +95,14 @@ export type OnboardingBackend = {
   email?: string;
   SignIn: React.ComponentType;
   complete: (data: OnboardingData) => Promise<void>;
+  /** Calcula la tríada real (Sol/Luna/Asc) sin login, desde los datos cargados. */
+  computeTriad: (data: OnboardingData) => Promise<OnbTriad>;
 };
 
-export function OrbitaOnboarding({ backend }: { backend?: OnboardingBackend } = {}) {
+/** Tríada real leída de la carta calculada (para el reveal). */
+export type OnbTriad = { resolved: boolean; sun: string | null; moon: string | null; ascendant: string | null };
+
+export function OrbitaOnboarding({ backend, triad }: { backend?: OnboardingBackend; triad?: OnbTriad } = {}) {
   const router = useRouter();
   const { width, height } = useWindowDimensions();
   const isDesktop = width >= 480;
@@ -105,11 +115,17 @@ export function OrbitaOnboarding({ backend }: { backend?: OnboardingBackend } = 
   const [day, setDay] = useState(""); const [month, setMonth] = useState(""); const [year, setYear] = useState("");
   const [placeQuery, setPlaceQuery] = useState("");
   const [place, setPlace] = useState<string | undefined>();
+  const [placeHit, setPlaceHit] = useState<PlaceHit | undefined>();
+  const [placeResults, setPlaceResults] = useState<PlaceHit[]>([]);
+  const [placeSearching, setPlaceSearching] = useState(false);
+  const placeReq = useRef(0);
   const [time, setTime] = useState<TimeState>({ hour: "", minute: "", period: "AM" });
   const [timeUnknown, setTimeUnknown] = useState(false);
   const [email, setEmail] = useState("");
   const [plan, setPlan] = useState<PlanId>("annual");
   const [calc, setCalc] = useState(0);
+  const [computedTriad, setComputedTriad] = useState<OnbTriad | undefined>();
+  const [computing, setComputing] = useState(false);
 
   const step = ONBOARDING_STEPS[index];
   const anchored = ANCHORED_KINDS.has(step.kind);
@@ -132,17 +148,74 @@ export function OrbitaOnboarding({ backend }: { backend?: OnboardingBackend } = 
   }, [index]);
 
   const calcRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Calcula la tríada REAL (Sol/Luna/Asc) sin login, desde fecha+hora+lugar.
+  // Endpoint público (previewDailyHome). Una sola fuente para "calc" y reveal.
+  const runCompute = useCallback(async () => {
+    if (!backend || computedTriad || !(day && month && year.length === 4)) return;
+    setComputing(true);
+    try {
+      const t = await backend.computeTriad(collectData());
+      setComputedTriad(t);
+    } catch {
+      // si falla, el reveal degrada a Sol + nota honesta
+    } finally {
+      setComputing(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backend, computedTriad, day, month, year]);
+
+  // Paso "Calculando": corre el cálculo real y ESPERA a que termine antes de
+  // pasar al reveal (así no se ve el mock/placeholder primero). Mín 1.2s, máx 8s.
   useEffect(() => {
     if (step.kind !== "calc") return;
     setCalc(0);
-    calcRef.current = setInterval(() => {
-      setCalc((c) => {
-        if (c >= 100) { if (calcRef.current) clearInterval(calcRef.current); setTimeout(() => setIndex((i) => i + 1), 450); return 100; }
-        return c + 4;
-      });
-    }, 55);
-    return () => { if (calcRef.current) clearInterval(calcRef.current); };
+    let cancelled = false;
+    calcRef.current = setInterval(() => setCalc((c) => (c >= 92 ? 92 : c + 3)), 55);
+    const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    (async () => {
+      await Promise.race([Promise.all([runCompute(), delay(1200)]), delay(8000)]);
+      if (cancelled) return;
+      if (calcRef.current) clearInterval(calcRef.current);
+      setCalc(100);
+      setTimeout(() => { if (!cancelled) setIndex((i) => i + 1); }, 300);
+    })();
+    return () => { cancelled = true; if (calcRef.current) clearInterval(calcRef.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step.kind]);
+
+  // Salto directo al reveal (?step=reveal): calcula igual si no corrió en "calc".
+  useEffect(() => {
+    if (step.kind === "reveal") void runCompute();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step.kind]);
+
+  // Geocoding real (Open-Meteo): autocomplete global de ciudad de nacimiento.
+  // Debounce 320ms; con red caída cae al set chico de PLACE_SUGGESTIONS.
+  useEffect(() => {
+    if (step.kind !== "place") return;
+    const q = placeQuery.trim();
+    if (place || q.length < 2) { setPlaceResults([]); setPlaceSearching(false); return; }
+    const id = ++placeReq.current;
+    const controller = new AbortController();
+    setPlaceSearching(true);
+    const t = setTimeout(async () => {
+      try {
+        const hits = await searchPlaces(q, controller.signal);
+        if (placeReq.current === id) setPlaceResults(hits);
+      } catch {
+        if (placeReq.current === id) {
+          const ql = q.toLowerCase();
+          setPlaceResults(
+            PLACE_SUGGESTIONS.filter((p) => p.toLowerCase().includes(ql)).slice(0, 6).map((label) => ({ label }))
+          );
+        }
+      } finally {
+        if (placeReq.current === id) setPlaceSearching(false);
+      }
+    }, 450);
+    return () => { clearTimeout(t); controller.abort(); };
+  }, [placeQuery, place, step.kind]);
 
   function collectData(): OnboardingData {
     return {
@@ -152,15 +225,20 @@ export function OrbitaOnboarding({ backend }: { backend?: OnboardingBackend } = 
       birthTime: timeUnknown ? undefined : to24h(time),
       birthTimePrecision: timeUnknown ? "unknown" : "known",
       birthPlaceLabel: place ?? placeQuery,
+      // Coordenadas reales del geocoding → el backend calcula ascendente y casas.
+      latitude: placeHit?.latitude,
+      longitude: placeHit?.longitude,
+      // Timezone real del lugar elegido (geocoding); fallback al del browser.
       timezone:
-        typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "America/Argentina/Buenos_Aires"
+        placeHit?.timezone ??
+        (typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "America/Argentina/Buenos_Aires")
     };
   }
 
   function next() {
     if (index >= ONBOARDING_STEPS.length - 1) {
+      // Al entrar, si hay sesión persistimos la carta para la app (live).
       if (backend && backend.isSignedIn) {
-        // escribe carta real y va al día en modo live
         backend.complete(collectData()).then(() => router.replace("/home?live=1")).catch(() => router.replace("/home"));
       } else {
         router.replace("/home");
@@ -186,9 +264,6 @@ export function OrbitaOnboarding({ backend }: { backend?: OnboardingBackend } = 
     return <View style={styles.appLoading}><ActivityIndicator color={colors.copperSoft} /></View>;
   }
 
-  const suggestions = placeQuery.trim().length > 0 && !place
-    ? PLACE_SUGGESTIONS.filter((p) => p.toLowerCase().includes(placeQuery.toLowerCase())).slice(0, 5)
-    : [];
   const frameHeight = isDesktop ? Math.min(height - 48, 940) : height;
   const scrimStops = ["rgba(7,8,10,0.28)", "rgba(7,8,10,0.5)", "rgba(7,8,10,0.8)"] as const;
 
@@ -238,7 +313,7 @@ export function OrbitaOnboarding({ backend }: { backend?: OnboardingBackend } = 
   function ctaLabel() {
     switch (step.kind) {
       case "intro": return "Empezar";
-      case "reveal": return "Continuar";
+      case "reveal": return "Ver mi carta completa";
       case "account": return "Guardar carta";
       case "payment": return "Empezar con Órbita";
       default: return "Continuar";
@@ -322,13 +397,14 @@ export function OrbitaOnboarding({ backend }: { backend?: OnboardingBackend } = 
           <QBlock title="¿Dónde naciste?" sub="La ciudad ajusta el horizonte de tu carta.">
             <View style={styles.card}>
               <Field label="CIUDAD">
-                <TextInput autoFocus onChangeText={(t) => { setPlaceQuery(t); setPlace(undefined); }} placeholder="Buenos Aires, Argentina" placeholderTextColor={colors.boneDim} style={styles.input} value={place ?? placeQuery} />
+                <TextInput autoFocus onChangeText={(t) => { setPlaceQuery(t); setPlace(undefined); setPlaceHit(undefined); }} placeholder="Buenos Aires, Argentina" placeholderTextColor={colors.boneDim} style={styles.input} value={place ?? placeQuery} />
               </Field>
-              {suggestions.map((s) => (
-                <Pressable key={s} onPress={() => { setPlace(s); setPlaceQuery(s); }} style={styles.suggestion}>
-                  <Text style={styles.suggestionText}>{s}</Text>
+              {placeResults.map((hit) => (
+                <Pressable key={hit.label} onPress={() => { setPlace(hit.label); setPlaceQuery(hit.label); setPlaceHit(hit); setPlaceResults([]); }} style={styles.suggestion}>
+                  <Text style={styles.suggestionText}>{hit.label}</Text>
                 </Pressable>
               ))}
+              {placeSearching && placeResults.length === 0 && <Text style={styles.hint}>Buscando ciudades…</Text>}
               {place && <Text style={styles.hint}>El lugar ayuda a calcular tu ascendente y las casas.</Text>}
             </View>
             <Privacy>La usamos para precisar tu carta natal. Nunca vendemos ni compartimos tus datos.</Privacy>
@@ -368,28 +444,38 @@ export function OrbitaOnboarding({ backend }: { backend?: OnboardingBackend } = 
             <Text style={styles.calcPct}>{`${calc}%`}</Text>
           </View>
         );
-      case "reveal":
+      case "reveal": {
+        const t = computedTriad ?? triad;
+        const sunLabel = t?.sun ?? sunSign ?? "—";
+        const moonLabel = t?.moon;
+        const ascLabel = t?.ascendant;
+        const hasReal = !!(moonLabel || ascLabel);
         return (
           <View style={styles.revealWrap}>
             <Kicker>Tu carta base</Kicker>
             <View style={styles.sunEmblem}><Sun color={colors.copperSoft} size={46} strokeWidth={1.3} /></View>
-            <Text style={styles.revealSign}>{sunSign ?? "—"}</Text>
+            <Text style={styles.revealSign}>{sunLabel}</Text>
             <Text style={styles.revealRole}>Tu Sol</Text>
             <View style={styles.revealSecondary}>
               <View style={styles.revealMini}>
                 <Moon color={colors.copperSoft} size={15} strokeWidth={1.7} />
                 <Text style={styles.revealMiniRole}>Luna</Text>
-                <Text style={styles.revealMiniNote}>con tu hora</Text>
+                <Text style={[styles.revealMiniNote, moonLabel ? styles.revealMiniValue : null]}>{moonLabel ?? (computing ? "…" : "con tu hora")}</Text>
               </View>
               <View style={styles.revealMini}>
                 <Orbit color={colors.copperSoft} size={15} strokeWidth={1.7} />
                 <Text style={styles.revealMiniRole}>Asc</Text>
-                <Text style={styles.revealMiniNote}>con tu lugar</Text>
+                <Text style={[styles.revealMiniNote, ascLabel ? styles.revealMiniValue : null]}>{ascLabel ?? (computing ? "…" : "con tu lugar")}</Text>
               </View>
             </View>
-            <Sub>El Sol sale de tu fecha. Luna y ascendente se afinan con tu hora y lugar en la carta completa.</Sub>
+            <Sub>
+              {hasReal
+                ? "Tu Sol, tu Luna y tu ascendente. Tu carta completa —casas, aspectos y más— te espera del otro lado."
+                : "El Sol sale de tu fecha. Luna y ascendente se afinan con tu hora y lugar en la carta completa."}
+            </Sub>
           </View>
         );
+      }
       case "beforeafter":
         return (
           <View style={styles.heroTop}>
@@ -510,8 +596,9 @@ const styles = StyleSheet.create({
   revealRole: { color: colors.copperSoft, fontFamily: "Inter_700Bold", fontSize: 12, letterSpacing: 1.4, textTransform: "uppercase" },
   revealSecondary: { flexDirection: "row", gap: 12, marginTop: 12 },
   revealMini: { alignItems: "center", backgroundColor: colors.cardSolid, borderColor: colors.line, borderRadius: 12, borderWidth: 1, gap: 4, paddingHorizontal: 20, paddingVertical: 12 },
-  revealMiniRole: { color: colors.bone, fontFamily: "Inter_700Bold", fontSize: 13 },
+  revealMiniRole: { color: colors.copperSoft, fontFamily: "Inter_700Bold", fontSize: 11, letterSpacing: 0.6, textTransform: "uppercase" },
   revealMiniNote: { color: colors.boneMuted, fontFamily: "Inter_400Regular", fontSize: 11 },
+  revealMiniValue: { color: colors.bone, fontFamily: "Newsreader_500Medium", fontSize: 16 },
   hero: { alignItems: "center", gap: 16 },
   heroTop: { alignItems: "center", gap: 16, paddingTop: 8 },
   logoRing: { alignItems: "center", borderColor: colors.line, borderRadius: 60, borderWidth: 1, height: 96, justifyContent: "center", width: 96 },
@@ -613,12 +700,50 @@ const styles = StyleSheet.create({
 
 // Contenedor con backend: se monta SOLO cuando Convex+Clerk están configurados
 // (usa useMutation + useOrbitaAuth, que requieren providers montados).
+function capSign(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+const SIGN_ES: Record<string, string> = {
+  aries: "Aries", tauro: "Tauro", geminis: "Géminis", cancer: "Cáncer",
+  leo: "Leo", virgo: "Virgo", libra: "Libra", escorpio: "Escorpio",
+  sagitario: "Sagitario", capricornio: "Capricornio", acuario: "Acuario", piscis: "Piscis"
+};
+
+/** "Sol en geminis" / "Ascendente en libra" / "Luna en piscis" → "Géminis"/"Libra"/"Piscis". */
+function parseSign(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  let s = v.trim();
+  const m = s.match(/\ben\s+(.+)$/i);
+  if (m) s = m[1].trim();
+  if (!s || /pendiente/i.test(s)) return null;
+  const key = s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  return SIGN_ES[key] ?? capSign(s);
+}
+
+/** Lee la tríada (Sol/Luna/Asc) de la carta persistida para el reveal. */
+function readTriadFromChart(chart: unknown): OnbTriad {
+  const payload = chart && typeof chart === "object" ? (chart as { payload?: unknown }).payload : null;
+  const t = payload && typeof payload === "object" ? (payload as { triad?: unknown }).triad : null;
+  const read = (k: string): string | null => {
+    const p = t && typeof t === "object" ? (t as Record<string, unknown>)[k] : null;
+    const sign = p && typeof p === "object" ? (p as Record<string, unknown>).sign : null;
+    return typeof sign === "string" && sign !== "pendiente" && sign.trim().length > 0 ? capSign(sign) : null;
+  };
+  return { resolved: chart !== undefined, sun: read("sun"), moon: read("moon"), ascendant: read("ascendant") };
+}
+
 export function OnboardingWithBackend() {
   const auth = useOrbitaAuth();
   const completeBirthData = useMutation(appApi.onboarding.completeBirthData);
   const calcChart = useAction(appApi.charts.calculateOrCreateNatalChart);
   const genToday = useMutation(appApi.readings.generateToday);
   const resolvePlace = useAction(proposedApi.resolvePlace);
+  const previewDaily = useAction(publicLabApi.previewDailyHome);
+  // charts.current requiere sesión (crashea sin login). Solo la leemos si hay
+  // sesión; para el reveal, la tríada real igual sale de computeTriad (público).
+  const chart = useQuery(appApi.charts.current, auth.isSignedIn ? {} : "skip");
+  const triad = readTriadFromChart(chart);
   const { SignIn } = require("@clerk/expo/web") as { SignIn: ComponentType<Record<string, unknown>> };
 
   const backend: OnboardingBackend = {
@@ -634,10 +759,10 @@ export function OnboardingWithBackend() {
       />
     ),
     complete: async (data) => {
-      // Resolvemos el lugar → coordenadas + timezone reales para una carta precisa.
-      // Defensivo: si el backend todavía no resuelve (o falla), caemos al timezone del browser.
-      let latitude: number | undefined;
-      let longitude: number | undefined;
+      // Base: coordenadas + timezone que ya trajo el geocoding (Photon da coords).
+      // resolvePlace (AstrologyAPI) las refina/agrega timezone del lugar si puede.
+      let latitude = data.latitude;
+      let longitude = data.longitude;
       let placeId: string | undefined;
       let timezone = data.timezone;
       try {
@@ -650,7 +775,7 @@ export function OnboardingWithBackend() {
           if (place.placeId) placeId = place.placeId;
         }
       } catch {
-        // fallback: timezone del browser, sin coordenadas
+        // resolvePlace falló: seguimos con las coords del geocoding + timezone del browser.
       }
       await completeBirthData({
         birthDate: data.birthDate,
@@ -666,10 +791,28 @@ export function OnboardingWithBackend() {
       const now = new Date();
       const localDate = `${now.getFullYear()}-${pad2(String(now.getMonth() + 1))}-${pad2(String(now.getDate()))}`;
       await genToday({ localDate, timezone });
+    },
+    // Tríada real SIN login: calcula la carta desde los datos cargados vía el
+    // endpoint público del lab (AstrologyAPI). Sirve para el reveal al instante.
+    computeTriad: async (data) => {
+      const now = new Date();
+      const localDate = `${now.getFullYear()}-${pad2(String(now.getMonth() + 1))}-${pad2(String(now.getDate()))}`;
+      const res = await previewDaily({
+        birthDate: data.birthDate,
+        birthTime: data.birthTime,
+        birthTimePrecision: data.birthTimePrecision,
+        birthPlaceLabel: data.birthPlaceLabel,
+        latitude: data.latitude,
+        longitude: data.longitude,
+        timezone: data.timezone,
+        localDate
+      });
+      const nb = res?.natalBase;
+      return { resolved: true, sun: parseSign(nb?.sun), moon: parseSign(nb?.moon), ascendant: parseSign(nb?.ascendant) };
     }
   };
 
-  return <OrbitaOnboarding backend={backend} />;
+  return <OrbitaOnboarding backend={backend} triad={triad} />;
 }
 
 export default OrbitaOnboarding;

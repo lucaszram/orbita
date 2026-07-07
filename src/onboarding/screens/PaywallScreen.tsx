@@ -15,7 +15,7 @@ const BENEFITS = [
   "Tránsitos en tu carta",
   "Guía diaria personalizada",
   "Preguntale a Órbita",
-  "Sueños, vínculos y calendario",
+  "Vínculos, calendario y fase lunar",
 ];
 
 const STEPS: [string, string, string][] = [

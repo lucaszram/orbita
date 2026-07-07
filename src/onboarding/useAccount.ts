@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 
 import { deviceTimezone } from "@/hooks/useLiveApp";
 import { useOrbitaAuth } from "@/hooks/useOrbitaAuth";
@@ -124,6 +124,49 @@ function useAccountFlowInner(): AccountFlow {
       setError(null);
       setPhase("email");
     }
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Lectura de la carta real para el preview del onboarding (paso 14).
+// Con la carta ya calculada (post-cuenta), devuelve la tríada real Sol/Luna/Asc.
+// ---------------------------------------------------------------------------
+
+function capitalizeSign(sign: string): string {
+  return sign.charAt(0).toUpperCase() + sign.slice(1);
+}
+
+function readTriadSign(triad: unknown, key: string): string | null {
+  if (!triad || typeof triad !== "object") return null;
+  const placement = (triad as Record<string, unknown>)[key];
+  if (!placement || typeof placement !== "object") return null;
+  const sign = (placement as Record<string, unknown>).sign;
+  return typeof sign === "string" && sign !== "pendiente" && sign.trim().length > 0 ? capitalizeSign(sign) : null;
+}
+
+export type OnboardingChart = {
+  /** true una vez que la query de Convex resolvió (haya carta o no). */
+  resolved: boolean;
+  sun: string | null;
+  moon: string | null;
+  ascendant: string | null;
+};
+
+/** Lee la carta natal persistida del usuario. `null` si no hay backend configurado. */
+export function useOnboardingChart(): OnboardingChart | null {
+  if (!HAS_BACKEND) return null;
+  return useOnboardingChartInner();
+}
+
+function useOnboardingChartInner(): OnboardingChart {
+  const chart = useQuery(appApi.charts.current, {});
+  const payload = chart && typeof chart === "object" ? (chart as { payload?: unknown }).payload : null;
+  const triad = payload && typeof payload === "object" ? (payload as { triad?: unknown }).triad : null;
+  return {
+    resolved: chart !== undefined,
+    sun: readTriadSign(triad, "sun"),
+    moon: readTriadSign(triad, "moon"),
+    ascendant: readTriadSign(triad, "ascendant")
   };
 }
 

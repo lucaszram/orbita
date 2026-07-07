@@ -27,6 +27,10 @@ export type OnboardingStep = {
   counts: boolean;
 };
 
+// Orden: los datos → antes/después (venta) → cuenta (crea sesión) → calculando
+// (calcula la carta REAL) → reveal (tríada real Sol/Luna/Asc) → paywall (desbloquea
+// la carta completa). La cuenta va antes del calc porque el cálculo real necesita
+// sesión; así el reveal muestra Luna/Ascendente reales, no placeholders.
 export const ONBOARDING_STEPS: OnboardingStep[] = [
   { id: "intro", kind: "intro", counts: false },
   { id: "promise-1", kind: "promise", counts: false },
@@ -35,10 +39,10 @@ export const ONBOARDING_STEPS: OnboardingStep[] = [
   { id: "date", kind: "date", counts: true },
   { id: "place", kind: "place", counts: true },
   { id: "time", kind: "time", counts: true },
-  { id: "calc", kind: "calc", counts: false },
-  { id: "reveal", kind: "reveal", counts: false },
   { id: "beforeafter", kind: "beforeafter", counts: false },
   { id: "account", kind: "account", counts: true },
+  { id: "calc", kind: "calc", counts: false },
+  { id: "reveal", kind: "reveal", counts: false },
   { id: "payment", kind: "payment", counts: true }
 ];
 

@@ -41,7 +41,7 @@ function pt(r: number, deg: number, c = 320): [number, number] {
   return [c + r * Math.cos(a), c - r * Math.sin(a)];
 }
 
-function NatalWheel({ payload, size }: { payload: NatalChartPayload; size: number }) {
+export function NatalWheel({ payload, size }: { payload: NatalChartPayload; size: number }) {
   const R1 = 300, R2 = 252, R3 = 108;
   const boundaries = Array.from({ length: 12 }, (_, i) => 180 - i * 30);
   const ticks = Array.from({ length: 36 }, (_, i) => i * 10);
@@ -208,7 +208,7 @@ const HARMONY_BY_TYPE: Record<string, "harmony" | "tension"> = {
 };
 
 /** Traduce el payload real de `charts.current` (AstrologyAPI) a `NatalChartPayload`. */
-function mapNatalChart(doc: unknown): NatalChartPayload {
+export function mapNatalChart(doc: unknown): NatalChartPayload {
   const p = ((doc as { payload?: unknown })?.payload ?? doc ?? {}) as Record<string, unknown>;
   const raw: Array<Record<string, unknown>> = Array.isArray(p.placements) ? (p.placements as Array<Record<string, unknown>>) : [];
   const noon = p.calculationTimeSource === "noon_fallback";

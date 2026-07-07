@@ -145,6 +145,8 @@ export type PersonalitySection = {
   intro: string;
   placement: { label: string; planet: string; sign?: string; house?: number };
   body: string;
+  /** 1-2 preguntas de reflexión por sector (el plan LLM natal ya las prevé). */
+  questions?: string[];
 };
 export type PersonalityReadingPayload = {
   headline: string;
@@ -245,6 +247,21 @@ export const appApi = {
       "public",
       Empty,
       NatalChartDoc
+    >,
+    // Ya implementadas en backend (el "propuesto" quedó obsoleto): derivan de la carta.
+    valuesMap: anyApi.charts.valuesMap as FunctionReference<"query", "public", Empty, ValuesMapPayload | null>,
+    personalityReading: anyApi.charts.personalityReading as FunctionReference<
+      "query",
+      "public",
+      Empty,
+      PersonalityReadingPayload | null
+    >,
+    // Genera (LLM) + cachea la lectura rica; la query de arriba la devuelve reactiva.
+    generatePersonalityReading: anyApi.charts.generatePersonalityReading as FunctionReference<
+      "action",
+      "public",
+      Empty,
+      unknown
     >
   },
   readings: {
