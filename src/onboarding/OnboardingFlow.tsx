@@ -25,7 +25,8 @@ import { PaywallScreen, type PlanId } from "./screens/PaywallScreen";
 import { PersonalizingScreen } from "./screens/PersonalizingScreen";
 import { SplashScreen } from "./screens/SplashScreen";
 import { orbita } from "./theme";
-import { useAccountFlow, useBackendPersist, useOnboardingChart } from "./useAccount";
+import { useAccountFlow, useBackendPersist, useOnboardingChart, useOnboardingComputeTriad } from "./useAccount";
+import type { OnboardingChart } from "./useAccount";
 
 const TOTAL = 15;
 
@@ -45,6 +46,12 @@ const ELEMENTS: Record<ZodiacSign, string> = {
 };
 
 const DEFAULT_TOPICS: Topic[] = ["claridad", "energia"];
+
+/** {hour, minute, period} → "HH:MM" en 24h (lo que espera el backend). */
+function to24hFromParts(t: BirthTime): string {
+  const h = t.period === "PM" ? (t.hour % 12) + 12 : t.hour % 12;
+  return `${String(h).padStart(2, "0")}:${String(t.minute).padStart(2, "0")}`;
+}
 
 /** Onboarding container — owns flow state and navigation, dispatches screens. */
 export function OnboardingFlow() {
@@ -67,7 +74,10 @@ export function OnboardingFlow() {
   const account = useAccountFlow();
   const persistBackend = useBackendPersist();
   const chartPreview = useOnboardingChart();
+  const computeTriad = useOnboardingComputeTriad();
+  const [computed, setComputed] = useState<OnboardingChart | undefined>();
   const calcFired = useRef(false);
+  const computeFired = useRef(false);
 
   // Dev preview: jump to any step via ?debugStep=N.
   useEffect(() => {
@@ -108,6 +118,26 @@ export function OnboardingFlow() {
       timezone: birthPlace?.timezone,
     });
   }, [step, persistBackend, birthDateISO, timeUnknown, timeLabel, birthPlace]);
+
+  // Tríada real SIN login: al llegar a "Personalizing"(11) calculamos la carta con
+  // el endpoint público, para que el preview muestre Luna/Ascendente reales aunque
+  // el usuario no se haya logueado todavía. Requiere lugar (coords del geocoding).
+  useEffect(() => {
+    if (step < 11 || computeFired.current || !computeTriad || !birthPlace) return;
+    computeFired.current = true;
+    computeTriad({
+      birthDate: birthDateISO,
+      birthTime: timeUnknown ? undefined : to24hFromParts(birthTime),
+      birthTimePrecision: timeUnknown ? "unknown" : "known",
+      birthPlaceLabel: birthPlace.label,
+      latitude: birthPlace.latitude,
+      longitude: birthPlace.longitude,
+      timezone: birthPlace.timezone,
+    })
+      .then(setComputed)
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, computeTriad, birthPlace]);
 
   const accountNext = async () => {
     if (!account || account.isSignedIn) {
@@ -268,7 +298,7 @@ export function OnboardingFlow() {
           step={14}
           total={TOTAL}
           sunFallback={signLabel}
-          chart={chartPreview}
+          chart={computed ?? chartPreview}
           onNext={() => setPreviewSeen(true)}
           onBack={back}
         />

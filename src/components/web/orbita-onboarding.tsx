@@ -155,7 +155,23 @@ export function OrbitaOnboarding({ backend, triad }: { backend?: OnboardingBacke
     if (!backend || computedTriad || !(day && month && year.length === 4)) return;
     setComputing(true);
     try {
-      const t = await backend.computeTriad(collectData());
+      let data = collectData();
+      // Sin coords (tipeó la ciudad pero no la eligió del dropdown) el backend no
+      // puede calcular Luna/Ascendente → geocodificamos el texto acá antes de pedir
+      // la tríada, y guardamos el hit para que la carta persistida también las tenga.
+      if ((data.latitude == null || data.longitude == null) && (place ?? placeQuery)) {
+        try {
+          const hits = await searchPlaces((place ?? placeQuery) as string);
+          const hit = hits[0];
+          if (hit?.latitude != null && hit?.longitude != null) {
+            data = { ...data, latitude: hit.latitude, longitude: hit.longitude, timezone: hit.timezone ?? data.timezone };
+            setPlaceHit(hit);
+          }
+        } catch {
+          // sin geocoding → el reveal degrada a Sol (nota honesta)
+        }
+      }
+      const t = await backend.computeTriad(data);
       setComputedTriad(t);
     } catch {
       // si falla, el reveal degrada a Sol + nota honesta
@@ -163,7 +179,7 @@ export function OrbitaOnboarding({ backend, triad }: { backend?: OnboardingBacke
       setComputing(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [backend, computedTriad, day, month, year]);
+  }, [backend, computedTriad, day, month, year, place, placeQuery]);
 
   // Paso "Calculando": corre el cálculo real y ESPERA a que termine antes de
   // pasar al reveal (así no se ve el mock/placeholder primero). Mín 1.2s, máx 8s.
@@ -740,9 +756,23 @@ export function OnboardingWithBackend() {
   const genToday = useMutation(appApi.readings.generateToday);
   const resolvePlace = useAction(proposedApi.resolvePlace);
   const previewDaily = useAction(publicLabApi.previewDailyHome);
-  // charts.current requiere sesión (crashea sin login). Solo la leemos si hay
-  // sesión; para el reveal, la tríada real igual sale de computeTriad (público).
-  const chart = useQuery(appApi.charts.current, auth.isSignedIn ? {} : "skip");
+  const ensureUser = useMutation(appApi.users.getOrCreateCurrentUser);
+  // charts.current tira "User record not found" si estás logueado pero todavía
+  // no existe la fila `users` (ventana post-login). Creamos la fila primero y
+  // recién ahí habilitamos la query (mismo patrón que useLiveApp). Para el
+  // reveal, la tríada real igual sale de computeTriad (público, sin login).
+  const [userReady, setUserReady] = useState(false);
+  useEffect(() => {
+    if (!auth.isAuthenticated) {
+      setUserReady(false);
+      return;
+    }
+    ensureUser({})
+      .then(() => setUserReady(true))
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth.isAuthenticated]);
+  const chart = useQuery(appApi.charts.current, auth.isAuthenticated && userReady ? {} : "skip");
   const triad = readTriadFromChart(chart);
   const { SignIn } = require("@clerk/expo/web") as { SignIn: ComponentType<Record<string, unknown>> };
 

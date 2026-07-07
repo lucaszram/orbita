@@ -20,21 +20,37 @@ export default function CartaScreen() {
         <Eyebrow>{carta.casaDestacada.label}</Eyebrow>
         <Body bone>{carta.casaDestacada.copy}</Body>
         <View style={{ height: orbita.spacing.xl }} />
-        <Pill label="VER POSICIONES" onPress={() => router.push("/reading/carta")} />
-        <Pressable
-          onPress={() => router.push("/reading/rueda")}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.wheelLink, pressed && { opacity: 0.6 }]}
-        >
-          <Text style={styles.wheelLinkText}>VER LA RUEDA COMPLETA →</Text>
-        </Pressable>
+        <Body>Tu carta natal completa, leída como carácter y sector por sector.</Body>
+        <View style={{ height: orbita.spacing.md }} />
+        <Pill label="LEER MI CARTA COMPLETA" onPress={() => router.push("/reading/personalidad")} />
+        <View style={styles.secondaryLinks}>
+          <Pressable
+            onPress={() => router.push("/reading/carta")}
+            accessibilityRole="button"
+            style={({ pressed }) => pressed && { opacity: 0.6 }}
+          >
+            <Text style={styles.wheelLinkText}>VER POSICIONES →</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => router.push("/reading/rueda")}
+            accessibilityRole="button"
+            style={({ pressed }) => pressed && { opacity: 0.6 }}
+          >
+            <Text style={styles.wheelLinkText}>VER LA RUEDA COMPLETA →</Text>
+          </Pressable>
+        </View>
       </Section>
     </OrbitaScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  wheelLink: { marginTop: orbita.spacing.xl },
+  secondaryLinks: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: orbita.spacing.lg,
+    marginTop: orbita.spacing.lg
+  },
   wheelLinkText: {
     color: orbita.colors.muted,
     fontFamily: orbita.fonts.monoMedium,

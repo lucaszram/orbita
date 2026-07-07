@@ -1,10 +1,11 @@
-import { useCallback, useRef, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useAction, useMutation, useQuery } from "convex/react";
 
 import { deviceTimezone } from "@/hooks/useLiveApp";
 import { useOrbitaAuth } from "@/hooks/useOrbitaAuth";
 import { appApi } from "@/services/appRefs";
 import { backendConfig } from "@/services/backendProviders";
+import { publicLabApi } from "@/services/publicLabRefs";
 
 /**
  * Cuenta Clerk (email + código) y persistencia Convex para el onboarding
@@ -159,7 +160,22 @@ export function useOnboardingChart(): OnboardingChart | null {
 }
 
 function useOnboardingChartInner(): OnboardingChart {
-  const chart = useQuery(appApi.charts.current, {});
+  const auth = useOrbitaAuth();
+  const ensureUser = useMutation(appApi.users.getOrCreateCurrentUser);
+  const [userReady, setUserReady] = useState(false);
+  // charts.current tira "User record not found" si hay sesión pero todavía no
+  // existe la fila `users`. Creamos la fila y recién ahí habilitamos la query.
+  useEffect(() => {
+    if (!auth.isAuthenticated) {
+      setUserReady(false);
+      return;
+    }
+    ensureUser({})
+      .then(() => setUserReady(true))
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth.isAuthenticated]);
+  const chart = useQuery(appApi.charts.current, auth.isAuthenticated && userReady ? {} : "skip");
   const payload = chart && typeof chart === "object" ? (chart as { payload?: unknown }).payload : null;
   const triad = payload && typeof payload === "object" ? (payload as { triad?: unknown }).triad : null;
   return {
@@ -168,6 +184,73 @@ function useOnboardingChartInner(): OnboardingChart {
     moon: readTriadSign(triad, "moon"),
     ascendant: readTriadSign(triad, "ascendant")
   };
+}
+
+// ---------------------------------------------------------------------------
+// Tríada real SIN login: calcula la carta desde los datos cargados vía el
+// endpoint público del lab (previewDailyHome). Igual que en la web.
+// ---------------------------------------------------------------------------
+
+const HAS_CONVEX = backendConfig.hasConvex;
+
+const SIGN_ES: Record<string, string> = {
+  aries: "Aries", tauro: "Tauro", geminis: "Géminis", cancer: "Cáncer",
+  leo: "Leo", virgo: "Virgo", libra: "Libra", escorpio: "Escorpio",
+  sagitario: "Sagitario", capricornio: "Capricornio", acuario: "Acuario", piscis: "Piscis"
+};
+
+/** "Sol en geminis" / "Ascendente en libra" → "Géminis"/"Libra". */
+function parseSignFromText(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  let s = v.trim();
+  const m = s.match(/\ben\s+(.+)$/i);
+  if (m) s = m[1].trim();
+  if (!s || /pendiente/i.test(s)) return null;
+  const key = s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  return SIGN_ES[key] ?? capitalizeSign(s);
+}
+
+export type ComputeTriadInput = {
+  birthDate: string;
+  birthTime?: string;
+  birthTimePrecision: "known" | "approximate" | "unknown";
+  birthPlaceLabel: string;
+  latitude?: number;
+  longitude?: number;
+  timezone?: string;
+};
+
+/** Devuelve una función que calcula la tríada real sin login. `null` sin Convex. */
+export function useOnboardingComputeTriad(): ((input: ComputeTriadInput) => Promise<OnboardingChart>) | null {
+  if (!HAS_CONVEX) return null;
+  return useOnboardingComputeTriadInner();
+}
+
+function useOnboardingComputeTriadInner() {
+  const previewDaily = useAction(publicLabApi.previewDailyHome);
+  return useCallback(
+    async (input: ComputeTriadInput): Promise<OnboardingChart> => {
+      const localDate = new Date().toISOString().slice(0, 10);
+      const res = (await previewDaily({
+        birthDate: input.birthDate,
+        birthTime: input.birthTime,
+        birthTimePrecision: input.birthTimePrecision,
+        birthPlaceLabel: input.birthPlaceLabel,
+        latitude: input.latitude,
+        longitude: input.longitude,
+        timezone: input.timezone ?? deviceTimezone(),
+        localDate
+      })) as { natalBase?: { sun?: unknown; moon?: unknown; ascendant?: unknown } };
+      const nb = res?.natalBase ?? {};
+      return {
+        resolved: true,
+        sun: parseSignFromText(nb.sun),
+        moon: parseSignFromText(nb.moon),
+        ascendant: parseSignFromText(nb.ascendant)
+      };
+    },
+    [previewDaily]
+  );
 }
 
 export type PersistBirthData = (input: {
