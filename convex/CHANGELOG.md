@@ -21,6 +21,20 @@ El puente de tipos (`convex/_generated/`) se deriva de acá y lo commitea el bac
 
 ---
 
+## 2026-07-06 — Contrato de pagos v2 (RevenueCat app + Stripe web)
+- **Qué cambió:**
+  - **`subscriptions` v2** — una fila por `(userId, provider)`. Campos nuevos: `clerkUserId?` (denormalizado para webhooks), `provider` ahora `"revenuecat"|"stripe"|"stub"`, `plan? "weekly"|"yearly"|"lifetime"`, `providerSubscriptionId?`, `isLifetime?`, `willRenew?`, `environment? "sandbox"|"production"`, `lastEventAt?`. `status` suma `"billing_issue"`. Índices nuevos: `by_user_provider`, `by_clerkUserId`, `by_providerCustomerId`, `by_providerSubscriptionId`.
+  - **`paymentEvents`** (tabla nueva) — idempotencia/auditoría de webhooks (`provider`, `eventId`, `eventType`, `clerkUserId?`, `rawPayload`, `processedAt`; índice `by_provider_eventId`).
+  - **entitlement** — `plus` → `orbita_pro` (identificador canónico). Union transitorio `free|plus|orbita_pro` hasta correr `migrations:renamePlusToOrbitaPro`; después un commit lo deja en `free|orbita_pro`. Afecta también `contentModules.entitlement`.
+  - **Firmas que consume el frontend:**
+    - `subscriptions.getCurrent()` (query, sin args) → `{ entitlement: "free"|"orbita_pro", isPro: boolean, status, provider?, plan?, isLifetime: boolean, currentPeriodEnd?: number, willRenew?: boolean, canManageInStripePortal: boolean }`.
+    - `payments.createCheckoutSession({ plan: "weekly"|"yearly"|"lifetime" })` (action, auth Clerk) → `{ url: string }` (Stripe Checkout, web).
+    - `payments.createPortalSession()` (action, auth Clerk) → `{ url: string }` (Stripe Customer Portal, web).
+  - **Webhooks (no los consume el front):** `POST /webhooks/revenuecat` y `POST /webhooks/stripe` en `convex/http.ts` (dominio `*.convex.site`).
+- **Por qué:** habilitar el paywall real — RevenueCat en la app (iOS/Android), Stripe en la web — con Convex como fuente de verdad server-side del acceso, alimentada por webhooks. El cliente nunca escribe su propio entitlement.
+- **Quién lo pidió:** frontend (mega plan de lanzamiento, Fase 1).
+- **Estado:** implementado (backend). Requiere `pnpm exec convex dev --once` de Lucas para sync + correr `migrations:renamePlusToOrbitaPro`. Envs server nuevas: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_WEEKLY|YEARLY|LIFETIME`, `REVENUECAT_WEBHOOK_AUTH`, `WEB_APP_URL`, `ALLOW_DEV_STUB`.
+
 ## 2026-07-06 — Voz editorial diaria v3
 - **Qué cambió:** el payload diario separa `home.subheadline` de `home.energy`, y `home.getDaily()` / `/lab` usan `home.subheadline` para el header en vez de repetir el módulo Energía. `DAILY_READING_EDITORIAL_VERSION` pasa a `orbita-daily-editorial-p0-v3`, el prompt diario AI Gateway a `orbita-lab-daily-home-llm-v3`, y la cache de `transits.getToday` a `astrologyapi-western-daily-transits-v3`.
 - **Por qué:** evitar que el subtítulo de Home repita el bloque Energía y dejar cada pieza con función editorial propia.

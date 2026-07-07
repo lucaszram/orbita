@@ -4,15 +4,22 @@ import { v } from "convex/values";
 const identity = v.union(v.literal("ella"), v.literal("el"), v.literal("prefiero_no_decirlo"));
 const paymentState = v.union(v.literal("not_started"), v.literal("started"), v.literal("paid"), v.literal("skipped"));
 const birthTimePrecision = v.union(v.literal("known"), v.literal("approximate"), v.literal("unknown"));
-const entitlement = v.union(v.literal("free"), v.literal("plus"));
+// `plus` es transitorio: se mantiene aceptado mientras corre la migración
+// `renamePlusToOrbitaPro`. Una vez migradas las filas existentes, un commit
+// posterior lo saca y deja solo `free | orbita_pro`.
+const entitlement = v.union(v.literal("free"), v.literal("plus"), v.literal("orbita_pro"));
 const subscriptionStatus = v.union(
   v.literal("inactive"),
   v.literal("trialing"),
   v.literal("active"),
   v.literal("past_due"),
+  v.literal("billing_issue"),
   v.literal("canceled"),
   v.literal("expired")
 );
+const subscriptionProvider = v.union(v.literal("revenuecat"), v.literal("stripe"), v.literal("stub"));
+const subscriptionPlan = v.union(v.literal("weekly"), v.literal("yearly"), v.literal("lifetime"));
+const providerEnvironment = v.union(v.literal("sandbox"), v.literal("production"));
 const contentStatus = v.union(v.literal("draft"), v.literal("review"), v.literal("published"), v.literal("archived"));
 const labReviewStatus = v.union(v.literal("needs_review"), v.literal("approved"), v.literal("rejected"));
 const generationStatus = v.union(v.literal("pending"), v.literal("ready"), v.literal("fallback"), v.literal("error"), v.literal("stale"));
@@ -254,17 +261,45 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_pushToken", ["pushToken"]),
 
+  // Una fila por (userId, provider): cada webhook (RevenueCat, Stripe) escribe
+  // su propia fila sin pisar la del otro proveedor. `subscriptions.getCurrent`
+  // resuelve el acceso combinando todas las filas del usuario.
   subscriptions: defineTable({
     userId: v.id("users"),
+    // Denormalizado para que los webhooks resuelvan el usuario sin auth ctx.
+    clerkUserId: v.optional(v.string()),
     entitlement,
     status: subscriptionStatus,
-    provider: v.optional(v.string()),
+    provider: v.optional(subscriptionProvider),
+    plan: v.optional(subscriptionPlan),
     productId: v.optional(v.string()),
     providerCustomerId: v.optional(v.string()),
+    providerSubscriptionId: v.optional(v.string()),
     originalTransactionId: v.optional(v.string()),
     currentPeriodEnd: v.optional(v.number()),
+    isLifetime: v.optional(v.boolean()),
+    willRenew: v.optional(v.boolean()),
+    environment: v.optional(providerEnvironment),
+    // event_timestamp del último evento aplicado; descarta webhooks fuera de orden.
+    lastEventAt: v.optional(v.number()),
     updatedAt: v.number()
-  }).index("by_user", ["userId"]),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_provider", ["userId", "provider"])
+    .index("by_clerkUserId", ["clerkUserId"])
+    .index("by_providerCustomerId", ["providerCustomerId"])
+    .index("by_providerSubscriptionId", ["providerSubscriptionId"]),
+
+  // Idempotencia + auditoría de webhooks de pago. Un evento ya visto
+  // (por provider+eventId) no se reaplica.
+  paymentEvents: defineTable({
+    provider: subscriptionProvider,
+    eventId: v.string(),
+    eventType: v.string(),
+    clerkUserId: v.optional(v.string()),
+    rawPayload: v.any(),
+    processedAt: v.number()
+  }).index("by_provider_eventId", ["provider", "eventId"]),
 
   labSubjects: defineTable({
     createdByUserId: v.id("users"),
