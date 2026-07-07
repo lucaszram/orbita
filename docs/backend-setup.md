@@ -32,9 +32,14 @@ pnpm exec convex env set ASTROLOGY_API_KEY "<api_key>"
 pnpm exec convex env set ASTROLOGY_API_BASE_URL "https://json.astrologyapi.com/v1"
 pnpm exec convex env set ASTROLOGY_API_LANGUAGE "en"
 pnpm exec convex env set ASTROLOGY_API_HOUSE_SYSTEM "placidus"
+pnpm exec convex env set ASTROLOGY_API_LOCATION_URL "geo_details"
+# Optional only if Location uses a different access token:
+pnpm exec convex env set ASTROLOGY_API_LOCATION_KEY "<location_access_token>"
 ```
 
-`ASTROLOGY_API_LOCATION_URL` queda opcional hasta tener el endpoint exacto de Location API para la cuenta. Sin esa variable, el lookup de lugar del backoffice muestra estado `not_configured`, pero se pueden cargar lat/lon/timezone manualmente.
+Location API usa `geo_details` y autentica con `x-astrologyapi-key`. Por defecto usa `ASTROLOGY_API_KEY`; `ASTROLOGY_API_LOCATION_KEY` queda sólo como override si la cuenta entrega un access token distinto. Sin `ASTROLOGY_API_LOCATION_URL` + key, el lookup de lugar del backoffice muestra estado `not_configured`, pero se pueden cargar lat/lon/timezone manualmente.
+
+`ASTROLOGY_API_LONG_RANGE_URL` queda opcional/futuro hasta confirmar con AstrologyAPI un endpoint de rango o forecast que devuelva ventanas largas confirmadas: inicio, exacto, fin, frecuencia y próximas ocurrencias. Órbita no debe inventar con LLM frases tipo `vuelve en 2027` o `dura hasta marzo`; esas fechas tienen que venir del proveedor o de un motor astronómico explícito aprobado.
 
 `ASTROLOGY_API_LONG_RANGE_URL` queda opcional/futuro hasta confirmar con AstrologyAPI un endpoint de rango o forecast que devuelva ventanas largas confirmadas: inicio, exacto, fin, frecuencia y próximas ocurrencias. Órbita no debe inventar con LLM frases tipo `vuelve en 2027` o `dura hasta marzo`; esas fechas tienen que venir del proveedor o de un motor astronómico explícito aprobado.
 
@@ -89,6 +94,7 @@ pnpm exec convex env set ORBITA_BACKOFFICE_ALLOWED_EMAILS lucaszramos11@gmail.co
 ## Lab público-dev
 
 `/lab` usa acciones Convex públicas-dev sin sesión para cargar datos natales, previsualizar la Home diaria, generar copy con Vercel AI Gateway si está configurado, y ver timelines de tránsitos extendidos. Queda apagado por defecto.
+`/lab` usa acciones Convex públicas-dev sin sesión para cargar datos natales, previsualizar la Home diaria y ver el mapa de horóscopo completo por perfil. Queda apagado por defecto.
 
 Variables de Convex dev:
 
@@ -104,6 +110,7 @@ El lab no guarda usuarios, sujetos, runs ni lecturas. Para guardar, revisar y ap
 ### AI Gateway para copy del lab
 
 Convex sigue siendo el backend principal; Vercel se usa para Gateway, budget, modelo y observabilidad.
+La capa LLM del lab corre server-side desde Convex contra Vercel AI Gateway. Convex sigue siendo el backend principal; Vercel se usa para modelo, budget y observabilidad.
 
 Variables de Convex dev:
 
@@ -118,18 +125,27 @@ pnpm exec convex env set ORBITA_LLM_NATAL_CACHE_VERSION "orbita-natal-profile-ca
 ```
 
 Si falta `ORBITA_LLM_ENABLED=true`, la key o el modelo, `/lab` vuelve a templates determinísticos y agrega gaps explícitos sin gastar tokens. Las llamadas de Gateway salen con tags `feature:orbita-lab`, `env:dev`, `user:lab`.
+`ORBITA_LLM_MODEL` debe usar el formato de AI Gateway `provider/model`. Si falta `ORBITA_LLM_ENABLED=true`, la key o el modelo, `/lab` vuelve a templates determinísticos y agrega el gap correspondiente sin gastar tokens.
+
+Las llamadas de Gateway salen con tags:
+
+- `feature:orbita-lab`
+- `env:dev`
+- `user:lab`
 
 La Home diaria usa `dailyLlmReadings` como cache objetivo por usuario + fecha + timezone + promptVersion. Las interpretaciones natales tipo `Amor y relaciones`, `Tu suerte` y `Mapa de valores` usan `natalInterpretations` por usuario + carta natal + feature + promptVersion.
 
 ### Tránsitos extendidos
 
 `/lab` puede normalizar:
+`/lab` ahora tiene un preview de timeline que normaliza:
 
 - `natal_transits/weekly`
 - `tropical_transits/weekly`
 - `tropical_transits/monthly`
 
 El default recomendado para probar costo bajo es `natal_transits/weekly`. El resultado público devuelve eventos normalizados (`startTime`, `exactTime`, `endTime`, planeta transitante, punto natal, aspecto, casa, prioridad y texto de display) y no devuelve raw completo.
+El default recomendado para probar costo bajo es `natal_transits/weekly` solamente. Los endpoints tropicales quedan como apoyo para inspección de cielo semanal/mensual. El resultado público devuelve eventos normalizados (`startTime`, `exactTime`, `endTime`, planeta transitante, punto natal, aspecto, casa, prioridad y texto de display) y no devuelve raw completo.
 
 Para timeline largo, el contrato público devuelve `longRangeTimeline` con estado `needs_provider_endpoint`. El backend espera un endpoint de rango/forecast antes de mostrar textos tipo `esto pasa una vez al año`, `hasta marzo` o `vuelve en 2027`.
 
@@ -180,6 +196,7 @@ http://localhost:8081/backoffice
 
 - Si faltan envs, `/backoffice` muestra un estado de setup.
 - Si `/lab` está apagado en Convex, muestra error de lab deshabilitado al generar.
+- Si `/lab` genera `Horóscopo completo`, muestra los bloques Identity, Carta, Daily, Cielo actual, Futuro y Extras con fuente A/B/C, estado y faltantes.
 - Si `/lab` genera Home con LLM y Gateway está configurado, muestra `llm.status=success`; si falta config o hay 402/429/error, mantiene la Home template y agrega gaps explícitos.
 - Si `/lab` genera timeline, muestra próximos eventos normalizados; el raw de AstrologyAPI no vuelve en la respuesta pública.
 - Si Clerk está configurado pero no hay sesión, muestra login web de Clerk.

@@ -127,6 +127,18 @@ The active project work is broader than this file: continue planning/designing t
 - A web asset manifest now curates Home core assets, onboarding optimized assets, and Archive 10 symbols as a shared web visual language. The assets are used as integrated hero/texture/backplate/symbol material, not as a wholesale gallery.
 - `convex/studio.ts` adds a local `checkAccess` query, but it is not synced to Convex dev yet. The sync command was blocked by policy because it uploads local backend code externally; the user must run `pnpm exec convex dev --once --typecheck disable` locally before `/studio` can validate against the live dev deployment.
 - The consumer app still uses local/stub behavior; real astrology is intentionally limited to `/backoffice` until outputs are reviewed and approved.
+- Public-dev Home Lab is now implemented locally at `/lab`: it is a no-login Expo Web route for entering birth date/place/time and previewing the Home daily output without saving users, subjects, runs, or readings.
+- Backend function `convex/publicLab.ts` adds `previewDailyHome` and `resolvePlace`, both gated by `ORBITA_PUBLIC_LAB_ENABLED=true` and optional `ORBITA_PUBLIC_LAB_KEY`; the response is sanitized for Home review and does not return raw AstrologyAPI payloads.
+- Frontend `/lab` uses Convex without requiring Clerk, shows manual natal inputs, optional place lookup, loading/error/disabled states, and result tabs for Summary, Home, Chart, Transits, Questions, and Gaps.
+- Public-dev Complete Horoscope preview is now implemented in `feature/api`: `publicLab.previewCompleteHoroscope(args)` returns a full per-profile feature map for Identity, Natal Chart, Daily, Current Sky, Future, and Extras, including source model A/B/C/dataset, entitlement, status, missing backend needs, cache plan, raw policy, provider status, and embedded `dailyHome`.
+- Frontend `/lab` now has a `Generar horóscopo completo` action and `Completo` tab so a test person can show what is ready, stubbed, provider-dependent, LLM-dependent, input-dependent, or planned before user dailies are persisted.
+- Backend AI Gateway + timeline pass is implemented in `feature/api`: `convex/lib/aiGateway.ts` calls Vercel AI Gateway through the OpenAI-compatible chat completions endpoint with tags `feature:orbita-lab`, `env:dev`, `user:lab`; `publicLab.previewLlmHome(args)` returns generated Orbita Home copy when Gateway is configured and deterministic fallback with gaps when disabled/error/rate-limited.
+- Public-dev extended transit timeline is implemented in `feature/api`: `publicLab.previewTransitTimeline(args)` and `previewCompleteHoroscope({ includeTimeline: true })` can call `natal_transits/weekly`, `tropical_transits/weekly`, and `tropical_transits/monthly`, normalize upcoming events with `startTime`, `exactTime`, `endTime`, planet, natal point, aspect, house, priority, and keep raw AstrologyAPI payloads out of `/lab`.
+- Backend package now includes the `ai` dependency for the AI Gateway track, while the first Convex-safe implementation uses direct Gateway REST fetch so the action stays portable outside Vercel runtime/OIDC.
+- Multi-agent base is now split into worktrees: `../orbita-backend` on `feature/api` for Codex/backend and `../orbita-frontend` on `feature/web` for Claude/frontend. `main` is clean and holds the integration/checkpoint history.
+- Backend contract pass for Home P0 is implemented in `feature/api`: new public Convex API `home.getDaily({ localDate })` and `home.generateDaily({ localDate, timezone })` return a `DailyHomeReading` shape for Claude with header, natal base, highlighted transit, three `Hacé`, three `Evitá`, energy/action/question, topics, long read, Void preview, personalization trace, `modelGaps`, versions, mode, and `reviewStatus`.
+- Onboarding remote contract now includes `onboarding.getDraft({ clientDraftId? })`, a read-only query that returns the current authenticated draft when available or falls back to anonymous `clientDraftId` without writing user rows.
+- `convex/_generated/` was regenerated from `feature/api`; the dev deployment `dutiful-viper-815` was also synced during `pnpm convex:codegen`. Claude should consume the generated `api.home.*` types after pulling/merging the backend contract.
 
 ## Decisions Made
 
@@ -150,6 +162,9 @@ The active project work is broader than this file: continue planning/designing t
 - Home Lab output decision: Co-Star-style `Do/Don't` maps to three `Hacé` items and three `Evitá` items. Every run must expose a visible `personalization` block so editorial review can tell what came from real user astrology and what is still maqueta.
 - Web V0 decision: `/` is the public landing on Expo Web only; iOS/Android keep the existing app redirect. `/studio` is the private web surface for visual/content operations.
 - Studio V0 decision: video drop/upload is mock-only for now. Do not add storage, transcoding, file persistence, or public user uploads until the visual workflow is approved.
+- Public-dev Lab decision: `/lab` is a fast no-login development surface for Home daily previews and complete profile capability maps. It must stay disabled by default in Convex and must not persist inputs or outputs; `/backoffice` remains the review/persistence surface.
+- Public-dev LLM decision: Convex remains the backend; Vercel is used only for AI Gateway budget/model/observability. The lab uses `AI_GATEWAY_API_KEY` because Convex is not running inside Vercel OIDC. If Gateway is missing or fails, `/lab` must keep returning template output plus explicit gaps instead of blocking review.
+- Transit timeline decision: use `natal_transits/weekly` first for personal near-term windows. `tropical_transits/weekly` and `tropical_transits/monthly` are available as inspection/support endpoints, not final provider-written copy. Long multi-month/year windows can later be built by iterating periods or moving to a self-hosted ephemeris service.
 - Web asset decision: use the full Órbita asset library as a curated language system. Do not show every asset at once or treat RGB PNGs as transparent stickers.
 - Backoffice astrology provider decision: use AstrologyAPI first for backend lab calculations, keep Órbita-owned editorial text, keep the adapter isolated, and do not expose provider credentials through app/client envs.
 - Backoffice access decision: use Clerk directly with `lucaszramos11@gmail.com` allowlisted in Convex. Do not use a generic internal-code shortcut.
@@ -182,6 +197,7 @@ The active project work is broader than this file: continue planning/designing t
 - `docs/home-contenidos-personalizados.md`
 - `docs/backend-todo.md`
 - `docs/backend-setup.md`
+- `app/lab.tsx`
 - `docs/decision-log.md`
 - `docs/architecture.md`
 - `docs/symbolic-asset-library.md`
@@ -202,6 +218,7 @@ The active project work is broader than this file: continue planning/designing t
 - `supabase/schema.sql`
 - `app/index.tsx`
 - `app/backoffice.tsx`
+- `src/components/web/orbita-lab.tsx`
 - `app/studio.tsx`
 - `app/_layout.tsx`
 - `convex/schema.ts`
@@ -209,6 +226,8 @@ The active project work is broader than this file: continue planning/designing t
 - `convex/auth.config.ts`
 - `convex/backoffice.ts`
 - `convex/studio.ts`
+- `convex/publicLab.ts`
+- `convex/lib/aiGateway.ts`
 - `convex/users.ts`
 - `convex/onboarding.ts`
 - `convex/birthData.ts`
@@ -268,6 +287,8 @@ The active project work is broader than this file: continue planning/designing t
 6. If continuing onboarding app implementation, inspect `app/onboarding.tsx` and the RNR/NativeWind config. Next practical slice is to fix the NativeWind/Reanimated export failure, launch the app on physical iPhone/Expo Go, verify `05` and `09` native pickers, `03`/`15` radio behavior, `14` avatar/input behavior, then publish a new EAS `preview` update only after it opens locally.
 7. If continuing Web V0, start from `/`, `/studio`, `src/components/web/`, `src/content/webAssets.ts`, and `convex/studio.ts`. Next practical slice: run `pnpm exec convex dev --once --typecheck disable` locally to publish the Studio access query, then open `/` and `/studio` in Expo Web with and without a Clerk session.
 8. If continuing backend work, start from `docs/backend-todo.md`, `docs/backend-setup.md`, `/backoffice`, `/lab`, and `../orbita-backend/convex/`. Next practical slice: set Vercel AI Gateway envs in Convex, use `/lab` to test Lucas with Home template, Home LLM, and Timeline, then decide which generated outputs move to persisted/cache-backed user dailies. Do not connect this to the app until lab outputs are approved.
+7. If continuing Web V0 or `/lab`, start from `/`, `/lab`, `/studio`, `src/components/web/`, `src/content/webAssets.ts`, `src/services/publicLabRefs.ts`, `convex/publicLab.ts`, and `convex/studio.ts`. Next practical slice: have Claude add UI toggles/buttons for `llmEnabled`, `previewLlmHome`, `includeTimeline`, and `previewTransitTimeline`, then test Lucas with Home template, Home LLM, and Timeline.
+8. If continuing backend work, start in `../orbita-backend` (`feature/api`). Next practical slice: set Convex envs for Vercel AI Gateway (`AI_GATEWAY_API_KEY`, `ORBITA_LLM_MODEL`, `ORBITA_LLM_ENABLED=true`), run a live `publicLab:previewLlmHome`, compare generated copy against guardrails, then decide what gets cached for real users. Do not connect provider-real astrology to the app until lab outputs are approved.
 9. If continuing content/product planning, start from `docs/home-contenidos-personalizados.md`, then use `docs/textos-analisis-personalizacion.md` and `docs/referencias-costar-moonly-orbita.md` as broader references. Next practical slice: replace demo editorial strings with a real Orbita P0 editorial bank for headline, topics, three `Hacé`, three `Evitá`, action, question, Deep Dive, Void prompts, Future Self prompts, and personalization trace copy.
 10. If continuing device distribution, first unblock `expo export --platform all` for the RNR/native picker pass. The latest failure is a Worklets Babel transform exception while bundling Reanimated; the next likely fix is aligning `@babel/plugin-transform-react-jsx` with Babel 7 instead of the accidentally installed 8.x package, then rerunning export and `eas update --branch preview`.
 11. After any meaningful step, update this file with status, decisions, relevant files, next steps, and verification.
@@ -277,11 +298,16 @@ The active project work is broader than this file: continue planning/designing t
 - Backend Web B0 verification on 2026-07-05: `pnpm typecheck` passed in `../orbita-backend`; `pnpm test` was blocked in-sandbox by the local `tsx` pipe permission, then passed outside the sandbox with 38 tests and 0 failures. Verified local exports for `charts.valuesMap`, `charts.personalityReading`, `transits.getToday`, and `places.resolve` in `convex/_generated/api.d.ts`.
 - Public-dev AI Gateway + timeline verification in `../orbita-backend`: `pnpm typecheck` passed; `pnpm test` passed outside the sandbox with 30 tests and 0 failures, covering disabled Gateway fallback, 429 fallback, JSON parsing/merge, weekly transit windows, and raw hiding for public timeline. Convex dev synced successfully. Live `publicLab:previewLlmHome` returned real AstrologyAPI data plus `llm.status=not_configured` until Gateway envs are set; live `publicLab:previewTransitTimeline` returned `natal_transits/weekly` events with `startTime`, `exactTime`, `endTime`, priority, and raw hidden.
 - AI Gateway `orbita-dev` is now configured in Convex dev. Live `publicLab:previewLlmHome` returned `llm.status=success` with model `openai/gpt-5.4`, tags `feature:orbita-lab`, `env:dev`, `user:lab`, usage `875` prompt tokens + `321` completion tokens, and generated Home copy for headline, `Hacé`, `Evitá`, action, question, and long read.
+- Public-dev AI Gateway + timeline verification: `pnpm typecheck` passed in `../orbita-backend`; `pnpm test` passed outside the sandbox with 30 tests and 0 failures after adding tests for disabled Gateway fallback, 429 Gateway fallback, JSON parse/merge, weekly transit `start/exact/end`, and public timeline raw hiding. Convex dev synced successfully with `pnpm exec convex dev --once --typecheck disable`.
+- Live Convex lab verification: `publicLab:previewLlmHome` for Lucas returned real AstrologyAPI chart/transits plus `llm.status=not_configured` with gaps `ai_gateway_api_key_not_configured` and `orbita_llm_model_not_configured`, without blocking the template Home. `publicLab:previewTransitTimeline` with `includeNatalWeekly=true` returned provider `success`, endpoint `natal_transits/weekly`, and upcoming events with `startTime`, `exactTime`, `endTime`, `priority`, and raw hidden.
+- AI Gateway `orbita-dev` live verification: after setting `AI_GATEWAY_API_KEY` in Convex dev, `publicLab:previewLlmHome` returned `llm.status=success` with model `openai/gpt-5.4`, tags `feature:orbita-lab`, `env:dev`, `user:lab`, and usage `875` prompt tokens + `321` completion tokens. Generated Home copy replaced headline, `Hacé`, `Evitá`, action, question, and long read while preserving provider chart/transit data and public raw hiding.
+- Public-dev complete horoscope verification: `pnpm typecheck` passed in `../orbita-backend`, `pnpm test` passed with 25 tests and 0 failures, Convex dev synced with `pnpm exec convex dev --once --typecheck disable`, and `publicLab:previewCompleteHoroscope` returned the Lucas base profile with provider `not_configured`, six feature blocks, `dailyHome`, cache plan, raw policy, and explicit next backend needs.
 
 - `docs/api-astrologica-orbita.md` documents the current AstrologyAPI choice, the provider endpoints, what data comes from the API, what Orbita must own, and why the provider output is not the final user-facing reading.
 - `docs/referencias-costar-moonly-orbita.md` documents Co-Star vs Moonly feature/copy/product patterns, the Orbita decision matrix, and why onboarding, natal chart, daily readings, calendar, payment, relationships, and CMS/backoffice need separate implementation paths.
 - `docs/home-contenidos-personalizados.md` documents the focused content inventory the user requested: what daily/home text modules Co-Star and Moonly inspire, how Orbita should personalize them from natal chart + daily transits, what editorial banks are needed, and what the backend should return before any app UI work.
 - Home Lab implementation verified locally with TypeScript and tests; the app public flow remains untouched.
+- Home P0 backend contract verification in `../orbita-backend`: `pnpm typecheck` passed, `pnpm test` passed with 21 tests and 0 failures, and `pnpm convex:codegen` regenerated `convex/_generated/` with the new `home` module.
 
 - Confirmed main docs exist and describe Órbita as current product direction.
 - Confirmed workspace files include Expo app, docs, Supabase schema, tests, and asset libraries.
