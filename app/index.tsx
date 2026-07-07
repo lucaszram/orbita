@@ -1,10 +1,15 @@
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { Redirect } from "expo-router";
+import { OrbitaLanding } from "@/components/web/orbita-landing";
 import { useAppState } from "@/hooks/useAppState";
 import { theme } from "@/theme/theme";
 
 export default function IndexRoute() {
   const { isReady, profile } = useAppState();
+
+  if (process.env.EXPO_OS === "web") {
+    return <OrbitaLanding />;
+  }
 
   if (!isReady) {
     return (

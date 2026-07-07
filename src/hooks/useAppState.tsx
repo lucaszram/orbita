@@ -3,6 +3,7 @@ import {
   createActiveTransit,
   createDailyReading,
   createFallbackProfile,
+  createHomeReading,
   createRelationshipReading,
   createWeeklyEnergy,
   createWeeklyReading,
@@ -10,6 +11,7 @@ import {
 } from "@/domain/readingEngine";
 import {
   DailyReading,
+  HomeReading,
   JournalEntry,
   OnboardingProfile,
   RelationshipReading,
@@ -19,6 +21,8 @@ import {
   WeeklyReading
 } from "@/domain/types";
 import { getZodiacSign } from "@/domain/zodiac";
+import { toHomeReading } from "@/domain/homeAdapter";
+import { useLiveApp, useLiveHome } from "@/hooks/useLiveApp";
 import {
   clearLocalData,
   getJournalEntries,
@@ -36,6 +40,9 @@ type AppStateValue = {
   isReady: boolean;
   profile: UserProfile | null;
   todayReading: DailyReading;
+  homeReading: HomeReading;
+  /** "live" cuando la lectura viene de Convex; "local" con el engine. */
+  homeSource: "local" | "live";
   weeklyEnergy: WeeklyEnergy;
   weeklyReading: WeeklyReading;
   transitEvent: TransitEvent;
@@ -110,6 +117,23 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     };
   }, [profile, savedReadings]);
 
+  // Live (Convex): sin sesión, `payload` es null y todo queda igual que siempre.
+  const localDate = toISODate();
+  const { isLive } = useLiveApp();
+  const { payload: liveHomePayload, saveLive } = useLiveHome(isLive, localDate);
+
+  const engineHomeReading = useMemo(
+    () => createHomeReading(profile ?? createFallbackProfile(), toISODate()),
+    [profile]
+  );
+
+  const homeReading = useMemo(
+    () => (liveHomePayload ? toHomeReading(liveHomePayload, engineHomeReading) : engineHomeReading),
+    [liveHomePayload, engineHomeReading]
+  );
+
+  const homeSource: "local" | "live" = liveHomePayload ? "live" : "local";
+
   const weeklyEnergy = useMemo(() => createWeeklyEnergy(profile ?? createFallbackProfile(), toISODate()), [profile]);
 
   const weeklyReading = useMemo(() => createWeeklyReading(profile ?? createFallbackProfile(), toISODate()), [profile]);
@@ -171,7 +195,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     const nextReadings = [{ ...todayReading, saved: true }, ...savedReadings].slice(0, 60);
     setSavedReadings(nextReadings);
     await storeSavedReadings(nextReadings);
-  }, [savedReadings, todayReading]);
+    if (saveLive) {
+      await saveLive(todayReading);
+    }
+  }, [savedReadings, todayReading, saveLive]);
 
   const removeSavedReading = useCallback(
     async (readingId: string) => {
@@ -218,6 +245,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       isReady,
       profile,
       todayReading,
+      homeReading,
+      homeSource,
       weeklyEnergy,
       weeklyReading,
       transitEvent,
@@ -234,6 +263,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     [
       addJournalNote,
       createProfile,
+      homeReading,
+      homeSource,
       isReady,
       journalEntries,
       profile,

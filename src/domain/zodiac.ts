@@ -24,8 +24,8 @@ const ranges: ZodiacRange[] = [
 export const signLabels: Record<ZodiacSign, string> = {
   aries: "Aries",
   tauro: "Tauro",
-  geminis: "Geminis",
-  cancer: "Cancer",
+  geminis: "Géminis",
+  cancer: "Cáncer",
   leo: "Leo",
   virgo: "Virgo",
   libra: "Libra",

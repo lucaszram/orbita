@@ -23,3 +23,12 @@ ios/
 
 # TypeScript
 *.tsbuildinfo
+
+# Raw source assets — not used by the web build (kept locally, out of git)
+assets/orbita/higgsfield/archive-7/
+assets/orbita/higgsfield/archive-9/
+assets/orbita/higgsfield/archive-10/inbox/
+assets/orbita/higgsfield/archive-10/needs-review/
+assets/orbita/higgsfield/archive-10/contact-sheets/
+.vercel
+.env*

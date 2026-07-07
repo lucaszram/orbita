@@ -1,6 +1,7 @@
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import "../global.css";
 import { AppStateProvider } from "@/hooks/useAppState";
 import { BackendProviders } from "@/services/backendProviders";
 
@@ -13,6 +14,10 @@ export default function RootLayout() {
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="index" />
             <Stack.Screen name="onboarding" />
+            <Stack.Screen name="lab" />
+            <Stack.Screen name="backoffice" />
+            <Stack.Screen name="studio" />
+            <Stack.Screen name="reading" />
             <Stack.Screen name="(tabs)" />
           </Stack>
         </AppStateProvider>

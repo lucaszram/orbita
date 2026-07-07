@@ -21,11 +21,15 @@ export const topics = [
   "dinero",
   "energia",
   "familia",
+  "vinculos",
   "decisiones",
   "claridad",
   "proteccion",
   "luna"
 ] as const;
+
+/** Topics que muestra la Home V4.5 en sus tabs, en orden. */
+export const homeTopicOrder = ["amor", "trabajo", "familia", "vinculos"] as const;
 
 export type Topic = (typeof topics)[number];
 
@@ -195,6 +199,79 @@ export type PickCardOption = {
   prompt: string;
   card: TarotCard;
   reveal: string;
+};
+
+// --- Home V4.5 (App Core) ---
+
+export type PlacementBody = "sol" | "luna" | "ascendente";
+
+export type Placement = {
+  body: PlacementBody;
+  glyph: string;
+  sign: ZodiacSign;
+  label: string;
+};
+
+export type Triad = {
+  sun: Placement;
+  moon: Placement;
+  ascendant: Placement;
+  /** `calculated` requiere hora y lugar; si faltan, es `approximate`. */
+  accuracy: "calculated" | "approximate";
+  /** Copy visible cuando la tríada es aproximada (o null si es exacta). */
+  accuracyNote: string | null;
+};
+
+export type HomeTopic = {
+  topic: Topic;
+  label: string;
+  title: string;
+  oneLine: string;
+  detail: string;
+  hace: string;
+  evita: string;
+  question: string;
+};
+
+export type HomeExtras = {
+  tarotCard: TarotCard;
+  color: string;
+  luckyNumber: number;
+  mantra: string;
+};
+
+export type HomeReading = {
+  id: string;
+  date: string;
+  dateLabel: string;
+  sign: ZodiacSign;
+  greeting: string;
+  triad: Triad;
+  // Top
+  headline: string;
+  body: string;
+  signalLabel: string;
+  signalCopy: string;
+  // Guía diaria
+  guideEyebrow: string;
+  guideHeadline: string;
+  guideIntro: string;
+  hace: string;
+  evita: string;
+  energia: string;
+  accion: string;
+  // Topics
+  topics: HomeTopic[];
+  // Lectura larga / cierre
+  longReadEyebrow: string;
+  longReadTitle: string;
+  longReadBody: string;
+  educationalEyebrow: string;
+  educationalTitle: string;
+  endLine: string;
+  question: string;
+  // Extras (legacy reestilizado)
+  extras: HomeExtras;
 };
 
 export type OnboardingProfile = {
