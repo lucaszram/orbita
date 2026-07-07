@@ -184,7 +184,8 @@ export function OnboardingFlow() {
         timezone: birthPlace?.timezone,
       });
     }
-    router.replace("/(tabs)");
+    // Al salir del onboarding, la carta natal es lo primero (no la Home).
+    router.replace("/(tabs)/carta");
   };
 
   if (!fontsLoaded) return <View style={styles.fill} />;
