@@ -31,20 +31,39 @@ export type SignPlacement = {
   sign: string;
   house?: number;
   degree?: number;
+  /** Id estable del punto: "sun" | "moon" | "ascendant" | "mercury"… */
+  key?: string;
+  /** Longitud eclíptica 0–360 (para ubicar el planeta en la rueda). */
+  fullDegree?: number;
+  /** Grado 0–30 dentro del signo (para mostrar "15° Leo"). */
+  normDegree?: number;
+  isRetrograde?: boolean;
+};
+
+export type NatalChartAspect = {
+  from: string;
+  to: string;
+  type: string;
+  /** Nombre en español: "trígono", "cuadratura"… */
+  typeEs?: string;
+  harmony: "harmony" | "tension" | "neutral";
+  angle?: number;
+  orb?: number;
+  isMajor?: boolean;
 };
 
 /** Payload de `natalCharts.payload` — alimenta la pantalla Carta natal. */
 export type NatalChartPayload = {
   triad: { sun: SignPlacement; moon: SignPlacement; ascendant: SignPlacement };
   placements: SignPlacement[];
-  houses: Array<{ house: number; sign: string; cusp?: number }>;
-  aspects: Array<{
-    from: string;
-    to: string;
-    type: string;
-    harmony: "harmony" | "tension" | "neutral";
-    angle?: number;
-  }>;
+  houses: Array<{ house: number; sign: string; cusp?: number; theme?: string }>;
+  aspects: NatalChartAspect[];
+  /** Longitud del Ascendente (ancla de rotación de la rueda). */
+  ascendantDegree?: number;
+  /** Longitud del Medio Cielo (MC). */
+  mc?: number;
+  /** Aspectos principales (top-6 por orbe) — para dibujar en la rueda. */
+  mainAspects?: NatalChartAspect[];
   accuracy: string;
   limitations: string[];
 };

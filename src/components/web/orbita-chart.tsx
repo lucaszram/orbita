@@ -11,7 +11,8 @@ import { ImmersiveScreen } from "@/components/web/immersive-bg";
 import { LiveGate } from "@/components/web/live";
 import { WebNav } from "@/components/web/web-nav";
 import { chartMock } from "@/content/chartMock";
-import { appApi, type NatalChartPayload } from "@/services/appRefs";
+import { NatalWheel } from "@/components/orbita/NatalWheel";
+import { appApi, type NatalChartAspect, type NatalChartPayload, type SignPlacement } from "@/services/appRefs";
 
 const colors = {
   black: "#07080A",
@@ -25,104 +26,9 @@ const colors = {
   panel: "rgba(11, 12, 15, 0.62)"
 };
 
-const SIGN_ABBR: Record<string, string> = {
-  Aries: "ARI", Tauro: "TAU", "Géminis": "GÉM", "Cáncer": "CÁN", Leo: "LEO", Virgo: "VIR",
-  Libra: "LIB", Escorpio: "ESC", Sagitario: "SAG", Capricornio: "CAP", Acuario: "ACU", Piscis: "PIS"
-};
-const PLANET_ABBR: Record<string, string> = {
-  Sol: "Sol", Luna: "Luna", Mercurio: "Mer", Venus: "Ven", Marte: "Mar", "Júpiter": "Júp", Saturno: "Sat",
-  Urano: "Ura", Neptuno: "Nep", "Plutón": "Plu"
-};
-// Ángulos fijos (mismo layout que el diseño Figma), por orden de placements.
-const PLANET_ANGLES = [35, 200, 60, 12, 315, 145, 240];
-
-function pt(r: number, deg: number, c = 320): [number, number] {
-  const a = (deg * Math.PI) / 180;
-  return [c + r * Math.cos(a), c - r * Math.sin(a)];
-}
-
-export function NatalWheel({ payload, size }: { payload: NatalChartPayload; size: number }) {
-  const R1 = 300, R2 = 252, R3 = 108;
-  const boundaries = Array.from({ length: 12 }, (_, i) => 180 - i * 30);
-  const ticks = Array.from({ length: 36 }, (_, i) => i * 10);
-  const signMids = Array.from({ length: 12 }, (_, i) => 180 - i * 30 - 15);
-  const romans = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
-  const signOrder = ["ARI", "TAU", "GÉM", "CÁN", "LEO", "VIR", "LIB", "ESC", "SAG", "CAP", "ACU", "PIS"];
-
-  // Posición real por longitud eclíptica (fullDegree): ángulo de rueda = 180 - grado.
-  // Fallback a ángulos fijos para el mock (sin `degree`).
-  const planets = payload.placements
-    .filter((p) => PLANET_ABBR[p.planet])
-    .map((p, i) => ({
-      ...p,
-      deg: typeof p.degree === "number" ? (180 - p.degree + 360) % 360 : PLANET_ANGLES[i % PLANET_ANGLES.length]
-    }));
-  const angleOf: Record<string, number> = {};
-  planets.forEach((p) => { angleOf[p.planet] = p.deg; });
-
-  return (
-    <Svg width={size} height={size} viewBox="0 0 640 640">
-      {/* rings */}
-      <Circle cx={320} cy={320} r={R1} fill="none" stroke={colors.copper} strokeOpacity={0.55} strokeWidth={1.4} />
-      <Circle cx={320} cy={320} r={R2} fill="none" stroke={colors.copper} strokeOpacity={0.35} strokeWidth={1} />
-      <Circle cx={320} cy={320} r={R3} fill="none" stroke={colors.copperSoft} strokeOpacity={0.45} strokeWidth={1} />
-      <Circle cx={320} cy={320} r={4} fill={colors.copperSoft} fillOpacity={0.8} />
-      {/* boundaries */}
-      {boundaries.map((deg, i) => {
-        const [x1, y1] = pt(R3, deg); const [x2, y2] = pt(R1, deg);
-        return <Line key={`b${i}`} x1={x1} y1={y1} x2={x2} y2={y2} stroke={colors.copper} strokeOpacity={0.28} strokeWidth={1} />;
-      })}
-      {/* ticks */}
-      {ticks.map((deg, i) => {
-        const [x1, y1] = pt(R1, deg); const [x2, y2] = pt(R1 - (deg % 30 === 0 ? 12 : 6), deg);
-        return <Line key={`t${i}`} x1={x1} y1={y1} x2={x2} y2={y2} stroke={colors.copper} strokeOpacity={0.3} strokeWidth={1} />;
-      })}
-      {/* aspects */}
-      {payload.aspects.map((a, i) => {
-        if (angleOf[a.from] === undefined || angleOf[a.to] === undefined) return null;
-        const [x1, y1] = pt(205, angleOf[a.from]); const [x2, y2] = pt(205, angleOf[a.to]);
-        return (
-          <Line key={`a${i}`} x1={x1} y1={y1} x2={x2} y2={y2}
-            stroke={a.harmony === "tension" ? colors.copper : colors.blue} strokeOpacity={0.42} strokeWidth={1} />
-        );
-      })}
-      {/* planet dots */}
-      {planets.map((p, i) => {
-        const [x, y] = pt(225, p.deg);
-        return (
-          <React.Fragment key={`p${i}`}>
-            <Circle cx={x} cy={y} r={9} fill={colors.black} stroke={colors.copperSoft} strokeOpacity={0.7} strokeWidth={1.2} />
-            <Circle cx={x} cy={y} r={3} fill={colors.copperSoft} />
-          </React.Fragment>
-        );
-      })}
-      {/* sign labels */}
-      {signMids.map((deg, i) => {
-        const [x, y] = pt(276, deg);
-        return (
-          <SvgText key={`s${i}`} x={x} y={y + 4} fill={colors.bone} fillOpacity={0.8}
-            fontFamily="Inter_700Bold" fontSize={11} textAnchor="middle">{signOrder[i]}</SvgText>
-        );
-      })}
-      {/* house numerals */}
-      {signMids.map((deg, i) => {
-        const [x, y] = pt(84, deg);
-        return (
-          <SvgText key={`h${i}`} x={x} y={y + 3.5} fill={colors.bone} fillOpacity={0.4}
-            fontFamily="Inter_400Regular" fontSize={10} textAnchor="middle">{romans[i]}</SvgText>
-        );
-      })}
-      {/* planet labels */}
-      {planets.map((p, i) => {
-        const [x, y] = pt(186, p.deg);
-        return (
-          <SvgText key={`pl${i}`} x={x} y={y + 4} fill={colors.copperSoft}
-            fontFamily="Inter_500Medium" fontSize={11} textAnchor="middle">{PLANET_ABBR[p.planet] ?? p.planet}</SvgText>
-        );
-      })}
-    </Svg>
-  );
-}
+// La rueda natal se consolidó en un solo componente compartido (rotado al
+// Ascendente, con cúspides reales y tappable). Se re-exporta para no romper imports.
+export { NatalWheel };
 
 // ---------------------------------------------------------------------------
 
@@ -215,46 +121,72 @@ export function mapNatalChart(doc: unknown): NatalChartPayload {
   const find = (k: string) => raw.find((x) => x.key === k);
   const signOf = (x?: Record<string, unknown>) => cap((x?.signEs as string) ?? (x?.sign as string));
   const houseOf = (x?: Record<string, unknown>) => (typeof x?.house === "number" ? (x.house as number) : undefined);
+  const numOr = (v: unknown) => (typeof v === "number" ? v : undefined);
+
+  const toPlacement = (x?: Record<string, unknown>, fallbackPlanet?: string): SignPlacement => ({
+    planet: (x?.label as string) ?? fallbackPlanet ?? (x?.key as string) ?? "",
+    key: (x?.key as string) ?? undefined,
+    sign: signOf(x),
+    house: houseOf(x),
+    degree: numOr(x?.fullDegree), // compat: la rueda vieja lee `degree` como longitud
+    fullDegree: numOr(x?.fullDegree),
+    normDegree: numOr(x?.degree),
+    isRetrograde: typeof x?.isRetrograde === "boolean" ? (x.isRetrograde as boolean) : undefined
+  });
 
   // Sin hora válida no hay Asc/casas fiables → los sacamos de la lista.
   const skip = new Set(noon ? ["ascendant", "midheaven"] : []);
-  const placements = raw
-    .filter((x) => !skip.has(x.key as string))
-    .map((x) => ({
-      planet: (x.label as string) ?? (x.key as string),
-      sign: signOf(x),
-      house: houseOf(x),
-      degree: typeof x.fullDegree === "number" ? (x.fullDegree as number) : undefined
-    }));
+  const placements = raw.filter((x) => !skip.has(x.key as string)).map((x) => toPlacement(x));
 
   const sun = find("sun"), moon = find("moon"), asc = find("ascendant");
   const triad = {
-    sun: { planet: "Sol", sign: signOf(sun) || "—", house: houseOf(sun) },
-    moon: { planet: "Luna", sign: signOf(moon) || "—", house: houseOf(moon) },
-    ascendant: { planet: "Ascendente", sign: noon || !asc ? "—" : signOf(asc) }
+    sun: { ...toPlacement(sun, "Sol"), planet: "Sol", sign: signOf(sun) || "—" },
+    moon: { ...toPlacement(moon, "Luna"), planet: "Luna", sign: signOf(moon) || "—" },
+    ascendant: { ...toPlacement(asc, "Ascendente"), planet: "Ascendente", sign: noon || !asc ? "—" : signOf(asc) }
   };
 
   const byKey: Record<string, string> = {};
   raw.forEach((x) => { byKey[x.key as string] = (x.label as string) ?? (x.key as string); });
+  const mapAspect = (a: Record<string, unknown>): NatalChartAspect => ({
+    from: byKey[a.from as string] ?? (a.from as string),
+    to: byKey[a.to as string] ?? (a.to as string),
+    type: (a.type as string) ?? "",
+    typeEs: (a.typeEs as string) ?? undefined,
+    harmony: HARMONY_BY_TYPE[a.type as string] ?? "harmony",
+    orb: numOr(a.orb),
+    isMajor: typeof a.isMajor === "boolean" ? (a.isMajor as boolean) : undefined
+  });
+  const withNames = (a: Record<string, unknown>) => byKey[a.from as string] && byKey[a.to as string];
   const aspects = (Array.isArray(p.aspects) ? (p.aspects as Array<Record<string, unknown>>) : [])
-    .filter((a) => byKey[a.from as string] && byKey[a.to as string])
-    .map((a) => ({
-      from: byKey[a.from as string],
-      to: byKey[a.to as string],
-      type: ((a.typeEs as string) ?? (a.type as string)) || "",
-      harmony: HARMONY_BY_TYPE[a.type as string] ?? "harmony"
-    }));
+    .filter(withNames)
+    .map(mapAspect);
 
   const houses = (Array.isArray(p.houses) ? (p.houses as Array<Record<string, unknown>>) : [])
-    .map((h) => ({ house: (h.house as number) ?? (h.number as number), sign: signOf(h) }));
+    .map((h) => ({
+      house: (h.house as number) ?? (h.number as number),
+      sign: signOf(h),
+      cusp: numOr(h.degree),
+      theme: (h.theme as string) ?? undefined
+    }));
+
+  const summary = (p.summary ?? {}) as Record<string, unknown>;
+  const summaryAsc = summary.ascendant as Record<string, unknown> | undefined;
+  const ascendantDegree = houses.find((h) => h.house === 1)?.cusp ?? numOr(summaryAsc?.fullDegree);
+  const mc = houses.find((h) => h.house === 10)?.cusp;
+  const mainAspects = (Array.isArray(summary.mainAspects) ? (summary.mainAspects as Array<Record<string, unknown>>) : [])
+    .filter(withNames)
+    .map(mapAspect);
 
   return {
     triad,
     placements,
     houses,
     aspects,
+    ascendantDegree: noon ? undefined : ascendantDegree,
+    mc: noon ? undefined : mc,
+    mainAspects: mainAspects.length ? mainAspects : undefined,
     accuracy: noon ? "Hora aproximada · ascendente y casas pendientes" : "Hora exacta · ascendente afinado",
-    limitations: []
+    limitations: Array.isArray(summary.limitations) ? (summary.limitations as string[]) : []
   };
 }
 

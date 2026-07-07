@@ -10,8 +10,12 @@ export const orbita = {
     muted: "#B4AEA6",
     mutedDim: "rgba(244, 238, 228, 0.55)",
     copper: "#C46A3A",
+    copperSoft: "#D69A6A",
     line: "rgba(244, 238, 228, 0.14)",
     onLight: "#0B0C0F",
+    // Aspectos de la carta natal.
+    harmony: "#8CA6C4",
+    tension: "#C46A3A",
   },
   fonts: {
     body: "Inter_400Regular",
