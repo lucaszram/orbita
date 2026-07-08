@@ -1,5 +1,4 @@
 import { Image, StyleSheet, View } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 
 const TEXTURE = require("../../../assets/orbita/optimized/core/orbita_daily_texture_a.jpg");
 
@@ -14,14 +13,13 @@ export function HomeBackdrop() {
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       <Image source={TEXTURE} style={[StyleSheet.absoluteFillObject, styles.texture]} resizeMode="cover" />
       <View style={styles.scrim} />
-      {/* Viñeta oscura arriba: mantiene el header/status limpios (sin la "marca" cálida). */}
-      <LinearGradient colors={["#07080A", "rgba(7,8,10,0)"]} locations={[0, 1]} style={styles.topVignette} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  // La textura cósmica corre continua por toda la Home, incluido el header (sin glow
+  // cálido ni barra oscura arriba): inmersivo y parejo.
   texture: { opacity: 0.5 },
-  scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(7,8,10,0.42)" },
-  topVignette: { height: 150, left: 0, position: "absolute", right: 0, top: 0 }
+  scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(7,8,10,0.42)" }
 });
