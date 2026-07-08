@@ -370,7 +370,18 @@ export default defineSchema({
     createdAt: v.number()
   })
     .index("by_kind_status", ["kind", "status"])
-    .index("by_locale_status", ["locale", "status"])
+    .index("by_locale_status", ["locale", "status"]),
+
+  // El Vacío (`void.ask`): guarda la respuesta del día por usuario. Sirve de cache
+  // y de límite 1/día — si ya hay fila para `(userId, localDate)`, se devuelve esa
+  // en vez de re-generar. `payload` = VoidAnswerPayload (contrato en src/services/appRefs.ts).
+  voidAnswers: defineTable({
+    userId: v.id("users"),
+    localDate: v.string(),
+    question: v.string(),
+    payload: v.any(),
+    createdAt: v.number()
+  }).index("by_user_date", ["userId", "localDate"])
 });
 
 // ---------------------------------------------------------------------------
