@@ -4,14 +4,17 @@ import { StatusBar } from "expo-status-bar";
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useAction } from "convex/react";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
+import { useLiveApp } from "@/hooks/useLiveApp";
 import { useAppData } from "@/domain/appData";
+import { proposedApi, type VoidAnswerPayload } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
 
 const TEXTURE = require("../../assets/orbita/optimized/core/orbita_daily_texture_b.jpg");
 const DEFAULT_QUESTION = "¿Qué estás apurando?";
 
-/** Respuesta editorial de maqueta. TODO: pendiente backend — proposedApi.voidAsk (VoidAnswerPayload). */
+/** Respuesta editorial de maqueta (sin sesión o si el backend falla). */
 const ORACLE = {
   answer: "Lo que apurás\nno es la respuesta:\nes el alivio.",
   mejorPregunta: "¿Qué cambiaría si esperás 24 horas?",
@@ -20,16 +23,43 @@ const ORACLE = {
 
 type Phase = "entrada" | "escuchando" | "respuesta";
 
+type AskVoid = (args: { question: string }) => Promise<VoidAnswerPayload>;
+
 export default function VoidScreen() {
+  const { isLive } = useLiveApp();
+  if (!isLive) {
+    return <VoidView ask={null} />;
+  }
+  return <VoidLive />;
+}
+
+/**
+ * Sub-componente live: `useAction` solo se monta con sesión (bajo ConvexProvider).
+ * Sin sesión, `VoidScreen` renderiza `VoidView` con `ask=null` (mock local).
+ */
+function VoidLive() {
+  const ask = useAction(proposedApi.voidAsk);
+  return <VoidView ask={ask} />;
+}
+
+function VoidView({ ask }: { ask: AskVoid | null }) {
   const insets = useSafeAreaInsets();
   const fontsLoaded = useOrbitaFonts();
   const { carta } = useAppData();
   const [phase, setPhase] = useState<Phase>("entrada");
   const [typed, setTyped] = useState("");
+  const [payload, setPayload] = useState<VoidAnswerPayload | null>(null);
   const pulse = useRef(new Animated.Value(0.4)).current;
 
   const question = typed.trim() || DEFAULT_QUESTION;
   const basadoEn = `BASADO EN TU LUNA EN ${carta.triad.moon.label.toUpperCase()}\nY TU ASCENDENTE EN ${carta.triad.ascendant.label.toUpperCase()}`;
+
+  // Respuesta a mostrar: la real del backend cuando llegó; si no, la maqueta.
+  const shownQuestion = payload?.question ?? question;
+  const shownAnswer = payload?.answer ?? ORACLE.answer;
+  const shownBasadoEn = payload ? `BASADO EN\n${payload.basadoEn.join("\n")}` : basadoEn;
+  const shownMejorPregunta = payload?.mejorPregunta ?? ORACLE.mejorPregunta;
+  const shownPaso = payload?.paso ?? ORACLE.paso;
 
   useEffect(() => {
     if (phase !== "escuchando") return;
@@ -40,12 +70,35 @@ export default function VoidScreen() {
       ])
     );
     loop.start();
+    let cancelled = false;
+
+    // Con sesión: respuesta real (el límite 1/día lo maneja el backend). Sin
+    // sesión o ante error: se mantiene la maqueta y la cadencia falsa.
+    if (ask) {
+      ask({ question })
+        .then((res) => {
+          if (cancelled) return;
+          setPayload(res);
+          setPhase("respuesta");
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setPayload(null);
+          setPhase("respuesta");
+        });
+      return () => {
+        cancelled = true;
+        loop.stop();
+      };
+    }
+
     const t = setTimeout(() => setPhase("respuesta"), 2800);
     return () => {
+      cancelled = true;
       loop.stop();
       clearTimeout(t);
     };
-  }, [phase, pulse]);
+  }, [phase, pulse, ask, question]);
 
   if (!fontsLoaded) return <View style={styles.screen} />;
 
@@ -123,19 +176,19 @@ export default function VoidScreen() {
         <View style={styles.center}>
           <Text style={styles.eyebrow}>EL VACÍO · HOY</Text>
           <View style={{ height: orbita.spacing.sm }} />
-          <Text style={styles.questionSmall}>“{question}”</Text>
+          <Text style={styles.questionSmall}>“{shownQuestion}”</Text>
           <View style={{ height: orbita.spacing.xxl * 1.5 }} />
-          <Text style={styles.answer}>{ORACLE.answer}</Text>
+          <Text style={styles.answer}>{shownAnswer}</Text>
           <View style={{ height: orbita.spacing.xxl * 1.5 }} />
           <View style={styles.tick} />
           <View style={{ height: orbita.spacing.xl }} />
-          <Text style={styles.microMono}>{basadoEn}</Text>
+          <Text style={styles.microMono}>{shownBasadoEn}</Text>
           <View style={{ height: orbita.spacing.xxl }} />
           <Text style={styles.microMonoCopper}>UNA MEJOR PREGUNTA</Text>
           <View style={{ height: orbita.spacing.sm }} />
-          <Text style={styles.betterQuestion}>{ORACLE.mejorPregunta}</Text>
+          <Text style={styles.betterQuestion}>{shownMejorPregunta}</Text>
           <View style={{ height: orbita.spacing.xxl }} />
-          <Text style={styles.microMono}>{ORACLE.paso}</Text>
+          <Text style={styles.microMono}>{shownPaso}</Text>
           <View style={styles.footer}>
             <Text style={styles.footnote}>El Vacío no contesta sí o no.</Text>
           </View>
