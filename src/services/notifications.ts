@@ -15,13 +15,19 @@ export async function requestNotificationAccess(): Promise<boolean> {
     return false;
   }
 
-  const current = await Notifications.getPermissionsAsync();
-  if (current.granted) {
-    return true;
-  }
+  try {
+    const current = await Notifications.getPermissionsAsync();
+    if (current.granted) {
+      return true;
+    }
 
-  const requested = await Notifications.requestPermissionsAsync();
-  return requested.granted;
+    const requested = await Notifications.requestPermissionsAsync();
+    return requested.granted;
+  } catch {
+    // En dev/simulador el módulo puede fallar al leer estado persistido; no es
+    // crítico para el flujo del usuario.
+    return false;
+  }
 }
 
 export async function scheduleDailyReminder(time: string): Promise<boolean> {

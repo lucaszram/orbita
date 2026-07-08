@@ -1,7 +1,13 @@
+import { LogBox } from "react-native";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import "../global.css";
+
+// Warning benigno del módulo nativo de expo-notifications en dev/simulador
+// (lectura de notificaciones persistidas). No afecta al usuario; en release no
+// hay LogBox. Lo silenciamos para no ensuciar la pantalla en el testeo interno.
+LogBox.ignoreLogs(["[expo-notifications]"]);
 import { AppStateProvider } from "@/hooks/useAppState";
 import { BackendProviders, backendConfig } from "@/services/backendProviders";
 import { InstallPing } from "@/components/InstallPing";

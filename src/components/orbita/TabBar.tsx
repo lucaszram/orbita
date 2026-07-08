@@ -5,8 +5,7 @@ import { orbita } from "@/theme/orbita";
 
 const LABELS: Record<string, string> = {
   index: "Inicio",
-  carta: "Carta",
-  vacio: "Vacío",
+  vacio: "Umbral",
   transitos: "Tránsitos",
   perfil: "Perfil"
 };

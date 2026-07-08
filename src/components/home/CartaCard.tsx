@@ -9,9 +9,9 @@ import { appApi, type NatalChartPayload } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
 
 /**
- * Card destacada de la Home: la carta natal como protagonista. Mini-rueda real +
- * tríada + CTA a la vista full-screen (`/carta-full`). Data real con sesión, mock
- * para invitados.
+ * Card de la carta natal (vive en el Perfil): mini-rueda real + tríada + CTA al
+ * hub de la Carta (`/(tabs)/carta`), que a su vez lleva a la rueda inmersiva.
+ * Data real con sesión, mock para invitados.
  */
 export function CartaCard() {
   const { isLive } = useLiveApp();
@@ -30,7 +30,7 @@ export function CartaCard() {
   return (
     <View style={styles.section}>
       <Pressable
-        onPress={() => router.push("/carta-full")}
+        onPress={() => router.push("/(tabs)/carta")}
         style={({ pressed }) => [styles.card, pressed && styles.pressed]}
         accessibilityRole="button"
         accessibilityLabel="Ver mi carta natal"

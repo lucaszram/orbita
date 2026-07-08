@@ -2,6 +2,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { Body, Divider, Eyebrow, H2, MonoLine, Note, OrbitaScreen, Pill, Section } from "@/components/orbita/kit";
 import { FullBleedHero } from "@/components/orbita/ImmersiveHero";
+import { CartaCard } from "@/components/home/CartaCard";
 import { useAppData } from "@/domain/appData";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { backendConfig } from "@/services/backendProviders";
@@ -15,6 +16,7 @@ export default function PerfilScreen() {
       <FullBleedHero kind="perfil">
         <MonoLine>{perfil.birthLine}</MonoLine>
       </FullBleedHero>
+      <CartaCard />
       <Section style={{ paddingTop: orbita.spacing.lg }}>
         <Eyebrow>PERFIL</Eyebrow>
         <H2>Tu carta,{"\n"}tus datos.</H2>

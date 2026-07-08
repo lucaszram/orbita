@@ -60,9 +60,19 @@ export function PillButton({ label, onPress }: { label: string; onPress?: () => 
   );
 }
 
-/** Tramo 01 — Top (Figma V4.7): hero full-bleed con wash, tríada, frase del día, CTA. */
-export function SignalTop({ reading, onProfundizar }: { reading: HomeReading; onProfundizar: () => void }) {
-  const { triad } = reading;
+/** Tramo 01 — Top (Figma V4.7): hero full-bleed con wash, tríada, frase del día, CTA.
+ *  `triad` opcional: si se pasa, pisa la de `reading` (para que la Home tome la
+ *  tríada de la MISMA fuente que la Carta — el chart, no `createTriad`). */
+export function SignalTop({
+  reading,
+  onProfundizar,
+  triad: triadOverride
+}: {
+  reading: HomeReading;
+  onProfundizar: () => void;
+  triad?: HomeReading["triad"];
+}) {
+  const triad = triadOverride ?? reading.triad;
   return (
     <View style={styles.section}>
       <View style={styles.heroBleed}>

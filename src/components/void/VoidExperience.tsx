@@ -188,7 +188,8 @@ function VoidView({ ask, today, categories, onUnlock, showBack }: VoidViewProps)
       {phase === "entrada" ? (
         <View style={styles.entrada}>
           <View style={styles.entradaHead}>
-            <Text style={styles.eyebrow}>EL VACÍO</Text>
+            <Text style={styles.eyebrow}>EL UMBRAL</Text>
+            <Text style={styles.tagline}>Cruzá con una pregunta.</Text>
             <Text style={[styles.microMono, noneLeft && styles.microMonoCopper]}>{counterLabel}</Text>
           </View>
 
@@ -262,13 +263,13 @@ function VoidView({ ask, today, categories, onUnlock, showBack }: VoidViewProps)
           <View style={{ height: orbita.spacing.xxl * 2 }} />
           <Text style={styles.question}>“{question}”</Text>
           <View style={{ height: orbita.spacing.xl }} />
-          <Text style={styles.eyebrow}>EL VACÍO ESTÁ ESCUCHANDO</Text>
+          <Text style={styles.eyebrow}>EL UMBRAL ESTÁ ESCUCHANDO</Text>
         </View>
       ) : null}
 
       {phase === "respuesta" && locked ? (
         <View style={styles.center}>
-          <Text style={styles.eyebrow}>EL VACÍO · POR HOY</Text>
+          <Text style={styles.eyebrow}>EL UMBRAL · POR HOY</Text>
           <View style={{ height: orbita.spacing.xxl }} />
           <Text style={styles.answer}>Por hoy{"\n"}alcanzó.</Text>
           <View style={{ height: orbita.spacing.xl }} />
@@ -292,12 +293,12 @@ function VoidView({ ask, today, categories, onUnlock, showBack }: VoidViewProps)
             </>
           ) : null}
           <View style={styles.footer}>
-            <Text style={styles.footnote}>El Vacío no contesta sí o no.</Text>
+            <Text style={styles.footnote}>El Umbral no contesta sí o no.</Text>
           </View>
         </View>
       ) : phase === "respuesta" ? (
         <View style={styles.center}>
-          <Text style={styles.eyebrow}>EL VACÍO · HOY</Text>
+          <Text style={styles.eyebrow}>EL UMBRAL · HOY</Text>
           <View style={{ height: orbita.spacing.sm }} />
           <Text style={styles.questionSmall}>“{shownQuestion}”</Text>
           <View style={{ height: orbita.spacing.xxl * 1.5 }} />
@@ -313,7 +314,7 @@ function VoidView({ ask, today, categories, onUnlock, showBack }: VoidViewProps)
           <View style={{ height: orbita.spacing.xxl }} />
           <Text style={styles.microMono}>{shownPaso}</Text>
           <View style={styles.footer}>
-            <Text style={styles.footnote}>El Vacío no contesta sí o no.</Text>
+            <Text style={styles.footnote}>El Umbral no contesta sí o no.</Text>
           </View>
         </View>
       ) : null}
@@ -403,6 +404,7 @@ const styles = StyleSheet.create({
   // Fase entrada (estructura tipo Void de Co-Star, en estilo Órbita).
   entrada: { flex: 1, paddingHorizontal: orbita.spacing.gutter },
   entradaHead: { alignItems: "center", gap: orbita.spacing.sm, paddingBottom: orbita.spacing.xl, paddingTop: orbita.spacing.md },
+  tagline: { color: orbita.colors.bone, fontFamily: orbita.fonts.serifRegular, fontSize: 20, textAlign: "center" },
   tabs: { flexDirection: "row", justifyContent: "space-between", paddingBottom: orbita.spacing.xl, paddingHorizontal: orbita.spacing.sm },
   tab: { alignItems: "center", flex: 1, gap: orbita.spacing.sm },
   tabGlyphBox: {

@@ -10,20 +10,58 @@ import {
   SignalTop,
   TopicsSection
 } from "@/components/home/sections";
-import { CartaCard } from "@/components/home/CartaCard";
+import { useQuery } from "convex/react";
 import { Eyebrow, InsightRow, Section } from "@/components/orbita/kit";
+import { mapNatalChart } from "@/components/web/orbita-chart";
+import { chartMock } from "@/content/chartMock";
 import { useAppState } from "@/hooks/useAppState";
+import { useLiveApp } from "@/hooks/useLiveApp";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
 import { useRequireProfile } from "@/hooks/useRequireProfile";
-import { HomeTopic, Topic } from "@/domain/types";
+import { HomeTopic, Topic, Triad } from "@/domain/types";
+import { appApi, type NatalChartPayload } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
+
+const TRIAD_GLYPH = { sol: "☉", luna: "☽", ascendente: "↑" } as const;
+
+/** Tríada de la Home tomada de la MISMA fuente que la Carta (el chart), para que
+ *  Home y Carta muestren exactamente lo mismo. */
+function triadFromChart(payload: NatalChartPayload): Triad {
+  const t = payload.triad;
+  return {
+    sun: { body: "sol", glyph: TRIAD_GLYPH.sol, sign: t.sun.sign as Triad["sun"]["sign"], label: t.sun.sign },
+    moon: { body: "luna", glyph: TRIAD_GLYPH.luna, sign: t.moon.sign as Triad["moon"]["sign"], label: t.moon.sign },
+    ascendant: {
+      body: "ascendente",
+      glyph: TRIAD_GLYPH.ascendente,
+      sign: t.ascendant.sign as Triad["ascendant"]["sign"],
+      label: t.ascendant.sign
+    },
+    accuracy: "calculated",
+    accuracyNote: null
+  };
+}
 
 export default function HomeScreen() {
   const { isReady, profile } = useRequireProfile();
   const { homeReading, saveTodayReading } = useAppState();
+  const { isLive } = useLiveApp();
+  const chartDoc = useQuery(appApi.charts.current, isLive ? {} : "skip");
   const fontsLoaded = useOrbitaFonts();
   const insets = useSafeAreaInsets();
   const [activeTopic, setActiveTopic] = useState<Topic>("amor");
+
+  // La tríada del hero sale del chart (mismo lugar que la Carta): mock para
+  // invitado, chart real con sesión. Así Home y Carta nunca se contradicen.
+  let chartPayload: NatalChartPayload = chartMock;
+  if (isLive && chartDoc) {
+    try {
+      chartPayload = mapNatalChart(chartDoc);
+    } catch {
+      chartPayload = chartMock;
+    }
+  }
+  const heroTriad = triadFromChart(chartPayload);
 
   if (!isReady || !profile || !fontsLoaded) {
     return <View style={styles.screen} />;
@@ -52,8 +90,7 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
       >
         <HomeHeader />
-        <SignalTop reading={homeReading} onProfundizar={() => router.push("/reading/deep-dive")} />
-        <CartaCard />
+        <SignalTop reading={homeReading} triad={heroTriad} onProfundizar={() => router.push("/reading/deep-dive")} />
         <DailyGuide reading={homeReading} />
         <TopicsSection
           reading={homeReading}
