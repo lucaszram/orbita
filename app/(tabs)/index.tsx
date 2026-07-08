@@ -126,6 +126,7 @@ export default function HomeScreen() {
           reading={homeReading}
           triad={heroTriad}
           daily={daily ?? guestDaily ?? undefined}
+          name={profile.name}
           onProfundizar={() => router.push("/reading/deep-dive")}
         />
         <DailyGuide reading={homeReading} />
