@@ -14,7 +14,8 @@ export function HomeBackdrop() {
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       <Image source={TEXTURE} style={[StyleSheet.absoluteFillObject, styles.texture]} resizeMode="cover" />
       <View style={styles.scrim} />
-      <LinearGradient colors={["rgba(196,106,58,0.16)", "rgba(196,106,58,0)"]} style={styles.glow} />
+      {/* Viñeta oscura arriba: mantiene el header/status limpios (sin la "marca" cálida). */}
+      <LinearGradient colors={["#07080A", "rgba(7,8,10,0)"]} locations={[0, 1]} style={styles.topVignette} />
     </View>
   );
 }
@@ -22,5 +23,5 @@ export function HomeBackdrop() {
 const styles = StyleSheet.create({
   texture: { opacity: 0.5 },
   scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(7,8,10,0.42)" },
-  glow: { height: 420, left: 0, position: "absolute", right: 0, top: 0 }
+  topVignette: { height: 150, left: 0, position: "absolute", right: 0, top: 0 }
 });
