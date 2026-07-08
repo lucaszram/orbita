@@ -133,8 +133,8 @@ export default function HomeScreen() {
           <InsightRow title="Fase lunar y calendario" body="El calendario lunar · el clima del mes, día a día" onPress={() => router.push("/reading/luna")} />
           <InsightRow
             title="Tu carta, leída como carácter"
-            body="Horóscopo de personalidad · identidad, amor, crecimiento"
-            onPress={() => router.push("/reading/personalidad")}
+            body="Tu carta natal · qué significa cada planeta"
+            onPress={() => router.push("/(tabs)/carta")}
           />
           <InsightRow
             title="Qué te impulsa, qué te pesa"
