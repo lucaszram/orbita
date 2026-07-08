@@ -94,7 +94,7 @@ function VoidView({ ask, today, categories, onUnlock }: VoidViewProps) {
     ? today.remaining > 0
       ? `TE QUEDAN ${today.remaining} DE ${today.limit} HOY`
       : "SIN PREGUNTAS POR HOY"
-    : "UNA PREGUNTA POR DÍA";
+    : "3 PREGUNTAS POR DÍA";
 
   // Manda una pregunta (tocada de la lista o escrita). Si no queda cupo, va
   // directo al estado de límite sin gastar una llamada.
