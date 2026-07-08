@@ -1,16 +1,71 @@
-import { Image, StyleSheet, Text, View } from "react-native";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, Image, StyleSheet, Text, View } from "react-native";
+import { useAction } from "convex/react";
 import Svg, { Line } from "react-native-svg";
 import { DetailScreen } from "@/components/home/DetailScreen";
 import { Body, Divider, Eyebrow, H2, H3, Note } from "@/components/orbita/kit";
 import { transitMock } from "@/content/transitMock";
+import { useLiveApp } from "@/hooks/useLiveApp";
+import { proposedApi, type TransitDetailPayload } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
 
 const PLANET_IMG = require("../../assets/orbita/optimized/core/orbita_home_hero_orbital_b.jpg");
 const VENUS_IMG = require("../../assets/orbita/optimized/core/orbita_moon_phase_waxing.jpg");
 
+/** Fecha local YYYY-MM-DD (componentes locales, mismo criterio que la web; no UTC). */
+function todayLocalDate(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
 /** Tránsito / En el cielo (Figma V4.7 · 334:2): escena espacial + frecuencia + en la Tierra. */
 export default function TransitoDetalleScreen() {
-  const t = transitMock;
+  const { isLive } = useLiveApp();
+  if (!isLive) return <TransitoDetalle t={transitMock} />;
+  return <TransitoDetalleLive />;
+}
+
+/**
+ * Con sesión: el cielo REAL del día vía la action `transits.getToday` (patrón
+ * imperativo useState/useEffect + flag `alive`, como en la web). El payload calza
+ * 1:1 con la forma que ya renderiza la vista; sin remapeo.
+ */
+function TransitoDetalleLive() {
+  const getToday = useAction(proposedApi.transitToday);
+  const [state, setState] = useState<
+    { kind: "loading" } | { kind: "error" } | { kind: "ok"; data: TransitDetailPayload }
+  >({ kind: "loading" });
+
+  useEffect(() => {
+    let alive = true;
+    getToday({ localDate: todayLocalDate() })
+      .then((r) => {
+        if (alive) setState({ kind: "ok", data: r as TransitDetailPayload });
+      })
+      .catch(() => {
+        if (alive) setState({ kind: "error" });
+      });
+    return () => {
+      alive = false;
+    };
+  }, [getToday]);
+
+  if (state.kind === "loading") {
+    return (
+      <DetailScreen eyebrow="Tránsito · Hoy">
+        <View style={styles.loading}>
+          <ActivityIndicator color={orbita.colors.copper} />
+          <Text style={styles.loadingText}>Leyendo el cielo de hoy…</Text>
+        </View>
+      </DetailScreen>
+    );
+  }
+  // Error o dato ausente: caemos al mock; nunca pantalla rota.
+  if (state.kind === "error") return <TransitoDetalle t={transitMock} />;
+  return <TransitoDetalle t={state.data ?? transitMock} />;
+}
+
+function TransitoDetalle({ t }: { t: TransitDetailPayload }) {
   return (
     <DetailScreen eyebrow="Tránsito · Hoy">
       <H2>{t.title}</H2>
@@ -77,6 +132,13 @@ export default function TransitoDetalleScreen() {
 }
 
 const styles = StyleSheet.create({
+  loading: { alignItems: "center", paddingTop: orbita.spacing.xxl * 2 },
+  loadingText: {
+    color: orbita.colors.muted,
+    fontFamily: orbita.fonts.bodyMedium,
+    fontSize: 14,
+    marginTop: orbita.spacing.md
+  },
   scene: {
     borderColor: orbita.colors.line,
     borderRadius: orbita.radius.lg,
