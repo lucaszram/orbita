@@ -372,13 +372,22 @@ export default defineSchema({
     .index("by_kind_status", ["kind", "status"])
     .index("by_locale_status", ["locale", "status"]),
 
-  // El Vacío (`void.ask`): guarda la respuesta del día por usuario. Sirve de cache
-  // y de límite 1/día — si ya hay fila para `(userId, localDate)`, se devuelve esa
-  // en vez de re-generar. `payload` = VoidAnswerPayload (contrato en src/services/appRefs.ts).
+  // El Vacío (`void.ask`): una fila por pregunta respondida. El cupo diario
+  // (3 free / 5 pro) se calcula contando las filas de `(userId, localDate)`.
+  // `payload` = VoidAnswerPayload (contrato en src/services/appRefs.ts).
   voidAnswers: defineTable({
     userId: v.id("users"),
     localDate: v.string(),
     question: v.string(),
+    payload: v.any(),
+    createdAt: v.number()
+  }).index("by_user_date", ["userId", "localDate"]),
+
+  // El Vacío — cache diario de las preguntas sugeridas personalizadas (1 set por
+  // usuario por día). `payload` = { categories: [{ key, label, glyph, prompts[] }] }.
+  voidPromptSets: defineTable({
+    userId: v.id("users"),
+    localDate: v.string(),
     payload: v.any(),
     createdAt: v.number()
   }).index("by_user_date", ["userId", "localDate"])

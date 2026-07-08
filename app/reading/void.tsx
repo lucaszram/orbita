@@ -4,12 +4,17 @@ import { StatusBar } from "expo-status-bar";
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useAction } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { useAppData } from "@/domain/appData";
-import { proposedApi, type VoidAnswerPayload } from "@/services/appRefs";
-import { VOID_CATEGORIES, type VoidCategory } from "@/content/voidPrompts";
+import {
+  proposedApi,
+  type VoidAnswerPayload,
+  type VoidPromptCategory,
+  type VoidTodayPayload
+} from "@/services/appRefs";
+import { VOID_CATEGORIES } from "@/content/voidPrompts";
 import { orbita } from "@/theme/orbita";
 
 const TEXTURE = require("../../assets/orbita/optimized/core/orbita_daily_texture_b.jpg");
@@ -26,39 +31,81 @@ type Phase = "entrada" | "escuchando" | "respuesta";
 
 type AskVoid = (args: { question: string }) => Promise<VoidAnswerPayload>;
 
+type VoidViewProps = {
+  ask: AskVoid | null;
+  today: VoidTodayPayload | null;
+  categories: VoidPromptCategory[];
+  onUnlock: (() => void) | null;
+};
+
 export default function VoidScreen() {
   const { isLive } = useLiveApp();
   if (!isLive) {
-    return <VoidView ask={null} />;
+    return <VoidView ask={null} today={null} categories={VOID_CATEGORIES} onUnlock={null} />;
   }
   return <VoidLive />;
 }
 
 /**
- * Sub-componente live: `useAction` solo se monta con sesión (bajo ConvexProvider).
- * Sin sesión, `VoidScreen` renderiza `VoidView` con `ask=null` (mock local).
+ * Sub-componente live: los hooks Convex solo se montan con sesión. Trae el cupo
+ * del día (contador), las preguntas sugeridas personalizadas (fallback estático)
+ * y expone el "desbloqueo" a Pro para el testeo interno.
  */
 function VoidLive() {
   const ask = useAction(proposedApi.voidAsk);
-  return <VoidView ask={ask} />;
+  const today = useQuery(proposedApi.voidToday, {}) ?? null;
+  const suggested = useAction(proposedApi.voidSuggested);
+  const setPro = useMutation(proposedApi.setStubPro);
+  const [categories, setCategories] = useState<VoidPromptCategory[]>(VOID_CATEGORIES);
+  const fired = useRef(false);
+
+  useEffect(() => {
+    if (fired.current) return;
+    fired.current = true;
+    suggested({})
+      .then((r) => {
+        if (r?.categories?.length) setCategories(r.categories);
+      })
+      .catch(() => {});
+  }, [suggested]);
+
+  const onUnlock = () => {
+    setPro({}).catch(() => {});
+  };
+
+  return <VoidView ask={ask} today={today} categories={categories} onUnlock={onUnlock} />;
 }
 
-function VoidView({ ask }: { ask: AskVoid | null }) {
+function VoidView({ ask, today, categories, onUnlock }: VoidViewProps) {
   const insets = useSafeAreaInsets();
   const fontsLoaded = useOrbitaFonts();
   const { carta } = useAppData();
   const [phase, setPhase] = useState<Phase>("entrada");
   const [typed, setTyped] = useState("");
-  const [category, setCategory] = useState<VoidCategory>("yo");
+  const [category, setCategory] = useState<string>(categories[0]?.key ?? "yo");
   const [payload, setPayload] = useState<VoidAnswerPayload | null>(null);
+  const [locked, setLocked] = useState(false);
   const pulse = useRef(new Animated.Value(0.4)).current;
 
   const question = typed.trim() || DEFAULT_QUESTION;
-  const activeCategory = VOID_CATEGORIES.find((c) => c.key === category) ?? VOID_CATEGORIES[0];
+  const activeCategory = categories.find((c) => c.key === category) ?? categories[0];
+  const noneLeft = !!today && today.remaining <= 0;
+  const counterLabel = today
+    ? today.remaining > 0
+      ? `TE QUEDAN ${today.remaining} DE ${today.limit} HOY`
+      : "SIN PREGUNTAS POR HOY"
+    : "UNA PREGUNTA POR DÍA";
 
-  // Manda una pregunta (tocada de la lista o escrita) a la fase de escucha.
+  // Manda una pregunta (tocada de la lista o escrita). Si no queda cupo, va
+  // directo al estado de límite sin gastar una llamada.
   const askQuestion = (q: string) => {
     setTyped(q);
+    if (noneLeft) {
+      setLocked(true);
+      setPhase("respuesta");
+      return;
+    }
+    setLocked(false);
     setPhase("escuchando");
   };
   const basadoEn = `BASADO EN TU LUNA EN ${carta.triad.moon.label.toUpperCase()}\nY TU ASCENDENTE EN ${carta.triad.ascendant.label.toUpperCase()}`;
@@ -87,11 +134,13 @@ function VoidView({ ask }: { ask: AskVoid | null }) {
       ask({ question })
         .then((res) => {
           if (cancelled) return;
-          setPayload(res);
+          setLocked(!!res.locked);
+          setPayload(res.locked ? null : res);
           setPhase("respuesta");
         })
         .catch(() => {
           if (cancelled) return;
+          setLocked(false);
           setPayload(null);
           setPhase("respuesta");
         });
@@ -139,7 +188,7 @@ function VoidView({ ask }: { ask: AskVoid | null }) {
         <View style={styles.entrada}>
           <View style={styles.entradaHead}>
             <Text style={styles.eyebrow}>EL VACÍO</Text>
-            <Text style={styles.microMono}>UNA PREGUNTA POR DÍA</Text>
+            <Text style={[styles.microMono, noneLeft && styles.microMonoCopper]}>{counterLabel}</Text>
           </View>
 
           <View style={styles.tabs}>
@@ -189,10 +238,10 @@ function VoidView({ ask }: { ask: AskVoid | null }) {
               placeholderTextColor={orbita.colors.muted}
               style={styles.askInput}
               returnKeyType="send"
-              onSubmitEditing={() => setPhase("escuchando")}
+              onSubmitEditing={() => askQuestion(question)}
             />
             <Pressable
-              onPress={() => setPhase("escuchando")}
+              onPress={() => askQuestion(question)}
               hitSlop={8}
               accessibilityRole="button"
               style={({ pressed }) => [styles.askBtn, pressed && styles.pressed]}
@@ -216,7 +265,36 @@ function VoidView({ ask }: { ask: AskVoid | null }) {
         </View>
       ) : null}
 
-      {phase === "respuesta" ? (
+      {phase === "respuesta" && locked ? (
+        <View style={styles.center}>
+          <Text style={styles.eyebrow}>EL VACÍO · POR HOY</Text>
+          <View style={{ height: orbita.spacing.xxl }} />
+          <Text style={styles.answer}>Por hoy{"\n"}alcanzó.</Text>
+          <View style={{ height: orbita.spacing.xl }} />
+          <Text style={styles.microMono}>Una pregunta bien pensada rinde más{"\n"}que diez apuradas. Volvé mañana.</Text>
+          {onUnlock ? (
+            <>
+              <View style={{ height: orbita.spacing.xxl }} />
+              <Pressable
+                onPress={() => {
+                  onUnlock();
+                  setLocked(false);
+                  setPhase("entrada");
+                }}
+                style={({ pressed }) => [pressed && styles.pressed]}
+                accessibilityRole="button"
+              >
+                <View style={styles.ghostCta}>
+                  <Text style={styles.ghostCtaText}>DESBLOQUEAR 5 CON EL SEMANAL</Text>
+                </View>
+              </Pressable>
+            </>
+          ) : null}
+          <View style={styles.footer}>
+            <Text style={styles.footnote}>El Vacío no contesta sí o no.</Text>
+          </View>
+        </View>
+      ) : phase === "respuesta" ? (
         <View style={styles.center}>
           <Text style={styles.eyebrow}>EL VACÍO · HOY</Text>
           <View style={{ height: orbita.spacing.sm }} />

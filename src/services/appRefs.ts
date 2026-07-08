@@ -197,7 +197,20 @@ export type VoidAnswerPayload = {
   mejorPregunta: string;
   /** Paso concreto y seguro (sin destino/salud/dinero/legal). */
   paso: string;
+  /** Cupo diario restante después de esta pregunta (3 free / 5 pro). */
+  remaining?: number;
+  /** Cupo total del día. */
+  limit?: number;
+  /** true si ya no quedan preguntas hoy (no se generó respuesta). */
+  locked?: boolean;
 };
+
+/** Cupo del día de El Vacío (contador). */
+export type VoidTodayPayload = { limit: number; used: number; remaining: number; isPro: boolean };
+
+/** Preguntas sugeridas personalizadas por categoría (El Vacío). */
+export type VoidPromptCategory = { key: string; label: string; glyph: string; prompts: string[] };
+export type VoidSuggestedPayload = { categories: VoidPromptCategory[] };
 
 export type PlaceLookup = {
   status: "success" | "not_configured" | "error";
@@ -340,6 +353,12 @@ export const proposedApi = {
   >,
   // TODO: pendiente backend — places.resolve({ query }): geocoding real para onboarding
   resolvePlace: anyApi.places.resolve as FunctionReference<"action", "public", { query: string }, PlaceLookup>,
-  // TODO: pendiente backend — void.ask({ question }): VoidAnswerPayload (El Vacío; guardrail: nunca sí/no)
-  voidAsk: anyApi.void.ask as FunctionReference<"action", "public", { question: string }, VoidAnswerPayload>
+  // void.ask({ question }): VoidAnswerPayload (El Vacío; guardrail: nunca sí/no; cupo 3 free / 5 pro)
+  voidAsk: anyApi.void.ask as FunctionReference<"action", "public", { question: string }, VoidAnswerPayload>,
+  // void.today(): cupo del día para el contador (reactivo).
+  voidToday: anyApi.void.today as FunctionReference<"query", "public", Empty, VoidTodayPayload | null>,
+  // void.suggestedQuestions(): preguntas sugeridas personalizadas por categoría.
+  voidSuggested: anyApi.void.suggestedQuestions as FunctionReference<"action", "public", Empty, VoidSuggestedPayload>,
+  // Dev/testeo interno: marca al usuario como Pro (gateado por ALLOW_DEV_STUB en Convex).
+  setStubPro: anyApi.subscriptions.setStubPlusForDev as FunctionReference<"mutation", "public", Empty, unknown>
 } as const;
