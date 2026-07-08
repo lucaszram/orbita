@@ -19,8 +19,11 @@ const R_SIGN = 250; // borde interno de la banda de signos
 const R_PLANET = 214; // banda de planetas
 const R_INNER = 112; // círculo interno (convergen aspectos + numerales de casa)
 
-// Glifos del zodíaco por longitud (Aries en 0°).
-const ZODIAC = ["♈", "♉", "♊", "♋", "♌", "♍", "♎", "♏", "♐", "♑", "♒", "♓"];
+// Glifos del zodíaco por longitud (Aries en 0°). El selector de variación U+FE0E
+// fuerza presentación de TEXTO: sin él, ♈–♓ (U+2648–U+2653) salen como emoji a color
+// (los "cuadrados violetas") ignorando el fill cobre. Con FE0E respetan el fill fino.
+const VS_TEXT = String.fromCharCode(0xfe0e);
+const ZODIAC = ["♈", "♉", "♊", "♋", "♌", "♍", "♎", "♏", "♐", "♑", "♒", "♓"].map((g) => g + VS_TEXT);
 const PLANET_GLYPH: Record<string, string> = {
   sun: "☉", moon: "☽", mercury: "☿", venus: "♀", mars: "♂", jupiter: "♃", saturn: "♄",
   uranus: "♅", neptune: "♆", pluto: "♇", node: "☊", chiron: "⚷", part_of_fortune: "⊕",
