@@ -4,6 +4,7 @@ import { StatusBar } from "expo-status-bar";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CartaBanner } from "@/components/home/CartaBanner";
+import { HomeBackdrop } from "@/components/home/HomeBackdrop";
 import {
   DailyGuide,
   HomeHeader,
@@ -111,6 +112,7 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.screen}>
+      <HomeBackdrop />
       <StatusBar style="light" />
       <ScrollView
         contentContainerStyle={{ paddingTop: insets.top, paddingBottom: insets.bottom + orbita.spacing.xxl }}
@@ -159,6 +161,6 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { backgroundColor: orbita.colors.background, flex: 1 },
+  screen: { backgroundColor: "#07080A", flex: 1 },
   more: { borderTopColor: orbita.colors.line, borderTopWidth: 1 }
 });

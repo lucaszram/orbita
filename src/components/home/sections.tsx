@@ -4,9 +4,9 @@ import { LinearGradient } from "expo-linear-gradient";
 import { HomeReading, HomeTopic, Topic } from "@/domain/types";
 import { orbita } from "@/theme/orbita";
 import { EditorialThumb } from "@/components/orbita/HeroImage";
-import { MiniChart } from "./OrbitalHero";
 
 const HERO_HOME = require("../../../assets/orbita/optimized/core/orbita_home_hero_orbital_b.jpg");
+const NEBULA = require("../../../assets/orbita/optimized/core/orbita_daily_texture_b.jpg");
 
 const G = orbita.spacing.gutter;
 
@@ -88,7 +88,7 @@ export function SignalTop({
       <View style={styles.hero}>
         <Image source={HERO_HOME} style={styles.heroImg} resizeMode="cover" />
         <LinearGradient
-          colors={["rgba(10,11,14,0)", "rgba(10,11,14,0)", "rgba(10,11,14,0.55)", orbita.colors.background]}
+          colors={["rgba(7,8,10,0)", "rgba(7,8,10,0)", "rgba(7,8,10,0.5)", "#07080A"]}
           locations={[0, 0.42, 0.8, 1]}
           style={styles.heroFade}
         />
@@ -130,9 +130,14 @@ function GuideRow({ label, copy }: { label: string; copy: string }) {
 export function DailyGuide({ reading }: { reading: HomeReading }) {
   return (
     <View style={styles.section}>
-      <View style={styles.miniChart}>
-        <MiniChart size={112} />
-      </View>
+      {/* Nebulosa dorada detrás de la guía (como el Figma "Guía de hoy"), sin el radar. */}
+      <Image source={NEBULA} style={[styles.guiaNebula, { opacity: 0.55 }]} resizeMode="cover" />
+      <LinearGradient
+        colors={["#07080A", "rgba(7,8,10,0)", "rgba(7,8,10,0)", "#07080A"]}
+        locations={[0, 0.18, 0.82, 1]}
+        style={styles.guiaNebula}
+        pointerEvents="none"
+      />
       <Eyebrow>{reading.guideEyebrow}</Eyebrow>
       <Text style={styles.headlineMd}>{reading.guideHeadline}</Text>
       <Text style={styles.body}>{reading.guideIntro}</Text>
@@ -299,6 +304,7 @@ const styles = StyleSheet.create({
   headerDivider: { backgroundColor: orbita.colors.line, height: 1 },
 
   section: { paddingHorizontal: G, paddingTop: orbita.spacing.xl, paddingBottom: orbita.spacing.xxl },
+  guiaNebula: { ...StyleSheet.absoluteFillObject },
 
   eyebrow: {
     color: orbita.colors.copper,
