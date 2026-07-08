@@ -33,10 +33,12 @@ import type * as places from "../places.js";
 import type * as publicLab from "../publicLab.js";
 import type * as readings from "../readings.js";
 import type * as relationships from "../relationships.js";
+import type * as sky from "../sky.js";
 import type * as studio from "../studio.js";
 import type * as subscriptions from "../subscriptions.js";
 import type * as transits from "../transits.js";
 import type * as users from "../users.js";
+import type * as void_ from "../void.js";
 import type * as webB0Seed from "../webB0Seed.js";
 
 import type {
@@ -71,10 +73,12 @@ declare const fullApi: ApiFromModules<{
   publicLab: typeof publicLab;
   readings: typeof readings;
   relationships: typeof relationships;
+  sky: typeof sky;
   studio: typeof studio;
   subscriptions: typeof subscriptions;
   transits: typeof transits;
   users: typeof users;
+  void: typeof void_;
   webB0Seed: typeof webB0Seed;
 }>;
 

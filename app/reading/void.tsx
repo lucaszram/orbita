@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Animated, Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Animated, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
@@ -9,6 +9,7 @@ import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { useAppData } from "@/domain/appData";
 import { proposedApi, type VoidAnswerPayload } from "@/services/appRefs";
+import { VOID_CATEGORIES, type VoidCategory } from "@/content/voidPrompts";
 import { orbita } from "@/theme/orbita";
 
 const TEXTURE = require("../../assets/orbita/optimized/core/orbita_daily_texture_b.jpg");
@@ -48,10 +49,18 @@ function VoidView({ ask }: { ask: AskVoid | null }) {
   const { carta } = useAppData();
   const [phase, setPhase] = useState<Phase>("entrada");
   const [typed, setTyped] = useState("");
+  const [category, setCategory] = useState<VoidCategory>("yo");
   const [payload, setPayload] = useState<VoidAnswerPayload | null>(null);
   const pulse = useRef(new Animated.Value(0.4)).current;
 
   const question = typed.trim() || DEFAULT_QUESTION;
+  const activeCategory = VOID_CATEGORIES.find((c) => c.key === category) ?? VOID_CATEGORIES[0];
+
+  // Manda una pregunta (tocada de la lista o escrita) a la fase de escucha.
+  const askQuestion = (q: string) => {
+    setTyped(q);
+    setPhase("escuchando");
+  };
   const basadoEn = `BASADO EN TU LUNA EN ${carta.triad.moon.label.toUpperCase()}\nY TU ASCENDENTE EN ${carta.triad.ascendant.label.toUpperCase()}`;
 
   // Respuesta a mostrar: la real del backend cuando llegó; si no, la maqueta.
@@ -127,34 +136,69 @@ function VoidView({ ask }: { ask: AskVoid | null }) {
       )}
 
       {phase === "entrada" ? (
-        <View style={styles.center}>
-          <Text style={styles.eyebrow}>EL VACÍO</Text>
-          <Text style={styles.h1}>Preguntale{"\n"}al Vacío.</Text>
-          <View style={{ height: orbita.spacing.xxl * 2 }} />
-          <TextInput
-            value={typed}
-            onChangeText={setTyped}
-            placeholder="Escribí tu pregunta"
-            placeholderTextColor={orbita.colors.muted}
-            style={styles.input}
-            returnKeyType="send"
-            onSubmitEditing={() => setPhase("escuchando")}
-          />
-          <View style={styles.inputLine} />
-          <View style={{ height: orbita.spacing.xl }} />
-          <Text style={styles.microMono}>UNA PREGUNTA POR DÍA</Text>
-          <View style={{ height: orbita.spacing.xxl }} />
-          <Pressable
-            onPress={() => setPhase("escuchando")}
-            style={({ pressed }) => [pressed && styles.pressed]}
-            accessibilityRole="button"
+        <View style={styles.entrada}>
+          <View style={styles.entradaHead}>
+            <Text style={styles.eyebrow}>EL VACÍO</Text>
+            <Text style={styles.microMono}>UNA PREGUNTA POR DÍA</Text>
+          </View>
+
+          <View style={styles.tabs}>
+            {VOID_CATEGORIES.map((c) => {
+              const active = c.key === category;
+              return (
+                <Pressable
+                  key={c.key}
+                  onPress={() => setCategory(c.key)}
+                  hitSlop={8}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: active }}
+                  style={styles.tab}
+                >
+                  <View style={[styles.tabGlyphBox, active && styles.tabGlyphBoxActive]}>
+                    <Text style={[styles.tabGlyph, active && styles.tabGlyphActive]}>{c.glyph}</Text>
+                  </View>
+                  <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{c.label.toUpperCase()}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <ScrollView
+            style={styles.prompts}
+            contentContainerStyle={styles.promptsContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
           >
-            <View style={styles.ghostCta}>
-              <Text style={styles.ghostCtaText}>PREGUNTAR</Text>
-            </View>
-          </Pressable>
-          <View style={styles.footer}>
-            <Text style={styles.footnote}>El Vacío no contesta sí o no.{"\n"}Te ordena la pregunta.</Text>
+            {activeCategory.prompts.map((p) => (
+              <Pressable
+                key={p}
+                onPress={() => askQuestion(p)}
+                style={({ pressed }) => [styles.promptRow, pressed && styles.pressed]}
+                accessibilityRole="button"
+              >
+                <Text style={styles.promptText}>{p}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+
+          <View style={[styles.askBar, { paddingBottom: insets.bottom + orbita.spacing.md }]}>
+            <TextInput
+              value={typed}
+              onChangeText={setTyped}
+              placeholder="Preguntá lo que quieras"
+              placeholderTextColor={orbita.colors.muted}
+              style={styles.askInput}
+              returnKeyType="send"
+              onSubmitEditing={() => setPhase("escuchando")}
+            />
+            <Pressable
+              onPress={() => setPhase("escuchando")}
+              hitSlop={8}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.askBtn, pressed && styles.pressed]}
+            >
+              <Text style={styles.askBtnText}>PREGUNTAR</Text>
+            </Pressable>
           </View>
         </View>
       ) : null}
@@ -292,5 +336,56 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
     textAlign: "center"
-  }
+  },
+
+  // Fase entrada (estructura tipo Void de Co-Star, en estilo Órbita).
+  entrada: { flex: 1, paddingHorizontal: orbita.spacing.gutter },
+  entradaHead: { alignItems: "center", gap: orbita.spacing.sm, paddingBottom: orbita.spacing.xl, paddingTop: orbita.spacing.md },
+  tabs: { flexDirection: "row", justifyContent: "space-between", paddingBottom: orbita.spacing.xl, paddingHorizontal: orbita.spacing.sm },
+  tab: { alignItems: "center", flex: 1, gap: orbita.spacing.sm },
+  tabGlyphBox: {
+    alignItems: "center",
+    borderColor: "transparent",
+    borderRadius: 10,
+    borderWidth: 1,
+    height: 44,
+    justifyContent: "center",
+    width: 44
+  },
+  tabGlyphBoxActive: { borderColor: "rgba(244,238,228,0.35)" },
+  tabGlyph: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 20 },
+  tabGlyphActive: { color: orbita.colors.bone },
+  tabLabel: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.monoMedium, fontSize: 10, letterSpacing: 1.5 },
+  tabLabelActive: { color: orbita.colors.copper },
+
+  prompts: { flex: 1 },
+  promptsContent: { alignItems: "center", gap: orbita.spacing.xxl, paddingVertical: orbita.spacing.xl },
+  promptRow: { paddingVertical: orbita.spacing.sm },
+  promptText: {
+    color: orbita.colors.bone,
+    fontFamily: orbita.fonts.monoMedium,
+    fontSize: 14,
+    letterSpacing: 0.5,
+    lineHeight: 22,
+    textAlign: "center",
+    textDecorationLine: "underline"
+  },
+
+  askBar: {
+    alignItems: "center",
+    borderTopColor: orbita.colors.line,
+    borderTopWidth: 1,
+    flexDirection: "row",
+    gap: orbita.spacing.md,
+    paddingTop: orbita.spacing.md
+  },
+  askInput: { color: orbita.colors.bone, flex: 1, fontFamily: orbita.fonts.serifRegular, fontSize: 18, paddingVertical: orbita.spacing.sm },
+  askBtn: {
+    borderColor: "rgba(244,238,228,0.35)",
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingHorizontal: orbita.spacing.lg,
+    paddingVertical: orbita.spacing.sm
+  },
+  askBtnText: { color: orbita.colors.bone, fontFamily: orbita.fonts.monoMedium, fontSize: 12, letterSpacing: 1.5 }
 });
