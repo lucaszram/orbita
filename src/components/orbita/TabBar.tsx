@@ -6,8 +6,8 @@ import { orbita } from "@/theme/orbita";
 const LABELS: Record<string, string> = {
   index: "Inicio",
   carta: "Carta",
+  vacio: "Vacío",
   transitos: "Tránsitos",
-  vinculo: "Vínculo",
   perfil: "Perfil"
 };
 
@@ -32,8 +32,10 @@ export function OrbitaTabBar({ state, navigation }: OrbitaTabBarProps) {
   return (
     <View style={[styles.bar, { paddingBottom: insets.bottom + 10 }]}>
       {state.routes.map((route, index) => {
+        // Rutas fuera de la barra (ej. vinculo con href:null) no tienen label → se omiten.
+        if (!LABELS[route.name]) return null;
         const focused = state.index === index;
-        const label = LABELS[route.name] ?? route.name;
+        const label = LABELS[route.name];
         const onPress = () => {
           const event = navigation.emit({ type: "tabPress", target: route.key, canPreventDefault: true });
           if (!focused && !event.defaultPrevented) navigation.navigate(route.name);

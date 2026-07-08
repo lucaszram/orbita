@@ -10,6 +10,7 @@ import {
   SignalTop,
   TopicsSection
 } from "@/components/home/sections";
+import { CartaCard } from "@/components/home/CartaCard";
 import { Eyebrow, InsightRow, Section } from "@/components/orbita/kit";
 import { useAppState } from "@/hooks/useAppState";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
@@ -52,6 +53,7 @@ export default function HomeScreen() {
       >
         <HomeHeader />
         <SignalTop reading={homeReading} onProfundizar={() => router.push("/reading/deep-dive")} />
+        <CartaCard />
         <DailyGuide reading={homeReading} />
         <TopicsSection
           reading={homeReading}
@@ -67,7 +69,6 @@ export default function HomeScreen() {
         />
         <Section style={styles.more}>
           <Eyebrow>TAMBIÉN HOY</Eyebrow>
-          <InsightRow title="Una pregunta para hoy" body="El Vacío · una pregunta por día" onPress={() => router.push("/reading/void")} />
           <InsightRow title="Fase lunar y calendario" body="El calendario lunar · el clima del mes, día a día" onPress={() => router.push("/reading/luna")} />
           <InsightRow
             title="Tu carta, leída como carácter"
