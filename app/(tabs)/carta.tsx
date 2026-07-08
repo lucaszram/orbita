@@ -101,16 +101,17 @@ function CartaView({
   const { width } = useWindowDimensions();
   const [view, setView] = useState<"circulo" | "tabla">("circulo");
   const [selected, setSelected] = useState<string | undefined>();
-  const [expanded, setExpanded] = useState<string | undefined>();
   const wheelSize = Math.min(width - orbita.spacing.gutter * 2, 360);
   const radarSize = Math.min(width - orbita.spacing.gutter * 2, 340);
   const sel = payload.placements.find((p) => p.key === selected);
   const aspects = payload.mainAspects ?? payload.aspects ?? [];
   const angular = payload.houses.filter((h) => [1, 4, 7, 10].includes(h.house)).sort((a, b) => a.house - b.house);
-  // La explicación de cada planeta (lo que antes era el "horóscopo de personalidad")
-  // vive ahora en la tabla: por placement, su sección.
-  const sectionFor = (p: SignPlacement): PersonalitySection | undefined =>
-    reading.sections.find((s) => s.placement.planet === p.planet || s.key === p.key);
+  // La explicación completa va VISIBLE abajo (sector por sector). El mapa de valores
+  // se intercala en el medio.
+  const sections = reading.sections ?? [];
+  const mid = Math.ceil(sections.length / 2);
+  const sectionsA = sections.slice(0, mid);
+  const sectionsB = sections.slice(mid);
 
   return (
     <OrbitaScreen right="Carta">
@@ -142,26 +143,44 @@ function CartaView({
               {`${glyphOf(sel)}  ${sel.planet} en ${sel.sign}${sel.house ? ` · Casa ${sel.house}` : ""}${sel.normDegree != null ? ` · ${deg(sel.normDegree)}` : ""}${sel.isRetrograde ? " ℞" : ""}`}
             </Text>
           ) : (
-            <Note>Tocá un planeta para ver su posición.</Note>
+            <Note>Tocá un planeta para verlo en la tabla.</Note>
           )}
         </View>
       ) : (
         <Section style={{ paddingTop: orbita.spacing.lg }}>
-          <Note>Tocá un planeta para leer qué significa en tu carta.</Note>
-          {payload.placements.map((p) => {
-            const key = p.key ?? p.planet;
-            return (
-              <PositionRow
-                key={key}
-                p={p}
-                section={sectionFor(p)}
-                open={expanded === key}
-                onToggle={() => setExpanded((cur) => (cur === key ? undefined : key))}
-              />
-            );
-          })}
+          {payload.placements.map((p) => (
+            <PositionRow key={p.key ?? p.planet} p={p} />
+          ))}
         </Section>
       )}
+
+      {/* Toda la explicación, VISIBLE (sector por sector). */}
+      {sectionsA.length > 0 ? (
+        <Section style={{ paddingTop: orbita.spacing.xxl }}>
+          <Eyebrow>Tu carta, explicada</Eyebrow>
+          {sectionsA.map((s, i) => (
+            <SectorBlock key={s.key} s={s} n={i + 1} />
+          ))}
+        </Section>
+      ) : null}
+
+      {/* Mapa de valores — en el medio de la explicación. */}
+      <Section style={{ paddingTop: orbita.spacing.xl }}>
+        <Eyebrow>Mapa de valores</Eyebrow>
+        <Body>Qué te impulsa y qué te pesa, leído desde tu carta.</Body>
+        <View style={styles.radarWrap}>
+          <Radar payload={values} size={radarSize} />
+        </View>
+        <Body>{values.note}</Body>
+      </Section>
+
+      {sectionsB.length > 0 ? (
+        <Section style={{ paddingTop: orbita.spacing.xl }}>
+          {sectionsB.map((s, i) => (
+            <SectorBlock key={s.key} s={s} n={mid + i + 1} />
+          ))}
+        </Section>
+      ) : null}
 
       {aspects.length > 0 ? (
         <Section style={{ paddingTop: orbita.spacing.xxl }}>
@@ -188,15 +207,6 @@ function CartaView({
       ) : null}
 
       <Section style={{ paddingTop: orbita.spacing.xxl }}>
-        <Eyebrow>Mapa de valores</Eyebrow>
-        <Body>Qué te impulsa y qué te pesa, leído desde tu carta.</Body>
-        <View style={styles.radarWrap}>
-          <Radar payload={values} size={radarSize} />
-        </View>
-        <Body>{values.note}</Body>
-      </Section>
-
-      <Section style={{ paddingTop: orbita.spacing.xxl }}>
         <Divider style={{ marginTop: 0 }} />
         <View style={styles.links}>
           <LinkRow label="TRÁNSITOS DE HOY" onPress={() => router.push("/(tabs)/transitos")} />
@@ -208,6 +218,33 @@ function CartaView({
         <Note>{reading.disclaimer}</Note>
       </Section>
     </OrbitaScreen>
+  );
+}
+
+/** Bloque de explicación por punto de la carta (sector): glifo + placement + título
+ *  + lectura + preguntas. Visible, sin colapsar. */
+function SectorBlock({ s, n }: { s: PersonalitySection; n: number }) {
+  return (
+    <View style={styles.sector}>
+      <Text style={styles.sectorNum}>{`Sector ${String(n).padStart(2, "0")}`}</Text>
+      <View style={styles.sectorHead}>
+        <View style={styles.sectorMarker}>
+          <Text style={styles.sectorGlyph}>{glyphFor(s.placement.label)}</Text>
+        </View>
+        <Text style={styles.sectorPlacement}>
+          {`${s.placement.planet} en ${s.placement.sign ?? ""}${s.placement.house ? ` · Casa ${s.placement.house}` : ""}`.toUpperCase()}
+        </Text>
+      </View>
+      <Text style={styles.sectorTitle}>{s.title}</Text>
+      <Text style={styles.sectorBody}>{s.body}</Text>
+      {s.questions?.length ? (
+        <View style={styles.sectorQuestions}>
+          {s.questions.map((q) => (
+            <Text key={q} style={styles.sectorQ}>{`— ${q}`}</Text>
+          ))}
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -231,49 +268,19 @@ function CartaTriad({ triad }: { triad: NatalChartPayload["triad"] }) {
   );
 }
 
-function PositionRow({
-  p,
-  section,
-  open,
-  onToggle
-}: {
-  p: SignPlacement;
-  section?: PersonalitySection;
-  open: boolean;
-  onToggle: () => void;
-}) {
+function PositionRow({ p }: { p: SignPlacement }) {
   return (
-    <View style={styles.posWrap}>
-      <Pressable onPress={onToggle} style={({ pressed }) => [styles.posRow, pressed && { opacity: 0.6 }]} accessibilityRole="button">
-        <View style={styles.posMarker}>
-          <Text style={styles.posGlyph}>{glyphOf(p)}</Text>
-        </View>
-        <Text style={styles.posName}>{p.planet}</Text>
-        <Text style={styles.posSign}>
-          {p.sign}
-          {p.normDegree != null ? ` ${deg(p.normDegree)}` : ""}
-          {p.isRetrograde ? " ℞" : ""}
-        </Text>
-        <Text style={styles.posHouse}>{p.house ? `Casa ${p.house}` : "—"}</Text>
-        <Text style={styles.posChevron}>{open ? "–" : "+"}</Text>
-      </Pressable>
-      {open ? (
-        <View style={styles.posExplain}>
-          {section ? (
-            <>
-              <Text style={styles.posExplainTitle}>{section.title}</Text>
-              <Text style={styles.posExplainBody}>{section.body}</Text>
-              {section.questions?.length
-                ? section.questions.map((q) => (
-                    <Text key={q} style={styles.posExplainQ}>{`— ${q}`}</Text>
-                  ))
-                : null}
-            </>
-          ) : (
-            <Text style={styles.posExplainBody}>La lectura de este punto se está calibrando.</Text>
-          )}
-        </View>
-      ) : null}
+    <View style={styles.posRow}>
+      <View style={styles.posMarker}>
+        <Text style={styles.posGlyph}>{glyphOf(p)}</Text>
+      </View>
+      <Text style={styles.posName}>{p.planet}</Text>
+      <Text style={styles.posSign}>
+        {p.sign}
+        {p.normDegree != null ? ` ${deg(p.normDegree)}` : ""}
+        {p.isRetrograde ? " ℞" : ""}
+      </Text>
+      <Text style={styles.posHouse}>{p.house ? `Casa ${p.house}` : "—"}</Text>
     </View>
   );
 }
@@ -315,19 +322,25 @@ const styles = StyleSheet.create({
   triadSign: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 18, marginTop: 4 },
   triadHouse: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.mono, fontSize: 11, marginTop: 2 },
 
-  posWrap: { borderBottomColor: orbita.colors.line, borderBottomWidth: 1 },
-  posRow: { alignItems: "center", flexDirection: "row", paddingVertical: orbita.spacing.md },
+  posRow: { alignItems: "center", borderBottomColor: orbita.colors.line, borderBottomWidth: 1, flexDirection: "row", paddingVertical: orbita.spacing.md },
   posMarker: { alignItems: "center", borderColor: "rgba(214,154,106,0.5)", borderRadius: 15, borderWidth: 1, height: 30, justifyContent: "center", marginRight: orbita.spacing.md, width: 30 },
   posGlyph: { color: orbita.colors.bone, fontSize: 14 },
   posName: { color: orbita.colors.bone, flex: 1, fontFamily: orbita.fonts.serif, fontSize: 16 },
-  posSign: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 13, textAlign: "right", width: 96 },
-  posHouse: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.mono, fontSize: 11, textAlign: "right", width: 52 },
-  posChevron: { color: orbita.colors.copper, fontFamily: orbita.fonts.mono, fontSize: 16, marginLeft: orbita.spacing.sm, width: 16, textAlign: "center" },
-  posExplain: { paddingBottom: orbita.spacing.lg, paddingLeft: 30 + orbita.spacing.md, paddingRight: orbita.spacing.sm },
-  posExplainTitle: { color: orbita.colors.copperSoft, fontFamily: orbita.fonts.serif, fontSize: 16, marginBottom: orbita.spacing.sm },
-  posExplainBody: { color: orbita.colors.bone, fontFamily: orbita.fonts.body, fontSize: 14, lineHeight: 21 },
-  posExplainQ: { color: orbita.colors.muted, fontFamily: orbita.fonts.serifRegular, fontSize: 14, lineHeight: 20, marginTop: orbita.spacing.sm },
+  posSign: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 13, textAlign: "right", width: 108 },
+  posHouse: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.mono, fontSize: 11, textAlign: "right", width: 58 },
   radarWrap: { alignItems: "center", marginVertical: orbita.spacing.lg },
+
+  // Bloque de explicación por sector (visible, sin colapsar).
+  sector: { marginTop: orbita.spacing.xl },
+  sectorNum: { color: orbita.colors.copper, fontFamily: orbita.fonts.monoMedium, fontSize: 11, letterSpacing: 1.5 },
+  sectorHead: { alignItems: "center", flexDirection: "row", marginTop: orbita.spacing.md },
+  sectorMarker: { alignItems: "center", borderColor: "rgba(214,154,106,0.5)", borderRadius: 16, borderWidth: 1, height: 32, justifyContent: "center", marginRight: orbita.spacing.md, width: 32 },
+  sectorGlyph: { color: orbita.colors.bone, fontFamily: orbita.fonts.body, fontSize: 15 },
+  sectorPlacement: { color: orbita.colors.copperSoft, flex: 1, fontFamily: orbita.fonts.monoMedium, fontSize: 11, letterSpacing: 1 },
+  sectorTitle: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 22, lineHeight: 28, marginTop: orbita.spacing.md },
+  sectorBody: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 15, lineHeight: 23, marginTop: orbita.spacing.sm },
+  sectorQuestions: { borderTopColor: orbita.colors.line, borderTopWidth: 1, marginTop: orbita.spacing.lg, paddingTop: orbita.spacing.lg },
+  sectorQ: { color: orbita.colors.bone, fontFamily: orbita.fonts.serifRegular, fontSize: 16, lineHeight: 24, marginBottom: orbita.spacing.sm },
 
   aspRow: { alignItems: "center", flexDirection: "row", paddingVertical: orbita.spacing.sm },
   aspDot: { borderRadius: 3, height: 6, marginRight: orbita.spacing.md, width: 6 },
