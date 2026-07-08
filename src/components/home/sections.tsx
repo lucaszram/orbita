@@ -327,9 +327,9 @@ const styles = StyleSheet.create({
   },
   // La luna entera (asset cuadrado: esfera + anillo) arriba, pegada al header; el degradé
   // la funde a negro y el texto va sobre la parte baja / debajo (como el Figma "Home / Top").
-  heroImg: { height: 520, left: -64, position: "absolute", top: -120, width: 520 },
-  heroFade: { height: 400, left: 0, position: "absolute", right: 0, top: 0 },
-  heroContent: { paddingBottom: orbita.spacing.lg, paddingHorizontal: G, paddingTop: 198 },
+  heroImg: { height: 520, left: -64, position: "absolute", top: -140, width: 520 },
+  heroFade: { height: 380, left: 0, position: "absolute", right: 0, top: 0 },
+  heroContent: { paddingBottom: orbita.spacing.lg, paddingHorizontal: G, paddingTop: 178 },
   heroTextGap: { height: orbita.spacing.xl },
 
   headline: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 40, lineHeight: 45 },
