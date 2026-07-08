@@ -83,24 +83,26 @@ export function SignalTop({
   const climaCopy = daily?.clima ?? reading.signalCopy;
   return (
     <View style={styles.section}>
-      <View style={styles.heroBleed}>
-        <Image source={HERO_HOME} style={styles.heroImg} resizeMode="cover" />
+      {/* Hero full-bleed (Figma V4.7 "Home / Top"): el orbital es el FONDO detrás de
+          todo el hero; tríada + frase del día van ENCIMA, sobre el degradé a negro. */}
+      <View style={styles.hero}>
+        <Image source={HERO_HOME} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
         <LinearGradient
-          colors={["rgba(10,11,14,0.1)", "rgba(10,11,14,0.55)", orbita.colors.background]}
-          locations={[0, 0.6, 1]}
+          colors={["rgba(10,11,14,0)", "rgba(10,11,14,0.15)", "rgba(10,11,14,0.82)", orbita.colors.background]}
+          locations={[0, 0.34, 0.74, 1]}
           style={StyleSheet.absoluteFill}
         />
-        <View style={styles.heroTriad}>
+        <View style={styles.heroContent}>
           <Text style={[styles.triad, styles.triadCentered]}>
             {`${triad.sun.glyph} ${triad.sun.label}   ${triad.moon.glyph} ${triad.moon.label}   ${triad.ascendant.glyph} ${triad.ascendant.label}`}
           </Text>
           {triad.accuracyNote ? <Text style={[styles.triadNote, styles.triadCentered]}>{triad.accuracyNote}</Text> : null}
+          <View style={styles.heroTextGap} />
+          <Eyebrow>{`HOY · PARA ${triad.sun.label.toUpperCase()}`}</Eyebrow>
+          <Text style={styles.headline}>{headline}</Text>
+          <Text style={styles.body}>{body}</Text>
         </View>
       </View>
-
-      <Eyebrow>{`HOY · PARA ${triad.sun.label.toUpperCase()}`}</Eyebrow>
-      <Text style={styles.headline}>{headline}</Text>
-      <Text style={styles.body}>{body}</Text>
 
       <View style={styles.divider} />
       <Eyebrow>{climaLabel}</Eyebrow>
@@ -311,16 +313,14 @@ const styles = StyleSheet.create({
   triadCentered: { textAlign: "center" },
   triadNote: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.body, fontSize: 12, lineHeight: 16, marginTop: orbita.spacing.sm },
   heroWrap: { alignItems: "center", marginVertical: orbita.spacing.xl },
-  heroBleed: {
-    height: 330,
-    justifyContent: "flex-end",
+  hero: {
     marginBottom: orbita.spacing.xl,
     marginHorizontal: -G,
     marginTop: -orbita.spacing.xl,
-    paddingBottom: orbita.spacing.lg
+    overflow: "hidden"
   },
-  heroImg: { ...StyleSheet.absoluteFillObject, height: "100%", width: "100%" },
-  heroTriad: { paddingHorizontal: G },
+  heroContent: { paddingBottom: orbita.spacing.lg, paddingHorizontal: G, paddingTop: 172 },
+  heroTextGap: { height: orbita.spacing.xl },
 
   headline: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 40, lineHeight: 45 },
   headlineMd: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 34, lineHeight: 41 },
