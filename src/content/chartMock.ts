@@ -6,19 +6,22 @@ import type { NatalChartPayload } from "@/services/appRefs";
  * rueda se vea como una carta real (no es data de ningún usuario).
  */
 export const chartMock: NatalChartPayload = {
+  // Casas coherentes con Asc 185° (Libra) + cúspides equidistantes: cada `house`
+  // se deriva de `fullDegree` → casa = floor(((λ − 185 + 360) % 360) / 30) + 1.
+  // Así el número de casa coincide con dónde cae el planeta en la rueda.
   triad: {
-    sun: { planet: "Sol", key: "sun", sign: "Leo", house: 10 },
-    moon: { planet: "Luna", key: "moon", sign: "Piscis", house: 3 },
+    sun: { planet: "Sol", key: "sun", sign: "Leo", house: 11 },
+    moon: { planet: "Luna", key: "moon", sign: "Piscis", house: 6 },
     ascendant: { planet: "Ascendente", key: "ascendant", sign: "Libra", house: 1 }
   },
   placements: [
-    { planet: "Sol", key: "sun", sign: "Leo", house: 10, fullDegree: 128, normDegree: 8 },
-    { planet: "Luna", key: "moon", sign: "Piscis", house: 3, fullDegree: 340, normDegree: 10 },
-    { planet: "Mercurio", key: "mercury", sign: "Leo", house: 10, fullDegree: 138, normDegree: 18 },
-    { planet: "Venus", key: "venus", sign: "Virgo", house: 11, fullDegree: 160, normDegree: 10 },
-    { planet: "Marte", key: "mars", sign: "Escorpio", house: 1, fullDegree: 220, normDegree: 10, isRetrograde: true },
-    { planet: "Júpiter", key: "jupiter", sign: "Tauro", house: 7, fullDegree: 45, normDegree: 15 },
-    { planet: "Saturno", key: "saturn", sign: "Piscis", house: 5, fullDegree: 350, normDegree: 20 }
+    { planet: "Sol", key: "sun", sign: "Leo", house: 11, fullDegree: 128, normDegree: 8 },
+    { planet: "Luna", key: "moon", sign: "Piscis", house: 6, fullDegree: 340, normDegree: 10 },
+    { planet: "Mercurio", key: "mercury", sign: "Leo", house: 11, fullDegree: 138, normDegree: 18 },
+    { planet: "Venus", key: "venus", sign: "Virgo", house: 12, fullDegree: 160, normDegree: 10 },
+    { planet: "Marte", key: "mars", sign: "Escorpio", house: 2, fullDegree: 220, normDegree: 10, isRetrograde: true },
+    { planet: "Júpiter", key: "jupiter", sign: "Tauro", house: 8, fullDegree: 45, normDegree: 15 },
+    { planet: "Saturno", key: "saturn", sign: "Piscis", house: 6, fullDegree: 350, normDegree: 20 }
   ],
   houses: [
     { house: 1, sign: "Libra", cusp: 185, theme: "Identidad y presencia" },

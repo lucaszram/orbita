@@ -1,33 +1,31 @@
-import { StyleSheet, Text, View } from "react-native";
-import Svg, { Polygon, Line, Text as SvgText } from "react-native-svg";
+import { StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { useQuery } from "convex/react";
 import { DetailScreen } from "@/components/home/DetailScreen";
 import { H2, Note } from "@/components/orbita/kit";
+import { Radar } from "@/components/web/orbita-values";
 import { valuesMock } from "@/content/valuesMock";
+import { useLiveApp } from "@/hooks/useLiveApp";
+import { appApi, type ValuesMapPayload } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
 
-/** Mapa de valores (Figma V4.7 · 338:2): radar de 8 ejes + impulsa/pesa. */
+/**
+ * Mapa de valores (nativo): radar de 8 ejes + impulsa/pesa. Con sesión, data
+ * real (`charts.valuesMap`); sin sesión, mock. Reusa el `Radar` compartido —
+ * una sola implementación del radar para web y nativo.
+ */
+export default function ValoresScreen() {
+  const { isLive } = useLiveApp();
+  if (!isLive) return <ValoresView payload={valuesMock} />;
+  return <ValoresLive />;
+}
 
-const SIZE = 345;
-const CX = SIZE / 2;
-const CY = SIZE / 2;
-const R = 118;
-const R_LABEL = 140;
-const BLUE = "#8CA6C4";
+function ValoresLive() {
+  const values = useQuery(appApi.charts.valuesMap, {});
+  return <ValoresView payload={values ?? valuesMock} />;
+}
+
 const COPPER = orbita.colors.copper;
-
-function pos(i: number, total: number, r: number): { x: number; y: number } {
-  const rad = ((i * 360) / total - 90) * (Math.PI / 180);
-  return { x: CX + r * Math.cos(rad), y: CY + r * Math.sin(rad) };
-}
-
-function polygonPoints(values: number[], r = R): string {
-  return values
-    .map((v, i) => {
-      const p = pos(i, values.length, r * v);
-      return `${p.x},${p.y}`;
-    })
-    .join(" ");
-}
+const BLUE = "#8CA6C4";
 
 function MiniBar({ value, color }: { value: number; color: string }) {
   return (
@@ -37,57 +35,16 @@ function MiniBar({ value, color }: { value: number; color: string }) {
   );
 }
 
-export default function ValoresScreen() {
-  const v = valuesMock;
-  const n = v.axes.length;
+function ValoresView({ payload }: { payload: ValuesMapPayload }) {
+  const { width } = useWindowDimensions();
+  const size = Math.min(width - orbita.spacing.gutter * 2, 345);
+
   return (
     <DetailScreen eyebrow="Mapa de valores">
       <H2>Qué te impulsa,{"\n"}qué te pesa.</H2>
 
       <View style={styles.radarWrap}>
-        <Svg width={SIZE} height={SIZE}>
-          {[1 / 3, 2 / 3, 1].map((ring) => (
-            <Polygon
-              key={ring}
-              points={polygonPoints(new Array(n).fill(ring))}
-              stroke="rgba(244,238,228,0.14)"
-              strokeWidth={1}
-              fill="none"
-            />
-          ))}
-          {v.axes.map((a, i) => {
-            const p = pos(i, n, R);
-            return <Line key={a.key} x1={CX} y1={CY} x2={p.x} y2={p.y} stroke="rgba(244,238,228,0.1)" strokeWidth={1} />;
-          })}
-          <Polygon
-            points={polygonPoints(v.axes.map((a) => a.tension))}
-            stroke={BLUE}
-            strokeWidth={1.5}
-            fill="rgba(140,166,196,0.12)"
-          />
-          <Polygon
-            points={polygonPoints(v.axes.map((a) => a.harmony))}
-            stroke={COPPER}
-            strokeWidth={1.5}
-            fill="rgba(196,106,58,0.14)"
-          />
-          {v.axes.map((a, i) => {
-            const p = pos(i, n, R_LABEL);
-            return (
-              <SvgText
-                key={`l${a.key}`}
-                x={p.x}
-                y={p.y + 3}
-                fill={orbita.colors.muted}
-                fontSize={9}
-                fontFamily={orbita.fonts.monoMedium}
-                textAnchor="middle"
-              >
-                {a.label.toUpperCase()}
-              </SvgText>
-            );
-          })}
-        </Svg>
+        <Radar payload={payload} size={size} />
       </View>
 
       <View style={styles.legend}>
@@ -101,7 +58,7 @@ export default function ValoresScreen() {
       <View style={styles.cards}>
         <View style={styles.card}>
           <Text style={styles.cardLabel}>TE IMPULSA</Text>
-          {v.topDrivers.map((d) => (
+          {payload.topDrivers.map((d) => (
             <View key={d.label} style={styles.cardRow}>
               <Text style={styles.cardItem}>{d.label}</Text>
               <MiniBar value={d.value} color={COPPER} />
@@ -110,7 +67,7 @@ export default function ValoresScreen() {
         </View>
         <View style={styles.card}>
           <Text style={styles.cardLabel}>TE PESA</Text>
-          {v.topStressors.map((d) => (
+          {payload.topStressors.map((d) => (
             <View key={d.label} style={styles.cardRow}>
               <Text style={styles.cardItem}>{d.label}</Text>
               <MiniBar value={d.value} color={BLUE} />
@@ -119,7 +76,7 @@ export default function ValoresScreen() {
         </View>
       </View>
 
-      <Note>{v.note}</Note>
+      <Note>{payload.note}</Note>
     </DetailScreen>
   );
 }
