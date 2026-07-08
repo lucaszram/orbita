@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Alert, LayoutAnimation, ScrollView, StyleSheet, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { CartaCard } from "@/components/home/CartaCard";
 import {
   DailyGuide,
   HomeHeader,
@@ -45,6 +46,10 @@ function triadFromChart(payload: NatalChartPayload): Triad {
 export default function HomeScreen() {
   const { isReady, profile } = useRequireProfile();
   const { homeReading, saveTodayReading } = useAppState();
+  // `fresh=1` lo pasa el onboarding al terminar → Home "primera impresión" con la
+  // carta arriba. Al cambiar de tab y volver, el param se limpia → Home normal.
+  const { fresh } = useLocalSearchParams<{ fresh?: string }>();
+  const justOnboarded = fresh === "1";
   const { isLive } = useLiveApp();
   const chartDoc = useQuery(appApi.charts.current, isLive ? {} : "skip");
   const fontsLoaded = useOrbitaFonts();
@@ -90,6 +95,9 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
       >
         <HomeHeader />
+        {/* Home post-onboarding: la primera impresión es tu carta natal (el mismo
+            recuadro que después vive en el Perfil). En la Home normal no aparece. */}
+        {justOnboarded ? <CartaCard /> : null}
         <SignalTop reading={homeReading} triad={heroTriad} onProfundizar={() => router.push("/reading/deep-dive")} />
         <DailyGuide reading={homeReading} />
         <TopicsSection

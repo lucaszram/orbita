@@ -12,9 +12,9 @@
 import { useMemo } from "react";
 import { useAppState } from "@/hooks/useAppState";
 import { LiveAppDocs, useLiveApp, useLiveAppDocs } from "@/hooks/useLiveApp";
+import { chartMock } from "@/content/chartMock";
 import { createFallbackProfile, createTriad, toISODate } from "./readingEngine";
 import { Triad, UserProfile } from "./types";
-import { formatSign } from "./zodiac";
 
 // --- Types ---
 
@@ -113,7 +113,9 @@ export function buildCarta(profile: UserProfile, date = toISODate()): CartaData 
 }
 
 export function buildTransitos(profile: UserProfile): TransitosData {
-  const sunLabel = formatSign(profile.zodiacSign);
+  // El Sol natal sale de la carta (misma fuente que Home/Carta), no del perfil,
+  // para que el destacado no diga un signo distinto al de tu carta.
+  const sunLabel = chartMock.triad.sun.sign;
   return {
     // Dónde está cada planeta HOY (no es tu carta: es el cielo de todos).
     skyLabel: "HOY EN EL CIELO",

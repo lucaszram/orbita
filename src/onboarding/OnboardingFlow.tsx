@@ -182,8 +182,10 @@ export function OnboardingFlow() {
         timezone: birthPlace?.timezone,
       });
     }
-    // Al salir del onboarding, la carta natal es lo primero (no la Home).
-    router.replace("/(tabs)/carta");
+    // Al salir del onboarding se entra a la Home "primera impresión" (fresh=1):
+    // arranca con la carta natal arriba. La Home normal (sin la carta) es la de
+    // uso diario. La carta queda accesible siempre desde el Perfil.
+    router.replace({ pathname: "/(tabs)", params: { fresh: "1" } });
   };
 
   if (!fontsLoaded) return <View style={styles.fill} />;
