@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { LayoutAnimation, Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { orbita } from "@/theme/orbita";
 
@@ -24,7 +24,11 @@ export function CartaBanner() {
           <Text style={styles.title}>Miralá entera — cada planeta, explicado →</Text>
         </Pressable>
         <Pressable
-          onPress={() => setVisible(false)}
+          onPress={() => {
+            // Al cerrar, el contenido de abajo sube suave a su lugar.
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            setVisible(false);
+          }}
           hitSlop={12}
           accessibilityRole="button"
           accessibilityLabel="Cerrar aviso"
