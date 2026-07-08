@@ -1,9 +1,11 @@
 import { useState } from "react";
-import { StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { StyleSheet, useWindowDimensions, View } from "react-native";
+import { router } from "expo-router";
 import { useQuery } from "convex/react";
 import { DetailScreen } from "@/components/home/DetailScreen";
 import { Body, H2, Note } from "@/components/orbita/kit";
 import { NatalWheel } from "@/components/orbita/NatalWheel";
+import { EmptyState, ErrorState, LoadingState } from "@/components/orbita/states";
 import { mapNatalChart } from "@/components/web/orbita-chart";
 import { chartMock } from "@/content/chartMock";
 import { useLiveApp } from "@/hooks/useLiveApp";
@@ -23,7 +25,36 @@ export default function RuedaScreen() {
 
 function RuedaLive() {
   const chartDoc = useQuery(appApi.charts.current, {});
-  return <RuedaView payload={chartDoc ? mapNatalChart(chartDoc) : chartMock} />;
+  if (chartDoc === undefined) {
+    return (
+      <DetailScreen eyebrow="Carta · Rueda completa">
+        <LoadingState />
+      </DetailScreen>
+    );
+  }
+  if (chartDoc === null) {
+    return (
+      <DetailScreen eyebrow="Carta · Rueda completa">
+        <EmptyState
+          title="Todavía no hay carta"
+          body="Completá tu fecha, hora y lugar de nacimiento para calcular tu carta natal."
+          cta="COMPLETAR MIS DATOS"
+          onCta={() => router.push("/(tabs)/perfil")}
+        />
+      </DetailScreen>
+    );
+  }
+  let payload: NatalChartPayload;
+  try {
+    payload = mapNatalChart(chartDoc);
+  } catch {
+    return (
+      <DetailScreen eyebrow="Carta · Rueda completa">
+        <ErrorState />
+      </DetailScreen>
+    );
+  }
+  return <RuedaView payload={payload} />;
 }
 
 function RuedaView({ payload }: { payload: NatalChartPayload }) {

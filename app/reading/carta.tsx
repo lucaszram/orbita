@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { router } from "expo-router";
 import { useQuery } from "convex/react";
 import { DetailScreen } from "@/components/home/DetailScreen";
 import { Divider, Eyebrow, Note, TabStrip } from "@/components/orbita/kit";
 import { GlyphRow } from "@/components/orbita/GlyphRow";
+import { EmptyState, ErrorState, LoadingState } from "@/components/orbita/states";
 import { mapNatalChart } from "@/components/web/orbita-chart";
 import { chartMock } from "@/content/chartMock";
 import { useLiveApp } from "@/hooks/useLiveApp";
@@ -25,7 +27,36 @@ export default function CartaPosicionesScreen() {
 
 function CartaTablaLive() {
   const chartDoc = useQuery(appApi.charts.current, {});
-  return <CartaTablaView payload={chartDoc ? mapNatalChart(chartDoc) : chartMock} />;
+  if (chartDoc === undefined) {
+    return (
+      <DetailScreen eyebrow="Carta">
+        <LoadingState />
+      </DetailScreen>
+    );
+  }
+  if (chartDoc === null) {
+    return (
+      <DetailScreen eyebrow="Carta">
+        <EmptyState
+          title="Todavía no hay carta"
+          body="Completá tu fecha, hora y lugar de nacimiento para calcular tu carta natal."
+          cta="COMPLETAR MIS DATOS"
+          onCta={() => router.push("/(tabs)/perfil")}
+        />
+      </DetailScreen>
+    );
+  }
+  let payload: NatalChartPayload;
+  try {
+    payload = mapNatalChart(chartDoc);
+  } catch {
+    return (
+      <DetailScreen eyebrow="Carta">
+        <ErrorState />
+      </DetailScreen>
+    );
+  }
+  return <CartaTablaView payload={payload} />;
 }
 
 function deg(n?: number): string {

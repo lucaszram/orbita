@@ -1,7 +1,9 @@
 import { StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { router } from "expo-router";
 import { useQuery } from "convex/react";
 import { DetailScreen } from "@/components/home/DetailScreen";
 import { H2, Note } from "@/components/orbita/kit";
+import { EmptyState, LoadingState } from "@/components/orbita/states";
 import { Radar } from "@/components/web/orbita-values";
 import { valuesMock } from "@/content/valuesMock";
 import { useLiveApp } from "@/hooks/useLiveApp";
@@ -21,7 +23,26 @@ export default function ValoresScreen() {
 
 function ValoresLive() {
   const values = useQuery(appApi.charts.valuesMap, {});
-  return <ValoresView payload={values ?? valuesMock} />;
+  if (values === undefined) {
+    return (
+      <DetailScreen eyebrow="Mapa de valores">
+        <LoadingState />
+      </DetailScreen>
+    );
+  }
+  if (values === null) {
+    return (
+      <DetailScreen eyebrow="Mapa de valores">
+        <EmptyState
+          title="Todavía no hay mapa"
+          body="Completá tu fecha, hora y lugar de nacimiento para calcular tu mapa de valores."
+          cta="COMPLETAR MIS DATOS"
+          onCta={() => router.push("/(tabs)/perfil")}
+        />
+      </DetailScreen>
+    );
+  }
+  return <ValoresView payload={values} />;
 }
 
 const COPPER = orbita.colors.copper;

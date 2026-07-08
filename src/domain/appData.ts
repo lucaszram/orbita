@@ -150,7 +150,7 @@ export function buildPerfil(profile: UserProfile): PerfilData {
   return {
     birthLine: formatBirthLine(profile),
     privacy: "Se usan solo para calcular tu carta. No los compartimos con nadie.",
-    plan: "Órbita Plus · activo.",
+    plan: "Plan gratuito.",
     accountEmail: null
   };
 }
@@ -219,12 +219,14 @@ function mergeLiveAppData(base: AppData, docs: LiveAppDocs, email: string | null
     perfil = { ...perfil, birthLine: parts.join("  ·  ") };
   }
   if (docs.subscription) {
+    // El backend migró el entitlement pago a "orbita_pro"; aceptamos también el
+    // "plus" histórico para no romper suscripciones ya emitidas.
+    const isPaid = docs.subscription.entitlement === "plus" || docs.subscription.entitlement === "orbita_pro";
     perfil = {
       ...perfil,
-      plan:
-        docs.subscription.entitlement === "plus"
-          ? `Órbita Plus · ${docs.subscription.status === "active" ? "activo" : docs.subscription.status ?? "activo"}.`
-          : "Plan gratuito."
+      plan: isPaid
+        ? `Órbita Plus · ${docs.subscription.status === "active" ? "activo" : docs.subscription.status ?? "activo"}.`
+        : "Plan gratuito."
     };
   }
 

@@ -68,7 +68,7 @@ export default function HomeScreen() {
         <Section style={styles.more}>
           <Eyebrow>TAMBIÉN HOY</Eyebrow>
           <InsightRow title="Una pregunta para hoy" body="El Vacío · una pregunta por día" onPress={() => router.push("/reading/void")} />
-          <InsightRow title="Fase lunar y calendario" body="Luna creciente · tu mes en energía" onPress={() => router.push("/reading/luna")} />
+          <InsightRow title="Fase lunar y calendario" body="El calendario lunar · el clima del mes, día a día" onPress={() => router.push("/reading/luna")} />
           <InsightRow
             title="Tu carta, leída como carácter"
             body="Horóscopo de personalidad · identidad, amor, crecimiento"
