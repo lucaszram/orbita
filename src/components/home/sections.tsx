@@ -86,11 +86,11 @@ export function SignalTop({
       {/* Hero full-bleed (Figma V4.7 "Home / Top"): el orbital es el FONDO detrás de
           todo el hero; tríada + frase del día van ENCIMA, sobre el degradé a negro. */}
       <View style={styles.hero}>
-        <Image source={HERO_HOME} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+        <Image source={HERO_HOME} style={styles.heroImg} resizeMode="cover" />
         <LinearGradient
-          colors={["rgba(10,11,14,0)", "rgba(10,11,14,0.15)", "rgba(10,11,14,0.82)", orbita.colors.background]}
-          locations={[0, 0.34, 0.74, 1]}
-          style={StyleSheet.absoluteFill}
+          colors={["rgba(10,11,14,0)", "rgba(10,11,14,0)", "rgba(10,11,14,0.55)", orbita.colors.background]}
+          locations={[0, 0.42, 0.8, 1]}
+          style={styles.heroFade}
         />
         <View style={styles.heroContent}>
           <Text style={[styles.triad, styles.triadCentered]}>
@@ -319,7 +319,11 @@ const styles = StyleSheet.create({
     marginTop: -orbita.spacing.xl,
     overflow: "hidden"
   },
-  heroContent: { paddingBottom: orbita.spacing.lg, paddingHorizontal: G, paddingTop: 172 },
+  // La imagen (luna) es una franja prominente arriba; el degradé la funde a negro y el
+  // texto va sobre la parte baja / debajo (como el Figma "Home / Top").
+  heroImg: { height: 480, left: 0, position: "absolute", right: 0, top: 0 },
+  heroFade: { height: 480, left: 0, position: "absolute", right: 0, top: 0 },
+  heroContent: { paddingBottom: orbita.spacing.lg, paddingHorizontal: G, paddingTop: 300 },
   heroTextGap: { height: orbita.spacing.xl },
 
   headline: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 40, lineHeight: 45 },
