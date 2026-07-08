@@ -37,7 +37,7 @@ export function CartaCard() {
       >
         <Text style={styles.eyebrow}>TU CARTA NATAL</Text>
         <View style={styles.wheelWrap} pointerEvents="none">
-          <NatalWheel payload={payload} size={148} />
+          <NatalWheel payload={payload} size={232} />
         </View>
         <Text style={styles.triad}>{`☉ ${t.sun.sign}    ☽ ${t.moon.sign}    ↑ ${t.ascendant.sign}`}</Text>
         <View style={styles.cta}>
