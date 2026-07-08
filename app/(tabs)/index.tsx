@@ -3,7 +3,7 @@ import { Alert, LayoutAnimation, ScrollView, StyleSheet, View } from "react-nati
 import { StatusBar } from "expo-status-bar";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { CartaCard } from "@/components/home/CartaCard";
+import { CartaBanner } from "@/components/home/CartaBanner";
 import {
   DailyGuide,
   HomeHeader,
@@ -19,7 +19,8 @@ import { useAppState } from "@/hooks/useAppState";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
 import { useRequireProfile } from "@/hooks/useRequireProfile";
-import { HomeTopic, Topic, Triad } from "@/domain/types";
+import { HomeTopic, Topic, Triad, ZodiacSign } from "@/domain/types";
+import { signHomeBank } from "@/content/signHomeBank";
 import { appApi, proposedApi, type DailyGuidePayload, type NatalChartPayload } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
 
@@ -79,6 +80,16 @@ export default function HomeScreen() {
   }
   const heroTriad = triadFromChart(chartPayload);
 
+  // Invitado: el texto del día sale del MISMO signo que la tríada (el chart), no del
+  // profile — así "PARA LEO" no choca con una frase de otro signo. Logueado usa el LLM.
+  const guestDaily = !isLive
+    ? (() => {
+        const key = chartPayload.triad.sun.sign.toLowerCase().normalize("NFD").replace(new RegExp("[\\u0300-\\u036f]", "g"), "");
+        const v = signHomeBank[key as ZodiacSign]?.[0];
+        return v ? { headline: v.headline, body: v.body, clima: v.clima } : null;
+      })()
+    : null;
+
   if (!isReady || !profile || !fontsLoaded) {
     return <View style={styles.screen} />;
   }
@@ -106,13 +117,13 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
       >
         <HomeHeader />
-        {/* Home post-onboarding: la primera impresión es tu carta natal (el mismo
-            recuadro que después vive en el Perfil). En la Home normal no aparece. */}
-        {justOnboarded ? <CartaCard variant="hero" /> : null}
+        {/* Home post-onboarding: banner dismissable que invita a ver la carta recién
+            calculada. La Home queda igual a la normal (hero de luna). */}
+        {justOnboarded ? <CartaBanner /> : null}
         <SignalTop
           reading={homeReading}
           triad={heroTriad}
-          daily={daily ?? undefined}
+          daily={daily ?? guestDaily ?? undefined}
           onProfundizar={() => router.push("/reading/deep-dive")}
         />
         <DailyGuide reading={homeReading} />
