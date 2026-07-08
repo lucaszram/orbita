@@ -12,7 +12,6 @@ import { AccountScreen } from "./screens/AccountScreen";
 import { AlignScreen } from "./screens/AlignScreen";
 import { BaseChartScreen } from "./screens/BaseChartScreen";
 import { BeforeAfterScreen } from "./screens/BeforeAfterScreen";
-import { ChartPreviewScreen } from "./screens/ChartPreviewScreen";
 import { type BirthDateParts, BirthdateScreen, MONTHS } from "./screens/BirthdateScreen";
 import { BirthdateSelectedScreen } from "./screens/BirthdateSelectedScreen";
 import { BirthplaceSearchScreen, type PlaceOption } from "./screens/BirthplaceSearchScreen";
@@ -69,7 +68,6 @@ export function OnboardingFlow() {
   const [email, setEmail] = useState("");
   const [accountCode, setAccountCode] = useState("");
   const [plan, setPlan] = useState<PlanId>("annual");
-  const [previewSeen, setPreviewSeen] = useState(false);
   const account = useAccountFlow();
   const persistBackend = useBackendPersist();
   const chartPreview = useOnboardingChart();
@@ -298,24 +296,22 @@ export function OnboardingFlow() {
       break;
     case 14:
     default:
-      // Paso 14 = preview de la carta (real, cortada) → paywall. Mismo índice de
-      // progreso; el CTA del preview revela el paywall (no suma un paso numerado).
-      screen = previewSeen ? (
-        <PaywallScreen plan={plan} onPlan={setPlan} onUnlock={submit} onBack={() => setPreviewSeen(false)} />
-      ) : (
-        <ChartPreviewScreen
-          step={14}
-          total={TOTAL}
-          sunFallback={signLabel}
+      // Paso 14 = paywall único. La tríada real va arriba como gancho (antes era
+      // una pantalla de preview aparte, que hacía parecer que pagabas dos veces).
+      screen = (
+        <PaywallScreen
+          plan={plan}
+          onPlan={setPlan}
+          onUnlock={submit}
+          onBack={back}
           chart={computed ?? chartPreview}
+          sunFallback={signLabel}
           timeKnown={!timeUnknown}
           onRetry={() => {
             computedSig.current = null;
             setComputed(undefined);
             setRetryTick((t) => t + 1);
           }}
-          onNext={() => setPreviewSeen(true)}
-          onBack={back}
         />
       );
       break;

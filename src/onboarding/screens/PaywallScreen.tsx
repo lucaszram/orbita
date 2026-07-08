@@ -5,10 +5,13 @@ import { Text } from "@/components/ui/text";
 import { A } from "../assets";
 import { CTA } from "../components/CTA";
 import { Screen } from "../components/Screen";
-import { Body, Eyebrow } from "../components/Type";
+import { Body, Eyebrow, Label } from "../components/Type";
+import type { OnboardingChart } from "../useAccount";
 import { font, GUTTER, orbita } from "../theme";
 
 export type PlanId = "weekly" | "annual";
+
+const TRIAD_GLYPH: Record<string, string> = { Sol: "☉", Luna: "☽", Ascendente: "↑" };
 
 const BENEFITS = [
   "Carta natal completa",
@@ -29,10 +32,30 @@ type Props = {
   onPlan: (p: PlanId) => void;
   onUnlock: () => void;
   onBack: () => void;
+  /** Carta real leída de Convex; `null` si no hay backend (invitado). */
+  chart: OnboardingChart | null;
+  /** Signo solar calculado en el cliente (fallback si no hay carta real). */
+  sunFallback: string;
+  /** Si el usuario cargó la hora (para distinguir "sin hora" de "falló la API"). */
+  timeKnown: boolean;
+  /** Fuerza el recálculo de la tríada. */
+  onRetry?: () => void;
 };
 
-/** 15 — Onboarding paywall (Órbita PLUS). */
-export function PaywallScreen({ plan, onPlan, onUnlock, onBack }: Props) {
+/**
+ * 14 — Paywall único de Órbita PLUS. La tríada real (Sol/Luna/Ascendente) va
+ * arriba como gancho: es el momento en que ves tu carta y el Semanal la
+ * desbloquea. No hay pantalla de preview aparte (feedback Lucas).
+ */
+export function PaywallScreen({ plan, onPlan, onUnlock, onBack, chart, sunFallback, timeKnown, onRetry }: Props) {
+  const backendActive = chart !== null;
+  const loading = backendActive && !chart!.resolved;
+  const sun = chart?.sun ?? sunFallback;
+  const moon = chart?.moon ?? null;
+  const ascendant = chart?.ascendant ?? null;
+  // Carta resuelta, con hora + lugar, pero sin Luna/Asc → la API falló (no es "sin hora").
+  const failed = backendActive && !loading && timeKnown && !moon && !ascendant;
+
   return (
     <Screen bg={A.paymentBg} bgOpacity={0.9} wash={0.6}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
@@ -50,6 +73,20 @@ export function PaywallScreen({ plan, onPlan, onUnlock, onBack }: Props) {
           </View>
         </View>
 
+        <Eyebrow style={styles.triadEyebrow}>Tu carta base</Eyebrow>
+        <View style={styles.triad}>
+          <TriadCol label="Sol" value={sun} loading={loading} />
+          <View style={styles.triadDivider} />
+          <TriadCol label="Luna" value={moon} loading={loading} pending="con tu hora" />
+          <View style={styles.triadDivider} />
+          <TriadCol label="Ascendente" value={ascendant} loading={loading} pending="con tu lugar" />
+        </View>
+        {failed && onRetry ? (
+          <Pressable onPress={onRetry} style={styles.retryRow} accessibilityRole="button">
+            <Text style={styles.retryTxt}>No pudimos calcular tu Luna y ascendente · Reintentar</Text>
+          </Pressable>
+        ) : null}
+
         <Text style={styles.hero}>Tu cielo,{"\n"}todos los días.</Text>
         <Body style={styles.sub}>Tu carta completa, tus tránsitos y tu guía diaria.</Body>
 
@@ -58,7 +95,7 @@ export function PaywallScreen({ plan, onPlan, onUnlock, onBack }: Props) {
             selected={plan === "weekly"}
             onPress={() => onPlan("weekly")}
             label="Semanal"
-            caption="Flexible para probar"
+            caption="Desbloquea tu carta natal completa"
             price="$5"
             subprice="por semana"
           />
@@ -110,6 +147,26 @@ export function PaywallScreen({ plan, onPlan, onUnlock, onBack }: Props) {
         <CTA label="Desbloquear Órbita" onPress={onUnlock} />
       </View>
     </Screen>
+  );
+}
+
+function TriadCol({
+  label,
+  value,
+  loading,
+  pending,
+}: {
+  label: string;
+  value: string | null;
+  loading: boolean;
+  pending?: string;
+}) {
+  return (
+    <View style={styles.triadCol}>
+      <Text style={styles.triadGlyph}>{TRIAD_GLYPH[label] ?? "·"}</Text>
+      <Label style={styles.triadLabel}>{label}</Label>
+      <Text style={styles.triadValue}>{loading ? "…" : (value ?? pending ?? "—")}</Text>
+    </View>
   );
 }
 
@@ -273,4 +330,28 @@ const styles = StyleSheet.create({
   sub: { marginTop: 12 },
   subprice: { color: orbita.muted, fontFamily: font.sansMed, fontSize: 11, marginTop: 3 },
   tick: { color: orbita.copper, fontFamily: font.sansBold, fontSize: 13 },
+  triadEyebrow: { marginTop: 22 },
+  triad: {
+    backgroundColor: "rgba(14,16,20,0.55)",
+    borderColor: orbita.line,
+    borderRadius: 16,
+    borderWidth: 1,
+    flexDirection: "row",
+    marginTop: 12,
+    paddingVertical: 18,
+  },
+  triadCol: { alignItems: "center", flex: 1, paddingHorizontal: 4 },
+  triadDivider: { backgroundColor: orbita.line, width: 1 },
+  triadGlyph: { color: orbita.copperSoft, fontFamily: font.serif, fontSize: 20, marginBottom: 6 },
+  triadLabel: { textAlign: "center" },
+  triadValue: {
+    color: orbita.bone,
+    fontFamily: font.serif,
+    fontSize: 17,
+    lineHeight: 22,
+    marginTop: 6,
+    textAlign: "center",
+  },
+  retryRow: { marginTop: 12 },
+  retryTxt: { color: orbita.copperSoft, fontFamily: font.sansMed, fontSize: 12, textAlign: "center" },
 });
