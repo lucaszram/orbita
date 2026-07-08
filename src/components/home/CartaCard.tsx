@@ -9,13 +9,15 @@ import { appApi, type NatalChartPayload } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
 
 /**
- * Card de la carta natal (vive en el Perfil): mini-rueda real + tríada + CTA al
- * hub de la Carta (`/(tabs)/carta`), que a su vez lleva a la rueda inmersiva.
+ * Carta natal en la Home/Perfil: mini-rueda real + tríada + CTA al hub de la Carta
+ * (`/(tabs)/carta`). `variant="card"` (default) = recuadro con borde (Perfil).
+ * `variant="hero"` = full-bleed sin borde, primera impresión post-onboarding.
  * Data real con sesión, mock para invitados.
  */
-export function CartaCard() {
+export function CartaCard({ variant = "card" }: { variant?: "card" | "hero" }) {
   const { isLive } = useLiveApp();
   const doc = useQuery(appApi.charts.current, isLive ? {} : "skip");
+  const hero = variant === "hero";
 
   let payload: NatalChartPayload = chartMock;
   if (isLive && doc) {
@@ -28,10 +30,10 @@ export function CartaCard() {
   const t = payload.triad;
 
   return (
-    <View style={styles.section}>
+    <View style={hero ? styles.heroSection : styles.section}>
       <Pressable
         onPress={() => router.push("/(tabs)/carta")}
-        style={({ pressed }) => [styles.card, pressed && styles.pressed]}
+        style={({ pressed }) => [hero ? styles.hero : styles.card, pressed && styles.pressed]}
         accessibilityRole="button"
         accessibilityLabel="Ver mi carta natal"
       >
@@ -59,6 +61,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: orbita.spacing.lg,
     paddingVertical: orbita.spacing.xl
   },
+  // Variante héroe (post-onboarding): full-bleed, sin borde ni recuadro.
+  heroSection: { paddingHorizontal: orbita.spacing.gutter, paddingTop: orbita.spacing.lg },
+  hero: { alignItems: "center", paddingVertical: orbita.spacing.lg },
   pressed: { opacity: 0.7 },
   eyebrow: { color: orbita.colors.copper, fontFamily: orbita.fonts.monoMedium, fontSize: 12, letterSpacing: 2.5 },
   wheelWrap: { alignItems: "center", marginVertical: orbita.spacing.lg },

@@ -108,7 +108,7 @@ export default function HomeScreen() {
         <HomeHeader />
         {/* Home post-onboarding: la primera impresión es tu carta natal (el mismo
             recuadro que después vive en el Perfil). En la Home normal no aparece. */}
-        {justOnboarded ? <CartaCard /> : null}
+        {justOnboarded ? <CartaCard variant="hero" /> : null}
         <SignalTop
           reading={homeReading}
           triad={heroTriad}
