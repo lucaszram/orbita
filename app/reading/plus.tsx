@@ -38,9 +38,10 @@ export default function PlusScreen() {
         </View>
       ))}
       <View style={{ height: orbita.spacing.md }} />
-      <Note>Cancelás cuando quieras · entretenimiento y autoconocimiento.</Note>
+      <Note>En esta prueba ya tenés todo Órbita desbloqueado, sin cargo · entretenimiento y autoconocimiento.</Note>
       <View style={{ height: orbita.spacing.lg }} />
-      <Pill label="EMPEZAR PLUS" onPress={() => router.back()} />
+      {/* Testeo interno: el CTA no cobra ni simula compra, solo cierra la pantalla (feedback Lucas). */}
+      <Pill label="SEGUIR PROBANDO" onPress={() => router.back()} />
     </DetailScreen>
   );
 }

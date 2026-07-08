@@ -63,6 +63,7 @@ export function PaywallScreen({ plan, onPlan, onUnlock, onBack, chart, sunFallba
           <Pressable onPress={onBack} hitSlop={12} accessibilityRole="button" accessibilityLabel="Volver">
             <Text style={styles.chev}>‹</Text>
           </Pressable>
+          {/* Testeo interno: no hay compras que restaurar, es texto inerte (no-op). */}
           <Text style={styles.restore}>Restaurar</Text>
         </View>
 
@@ -90,6 +91,7 @@ export function PaywallScreen({ plan, onPlan, onUnlock, onBack, chart, sunFallba
         <Text style={styles.hero}>Tu cielo,{"\n"}todos los días.</Text>
         <Body style={styles.sub}>Tu carta completa, tus tránsitos y tu guía diaria.</Body>
 
+        {/* Selección de plan cosmética: tocar cualquiera no bloquea; el CTA siempre pasa (feedback Lucas). */}
         <View style={styles.planCard}>
           <PlanRow
             selected={plan === "weekly"}
