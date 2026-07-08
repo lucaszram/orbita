@@ -390,6 +390,15 @@ export default defineSchema({
     localDate: v.string(),
     payload: v.any(),
     createdAt: v.number()
+  }).index("by_user_date", ["userId", "localDate"]),
+
+  // Guía diaria personalizada (LLM sobre aspectos tránsito→carta natal). Cache 1 por
+  // usuario por día. `payload` = DailyGuidePayload (contrato en src/services/appRefs.ts).
+  dailyGuides: defineTable({
+    userId: v.id("users"),
+    localDate: v.string(),
+    payload: v.any(),
+    createdAt: v.number()
   }).index("by_user_date", ["userId", "localDate"])
 });
 

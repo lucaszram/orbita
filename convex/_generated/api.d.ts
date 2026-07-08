@@ -12,6 +12,7 @@ import type * as backoffice from "../backoffice.js";
 import type * as birthData from "../birthData.js";
 import type * as charts from "../charts.js";
 import type * as contentModules from "../contentModules.js";
+import type * as daily from "../daily.js";
 import type * as devices from "../devices.js";
 import type * as home from "../home.js";
 import type * as http from "../http.js";
@@ -54,6 +55,7 @@ declare const fullApi: ApiFromModules<{
   birthData: typeof birthData;
   charts: typeof charts;
   contentModules: typeof contentModules;
+  daily: typeof daily;
   devices: typeof devices;
   home: typeof home;
   http: typeof http;

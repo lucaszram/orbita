@@ -205,6 +205,17 @@ export type VoidAnswerPayload = {
   locked?: boolean;
 };
 
+/** Guía diaria personalizada (análisis del cielo de hoy sobre la carta natal). */
+export type DailyGuidePayload = {
+  headline: string;
+  body: string;
+  clima: string;
+  destacado: { aspecto: string; lectura: string };
+  secundarios: Array<{ aspecto: string; lectura: string }>;
+  basadoEn: string[];
+  disclaimer: string;
+};
+
 /** Cupo del día de El Vacío (contador). */
 export type VoidTodayPayload = { limit: number; used: number; remaining: number; isPro: boolean };
 
@@ -359,6 +370,8 @@ export const proposedApi = {
   voidToday: anyApi.void.today as FunctionReference<"query", "public", Empty, VoidTodayPayload | null>,
   // void.suggestedQuestions(): preguntas sugeridas personalizadas por categoría.
   voidSuggested: anyApi.void.suggestedQuestions as FunctionReference<"action", "public", Empty, VoidSuggestedPayload>,
+  // daily.getGuide(): guía diaria personalizada (action: genera+cachea 1/día/usuario).
+  dailyGuide: anyApi.daily.getGuide as FunctionReference<"action", "public", { localDate?: string; timezone?: string }, DailyGuidePayload>,
   // Dev/testeo interno: marca al usuario como Pro (gateado por ALLOW_DEV_STUB en Convex).
   setStubPro: anyApi.subscriptions.setStubPlusForDev as FunctionReference<"mutation", "public", Empty, unknown>,
   // Telemetría: aviso de instalación al bot de Telegram (1 vez por install, sin sesión).

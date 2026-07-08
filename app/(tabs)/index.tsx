@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Alert, LayoutAnimation, ScrollView, StyleSheet, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { router, useLocalSearchParams } from "expo-router";
@@ -11,7 +11,7 @@ import {
   SignalTop,
   TopicsSection
 } from "@/components/home/sections";
-import { useQuery } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import { Eyebrow, InsightRow, Section } from "@/components/orbita/kit";
 import { mapNatalChart } from "@/components/web/orbita-chart";
 import { chartMock } from "@/content/chartMock";
@@ -20,7 +20,7 @@ import { useLiveApp } from "@/hooks/useLiveApp";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
 import { useRequireProfile } from "@/hooks/useRequireProfile";
 import { HomeTopic, Topic, Triad } from "@/domain/types";
-import { appApi, type NatalChartPayload } from "@/services/appRefs";
+import { appApi, proposedApi, type DailyGuidePayload, type NatalChartPayload } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
 
 const TRIAD_GLYPH = { sol: "☉", luna: "☽", ascendente: "↑" } as const;
@@ -55,6 +55,17 @@ export default function HomeScreen() {
   const fontsLoaded = useOrbitaFonts();
   const insets = useSafeAreaInsets();
   const [activeTopic, setActiveTopic] = useState<Topic>("amor");
+
+  // Guía diaria real (análisis del cielo de hoy sobre la carta), con sesión. Sin
+  // sesión, la Home usa el engine local (fallback). Reemplaza "Estructura con ventana".
+  const dailyGuide = useAction(proposedApi.dailyGuide);
+  const [daily, setDaily] = useState<DailyGuidePayload | null>(null);
+  const firedDaily = useRef(false);
+  useEffect(() => {
+    if (!isLive || firedDaily.current) return;
+    firedDaily.current = true;
+    dailyGuide({}).then(setDaily).catch(() => {});
+  }, [isLive, dailyGuide]);
 
   // La tríada del hero sale del chart (mismo lugar que la Carta): mock para
   // invitado, chart real con sesión. Así Home y Carta nunca se contradicen.
@@ -98,7 +109,12 @@ export default function HomeScreen() {
         {/* Home post-onboarding: la primera impresión es tu carta natal (el mismo
             recuadro que después vive en el Perfil). En la Home normal no aparece. */}
         {justOnboarded ? <CartaCard /> : null}
-        <SignalTop reading={homeReading} triad={heroTriad} onProfundizar={() => router.push("/reading/deep-dive")} />
+        <SignalTop
+          reading={homeReading}
+          triad={heroTriad}
+          daily={daily ?? undefined}
+          onProfundizar={() => router.push("/reading/deep-dive")}
+        />
         <DailyGuide reading={homeReading} />
         <TopicsSection
           reading={homeReading}

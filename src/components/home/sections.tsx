@@ -66,13 +66,21 @@ export function PillButton({ label, onPress }: { label: string; onPress?: () => 
 export function SignalTop({
   reading,
   onProfundizar,
-  triad: triadOverride
+  triad: triadOverride,
+  daily
 }: {
   reading: HomeReading;
   onProfundizar: () => void;
   triad?: HomeReading["triad"];
+  /** Guía diaria real (análisis del cielo de hoy sobre la carta). Si viene, pisa el
+   *  headline/body/clima del engine local (el "Estructura con ventana"). */
+  daily?: { headline: string; body: string; clima: string };
 }) {
   const triad = triadOverride ?? reading.triad;
+  const headline = daily?.headline ?? reading.headline;
+  const body = daily?.body ?? reading.body;
+  const climaLabel = daily ? "CLIMA DEL DÍA" : reading.signalLabel;
+  const climaCopy = daily?.clima ?? reading.signalCopy;
   return (
     <View style={styles.section}>
       <View style={styles.heroBleed}>
@@ -91,12 +99,12 @@ export function SignalTop({
       </View>
 
       <Eyebrow>{`HOY · PARA ${triad.sun.label.toUpperCase()}`}</Eyebrow>
-      <Text style={styles.headline}>{reading.headline}</Text>
-      <Text style={styles.body}>{reading.body}</Text>
+      <Text style={styles.headline}>{headline}</Text>
+      <Text style={styles.body}>{body}</Text>
 
       <View style={styles.divider} />
-      <Eyebrow>{reading.signalLabel}</Eyebrow>
-      <Text style={styles.signalCopy}>{reading.signalCopy}</Text>
+      <Eyebrow>{climaLabel}</Eyebrow>
+      <Text style={styles.signalCopy}>{climaCopy}</Text>
       <View style={{ height: orbita.spacing.xl }} />
       <PillButton label="VER POR QUÉ" onPress={onProfundizar} />
     </View>
