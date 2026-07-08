@@ -360,5 +360,7 @@ export const proposedApi = {
   // void.suggestedQuestions(): preguntas sugeridas personalizadas por categoría.
   voidSuggested: anyApi.void.suggestedQuestions as FunctionReference<"action", "public", Empty, VoidSuggestedPayload>,
   // Dev/testeo interno: marca al usuario como Pro (gateado por ALLOW_DEV_STUB en Convex).
-  setStubPro: anyApi.subscriptions.setStubPlusForDev as FunctionReference<"mutation", "public", Empty, unknown>
+  setStubPro: anyApi.subscriptions.setStubPlusForDev as FunctionReference<"mutation", "public", Empty, unknown>,
+  // Telemetría: aviso de instalación al bot de Telegram (1 vez por install, sin sesión).
+  appOpened: anyApi.telemetry.appOpened as FunctionReference<"mutation", "public", { platform?: string }, null>
 } as const;

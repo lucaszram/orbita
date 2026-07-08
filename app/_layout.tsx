@@ -3,12 +3,14 @@ import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import "../global.css";
 import { AppStateProvider } from "@/hooks/useAppState";
-import { BackendProviders } from "@/services/backendProviders";
+import { BackendProviders, backendConfig } from "@/services/backendProviders";
+import { InstallPing } from "@/components/InstallPing";
 
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <BackendProviders>
+        {backendConfig.hasConvex ? <InstallPing /> : null}
         <AppStateProvider>
           <StatusBar style="dark" />
           <Stack screenOptions={{ headerShown: false }}>
