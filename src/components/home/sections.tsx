@@ -334,7 +334,7 @@ const styles = StyleSheet.create({
   // header). NO se mueve para subir el texto — solo se ajusta paddingTop.
   heroImg: { height: 520, left: -64, position: "absolute", top: -66, width: 520 },
   heroFade: { height: 430, left: 0, position: "absolute", right: 0, top: 0 },
-  heroContent: { paddingBottom: orbita.spacing.lg, paddingHorizontal: G, paddingTop: 232 },
+  heroContent: { paddingBottom: orbita.spacing.lg, paddingHorizontal: G, paddingTop: 220 },
   heroTextGap: { height: orbita.spacing.xl },
 
   headline: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 40, lineHeight: 45 },
