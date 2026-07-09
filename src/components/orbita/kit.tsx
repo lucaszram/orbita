@@ -1,10 +1,13 @@
 import { ReactNode } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
 import { orbita } from "@/theme/orbita";
 import type { Triad as TriadData } from "@/domain/types";
+
+/** Textura cósmica de fondo (inmersivo) para las pantallas OrbitaScreen. */
+const SCREEN_BACKDROP = require("../../../assets/orbita/optimized/core/orbita_daily_texture_a.jpg");
 
 const G = orbita.spacing.gutter;
 
@@ -15,6 +18,8 @@ export function OrbitaScreen({ children, right = "Hoy  ˅" }: { children: ReactN
   if (!fontsLoaded) return <View style={styles.screen} />;
   return (
     <View style={styles.screen}>
+      <Image source={SCREEN_BACKDROP} style={styles.backdrop} resizeMode="cover" />
+      <View style={styles.backdropScrim} pointerEvents="none" />
       <StatusBar style="light" />
       <View style={{ paddingTop: insets.top }}>
         <TopBar right={right} />
@@ -170,6 +175,8 @@ export function TabStrip<T extends string>({
 
 export const styles = StyleSheet.create({
   screen: { backgroundColor: orbita.colors.background, flex: 1 },
+  backdrop: { ...StyleSheet.absoluteFillObject, opacity: 0.5 },
+  backdropScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(7,8,10,0.5)" },
   topbar: {
     alignItems: "center",
     flexDirection: "row",

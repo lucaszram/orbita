@@ -166,8 +166,8 @@ function VoidView({ ask, today, categories, onUnlock, showBack }: VoidViewProps)
       <StatusBar style="light" />
       <Image source={TEXTURE} style={styles.bg} resizeMode="cover" />
       <LinearGradient
-        colors={["rgba(10,11,14,0.75)", "rgba(10,11,14,0.9)", orbita.colors.background]}
-        locations={[0, 0.5, 0.85]}
+        colors={["rgba(10,11,14,0.3)", "rgba(10,11,14,0.55)", "rgba(10,11,14,0.82)"]}
+        locations={[0, 0.5, 1]}
         style={StyleSheet.absoluteFill}
       />
 
