@@ -1,3 +1,5 @@
+import * as AuthSession from "expo-auth-session";
+import * as WebBrowser from "expo-web-browser";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 
@@ -6,6 +8,11 @@ import { useOrbitaAuth } from "@/hooks/useOrbitaAuth";
 import { appApi } from "@/services/appRefs";
 import { backendConfig } from "@/services/backendProviders";
 import { publicLabApi } from "@/services/publicLabRefs";
+
+// Necesario para que el browser de OAuth devuelva el control a la app.
+WebBrowser.maybeCompleteAuthSession();
+
+export type OAuthProvider = "google" | "apple";
 
 /**
  * Cuenta Clerk (email + código) y persistencia Convex para el onboarding
@@ -19,8 +26,10 @@ export type AccountFlow = {
   busy: boolean;
   error: string | null;
   isSignedIn: boolean;
+  oauthBusy: OAuthProvider | null;
   start: (email: string) => Promise<void>;
   verify: (code: string) => Promise<boolean>;
+  oauth: (provider: OAuthProvider) => Promise<boolean>;
   resetToEmail: () => void;
 };
 
@@ -37,15 +46,17 @@ export function useAccountFlow(): AccountFlow | null {
 }
 
 function useAccountFlowInner(): AccountFlow {
-  const { useAuth } = require("@clerk/expo") as typeof import("@clerk/expo");
+  const { useAuth, useSSO } = require("@clerk/expo") as typeof import("@clerk/expo");
   // La API clásica (create/prepare/attempt) vive en el subpath legacy en @clerk/expo v3.
   const { useSignIn, useSignUp } = require("@clerk/expo/legacy") as typeof import("@clerk/expo/legacy");
   const { signUp, setActive: setActiveSignUp } = useSignUp();
   const { signIn, setActive: setActiveSignIn } = useSignIn();
   const { isSignedIn } = useAuth();
+  const { startSSOFlow } = useSSO();
   const [phase, setPhase] = useState<"email" | "code">("email");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [oauthBusy, setOauthBusy] = useState<OAuthProvider | null>(null);
   const flowRef = useRef<"signUp" | "signIn">("signUp");
 
   const start = useCallback(
@@ -114,13 +125,41 @@ function useAccountFlowInner(): AccountFlow {
     [setActiveSignIn, setActiveSignUp, signIn, signUp]
   );
 
+  const oauth = useCallback(
+    async (provider: OAuthProvider): Promise<boolean> => {
+      setError(null);
+      setOauthBusy(provider);
+      try {
+        const strategy = provider === "google" ? "oauth_google" : "oauth_apple";
+        const { createdSessionId, setActive } = await startSSOFlow({
+          strategy,
+          redirectUrl: AuthSession.makeRedirectUri()
+        });
+        if (createdSessionId && setActive) {
+          await setActive({ session: createdSessionId });
+          return true;
+        }
+        // El usuario canceló el navegador o falta un paso (MFA): no es un error duro.
+        return false;
+      } catch (e) {
+        setError(clerkErrorMessage(e));
+        return false;
+      } finally {
+        setOauthBusy(null);
+      }
+    },
+    [startSSOFlow]
+  );
+
   return {
     phase,
     busy,
     error,
     isSignedIn: !!isSignedIn,
+    oauthBusy,
     start,
     verify,
+    oauth,
     resetToEmail: () => {
       setError(null);
       setPhase("email");
@@ -272,10 +311,9 @@ function useBackendPersistInner(): PersistBirthData {
   const auth = useOrbitaAuth();
   const ensureUser = useMutation(appApi.users.getOrCreateCurrentUser);
   const completeBirthData = useMutation(appApi.onboarding.completeBirthData);
-  // convex/charts.ts la define como mutation (appRefs la tipa action para la web).
-  const calculateChart = useMutation(
-    appApi.charts.calculateOrCreateNatalChart as unknown as Parameters<typeof useMutation>[0]
-  );
+  // Backend la define como Action (igual que en la web); antes acá estaba mal
+  // como useMutation → "Trying to execute ... as Mutation, but defined as Action".
+  const calculateChart = useAction(appApi.charts.calculateOrCreateNatalChart);
   const generateToday = useMutation(appApi.readings.generateToday);
   const isSignedIn = auth.isSignedIn;
 

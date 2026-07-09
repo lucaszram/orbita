@@ -160,6 +160,15 @@ export function OnboardingFlow() {
     if (ok) next();
   };
 
+  const accountOAuth = async (provider: "google" | "apple") => {
+    if (!account) {
+      next();
+      return;
+    }
+    const ok = await account.oauth(provider);
+    if (ok) next();
+  };
+
   const submit = async () => {
     const birthTimeValue = timeUnknown ? undefined : timeLabel;
     await createProfile({
@@ -291,6 +300,7 @@ export function OnboardingFlow() {
           onCode={setAccountCode}
           account={account}
           onNext={accountNext}
+          onOAuth={accountOAuth}
           onSkip={next}
           onBack={back}
         />
