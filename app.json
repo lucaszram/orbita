@@ -15,7 +15,9 @@
       "bundleIdentifier": "com.lucasssram.orbita",
       "buildNumber": "5",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "CFBundleName": "Órbita",
+        "CFBundleDisplayName": "Órbita"
       }
     },
     "android": {
