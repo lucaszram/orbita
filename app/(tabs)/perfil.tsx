@@ -11,6 +11,16 @@ import { orbita } from "@/theme/orbita";
 export default function PerfilScreen() {
   const { perfil } = useAppData();
   const { auth } = useLiveApp();
+
+  async function handleLogout() {
+    try {
+      await auth?.signOut();
+    } catch {
+      // Aún si Clerk falla, salimos a un estado limpio.
+    }
+    router.replace("/onboarding");
+  }
+
   return (
     <OrbitaScreen>
       <FullBleedHero kind="perfil">
@@ -27,8 +37,8 @@ export default function PerfilScreen() {
         {perfil.accountEmail ? (
           <View>
             <Body bone>{perfil.accountEmail}</Body>
-            <Pressable onPress={() => auth?.signOut()} accessibilityRole="button" hitSlop={8}>
-              <Text style={styles.link}>CERRAR SESIÓN</Text>
+            <Pressable onPress={handleLogout} accessibilityRole="button" style={styles.logoutBtn} hitSlop={8}>
+              <Text style={styles.logoutText}>Cerrar sesión</Text>
             </Pressable>
           </View>
         ) : (
@@ -52,11 +62,19 @@ export default function PerfilScreen() {
 }
 
 const styles = StyleSheet.create({
-  link: {
-    color: orbita.colors.muted,
+  logoutBtn: {
+    alignSelf: "flex-start",
+    borderColor: orbita.colors.line,
+    borderRadius: 999,
+    borderWidth: 1,
+    marginTop: orbita.spacing.md,
+    paddingHorizontal: orbita.spacing.lg,
+    paddingVertical: orbita.spacing.sm
+  },
+  logoutText: {
+    color: orbita.colors.bone,
     fontFamily: orbita.fonts.monoMedium,
-    fontSize: 11,
-    letterSpacing: 1,
-    marginTop: orbita.spacing.md
+    fontSize: 12,
+    letterSpacing: 1
   }
 });

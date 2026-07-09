@@ -12,7 +12,7 @@ export type OrbitaAuth = {
   email?: string;
   name?: string;
   imageUrl?: string;
-  signOut: () => void;
+  signOut: () => Promise<void>;
 };
 
 /**
@@ -37,6 +37,6 @@ export function useOrbitaAuth(): OrbitaAuth {
     email,
     name: user?.firstName ?? user?.username ?? undefined,
     imageUrl: user?.hasImage ? user?.imageUrl : undefined,
-    signOut: () => void auth.signOut()
+    signOut: () => auth.signOut()
   };
 }
