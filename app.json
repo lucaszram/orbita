@@ -12,7 +12,8 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.horoscopo.orbita",
+      "bundleIdentifier": "com.lucasssram.orbita",
+      "buildNumber": "4",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -34,7 +35,8 @@
       "expo-secure-store",
       "expo-web-browser",
       "@react-native-community/datetimepicker",
-      "@clerk/expo"
+      "@clerk/expo",
+      "./plugins/withStripUnusedEntitlements.js"
     ],
     "extra": {
       "convexUrl": "",
