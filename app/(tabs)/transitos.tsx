@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useAction } from "convex/react";
-import { router } from "expo-router";
-import { Body, Divider, Eyebrow, H2, MonoLine, Note, OrbitaScreen, Pill, Section } from "@/components/orbita/kit";
+import { Body, Divider, Eyebrow, H2, MonoLine, Note, OrbitaScreen, Section } from "@/components/orbita/kit";
 import { FullBleedHero } from "@/components/orbita/ImmersiveHero";
 import { useAppData, type TransitosData } from "@/domain/appData";
 import { useLiveApp } from "@/hooks/useLiveApp";
@@ -27,7 +26,9 @@ function transitosFromPayload(p: TransitDetailPayload): TransitosData {
     headline: p.title,
     intro: p.reading.plain,
     destacado: p.earth.headline,
-    porArea: []
+    // La puebla el backend por área (Amor/Trabajo/Vínculos/Energía); hoy viene
+    // vacía hasta que el generador la produzca. Ver convex/CHANGELOG.md.
+    porArea: p.porArea ?? []
   };
 }
 
@@ -78,14 +79,25 @@ function TransitosView({ data }: { data: TransitosData }) {
         <Divider />
         <Eyebrow>DESTACADO</Eyebrow>
         <Body bone>{data.destacado}</Body>
-        <View style={{ height: orbita.spacing.xl }} />
-        <Pill label="VER POR ÁREA" onPress={() => router.push("/reading/transitos")} />
+        {data.porArea.length > 0 ? (
+          <>
+            <Divider />
+            <Eyebrow>POR ÁREA</Eyebrow>
+            {data.porArea.map((a) => (
+              <View key={a.title} style={styles.areaRow}>
+                <Body bone>{a.title}</Body>
+                <Body>{a.body}</Body>
+              </View>
+            ))}
+          </>
+        ) : null}
       </Section>
     </OrbitaScreen>
   );
 }
 
 const styles = StyleSheet.create({
+  areaRow: { gap: 4, marginTop: orbita.spacing.lg },
   skyLabel: {
     color: orbita.colors.copper,
     fontFamily: orbita.fonts.monoMedium,
