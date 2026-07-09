@@ -52,7 +52,7 @@ export default function HomeScreen() {
   // carta arriba. Al cambiar de tab y volver, el param se limpia → Home normal.
   const { fresh } = useLocalSearchParams<{ fresh?: string }>();
   const justOnboarded = fresh === "1";
-  const { isLive } = useLiveApp();
+  const { isLive, auth } = useLiveApp();
   const chartDoc = useQuery(appApi.charts.current, isLive ? {} : "skip");
   const fontsLoaded = useOrbitaFonts();
   const insets = useSafeAreaInsets();
@@ -126,7 +126,7 @@ export default function HomeScreen() {
           reading={homeReading}
           triad={heroTriad}
           daily={daily ?? guestDaily ?? undefined}
-          name={profile.name}
+          name={auth?.name}
           onProfundizar={() => router.push("/reading/deep-dive")}
         />
         <DailyGuide reading={homeReading} />

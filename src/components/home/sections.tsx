@@ -381,13 +381,13 @@ const styles = StyleSheet.create({
     width: 26
   },
   topicGlyph: { color: orbita.colors.bone, fontFamily: orbita.fonts.body, fontSize: 13 },
-  insightBody: { marginLeft: 26 + orbita.spacing.md },
+  insightBody: { marginLeft: 26 + orbita.spacing.md, marginTop: orbita.spacing.sm },
   tab: { alignItems: "center" },
   tabLabel: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.mono, fontSize: 13 },
   tabLabelActive: { color: orbita.colors.copper },
   tabUnderline: { backgroundColor: orbita.colors.copper, borderRadius: 1, height: 2, marginTop: orbita.spacing.sm, width: 34 },
 
-  insightRow: { paddingVertical: 28, borderBottomColor: orbita.colors.line, borderBottomWidth: 1 },
+  insightRow: { paddingTop: orbita.spacing.lg, paddingBottom: orbita.spacing.xxl, borderBottomColor: orbita.colors.line, borderBottomWidth: 1 },
   insightRowDim: { opacity: 0.55 },
   insightHead: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
   insightTitle: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 24, lineHeight: 30, flex: 1 },
