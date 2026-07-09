@@ -14,6 +14,24 @@ function todayLocalDate(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
 
+/**
+ * El backend (`convex/lib/orbita.ts`) a veces filtra labels placeholder del
+ * proveedor ("Ventana del proveedor", "Pico estimado", "La ventana exacta tiene
+ * que venir del proveedor…"). Viola el guardrail de voz Órbita, así que el front
+ * los oculta. Cuando Codex los humanice, el copy real pasa el filtro y se muestra.
+ * Ver convex/CHANGELOG.md (2026-07-09).
+ */
+const PROVIDER_JUNK = /proveedor|fecha local|estimad/i;
+/** Limpia sufijos colgados ("Pico -" → "Pico"). */
+function cleanLabel(s?: string): string {
+  return (s ?? "").replace(/[\s·\-–—]+$/u, "").trim();
+}
+/** Devuelve el copy solo si NO es placeholder del proveedor; si no, "" (se oculta). */
+function humanCopy(s?: string): string {
+  const t = cleanLabel(s);
+  return t && !PROVIDER_JUNK.test(t) ? t : "";
+}
+
 export default function TransitosScreen() {
   const { isLive } = useLiveApp();
   if (!isLive) return <TransitosView data={transitMock} />;
@@ -53,6 +71,8 @@ function TransitosLive() {
  */
 function TransitosView({ data }: { data: TransitDetailPayload }) {
   const porArea = data.porArea ?? [];
+  const cadenceCaption = humanCopy(data.frequency.label);
+  const windowNote = humanCopy(data.window.note);
   return (
     <OrbitaScreen>
       <FullBleedHero kind="transitos">
@@ -73,11 +93,13 @@ function TransitosView({ data }: { data: TransitDetailPayload }) {
           {data.frequency.timeline.map((p) => (
             <View key={p.label} style={styles.timelineStop}>
               <View style={[styles.timelineDot, p.current && styles.timelineDotCurrent]} />
-              <Text style={[styles.timelineLabel, p.current && styles.timelineLabelCurrent]}>{p.label}</Text>
+              <Text style={[styles.timelineLabel, p.current && styles.timelineLabelCurrent]}>
+                {cleanLabel(p.label)}
+              </Text>
             </View>
           ))}
         </View>
-        <Note>{data.frequency.label}</Note>
+        {cadenceCaption ? <Note>{cadenceCaption}</Note> : null}
 
         <Divider />
         <Eyebrow>CÓMO SE JUEGA EN LA TIERRA</Eyebrow>
@@ -103,8 +125,12 @@ function TransitosView({ data }: { data: TransitDetailPayload }) {
           </>
         ) : null}
 
-        <View style={{ height: orbita.spacing.xl }} />
-        <Note>{`Ventana ${data.window.label} · ${data.window.note}`}</Note>
+        {windowNote ? (
+          <>
+            <View style={{ height: orbita.spacing.xl }} />
+            <Note>{`Ventana ${cleanLabel(data.window.label)} · ${windowNote}`}</Note>
+          </>
+        ) : null}
       </Section>
     </OrbitaScreen>
   );
