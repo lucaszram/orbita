@@ -185,6 +185,10 @@ export type TransitDetailPayload = {
   frequency: { label: string; timeline: Array<{ label: string; current: boolean }> };
   earth: { headline: string; suggestions: string[] };
   window: { label: string; note: string };
+  /** Lectura del tránsito de hoy desglosada por área (Amor/Trabajo/Vínculos/
+   *  Energía). Hoy el backend NO la manda (queda undefined → el tab oculta la
+   *  sección). Contrato pendiente en `transits.getToday`. Ver convex/CHANGELOG.md. */
+  porArea?: Array<{ title: string; body: string }>;
 };
 
 export type VoidAnswerPayload = {

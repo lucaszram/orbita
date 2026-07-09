@@ -21,6 +21,13 @@ El puente de tipos (`convex/_generated/`) se deriva de acá y lo commitea el bac
 
 ---
 
+## 2026-07-09 — Tránsitos por área (usuario logueado)
+- **Qué cambió (contrato):** `TransitDetailPayload` (en `src/services/appRefs.ts`) suma `porArea?: Array<{ title: string; body: string }>` — la lectura del tránsito de hoy desglosada por área (Amor / Trabajo / Vínculos / Energía).
+- **Qué construyó el front:** el tab **Tránsitos** (`app/(tabs)/transitos.tsx`) ahora **embebe la sección "POR ÁREA" inline al final** (antes era el botón "VER POR ÁREA" → `/reading/transitos`, que se saca). Mapea `porArea` del payload de `transits.getToday`; si viene vacía/undefined, la sección **se oculta** (no rompe). Consistente con "TU DÍA POR ÁREA" de la Home.
+- **Pedido a backend (Codex):** que `transits.getToday` devuelva `porArea` con la lectura del **tránsito principal por cada una de las 4 áreas** (Amor/Trabajo/Vínculos/Energía) para el usuario logueado. Cada item: `{ title (ej. "Saturno pesa sobre tu Venus"), body (la lectura para esa área, en criollo, ~1-2 frases) }`. Mismos guardrails que el daily (entretenimiento/autoconocimiento; sin destino/dinero/salud/legal; voseo rioplatense). Fallback: sin dato → omitir `porArea` (el front oculta la sección).
+- **Quién lo pidió:** frontend (Claude).
+- **Estado:** propuesto (stub).
+
 ## 2026-07-07 — Horóscopo de personalidad: pedido de interpretación natal por LLM
 - **Qué cambió (contrato):** `PersonalitySection` (en `src/services/appRefs.ts`) suma `questions?: string[]` (1-2 preguntas de reflexión por sector; el plan `buildNatalInterpretationGatewayPlan` ya las prevé). El front promovió `charts.personalityReading` y `charts.valuesMap` de `proposedApi`→`appApi` (ya estaban implementadas; el "propuesto" era obsoleto).
 - **Qué construyó el front:** la pantalla `/personalidad` (`src/components/web/orbita-personality.tsx`) es ahora la **lectura larga por sectores**: rueda natal real (`charts.current`) + 7 secciones interpretativas + mapa de valores (`charts.valuesMap`). El mock (`src/content/personalityMock.ts`) tiene la lectura rica de ejemplo = **target de calidad y taxonomía**.

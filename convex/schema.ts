@@ -464,3 +464,18 @@ export default defineSchema({
 // (Sinastría `relationships.synastry` ya está propuesta en el bloque App Core;
 //  motor confirmado: synastry_horoscope + love_compatibility_report.)
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// TODO: pendiente backend — Tránsitos por área (propuesto por frontend, 2026-07-09)
+//
+// El tab Tránsitos (logueado) embebe una sección "POR ÁREA" al final: el tránsito
+// principal del día desglosado en las 4 áreas (Amor / Trabajo / Vínculos / Energía).
+// No requiere tabla nueva: se suma a `TransitDetailPayload` (payload v.any() de
+// `transitReadings`). Forma en `src/services/appRefs.ts` (`TransitDetailPayload.porArea`).
+// Si el backend no la devuelve, el front oculta la sección (fallback → sin `porArea`).
+// Mismos guardrails que el daily (entretenimiento/autoconocimiento; sin destino/
+// dinero/salud/legal; voseo). Detalle en `convex/CHANGELOG.md` (2026-07-09).
+//
+//   transits.getToday({ localDate }):   TransitDetailPayload
+//     + porArea?: Array<{ title: string; body: string }>   // 4 áreas, lectura por área
+// ---------------------------------------------------------------------------
