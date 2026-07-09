@@ -12,7 +12,7 @@
  * Cuando se necesite push remoto o Apple login, sacar la key de acá y hacer un
  * build/credenciales con login Apple ID (username+2FA), no con API key.
  */
-const { withEntitlementsPlist } = require('@expo/config-plugins');
+const { withEntitlementsPlist } = require('expo/config-plugins');
 
 module.exports = function withStripUnusedEntitlements(config) {
   return withEntitlementsPlist(config, (config) => {
