@@ -95,11 +95,6 @@ export default function HomeScreen() {
     return <View style={styles.screen} />;
   }
 
-  function openTopic(topic: HomeTopic) {
-    setActiveTopic(topic.topic);
-    router.push({ pathname: "/reading/topic", params: { topic: topic.topic } });
-  }
-
   function selectTab(topic: Topic) {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setActiveTopic(topic);
@@ -134,7 +129,6 @@ export default function HomeScreen() {
           reading={homeReading}
           activeTopic={activeTopic}
           onSelectTab={selectTab}
-          onOpenTopic={openTopic}
         />
         <LongReadEnd
           reading={homeReading}

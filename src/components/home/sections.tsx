@@ -154,13 +154,11 @@ export function DailyGuide({ reading }: { reading: HomeReading }) {
 export function TopicsSection({
   reading,
   activeTopic,
-  onSelectTab,
-  onOpenTopic
+  onSelectTab
 }: {
   reading: HomeReading;
   activeTopic: Topic;
   onSelectTab: (topic: Topic) => void;
-  onOpenTopic: (topic: HomeTopic) => void;
 }) {
   return (
     <View style={styles.section}>
@@ -178,25 +176,39 @@ export function TopicsSection({
       <View style={styles.divider} />
       <Eyebrow>TU DÍA POR ÁREA</Eyebrow>
 
-      {[...reading.topics]
-        .sort((a, b) => (a.topic === activeTopic ? -1 : b.topic === activeTopic ? 1 : 0))
-        .map((t) => {
-        const active = t.topic === activeTopic;
+      {reading.topics.map((t) => {
+        const open = t.topic === activeTopic;
         return (
-          <Pressable
-            key={t.topic}
-            onPress={() => onOpenTopic(t)}
-            style={({ pressed }) => [styles.insightRow, !active && styles.insightRowDim, pressed && styles.pressed]}
-          >
-            <View style={styles.insightHead}>
+          <View key={t.topic} style={styles.insightRow}>
+            <Pressable
+              onPress={() => onSelectTab(t.topic)}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: open }}
+              style={({ pressed }) => [styles.insightHead, pressed && styles.pressed]}
+            >
               <View style={styles.topicMarker}>
                 <Text style={styles.topicGlyph}>{TOPIC_GLYPHS[t.topic] ?? "☉"}</Text>
               </View>
               <Text style={styles.insightTitle}>{t.title}</Text>
-              <Text style={styles.arrow}>→</Text>
-            </View>
+              <Text style={[styles.chevron, open && styles.chevronOpen]}>⌄</Text>
+            </Pressable>
             <Text style={[styles.body, styles.insightBody]}>{t.oneLine}</Text>
-          </Pressable>
+            {open ? (
+              <View style={styles.insightExpanded}>
+                <Text style={[styles.body, styles.insightBody, styles.insightDetail]}>{t.detail}</Text>
+                <View style={styles.insightGuide}>
+                  <GuideRow label="HACÉ" copy={t.hace} />
+                  <GuideRow label="EVITÁ" copy={t.evita} />
+                </View>
+                {t.question ? (
+                  <View style={styles.insightQuestion}>
+                    <Eyebrow>PREGUNTA</Eyebrow>
+                    <Text style={styles.insightQuestionText}>{t.question}</Text>
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
+          </View>
         );
       })}
     </View>
@@ -392,6 +404,19 @@ const styles = StyleSheet.create({
   insightHead: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
   insightTitle: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 24, lineHeight: 30, flex: 1 },
   arrow: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 20, marginLeft: orbita.spacing.md },
+  chevron: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 22, lineHeight: 24, marginLeft: orbita.spacing.md },
+  chevronOpen: { color: orbita.colors.copper, transform: [{ rotate: "180deg" }] },
+  insightExpanded: { marginTop: orbita.spacing.md },
+  insightDetail: { marginTop: 0 },
+  insightGuide: { marginTop: orbita.spacing.lg },
+  insightQuestion: { marginTop: orbita.spacing.xl },
+  insightQuestionText: {
+    color: orbita.colors.bone,
+    fontFamily: orbita.fonts.serif,
+    fontSize: 20,
+    lineHeight: 27,
+    marginTop: orbita.spacing.sm
+  },
 
   thumbnail: {
     alignItems: "center",
