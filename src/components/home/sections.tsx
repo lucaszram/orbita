@@ -157,7 +157,7 @@ export function TopicsSection({
   onSelectTab
 }: {
   reading: HomeReading;
-  activeTopic: Topic;
+  activeTopic: Topic | null;
   onSelectTab: (topic: Topic) => void;
 }) {
   return (
@@ -184,13 +184,15 @@ export function TopicsSection({
               onPress={() => onSelectTab(t.topic)}
               accessibilityRole="button"
               accessibilityState={{ expanded: open }}
-              style={({ pressed }) => [styles.insightHead, pressed && styles.pressed]}
+              style={({ pressed }) => [pressed && styles.pressed]}
             >
-              <View style={styles.topicMarker}>
-                <Text style={styles.topicGlyph}>{TOPIC_GLYPHS[t.topic] ?? "☉"}</Text>
+              <View style={styles.insightHead}>
+                <View style={styles.topicMarker}>
+                  <Text style={styles.topicGlyph}>{TOPIC_GLYPHS[t.topic] ?? "☉"}</Text>
+                </View>
+                <Text style={styles.insightTitle}>{t.title}</Text>
+                <Text style={[styles.chevron, open && styles.chevronOpen]}>⌄</Text>
               </View>
-              <Text style={styles.insightTitle}>{t.title}</Text>
-              <Text style={[styles.chevron, open && styles.chevronOpen]}>⌄</Text>
             </Pressable>
             <Text style={[styles.body, styles.insightBody]}>{t.oneLine}</Text>
             {open ? (

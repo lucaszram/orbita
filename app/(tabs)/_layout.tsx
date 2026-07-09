@@ -8,8 +8,8 @@ export default function TabsLayout() {
       screenOptions={{ headerShown: false }}
     >
       <Tabs.Screen name="index" options={{ title: "Inicio" }} />
-      <Tabs.Screen name="vacio" options={{ title: "Umbral" }} />
       <Tabs.Screen name="transitos" options={{ title: "Tránsitos" }} />
+      <Tabs.Screen name="vacio" options={{ title: "Umbral" }} />
       <Tabs.Screen name="perfil" options={{ title: "Perfil" }} />
       {/* Fuera de la barra pero siguen como rutas: Carta vive en el Perfil ("algo de
           una vez"); Vínculo queda parkeado (Próximamente). */}

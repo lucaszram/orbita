@@ -56,7 +56,7 @@ export default function HomeScreen() {
   const chartDoc = useQuery(appApi.charts.current, isLive ? {} : "skip");
   const fontsLoaded = useOrbitaFonts();
   const insets = useSafeAreaInsets();
-  const [activeTopic, setActiveTopic] = useState<Topic>("amor");
+  const [activeTopic, setActiveTopic] = useState<Topic | null>("amor");
 
   // Guía diaria real (análisis del cielo de hoy sobre la carta), con sesión. Sin
   // sesión, la Home usa el engine local (fallback). Reemplaza "Estructura con ventana".
@@ -97,7 +97,7 @@ export default function HomeScreen() {
 
   function selectTab(topic: Topic) {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setActiveTopic(topic);
+    setActiveTopic((prev) => (prev === topic ? null : topic));
   }
 
   async function guardar() {
