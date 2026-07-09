@@ -82,8 +82,6 @@ export function SignalTop({
   const triad = triadOverride ?? reading.triad;
   const headline = daily?.headline ?? reading.headline;
   const body = daily?.body ?? reading.body;
-  const climaLabel = daily ? "CLIMA DEL DÍA" : reading.signalLabel;
-  const climaCopy = daily?.clima ?? reading.signalCopy;
   return (
     <View style={styles.section}>
       {/* Hero full-bleed (Figma V4.7 "Home / Top"): el orbital es el FONDO detrás de
@@ -91,8 +89,8 @@ export function SignalTop({
       <View style={styles.hero}>
         <Image source={HERO_HOME} style={styles.heroImg} resizeMode="cover" />
         <LinearGradient
-          colors={["rgba(7,8,10,0)", "rgba(7,8,10,0)", "rgba(7,8,10,0.5)", "#07080A"]}
-          locations={[0, 0.42, 0.8, 1]}
+          colors={["rgba(7,8,10,0.1)", "rgba(7,8,10,0.1)", "rgba(7,8,10,0.34)", "rgba(7,8,10,0)"]}
+          locations={[0, 0.5, 0.84, 1]}
           style={styles.heroFade}
         />
         <View style={styles.heroContent}>
@@ -106,12 +104,6 @@ export function SignalTop({
           <Text style={styles.body}>{body}</Text>
         </View>
       </View>
-
-      <View style={styles.divider} />
-      <Eyebrow>{climaLabel}</Eyebrow>
-      <Text style={styles.signalCopy}>{climaCopy}</Text>
-      <View style={{ height: orbita.spacing.xl }} />
-      <PillButton label="VER POR QUÉ" onPress={onProfundizar} />
     </View>
   );
 }
@@ -332,9 +324,9 @@ const styles = StyleSheet.create({
   // la funde a negro y el texto va sobre la parte baja / debajo (como el Figma "Home / Top").
   // Luna fija en la posición del Figma "Home / Top" (entera, borde superior pegado al
   // header). NO se mueve para subir el texto — solo se ajusta paddingTop.
-  heroImg: { height: 520, left: -64, position: "absolute", top: -66, width: 520 },
-  heroFade: { height: 430, left: 0, position: "absolute", right: 0, top: 0 },
-  heroContent: { paddingBottom: orbita.spacing.lg, paddingHorizontal: G, paddingTop: 220 },
+  heroImg: { height: 520, left: 52, position: "absolute", top: -66, width: 520 },
+  heroFade: { bottom: 0, left: 0, position: "absolute", right: 0, top: 0 },
+  heroContent: { paddingBottom: orbita.spacing.lg, paddingHorizontal: G, paddingTop: 60 },
   heroTextGap: { height: orbita.spacing.xl },
 
   headline: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 40, lineHeight: 45 },
