@@ -36,7 +36,14 @@ export default function PerfilScreen() {
         <Eyebrow>CUENTA</Eyebrow>
         {perfil.accountEmail ? (
           <View>
-            <Body bone>{perfil.accountEmail}</Body>
+            <Body bone>{auth?.name ?? perfil.accountEmail}</Body>
+            {auth?.name ? (
+              <Note>
+                {perfil.accountEmail.includes("privaterelay.appleid.com")
+                  ? "Conectada con Apple"
+                  : perfil.accountEmail}
+              </Note>
+            ) : null}
             <Pressable onPress={handleLogout} accessibilityRole="button" style={styles.logoutBtn} hitSlop={8}>
               <Text style={styles.logoutText}>Cerrar sesión</Text>
             </Pressable>
