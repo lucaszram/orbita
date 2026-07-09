@@ -28,6 +28,7 @@
       "bundler": "metro"
     },
     "plugins": [
+      "./plugins/withStripUnusedEntitlements.js",
       "expo-router",
       "expo-notifications",
       "expo-asset",
@@ -35,8 +36,7 @@
       "expo-secure-store",
       "expo-web-browser",
       "@react-native-community/datetimepicker",
-      "@clerk/expo",
-      "./plugins/withStripUnusedEntitlements.js"
+      ["@clerk/expo", { "appleSignIn": false }]
     ],
     "extra": {
       "convexUrl": "",

@@ -6,7 +6,9 @@
  *   - aps-environment                  (lo mete expo-notifications; solo usamos
  *                                       notificaciones LOCALES, que no requieren push)
  *
- * Debe ir ÚLTIMO en el array de plugins de app.json para correr después de ellos.
+ * Debe ir PRIMERO en el array de plugins de app.json: los mods de entitlements
+ * corren en orden inverso al del array, así que el primero se ejecuta al final,
+ * después de que Clerk/expo-notifications agregan los suyos.
  * Cuando se necesite push remoto o Apple login, sacar la key de acá y hacer un
  * build/credenciales con login Apple ID (username+2FA), no con API key.
  */
