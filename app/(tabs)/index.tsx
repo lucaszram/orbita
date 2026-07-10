@@ -16,6 +16,7 @@ import { useAction, useQuery } from "convex/react";
 import { Eyebrow, InsightRow, Section } from "@/components/orbita/kit";
 import { mapNatalChart } from "@/components/web/orbita-chart";
 import { chartMock } from "@/content/chartMock";
+import { SintoniaSection } from "@/components/home/SintoniaSection";
 import { useAppState } from "@/hooks/useAppState";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
@@ -136,6 +137,7 @@ export default function HomeScreen() {
           onGuardar={guardar}
           onHistorial={() => router.push("/reading/saved")}
         />
+        <SintoniaSection />
         <Section style={styles.more}>
           <Eyebrow>TAMBIÉN HOY</Eyebrow>
           <InsightRow title="Fase lunar y calendario" body="El calendario lunar · el clima del mes, día a día" onPress={() => router.push("/reading/luna")} />
