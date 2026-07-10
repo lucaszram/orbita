@@ -3,7 +3,7 @@ import { Eyebrow, Section } from "@/components/orbita/kit";
 import { orbita } from "@/theme/orbita";
 
 // Cara de la carta (mock: La Luna). El tarot real lo baraja el backend.
-const CARD_IMG = require("../../../assets/orbita/optimized/core/orbita_home_hero_orbital_b.jpg");
+const CARD_IMG = require("../../../assets/orbita/optimized/core/orbita_home_hero_orbital_a.jpg");
 
 // TODO: pendiente backend — la carta del día (endpoint `tarot` sembrado por
 // usuario+fecha) + el diccionario verificado de arquetipos + el prompt del puente

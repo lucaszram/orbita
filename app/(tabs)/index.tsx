@@ -126,6 +126,7 @@ export default function HomeScreen() {
           name={auth?.name}
           onProfundizar={() => router.push("/reading/deep-dive")}
         />
+        <CartaDelDia />
         <DailyGuide reading={homeReading} />
         <TopicsSection
           reading={homeReading}
@@ -138,7 +139,6 @@ export default function HomeScreen() {
           onGuardar={guardar}
           onHistorial={() => router.push("/reading/saved")}
         />
-        <CartaDelDia />
         <SintoniaSection />
         <Section style={styles.more}>
           <Eyebrow>TAMBIÉN HOY</Eyebrow>
