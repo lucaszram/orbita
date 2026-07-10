@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Image, LayoutAnimation, Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { Eyebrow, Section } from "@/components/orbita/kit";
 import { orbita } from "@/theme/orbita";
 
@@ -22,10 +22,7 @@ const MOCK = {
  *  se revela la carta + los 3 beats (qué es / cómo influye / con tu cielo). */
 export function CartaDelDia() {
   const [revealed, setRevealed] = useState(false);
-  function reveal() {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setRevealed(true);
-  }
+  const reveal = () => setRevealed(true);
   return (
     <Section style={styles.section}>
       <Eyebrow>TU CARTA DE HOY</Eyebrow>
