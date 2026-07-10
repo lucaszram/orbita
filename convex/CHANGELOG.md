@@ -21,6 +21,37 @@ El puente de tipos (`convex/_generated/`) se deriva de acá y lo commitea el bac
 
 ---
 
+## 2026-07-10 — Calidad de generación diaria: anti-redundancia + voz criolla (feedback usuario Sofi)
+- **Qué reportó el usuario (Sofi, 2026-07-10):**
+  - **HACÉ repite el body** casi palabra por palabra ("marcá/elegí la tarea que desbloquea el resto… veinte minutos" en ambos) → *"dice lo mismo tal cual"*.
+  - **Lectura del tránsito larga y repetitiva:** nombra "Sol en Cáncer"/"Mercurio" 4-5 veces y reformula la misma idea → *"ese texto está raro / dice lo mismo"*.
+  - **Energía en crudo:** muestra `"Elemento de base: agua"` → *"en energía no puede decir agua, puede decir sensible"*.
+- **Dónde está en el código:**
+  - Prompt daily LLM: `convex/daily.ts` → `buildDailyPrompt` (y el prompt lab `orbita-lab-daily-home-llm-v1`).
+  - Plantilla energía cruda: `convex/lib/orbita.ts` → `energy: \`Elemento de base: ${element}.\`` (~línea 490) y `energy: \`Casa ${natalHouse}: …\``.
+  - Redundancia body/hacé en topics: `buildTopicReadings` en `orbita.ts`.
+- **Reglas a agregar al prompt (pedido a Codex):**
+  1. **Cada campo aporta algo DISTINTO.** El `body` explica el tránsito; `hacé`/`evitá` son gestos concretos que **NO repiten frases ni ideas del body**; `acción` ≠ `hacé`; `energía` describe el clima, no repite el hacé. Prohibido que dos campos digan lo mismo con otras palabras.
+  2. **No repitas placements.** Nombrá cada planeta/signo/casa **una vez**. Nada de "Sol en Cáncer" / "tu Mercurio" en cada frase.
+  3. **Conciso.** `body` máximo 2-3 frases; una idea por frase; sin reformular.
+  4. **Criollo, no técnico.** Nada de "Elemento de base: agua", "casa 9", "cuadratura" en crudo → traducir al **efecto humano**.
+- **Mapa de humanización (para la plantilla `energy` y como guía al LLM):**
+  - `agua` → "hoy te movés desde lo sensible y la memoria"
+  - `fuego` → "desde el impulso y las ganas"
+  - `tierra` → "desde lo concreto y lo que se sostiene"
+  - `aire` → "desde la cabeza y la palabra"
+  - Casas: usar `houseThemes` en criollo (ej. casa 7 → "vínculos y acuerdos"), nunca "casa N" pelado.
+- **Quién lo pidió:** frontend (Claude), desde feedback de usuario real.
+- **Estado:** propuesto. La personalización LLM ya está **en implementación por Codex** — estas reglas se suman al mismo prompt (y aplican también a la plantilla de fallback). Regenerar/bustear cache para que las lecturas ya emitidas se corrijan.
+
+## 2026-07-09 — Enriquecer input del prompt daily (personalización real por punto) + sinastría vínculos
+- **Hallazgo (verificado en vivo):** `buildDailyPrompt` (`convex/daily.ts:80`) hoy pasa a GPT **solo Sol/Luna/Asc** + las líneas de tránsito. Corriendo `publicLab:previewCompleteHoroscope` para 14/08/2002 se confirmó que la API **ya trae** el signo/casa/aspectos natales del punto que el tránsito toca (ej. Venus en Libra, casa 7, con 5 aspectos natales), pero **no llegan al prompt** → el LLM habla del punto sin su contexto. La materia prima rica existe; el prompt la desperdicia.
+- **Pedido a Codex (1) — enriquecer el input del prompt daily:** por cada tránsito, incluir el **punto natal tocado con su signo, casa y aspectos natales** (ya está en `chartWheelData` planets/houses/aspects y en el normalizado del proveedor). No cambia el contrato de tipos del front — mejora la calidad del texto generado. Mantener guardrails (entretenimiento/autoconocimiento; sin destino/salud/dinero/legal; voseo).
+- **Pedido a Codex (2) — sinastría para Vínculos:** cablear `relationships.synastry({ relationshipProfileId }): SynastryPayload` → `synastry_horoscope` + `love_compatibility_report` (ya propuesto en el bloque App Core; se reafirma para la Home de Vínculos "con quién sintonizás"). El empty state ("clima de tus vínculos") NO necesita esto: se deriva de los tránsitos propios a Venus/Marte/casas 5-7-11, que ya existen.
+- **Decisión de producto (Lucas, pendiente):** prender el LLM daily (`ORBITA_LLM_ENABLED=true` + `AI_GATEWAY_API_KEY`) con cache `dailyLlmReadings` (1×/usuario/día). Costo medido: ~1.496 tokens/generación (1.088 in + 408 out) en `gpt-5.4`. Propuesta: **modelo mini para el daily** (~15× más barato), `gpt-5.4` para la interpretación natal (1×/vida, cacheada). ~$0,01–0,16 por usuario/mes según modelo.
+- **Quién lo pidió:** frontend (Claude). Análisis completo en `.claude/plans/mossy-gathering-lobster.md`.
+- **Estado:** propuesto (stub). Construcción se decide después (el usuario pidió no editar la app todavía).
+
 ## 2026-07-09 — Tránsitos por área (usuario logueado)
 - **Qué cambió (contrato):** `TransitDetailPayload` (en `src/services/appRefs.ts`) suma `porArea?: Array<{ title: string; body: string }>` — la lectura del tránsito de hoy desglosada por área (Amor / Trabajo / Vínculos / Energía).
 - **Qué construyó el front:** el tab **Tránsitos** (`app/(tabs)/transitos.tsx`) ahora **embebe la sección "POR ÁREA" inline al final** (antes era el botón "VER POR ÁREA" → `/reading/transitos`, que se saca). Mapea `porArea` del payload de `transits.getToday`; si viene vacía/undefined, la sección **se oculta** (no rompe). Consistente con "TU DÍA POR ÁREA" de la Home.

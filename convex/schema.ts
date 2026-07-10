@@ -479,3 +479,36 @@ export default defineSchema({
 //   transits.getToday({ localDate }):   TransitDetailPayload
 //     + porArea?: Array<{ title: string; body: string }>   // 4 áreas, lectura por área
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// TODO: pendiente backend — Enriquecer input del prompt daily (propuesto por frontend, 2026-07-09)
+//
+// `buildDailyPrompt` (convex/daily.ts) hoy pasa a GPT solo Sol/Luna/Asc + líneas
+// de tránsito. La API YA trae el contexto del punto que el tránsito toca (signo,
+// casa, aspectos natales — en chartWheelData planets/houses/aspects), pero no
+// llega al prompt → el LLM genera "a ciegas" sobre ese punto. No cambia contrato
+// de tipos del front; mejora calidad del texto. Verificado en vivo con
+// publicLab:previewCompleteHoroscope (14/08/2002). Detalle en convex/CHANGELOG.md
+// (2026-07-09) y .claude/plans/mossy-gathering-lobster.md.
+//
+//   buildDailyPrompt: por cada tránsito incluir { natalPoint, signo, casa, aspectosNatales }
+//
+// Sinastría para Vínculos ("con quién sintonizás") ya propuesta en el bloque
+// App Core V4.7: relationships.synastry({ relationshipProfileId }): SynastryPayload.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// TODO: pendiente backend — Calidad de generación diaria (propuesto por frontend, 2026-07-10)
+//
+// Feedback de usuario real (Sofi): (1) el HACÉ repite el body ("dice lo mismo"),
+// (2) la lectura del tránsito es larga y repite placements, (3) energía en crudo
+// ("Elemento de base: agua"). Reglas a sumar al prompt daily + humanizar plantillas:
+//   1. Cada campo aporta algo DISTINTO (body explica; hacé/evitá/acción/energía
+//      no repiten ideas ni frases del body ni entre sí).
+//   2. No repetir placements; nombrar cada planeta/signo/casa una sola vez.
+//   3. Conciso: body 2-3 frases, una idea por frase.
+//   4. Criollo: traducir "Elemento de base: agua" / "casa 9" / "cuadratura" al
+//      efecto humano (agua -> "desde lo sensible y la memoria", etc.).
+// Afecta convex/daily.ts (buildDailyPrompt), convex/lib/orbita.ts (energy template
+// + buildTopicReadings). Detalle en convex/CHANGELOG.md (2026-07-10).
+// ---------------------------------------------------------------------------
