@@ -16,6 +16,7 @@ import { useAction, useQuery } from "convex/react";
 import { Eyebrow, InsightRow, Section } from "@/components/orbita/kit";
 import { mapNatalChart } from "@/components/web/orbita-chart";
 import { chartMock } from "@/content/chartMock";
+import { CartaDelDia } from "@/components/home/CartaDelDia";
 import { SintoniaSection } from "@/components/home/SintoniaSection";
 import { useAppState } from "@/hooks/useAppState";
 import { useLiveApp } from "@/hooks/useLiveApp";
@@ -137,6 +138,7 @@ export default function HomeScreen() {
           onGuardar={guardar}
           onHistorial={() => router.push("/reading/saved")}
         />
+        <CartaDelDia />
         <SintoniaSection />
         <Section style={styles.more}>
           <Eyebrow>TAMBIÉN HOY</Eyebrow>
