@@ -29,6 +29,11 @@ import type { OnboardingChart } from "./useAccount";
 
 const TOTAL = 15;
 
+// Paywall temporalmente DESACTIVADO (2-3 semanas, mientras refinamos el onboarding
+// y el flujo). Con `false`, al terminar el onboarding se entra DIRECTO a la app sin
+// pasar por el paso de pago (step 14). Para reactivar: PAYWALL_ENABLED = true.
+const PAYWALL_ENABLED = false;
+
 const ELEMENTS: Record<ZodiacSign, string> = {
   aries: "Fuego",
   tauro: "Tierra",
@@ -197,6 +202,12 @@ export function OnboardingFlow() {
     router.replace({ pathname: "/(tabs)", params: { fresh: "1" } });
   };
 
+  // Sin paywall: al llegar al paso de pago (step 14) se entra directo a la app.
+  useEffect(() => {
+    if (step === 14 && !PAYWALL_ENABLED) void submit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
+
   if (!fontsLoaded) return <View style={styles.fill} />;
 
   let screen: ReactNode;
@@ -310,7 +321,9 @@ export function OnboardingFlow() {
     default:
       // Paso 14 = paywall único. La tríada real va arriba como gancho (antes era
       // una pantalla de preview aparte, que hacía parecer que pagabas dos veces).
-      screen = (
+      // Desactivado temporalmente (PAYWALL_ENABLED=false): el useEffect de arriba
+      // entra directo a la app; acá solo mostramos loading para no flashear el pago.
+      screen = PAYWALL_ENABLED ? (
         <PaywallScreen
           plan={plan}
           onPlan={setPlan}
@@ -325,6 +338,8 @@ export function OnboardingFlow() {
             setRetryTick((t) => t + 1);
           }}
         />
+      ) : (
+        <View style={styles.fill} />
       );
       break;
   }
