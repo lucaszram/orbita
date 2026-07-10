@@ -78,7 +78,7 @@ const styles = StyleSheet.create({
   // --- carta boca abajo ---
   cardBack: {
     alignItems: "center",
-    backgroundColor: "#11121A",
+    backgroundColor: "transparent",
     borderColor: "rgba(196,106,58,0.55)",
     borderRadius: 14,
     borderWidth: 1,
