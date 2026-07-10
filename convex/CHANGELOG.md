@@ -43,6 +43,23 @@ El puente de tipos (`convex/_generated/`) se deriva de acá y lo commitea el bac
   - Casas: usar `houseThemes` en criollo (ej. casa 7 → "vínculos y acuerdos"), nunca "casa N" pelado.
 - **Quién lo pidió:** frontend (Claude), desde feedback de usuario real.
 - **Estado:** propuesto. La personalización LLM ya está **en implementación por Codex** — estas reglas se suman al mismo prompt (y aplican también a la plantilla de fallback). Regenerar/bustear cache para que las lecturas ya emitidas se corrijan.
+- **Texto LISTO PARA PEGAR (Codex).** Sumar al bloque "Reglas duras" del prompt daily (`buildDailyPrompt` en `daily.ts` y el prompt lab):
+  ```
+  - CONCISO: el body son 2-3 frases, una idea por frase. Prohibido reformular la misma idea con otras palabras.
+  - NO REPITAS placements: nombrá cada planeta / signo / casa UNA sola vez en TODO el texto.
+  - Cada campo aporta algo DISTINTO: el headline nombra el tránsito; el body lo explica una vez; el hacé y el evitá son gestos concretos NUEVOS que NO repiten frases ni ideas del body; la acción es un gesto distinto del hacé; la energía es el clima emocional en criollo. Ningún campo puede decir lo mismo que otro.
+  - CRIOLLO, no técnico: si nombrás una casa, un aspecto o un elemento, traducilo al efecto humano ("casa 7" -> "vínculos y acuerdos"; "cuadratura" -> "tensión o roce"; elemento agua -> "lo sensible y la memoria"). NUNCA términos crudos tipo "Elemento de base: agua" ni "casa 9" pelado.
+  ```
+  Y reemplazar la plantilla de energía cruda en `convex/lib/orbita.ts` (`energy: \`Elemento de base: ${element}.\``) por criollo:
+  ```ts
+  const ENERGIA_CRIOLLA: Record<string, string> = {
+    agua:   "Hoy te movés desde lo sensible y la memoria.",
+    fuego:  "Hoy te movés desde el impulso y las ganas.",
+    tierra: "Hoy te movés desde lo concreto y lo que se sostiene.",
+    aire:   "Hoy te movés desde la cabeza y la palabra.",
+  };
+  // energy: ENERGIA_CRIOLLA[String(element).toLowerCase()] ?? "Tu día tiene un tono propio."
+  ```
 
 ## 2026-07-09 — Enriquecer input del prompt daily (personalización real por punto) + sinastría vínculos
 - **Hallazgo (verificado en vivo):** `buildDailyPrompt` (`convex/daily.ts:80`) hoy pasa a GPT **solo Sol/Luna/Asc** + las líneas de tránsito. Corriendo `publicLab:previewCompleteHoroscope` para 14/08/2002 se confirmó que la API **ya trae** el signo/casa/aspectos natales del punto que el tránsito toca (ej. Venus en Libra, casa 7, con 5 aspectos natales), pero **no llegan al prompt** → el LLM habla del punto sin su contexto. La materia prima rica existe; el prompt la desperdicia.
