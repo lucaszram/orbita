@@ -297,7 +297,14 @@ function VoidView({ ask, today, categories, onUnlock, showBack }: VoidViewProps)
           </View>
         </View>
       ) : phase === "respuesta" ? (
-        <View style={styles.center}>
+        <ScrollView
+          style={styles.answerScroll}
+          contentContainerStyle={[
+            styles.answerScrollContent,
+            { paddingBottom: insets.bottom + orbita.spacing.xxl * 3 }
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
           <Text style={styles.eyebrow}>EL UMBRAL · HOY</Text>
           <View style={{ height: orbita.spacing.sm }} />
           <Text style={styles.questionSmall}>“{shownQuestion}”</Text>
@@ -313,10 +320,9 @@ function VoidView({ ask, today, categories, onUnlock, showBack }: VoidViewProps)
           <Text style={styles.betterQuestion}>{shownMejorPregunta}</Text>
           <View style={{ height: orbita.spacing.xxl }} />
           <Text style={styles.microMono}>{shownPaso}</Text>
-          <View style={styles.footer}>
-            <Text style={styles.footnote}>El Umbral no contesta sí o no.</Text>
-          </View>
-        </View>
+          <View style={{ height: orbita.spacing.xxl }} />
+          <Text style={styles.footnote}>El Umbral no contesta sí o no.</Text>
+        </ScrollView>
       ) : null}
     </View>
   );
@@ -328,6 +334,13 @@ const styles = StyleSheet.create({
   topbar: { paddingHorizontal: orbita.spacing.gutter, paddingBottom: orbita.spacing.md },
   back: { color: orbita.colors.bone, fontFamily: orbita.fonts.body, fontSize: 26, width: 40 },
   center: { alignItems: "center", flex: 1, paddingHorizontal: orbita.spacing.gutter, paddingTop: orbita.spacing.xxl * 2 },
+  answerScroll: { flex: 1 },
+  answerScrollContent: {
+    alignItems: "center",
+    flexGrow: 1,
+    paddingHorizontal: orbita.spacing.gutter,
+    paddingTop: orbita.spacing.xxl * 2
+  },
 
   eyebrow: {
     color: orbita.colors.copper,
