@@ -23,6 +23,7 @@ const MOCK = {
 export function CartaDelDia() {
   const [revealed, setRevealed] = useState(false);
   const reveal = () => setRevealed(true);
+  const hide = () => setRevealed(false);
   return (
     <Section style={styles.section}>
       <Eyebrow>TU CARTA DE HOY</Eyebrow>
@@ -45,11 +46,14 @@ export function CartaDelDia() {
       ) : (
         <View>
           <View style={styles.center}>
-            <View style={styles.cardFace}>
-              <Image source={CARD_IMG} style={StyleSheet.absoluteFill} resizeMode="cover" />
-              <View style={styles.faceScrim} />
-              <Text style={styles.faceLabel}>{MOCK.nombre}</Text>
-            </View>
+            <Pressable onPress={hide} style={({ pressed }) => pressed && styles.pressed} accessibilityRole="button">
+              <View style={styles.cardFace}>
+                <Image source={CARD_IMG} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                <View style={styles.faceScrim} />
+                <Text style={styles.faceLabel}>{MOCK.nombre}</Text>
+              </View>
+            </Pressable>
+            <Text style={styles.hideCta}>Tocá la carta para ocultarla</Text>
           </View>
           <Text style={styles.leadIn}>Te salió {MOCK.nombre}.</Text>
           {MOCK.beats.map((b) => (
@@ -113,6 +117,7 @@ const styles = StyleSheet.create({
   },
   faceScrim: { backgroundColor: "rgba(7,8,10,0.5)", bottom: 0, height: 70, left: 0, position: "absolute", right: 0 },
   faceLabel: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 20, paddingBottom: orbita.spacing.md, textAlign: "center" },
+  hideCta: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.mono, fontSize: 11, letterSpacing: 0.5, marginTop: orbita.spacing.md, textAlign: "center" },
   leadIn: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 24, lineHeight: 29, marginTop: orbita.spacing.xl },
   beat: { marginTop: orbita.spacing.lg },
   beatLabel: { color: orbita.colors.copper, fontFamily: orbita.fonts.monoMedium, fontSize: 11, letterSpacing: 0.5 },
