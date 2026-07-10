@@ -28,18 +28,20 @@ export function CartaDelDia() {
       <Eyebrow>TU CARTA DE HOY</Eyebrow>
 
       {!revealed ? (
-        <Pressable onPress={reveal} style={({ pressed }) => [styles.center, pressed && styles.pressed]} accessibilityRole="button">
-          <View style={styles.cardBack}>
-            <View style={styles.inset} />
-            <View style={[styles.ring, styles.ring1]} />
-            <View style={[styles.ring, styles.ring2]} />
-            <View style={styles.dot} />
-            <Text style={styles.backTop}>ÓRBITA</Text>
-            <Text style={styles.backBottom}>· HOY ·</Text>
-          </View>
+        <View style={styles.center}>
+          <Pressable onPress={reveal} style={({ pressed }) => pressed && styles.pressed} accessibilityRole="button">
+            <View style={styles.cardBack}>
+              <View style={styles.inset} />
+              <View style={[styles.ring, styles.ring1]} />
+              <View style={[styles.ring, styles.ring2]} />
+              <View style={styles.dot} />
+              <Text style={styles.backTop}>ÓRBITA</Text>
+              <Text style={styles.backBottom}>· HOY ·</Text>
+            </View>
+          </Pressable>
           <Text style={styles.revealCta}>Tocá para revelar</Text>
           <Text style={styles.note}>Una carta por día · se abre a las 9:00</Text>
-        </Pressable>
+        </View>
       ) : (
         <View>
           <View style={styles.center}>
@@ -96,8 +98,8 @@ const styles = StyleSheet.create({
   dot: { backgroundColor: orbita.colors.copper, borderRadius: 4, height: 8, width: 8 },
   backTop: { color: orbita.colors.copper, fontFamily: orbita.fonts.monoMedium, fontSize: 9, letterSpacing: 2, position: "absolute", top: 26 },
   backBottom: { bottom: 26, color: orbita.colors.copper, fontFamily: orbita.fonts.monoMedium, fontSize: 9, letterSpacing: 2, position: "absolute" },
-  revealCta: { color: orbita.colors.copper, fontFamily: orbita.fonts.monoMedium, fontSize: 12, letterSpacing: 1.5, marginTop: orbita.spacing.xl },
-  note: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.body, fontSize: 12, marginTop: orbita.spacing.sm },
+  revealCta: { color: orbita.colors.copper, fontFamily: orbita.fonts.monoMedium, fontSize: 12, letterSpacing: 1.5, marginTop: orbita.spacing.xl, textAlign: "center" },
+  note: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.body, fontSize: 12, marginTop: orbita.spacing.sm, textAlign: "center" },
 
   // --- carta revelada ---
   cardFace: {

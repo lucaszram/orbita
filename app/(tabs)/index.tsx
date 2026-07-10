@@ -119,6 +119,7 @@ export default function HomeScreen() {
         {/* Home post-onboarding: banner dismissable que invita a ver la carta recién
             calculada. La Home queda igual a la normal (hero de luna). */}
         {justOnboarded ? <CartaBanner /> : null}
+        <CartaDelDia />
         <SignalTop
           reading={homeReading}
           triad={heroTriad}
@@ -126,7 +127,6 @@ export default function HomeScreen() {
           name={auth?.name}
           onProfundizar={() => router.push("/reading/deep-dive")}
         />
-        <CartaDelDia />
         <DailyGuide reading={homeReading} />
         <TopicsSection
           reading={homeReading}
