@@ -309,7 +309,7 @@ function VoidView({ ask, today, categories, onUnlock, showBack }: VoidViewProps)
           <View style={{ height: orbita.spacing.sm }} />
           <Text style={styles.questionSmall}>“{shownQuestion}”</Text>
           <View style={{ height: orbita.spacing.xxl * 1.5 }} />
-          <Text style={styles.answer}>{shownAnswer}</Text>
+          <Text style={styles.answerBody}>{shownAnswer}</Text>
           <View style={{ height: orbita.spacing.xxl * 1.5 }} />
           <View style={styles.tick} />
           <View style={{ height: orbita.spacing.xl }} />
@@ -401,6 +401,14 @@ const styles = StyleSheet.create({
     fontFamily: orbita.fonts.serif,
     fontSize: 34,
     lineHeight: 40,
+    textAlign: "center"
+  },
+  // Respuesta real (párrafo largo): tamaño de lectura, no de titular.
+  answerBody: {
+    color: orbita.colors.bone,
+    fontFamily: orbita.fonts.serifRegular,
+    fontSize: 20,
+    lineHeight: 29,
     textAlign: "center"
   },
   tick: { backgroundColor: "rgba(196,106,58,0.7)", height: 1, width: 24 },
