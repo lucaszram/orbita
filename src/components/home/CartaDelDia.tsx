@@ -5,6 +5,8 @@ import { orbita } from "@/theme/orbita";
 
 // Cara revelada (mock: La Luna). El tarot real lo baraja el backend.
 const CARD_IMG = require("../../../assets/orbita/optimized/core/orbita_home_hero_orbital_a.jpg");
+// Dorso (boca abajo): ilustración real del mazo Órbita.
+const CARD_BACK = require("../../../assets/orbita/optimized/tarot/orbita_card_back_orbits.jpg");
 
 // TODO: pendiente backend — la carta del día (endpoint `tarot` sembrado por
 // usuario+fecha) + diccionario verificado de arquetipos (correspondencia
@@ -32,12 +34,7 @@ export function CartaDelDia() {
         <View style={styles.center}>
           <Pressable onPress={reveal} style={({ pressed }) => pressed && styles.pressed} accessibilityRole="button">
             <View style={styles.cardBack}>
-              <View style={styles.inset} />
-              <View style={[styles.ring, styles.ring1]} />
-              <View style={[styles.ring, styles.ring2]} />
-              <View style={styles.dot} />
-              <Text style={styles.backTop}>ÓRBITA</Text>
-              <Text style={styles.backBottom}>· HOY ·</Text>
+              <Image source={CARD_BACK} style={styles.backImg} resizeMode="cover" />
             </View>
           </Pressable>
           <Text style={styles.revealCta}>Tocá para revelar</Text>
@@ -77,31 +74,12 @@ const styles = StyleSheet.create({
 
   // --- carta boca abajo ---
   cardBack: {
-    alignItems: "center",
-    backgroundColor: "transparent",
-    borderColor: "rgba(196,106,58,0.55)",
     borderRadius: 14,
-    borderWidth: 1,
     height: CARD_H,
-    justifyContent: "center",
+    overflow: "hidden",
     width: CARD_W
   },
-  inset: {
-    borderColor: "rgba(196,106,58,0.22)",
-    borderRadius: 8,
-    borderWidth: 1,
-    bottom: 10,
-    left: 10,
-    position: "absolute",
-    right: 10,
-    top: 10
-  },
-  ring: { borderColor: orbita.colors.copper, borderRadius: 999, position: "absolute" },
-  ring1: { borderWidth: 1, height: 78, opacity: 0.4, width: 78 },
-  ring2: { borderWidth: 1, height: 50, opacity: 0.7, width: 50 },
-  dot: { backgroundColor: orbita.colors.copper, borderRadius: 4, height: 8, width: 8 },
-  backTop: { color: orbita.colors.copper, fontFamily: orbita.fonts.monoMedium, fontSize: 9, letterSpacing: 2, position: "absolute", top: 26 },
-  backBottom: { bottom: 26, color: orbita.colors.copper, fontFamily: orbita.fonts.monoMedium, fontSize: 9, letterSpacing: 2, position: "absolute" },
+  backImg: { height: CARD_H, width: CARD_W },
   revealCta: { color: orbita.colors.copper, fontFamily: orbita.fonts.monoMedium, fontSize: 12, letterSpacing: 1.5, marginTop: orbita.spacing.xl, textAlign: "center" },
   note: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.body, fontSize: 12, marginTop: orbita.spacing.sm, textAlign: "center" },
 
