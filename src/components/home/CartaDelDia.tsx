@@ -1,12 +1,11 @@
 import { useState } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { Eyebrow, Section } from "@/components/orbita/kit";
+import { CARD_BACK, majorById } from "@/content/tarotDeck";
 import { orbita } from "@/theme/orbita";
 
-// Cara revelada (mock: La Luna). El tarot real lo baraja el backend.
-const CARD_IMG = require("../../../assets/orbita/optimized/core/orbita_home_hero_orbital_a.jpg");
-// Dorso (boca abajo): ilustración real del mazo Órbita.
-const CARD_BACK = require("../../../assets/orbita/optimized/tarot/orbita_card_back_orbits.jpg");
+// Mock: hoy "La Luna" (XVIII). El tarot real lo baraja el backend.
+const LUNA = majorById(18)!;
 
 // TODO: pendiente backend — la carta del día (endpoint `tarot` sembrado por
 // usuario+fecha) + diccionario verificado de arquetipos (correspondencia
@@ -45,8 +44,9 @@ export function CartaDelDia() {
           <View style={styles.center}>
             <Pressable onPress={hide} style={({ pressed }) => pressed && styles.pressed} accessibilityRole="button">
               <View style={styles.cardFace}>
-                <Image source={CARD_IMG} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                <Image source={LUNA.image} style={StyleSheet.absoluteFill} resizeMode="cover" />
                 <View style={styles.faceScrim} />
+                <Text style={styles.faceRoman}>{LUNA.roman}</Text>
                 <Text style={styles.faceLabel}>{MOCK.nombre}</Text>
               </View>
             </Pressable>
@@ -93,7 +93,8 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     width: CARD_W
   },
-  faceScrim: { backgroundColor: "rgba(7,8,10,0.5)", bottom: 0, height: 70, left: 0, position: "absolute", right: 0 },
+  faceScrim: { backgroundColor: "rgba(7,8,10,0.5)", bottom: 0, height: 84, left: 0, position: "absolute", right: 0 },
+  faceRoman: { color: orbita.colors.copper, fontFamily: orbita.fonts.monoMedium, fontSize: 10, letterSpacing: 2, textAlign: "center" },
   faceLabel: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 20, paddingBottom: orbita.spacing.md, textAlign: "center" },
   hideCta: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.mono, fontSize: 11, letterSpacing: 0.5, marginTop: orbita.spacing.md, textAlign: "center" },
   leadIn: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 24, lineHeight: 29, marginTop: orbita.spacing.xl },
