@@ -370,7 +370,36 @@ export default defineSchema({
     createdAt: v.number()
   })
     .index("by_kind_status", ["kind", "status"])
-    .index("by_locale_status", ["locale", "status"])
+    .index("by_locale_status", ["locale", "status"]),
+
+  // El Vacío (`void.ask`): una fila por pregunta respondida. El cupo diario
+  // (3 free / 5 pro) se calcula contando las filas de `(userId, localDate)`.
+  // `payload` = VoidAnswerPayload (contrato en src/services/appRefs.ts).
+  voidAnswers: defineTable({
+    userId: v.id("users"),
+    localDate: v.string(),
+    question: v.string(),
+    payload: v.any(),
+    createdAt: v.number()
+  }).index("by_user_date", ["userId", "localDate"]),
+
+  // El Vacío — cache diario de las preguntas sugeridas personalizadas (1 set por
+  // usuario por día). `payload` = { categories: [{ key, label, glyph, prompts[] }] }.
+  voidPromptSets: defineTable({
+    userId: v.id("users"),
+    localDate: v.string(),
+    payload: v.any(),
+    createdAt: v.number()
+  }).index("by_user_date", ["userId", "localDate"]),
+
+  // Guía diaria personalizada (LLM sobre aspectos tránsito→carta natal). Cache 1 por
+  // usuario por día. `payload` = DailyGuidePayload (contrato en src/services/appRefs.ts).
+  dailyGuides: defineTable({
+    userId: v.id("users"),
+    localDate: v.string(),
+    payload: v.any(),
+    createdAt: v.number()
+  }).index("by_user_date", ["userId", "localDate"])
 });
 
 // ---------------------------------------------------------------------------
@@ -415,4 +444,71 @@ export default defineSchema({
 // (`VoidAnswerPayload`). Front trabaja contra mock en `app/reading/void.tsx`.
 //
 //   void.ask({ question }):             VoidAnswerPayload
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// TODO: pendiente backend — Capacidades ampliadas (propuesto por frontend, 2026-07-07)
+//
+// Endpoints de AstrologyAPI ya disponibles pero SIN cablear. No requieren tablas
+// nuevas (cache opcional, patrón `transits.getToday`). Formas de payload = contrato
+// TS del front en `src/services/skyRefs.ts`. Catálogo completo en
+// `docs/api-capacidades-orbita.md`; detalle en `convex/CHANGELOG.md` (2026-07-07).
+// Guardrail: la API trae claims de salud/dinero/suerte; se reescribe voz Órbita
+// y pasa por /backoffice antes de app.
+//
+//   sky.getMoonPhase({ localDate, timezone }): MoonPhasePayload   // moon_phase_report — free
+//   forecast.getLongRange():                   LongRangeForecastPayload // life_forecast_report — premium
+//   charts.solarReturn({ year }):              SolarReturnPayload   // solar_return_* — premium
+//   content.sunSignDaily({ sign, localDate }): SunSignContentPayload// sun_sign_prediction/daily — free
+//
+// (Sinastría `relationships.synastry` ya está propuesta en el bloque App Core;
+//  motor confirmado: synastry_horoscope + love_compatibility_report.)
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// TODO: pendiente backend — Tránsitos por área (propuesto por frontend, 2026-07-09)
+//
+// El tab Tránsitos (logueado) embebe una sección "POR ÁREA" al final: el tránsito
+// principal del día desglosado en las 4 áreas (Amor / Trabajo / Vínculos / Energía).
+// No requiere tabla nueva: se suma a `TransitDetailPayload` (payload v.any() de
+// `transitReadings`). Forma en `src/services/appRefs.ts` (`TransitDetailPayload.porArea`).
+// Si el backend no la devuelve, el front oculta la sección (fallback → sin `porArea`).
+// Mismos guardrails que el daily (entretenimiento/autoconocimiento; sin destino/
+// dinero/salud/legal; voseo). Detalle en `convex/CHANGELOG.md` (2026-07-09).
+//
+//   transits.getToday({ localDate }):   TransitDetailPayload
+//     + porArea?: Array<{ title: string; body: string }>   // 4 áreas, lectura por área
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// TODO: pendiente backend — Enriquecer input del prompt daily (propuesto por frontend, 2026-07-09)
+//
+// `buildDailyPrompt` (convex/daily.ts) hoy pasa a GPT solo Sol/Luna/Asc + líneas
+// de tránsito. La API YA trae el contexto del punto que el tránsito toca (signo,
+// casa, aspectos natales — en chartWheelData planets/houses/aspects), pero no
+// llega al prompt → el LLM genera "a ciegas" sobre ese punto. No cambia contrato
+// de tipos del front; mejora calidad del texto. Verificado en vivo con
+// publicLab:previewCompleteHoroscope (14/08/2002). Detalle en convex/CHANGELOG.md
+// (2026-07-09) y .claude/plans/mossy-gathering-lobster.md.
+//
+//   buildDailyPrompt: por cada tránsito incluir { natalPoint, signo, casa, aspectosNatales }
+//
+// Sinastría para Vínculos ("con quién sintonizás") ya propuesta en el bloque
+// App Core V4.7: relationships.synastry({ relationshipProfileId }): SynastryPayload.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// TODO: pendiente backend — Calidad de generación diaria (propuesto por frontend, 2026-07-10)
+//
+// Feedback de usuario real (Sofi): (1) el HACÉ repite el body ("dice lo mismo"),
+// (2) la lectura del tránsito es larga y repite placements, (3) energía en crudo
+// ("Elemento de base: agua"). Reglas a sumar al prompt daily + humanizar plantillas:
+//   1. Cada campo aporta algo DISTINTO (body explica; hacé/evitá/acción/energía
+//      no repiten ideas ni frases del body ni entre sí).
+//   2. No repetir placements; nombrar cada planeta/signo/casa una sola vez.
+//   3. Conciso: body 2-3 frases, una idea por frase.
+//   4. Criollo: traducir "Elemento de base: agua" / "casa 9" / "cuadratura" al
+//      efecto humano (agua -> "desde lo sensible y la memoria", etc.).
+// Afecta convex/daily.ts (buildDailyPrompt), convex/lib/orbita.ts (energy template
+// + buildTopicReadings). Detalle en convex/CHANGELOG.md (2026-07-10).
 // ---------------------------------------------------------------------------

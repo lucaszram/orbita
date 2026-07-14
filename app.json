@@ -3,18 +3,21 @@
     "name": "Órbita",
     "slug": "orbita",
     "owner": "lucasssram",
-    "version": "0.2.0",
+    "version": "0.2.1",
     "orientation": "portrait",
     "scheme": "orbita",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.horoscopo.orbita",
+      "bundleIdentifier": "com.lucasssram.orbita",
+      "buildNumber": "5",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "CFBundleName": "Órbita",
+        "CFBundleDisplayName": "Órbita"
       }
     },
     "android": {
@@ -27,13 +30,21 @@
       "bundler": "metro"
     },
     "plugins": [
+      "./plugins/withStripUnusedEntitlements.js",
       "expo-router",
       "expo-notifications",
       "expo-asset",
       "expo-font",
       "expo-secure-store",
       "expo-web-browser",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "@clerk/expo",
+        {
+          "appleSignIn": false
+        }
+      ],
+      "expo-video"
     ],
     "extra": {
       "convexUrl": "",

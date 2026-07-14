@@ -28,7 +28,7 @@ function pt(r: number, i: number, n: number, c = 320): [number, number] {
   return [c + r * Math.cos(a), c - r * Math.sin(a)];
 }
 
-function Radar({ payload, size }: { payload: ValuesMapPayload; size: number }) {
+export function Radar({ payload, size }: { payload: ValuesMapPayload; size: number }) {
   const rMax = 250;
   const n = payload.axes.length;
   const poly = (fn: (i: number) => number) =>

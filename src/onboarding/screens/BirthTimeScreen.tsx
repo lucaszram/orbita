@@ -10,11 +10,10 @@ import { Body, Caption, Title } from "../components/Type";
 import { Wheel, WHEEL_ROW_H } from "../components/Wheel";
 import { font, GUTTER, orbita } from "../theme";
 
-const HOURS = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, "0"));
+const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"));
 const MINUTES = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0"));
-const PERIODS = ["AM", "PM"];
 
-export type BirthTime = { hour: number; minute: number; period: "AM" | "PM" };
+export type BirthTime = { hour: number; minute: number };
 
 type Props = {
   step: number;
@@ -41,21 +40,15 @@ export function BirthTimeScreen({ step, value, onChange, unknown, onToggleUnknow
           <View style={styles.wheels}>
             <Wheel
               items={HOURS}
-              index={value.hour - 1}
-              onChange={(i) => onChange({ ...value, hour: i + 1 })}
-              width={72}
+              index={value.hour}
+              onChange={(i) => onChange({ ...value, hour: i })}
+              width={84}
             />
             <Wheel
               items={MINUTES}
               index={value.minute}
               onChange={(i) => onChange({ ...value, minute: i })}
-              width={72}
-            />
-            <Wheel
-              items={PERIODS}
-              index={value.period === "AM" ? 0 : 1}
-              onChange={(i) => onChange({ ...value, period: i === 0 ? "AM" : "PM" })}
-              width={72}
+              width={84}
             />
           </View>
         </View>

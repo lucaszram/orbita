@@ -12,6 +12,7 @@ import type * as backoffice from "../backoffice.js";
 import type * as birthData from "../birthData.js";
 import type * as charts from "../charts.js";
 import type * as contentModules from "../contentModules.js";
+import type * as daily from "../daily.js";
 import type * as devices from "../devices.js";
 import type * as home from "../home.js";
 import type * as http from "../http.js";
@@ -24,6 +25,7 @@ import type * as lib_orbita from "../lib/orbita.js";
 import type * as lib_users from "../lib/users.js";
 import type * as migrations from "../migrations.js";
 import type * as notifications from "../notifications.js";
+import type * as notify from "../notify.js";
 import type * as onboarding from "../onboarding.js";
 import type * as payments_revenuecat from "../payments/revenuecat.js";
 import type * as payments_stripeActions from "../payments/stripeActions.js";
@@ -33,10 +35,13 @@ import type * as places from "../places.js";
 import type * as publicLab from "../publicLab.js";
 import type * as readings from "../readings.js";
 import type * as relationships from "../relationships.js";
+import type * as sky from "../sky.js";
 import type * as studio from "../studio.js";
 import type * as subscriptions from "../subscriptions.js";
+import type * as telemetry from "../telemetry.js";
 import type * as transits from "../transits.js";
 import type * as users from "../users.js";
+import type * as void_ from "../void.js";
 import type * as webB0Seed from "../webB0Seed.js";
 
 import type {
@@ -50,6 +55,7 @@ declare const fullApi: ApiFromModules<{
   birthData: typeof birthData;
   charts: typeof charts;
   contentModules: typeof contentModules;
+  daily: typeof daily;
   devices: typeof devices;
   home: typeof home;
   http: typeof http;
@@ -62,6 +68,7 @@ declare const fullApi: ApiFromModules<{
   "lib/users": typeof lib_users;
   migrations: typeof migrations;
   notifications: typeof notifications;
+  notify: typeof notify;
   onboarding: typeof onboarding;
   "payments/revenuecat": typeof payments_revenuecat;
   "payments/stripeActions": typeof payments_stripeActions;
@@ -71,10 +78,13 @@ declare const fullApi: ApiFromModules<{
   publicLab: typeof publicLab;
   readings: typeof readings;
   relationships: typeof relationships;
+  sky: typeof sky;
   studio: typeof studio;
   subscriptions: typeof subscriptions;
+  telemetry: typeof telemetry;
   transits: typeof transits;
   users: typeof users;
+  void: typeof void_;
   webB0Seed: typeof webB0Seed;
 }>;
 

@@ -181,9 +181,9 @@ export const signHomeBank: Record<ZodiacSign, SignDayVariant[]> = {
       clima: "Espalda fuerte, mochila revisable."
     },
     {
-      headline: "Estructura\ncon ventana.",
-      body: "Tu plan funciona; dejale una ventana abierta. Lo inesperado de hoy puede sumar.",
-      clima: "Orden firme, aire necesario."
+      headline: "Dejá una\npuerta abierta.",
+      body: "Tu plan funciona, pero hoy no lo cierres del todo: lo que aparece sin agenda puede sumar más que lo previsto.",
+      clima: "Orden firme, margen para improvisar."
     }
   ],
   acuario: [

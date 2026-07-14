@@ -31,20 +31,39 @@ export type SignPlacement = {
   sign: string;
   house?: number;
   degree?: number;
+  /** Id estable del punto: "sun" | "moon" | "ascendant" | "mercury"… */
+  key?: string;
+  /** Longitud eclíptica 0–360 (para ubicar el planeta en la rueda). */
+  fullDegree?: number;
+  /** Grado 0–30 dentro del signo (para mostrar "15° Leo"). */
+  normDegree?: number;
+  isRetrograde?: boolean;
+};
+
+export type NatalChartAspect = {
+  from: string;
+  to: string;
+  type: string;
+  /** Nombre en español: "trígono", "cuadratura"… */
+  typeEs?: string;
+  harmony: "harmony" | "tension" | "neutral";
+  angle?: number;
+  orb?: number;
+  isMajor?: boolean;
 };
 
 /** Payload de `natalCharts.payload` — alimenta la pantalla Carta natal. */
 export type NatalChartPayload = {
   triad: { sun: SignPlacement; moon: SignPlacement; ascendant: SignPlacement };
   placements: SignPlacement[];
-  houses: Array<{ house: number; sign: string; cusp?: number }>;
-  aspects: Array<{
-    from: string;
-    to: string;
-    type: string;
-    harmony: "harmony" | "tension" | "neutral";
-    angle?: number;
-  }>;
+  houses: Array<{ house: number; sign: string; cusp?: number; theme?: string }>;
+  aspects: NatalChartAspect[];
+  /** Longitud del Ascendente (ancla de rotación de la rueda). */
+  ascendantDegree?: number;
+  /** Longitud del Medio Cielo (MC). */
+  mc?: number;
+  /** Aspectos principales (top-6 por orbe) — para dibujar en la rueda. */
+  mainAspects?: NatalChartAspect[];
   accuracy: string;
   limitations: string[];
 };
@@ -145,6 +164,8 @@ export type PersonalitySection = {
   intro: string;
   placement: { label: string; planet: string; sign?: string; house?: number };
   body: string;
+  /** 1-2 preguntas de reflexión por sector (el plan LLM natal ya las prevé). */
+  questions?: string[];
 };
 export type PersonalityReadingPayload = {
   headline: string;
@@ -164,6 +185,10 @@ export type TransitDetailPayload = {
   frequency: { label: string; timeline: Array<{ label: string; current: boolean }> };
   earth: { headline: string; suggestions: string[] };
   window: { label: string; note: string };
+  /** Lectura del tránsito de hoy desglosada por área (Amor/Trabajo/Vínculos/
+   *  Energía). Hoy el backend NO la manda (queda undefined → el tab oculta la
+   *  sección). Contrato pendiente en `transits.getToday`. Ver convex/CHANGELOG.md. */
+  porArea?: Array<{ title: string; body: string }>;
 };
 
 export type VoidAnswerPayload = {
@@ -176,7 +201,31 @@ export type VoidAnswerPayload = {
   mejorPregunta: string;
   /** Paso concreto y seguro (sin destino/salud/dinero/legal). */
   paso: string;
+  /** Cupo diario restante después de esta pregunta (3 free / 5 pro). */
+  remaining?: number;
+  /** Cupo total del día. */
+  limit?: number;
+  /** true si ya no quedan preguntas hoy (no se generó respuesta). */
+  locked?: boolean;
 };
+
+/** Guía diaria personalizada (análisis del cielo de hoy sobre la carta natal). */
+export type DailyGuidePayload = {
+  headline: string;
+  body: string;
+  clima: string;
+  destacado: { aspecto: string; lectura: string };
+  secundarios: Array<{ aspecto: string; lectura: string }>;
+  basadoEn: string[];
+  disclaimer: string;
+};
+
+/** Cupo del día de El Vacío (contador). */
+export type VoidTodayPayload = { limit: number; used: number; remaining: number; isPro: boolean };
+
+/** Preguntas sugeridas personalizadas por categoría (El Vacío). */
+export type VoidPromptCategory = { key: string; label: string; glyph: string; prompts: string[] };
+export type VoidSuggestedPayload = { categories: VoidPromptCategory[] };
 
 export type PlaceLookup = {
   status: "success" | "not_configured" | "error";
@@ -245,6 +294,21 @@ export const appApi = {
       "public",
       Empty,
       NatalChartDoc
+    >,
+    // Ya implementadas en backend (el "propuesto" quedó obsoleto): derivan de la carta.
+    valuesMap: anyApi.charts.valuesMap as FunctionReference<"query", "public", Empty, ValuesMapPayload | null>,
+    personalityReading: anyApi.charts.personalityReading as FunctionReference<
+      "query",
+      "public",
+      Empty,
+      PersonalityReadingPayload | null
+    >,
+    // Genera (LLM) + cachea la lectura rica; la query de arriba la devuelve reactiva.
+    generatePersonalityReading: anyApi.charts.generatePersonalityReading as FunctionReference<
+      "action",
+      "public",
+      Empty,
+      unknown
     >
   },
   readings: {
@@ -304,6 +368,16 @@ export const proposedApi = {
   >,
   // TODO: pendiente backend — places.resolve({ query }): geocoding real para onboarding
   resolvePlace: anyApi.places.resolve as FunctionReference<"action", "public", { query: string }, PlaceLookup>,
-  // TODO: pendiente backend — void.ask({ question }): VoidAnswerPayload (El Vacío; guardrail: nunca sí/no)
-  voidAsk: anyApi.void.ask as FunctionReference<"action", "public", { question: string }, VoidAnswerPayload>
+  // void.ask({ question }): VoidAnswerPayload (El Vacío; guardrail: nunca sí/no; cupo 3 free / 5 pro)
+  voidAsk: anyApi.void.ask as FunctionReference<"action", "public", { question: string }, VoidAnswerPayload>,
+  // void.today(): cupo del día para el contador (reactivo).
+  voidToday: anyApi.void.today as FunctionReference<"query", "public", Empty, VoidTodayPayload | null>,
+  // void.suggestedQuestions(): preguntas sugeridas personalizadas por categoría.
+  voidSuggested: anyApi.void.suggestedQuestions as FunctionReference<"action", "public", Empty, VoidSuggestedPayload>,
+  // daily.getGuide(): guía diaria personalizada (action: genera+cachea 1/día/usuario).
+  dailyGuide: anyApi.daily.getGuide as FunctionReference<"action", "public", { localDate?: string; timezone?: string }, DailyGuidePayload>,
+  // Dev/testeo interno: marca al usuario como Pro (gateado por ALLOW_DEV_STUB en Convex).
+  setStubPro: anyApi.subscriptions.setStubPlusForDev as FunctionReference<"mutation", "public", Empty, unknown>,
+  // Telemetría: aviso de instalación al bot de Telegram (1 vez por install, sin sesión).
+  appOpened: anyApi.telemetry.appOpened as FunctionReference<"mutation", "public", { platform?: string }, null>
 } as const;

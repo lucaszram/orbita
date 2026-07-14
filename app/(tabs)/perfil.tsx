@@ -2,6 +2,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { Body, Divider, Eyebrow, H2, MonoLine, Note, OrbitaScreen, Pill, Section } from "@/components/orbita/kit";
 import { FullBleedHero } from "@/components/orbita/ImmersiveHero";
+import { CartaCard } from "@/components/home/CartaCard";
 import { useAppData } from "@/domain/appData";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { backendConfig } from "@/services/backendProviders";
@@ -10,11 +11,22 @@ import { orbita } from "@/theme/orbita";
 export default function PerfilScreen() {
   const { perfil } = useAppData();
   const { auth } = useLiveApp();
+
+  async function handleLogout() {
+    try {
+      await auth?.signOut();
+    } catch {
+      // Aún si Clerk falla, salimos a un estado limpio.
+    }
+    router.replace("/onboarding");
+  }
+
   return (
     <OrbitaScreen>
       <FullBleedHero kind="perfil">
         <MonoLine>{perfil.birthLine}</MonoLine>
       </FullBleedHero>
+      <CartaCard />
       <Section style={{ paddingTop: orbita.spacing.lg }}>
         <Eyebrow>PERFIL</Eyebrow>
         <H2>Tu carta,{"\n"}tus datos.</H2>
@@ -24,9 +36,16 @@ export default function PerfilScreen() {
         <Eyebrow>CUENTA</Eyebrow>
         {perfil.accountEmail ? (
           <View>
-            <Body bone>{perfil.accountEmail}</Body>
-            <Pressable onPress={() => auth?.signOut()} accessibilityRole="button" hitSlop={8}>
-              <Text style={styles.link}>CERRAR SESIÓN</Text>
+            <Body bone>{auth?.name ?? perfil.accountEmail}</Body>
+            {auth?.name ? (
+              <Note>
+                {perfil.accountEmail.includes("privaterelay.appleid.com")
+                  ? "Conectada con Apple"
+                  : perfil.accountEmail}
+              </Note>
+            ) : null}
+            <Pressable onPress={handleLogout} accessibilityRole="button" style={styles.logoutBtn} hitSlop={8}>
+              <Text style={styles.logoutText}>Cerrar sesión</Text>
             </Pressable>
           </View>
         ) : (
@@ -50,11 +69,19 @@ export default function PerfilScreen() {
 }
 
 const styles = StyleSheet.create({
-  link: {
-    color: orbita.colors.muted,
+  logoutBtn: {
+    alignSelf: "flex-start",
+    borderColor: orbita.colors.line,
+    borderRadius: 999,
+    borderWidth: 1,
+    marginTop: orbita.spacing.md,
+    paddingHorizontal: orbita.spacing.lg,
+    paddingVertical: orbita.spacing.sm
+  },
+  logoutText: {
+    color: orbita.colors.bone,
     fontFamily: orbita.fonts.monoMedium,
-    fontSize: 11,
-    letterSpacing: 1,
-    marginTop: orbita.spacing.md
+    fontSize: 12,
+    letterSpacing: 1
   }
 });

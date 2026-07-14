@@ -9,6 +9,7 @@ import {
 } from "react-native";
 
 import { Text } from "@/components/ui/text";
+import { type PlaceHit, searchPlaces } from "@/services/geocoding";
 
 import { A } from "../assets";
 import { Emblem } from "../components/Emblem";
@@ -17,12 +18,7 @@ import { Screen } from "../components/Screen";
 import { Body, Caption, Label, Title } from "../components/Type";
 import { font, GUTTER, orbita } from "../theme";
 
-export type PlaceOption = {
-  label: string;
-  latitude?: number;
-  longitude?: number;
-  timezone?: string;
-};
+export type PlaceOption = PlaceHit;
 
 // Fallback offline (si el geocoding no responde).
 const FALLBACK_CITIES = [
@@ -53,27 +49,6 @@ function fallbackResults(query: string): PlaceOption[] {
   return FALLBACK_CITIES.filter((c) => norm(c).includes(q))
     .slice(0, 5)
     .map((label) => ({ label }));
-}
-
-/** Geocoding real: Open-Meteo (gratis, sin key). Devuelve ciudad + país + coords + timezone. */
-async function searchPlaces(query: string, signal: AbortSignal): Promise<PlaceOption[]> {
-  const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=6&language=es&format=json`;
-  const res = await fetch(url, { signal });
-  if (!res.ok) throw new Error(`geocoding ${res.status}`);
-  const data = (await res.json()) as {
-    results?: Array<{ name: string; country?: string; admin1?: string; latitude: number; longitude: number; timezone?: string }>;
-  };
-  return (data.results ?? []).map((r) => {
-    const parts = [r.name];
-    if (r.admin1 && r.admin1 !== r.name) parts.push(r.admin1);
-    if (r.country) parts.push(r.country);
-    return {
-      label: parts.join(", "),
-      latitude: r.latitude,
-      longitude: r.longitude,
-      timezone: r.timezone,
-    };
-  });
 }
 
 type Props = {
@@ -109,7 +84,7 @@ export function BirthplaceSearchScreen({ step, query, onQuery, onSelect, onBack 
       } finally {
         if (requestId.current === id) setSearching(false);
       }
-    }, 350);
+    }, 450);
     return () => {
       clearTimeout(t);
       controller.abort();

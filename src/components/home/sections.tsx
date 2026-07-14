@@ -4,9 +4,9 @@ import { LinearGradient } from "expo-linear-gradient";
 import { HomeReading, HomeTopic, Topic } from "@/domain/types";
 import { orbita } from "@/theme/orbita";
 import { EditorialThumb } from "@/components/orbita/HeroImage";
-import { MiniChart } from "./OrbitalHero";
 
 const HERO_HOME = require("../../../assets/orbita/optimized/core/orbita_home_hero_orbital_b.jpg");
+const NEBULA = require("../../../assets/orbita/optimized/core/orbita_daily_texture_b.jpg");
 
 const G = orbita.spacing.gutter;
 
@@ -60,35 +60,50 @@ export function PillButton({ label, onPress }: { label: string; onPress?: () => 
   );
 }
 
-/** Tramo 01 — Top (Figma V4.7): hero full-bleed con wash, tríada, frase del día, CTA. */
-export function SignalTop({ reading, onProfundizar }: { reading: HomeReading; onProfundizar: () => void }) {
-  const { triad } = reading;
+/** Tramo 01 — Top (Figma V4.7): hero full-bleed con wash, tríada, frase del día, CTA.
+ *  `triad` opcional: si se pasa, pisa la de `reading` (para que la Home tome la
+ *  tríada de la MISMA fuente que la Carta — el chart, no `createTriad`). */
+export function SignalTop({
+  reading,
+  onProfundizar,
+  triad: triadOverride,
+  daily,
+  name
+}: {
+  reading: HomeReading;
+  onProfundizar: () => void;
+  triad?: HomeReading["triad"];
+  /** Guía diaria real (análisis del cielo de hoy sobre la carta). Si viene, pisa el
+   *  headline/body/clima del engine local (el "Estructura con ventana"). */
+  daily?: { headline: string; body: string; clima: string };
+  /** Nombre de la persona para la bajada "HOY · PARA {nombre}" (no el signo). */
+  name?: string;
+}) {
+  const triad = triadOverride ?? reading.triad;
+  const headline = daily?.headline ?? reading.headline;
+  const body = daily?.body ?? reading.body;
   return (
     <View style={styles.section}>
-      <View style={styles.heroBleed}>
+      {/* Hero full-bleed (Figma V4.7 "Home / Top"): el orbital es el FONDO detrás de
+          todo el hero; tríada + frase del día van ENCIMA, sobre el degradé a negro. */}
+      <View style={styles.hero}>
         <Image source={HERO_HOME} style={styles.heroImg} resizeMode="cover" />
         <LinearGradient
-          colors={["rgba(10,11,14,0.1)", "rgba(10,11,14,0.55)", orbita.colors.background]}
-          locations={[0, 0.6, 1]}
-          style={StyleSheet.absoluteFill}
+          colors={["rgba(7,8,10,0.1)", "rgba(7,8,10,0.1)", "rgba(7,8,10,0.34)", "rgba(7,8,10,0)"]}
+          locations={[0, 0.5, 0.84, 1]}
+          style={styles.heroFade}
         />
-        <View style={styles.heroTriad}>
+        <View style={styles.heroContent}>
           <Text style={[styles.triad, styles.triadCentered]}>
             {`${triad.sun.glyph} ${triad.sun.label}   ${triad.moon.glyph} ${triad.moon.label}   ${triad.ascendant.glyph} ${triad.ascendant.label}`}
           </Text>
           {triad.accuracyNote ? <Text style={[styles.triadNote, styles.triadCentered]}>{triad.accuracyNote}</Text> : null}
+          <View style={styles.heroTextGap} />
+          <Eyebrow>{`HOY · PARA ${(name?.trim().split(" ")[0] || triad.sun.label).toUpperCase()}`}</Eyebrow>
+          <Text style={styles.headline}>{headline}</Text>
+          <Text style={styles.body}>{body}</Text>
         </View>
       </View>
-
-      <Eyebrow>{`HOY · PARA ${triad.sun.label.toUpperCase()}`}</Eyebrow>
-      <Text style={styles.headline}>{reading.headline}</Text>
-      <Text style={styles.body}>{reading.body}</Text>
-
-      <View style={styles.divider} />
-      <Eyebrow>{reading.signalLabel}</Eyebrow>
-      <Text style={styles.signalCopy}>{reading.signalCopy}</Text>
-      <View style={{ height: orbita.spacing.xl }} />
-      <PillButton label="VER POR QUÉ" onPress={onProfundizar} />
     </View>
   );
 }
@@ -110,9 +125,14 @@ function GuideRow({ label, copy }: { label: string; copy: string }) {
 export function DailyGuide({ reading }: { reading: HomeReading }) {
   return (
     <View style={styles.section}>
-      <View style={styles.miniChart}>
-        <MiniChart size={112} />
-      </View>
+      {/* Nebulosa dorada detrás de la guía (como el Figma "Guía de hoy"), sin el radar. */}
+      <Image source={NEBULA} style={[styles.guiaNebula, { opacity: 0.55 }]} resizeMode="cover" />
+      <LinearGradient
+        colors={["#07080A", "rgba(7,8,10,0)", "rgba(7,8,10,0)", "#07080A"]}
+        locations={[0, 0.18, 0.82, 1]}
+        style={styles.guiaNebula}
+        pointerEvents="none"
+      />
       <Eyebrow>{reading.guideEyebrow}</Eyebrow>
       <Text style={styles.headlineMd}>{reading.guideHeadline}</Text>
       <Text style={styles.body}>{reading.guideIntro}</Text>
@@ -134,13 +154,11 @@ export function DailyGuide({ reading }: { reading: HomeReading }) {
 export function TopicsSection({
   reading,
   activeTopic,
-  onSelectTab,
-  onOpenTopic
+  onSelectTab
 }: {
   reading: HomeReading;
-  activeTopic: Topic;
+  activeTopic: Topic | null;
   onSelectTab: (topic: Topic) => void;
-  onOpenTopic: (topic: HomeTopic) => void;
 }) {
   return (
     <View style={styles.section}>
@@ -158,25 +176,41 @@ export function TopicsSection({
       <View style={styles.divider} />
       <Eyebrow>TU DÍA POR ÁREA</Eyebrow>
 
-      {[...reading.topics]
-        .sort((a, b) => (a.topic === activeTopic ? -1 : b.topic === activeTopic ? 1 : 0))
-        .map((t) => {
-        const active = t.topic === activeTopic;
+      {reading.topics.map((t) => {
+        const open = t.topic === activeTopic;
         return (
-          <Pressable
-            key={t.topic}
-            onPress={() => onOpenTopic(t)}
-            style={({ pressed }) => [styles.insightRow, !active && styles.insightRowDim, pressed && styles.pressed]}
-          >
-            <View style={styles.insightHead}>
-              <View style={styles.topicMarker}>
-                <Text style={styles.topicGlyph}>{TOPIC_GLYPHS[t.topic] ?? "☉"}</Text>
+          <View key={t.topic} style={styles.insightRow}>
+            <Pressable
+              onPress={() => onSelectTab(t.topic)}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: open }}
+              style={({ pressed }) => [pressed && styles.pressed]}
+            >
+              <View style={styles.insightHead}>
+                <View style={styles.topicMarker}>
+                  <Text style={styles.topicGlyph}>{TOPIC_GLYPHS[t.topic] ?? "☉"}</Text>
+                </View>
+                <Text style={styles.insightTitle}>{t.title}</Text>
+                <Text style={[styles.chevron, open && styles.chevronOpen]}>⌄</Text>
               </View>
-              <Text style={styles.insightTitle}>{t.title}</Text>
-              <Text style={styles.arrow}>→</Text>
-            </View>
+            </Pressable>
             <Text style={[styles.body, styles.insightBody]}>{t.oneLine}</Text>
-          </Pressable>
+            {open ? (
+              <View style={styles.insightExpanded}>
+                <Text style={[styles.body, styles.insightBody, styles.insightDetail]}>{t.detail}</Text>
+                <View style={styles.insightGuide}>
+                  <GuideRow label="HACÉ" copy={t.hace} />
+                  <GuideRow label="EVITÁ" copy={t.evita} />
+                </View>
+                {t.question ? (
+                  <View style={styles.insightQuestion}>
+                    <Eyebrow>PREGUNTA</Eyebrow>
+                    <Text style={styles.insightQuestionText}>{t.question}</Text>
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
+          </View>
         );
       })}
     </View>
@@ -279,6 +313,7 @@ const styles = StyleSheet.create({
   headerDivider: { backgroundColor: orbita.colors.line, height: 1 },
 
   section: { paddingHorizontal: G, paddingTop: orbita.spacing.xl, paddingBottom: orbita.spacing.xxl },
+  guiaNebula: { ...StyleSheet.absoluteFillObject },
 
   eyebrow: {
     color: orbita.colors.copper,
@@ -293,16 +328,20 @@ const styles = StyleSheet.create({
   triadCentered: { textAlign: "center" },
   triadNote: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.body, fontSize: 12, lineHeight: 16, marginTop: orbita.spacing.sm },
   heroWrap: { alignItems: "center", marginVertical: orbita.spacing.xl },
-  heroBleed: {
-    height: 330,
-    justifyContent: "flex-end",
+  hero: {
     marginBottom: orbita.spacing.xl,
     marginHorizontal: -G,
     marginTop: -orbita.spacing.xl,
-    paddingBottom: orbita.spacing.lg
+    overflow: "hidden"
   },
-  heroImg: { ...StyleSheet.absoluteFillObject, height: "100%", width: "100%" },
-  heroTriad: { paddingHorizontal: G },
+  // La luna entera (asset cuadrado: esfera + anillo) arriba, pegada al header; el degradé
+  // la funde a negro y el texto va sobre la parte baja / debajo (como el Figma "Home / Top").
+  // Luna fija en la posición del Figma "Home / Top" (entera, borde superior pegado al
+  // header). NO se mueve para subir el texto — solo se ajusta paddingTop.
+  heroImg: { height: 520, left: 52, position: "absolute", top: -66, width: 520 },
+  heroFade: { bottom: 0, left: 0, position: "absolute", right: 0, top: 0 },
+  heroContent: { paddingBottom: orbita.spacing.lg, paddingHorizontal: G, paddingTop: 60 },
+  heroTextGap: { height: orbita.spacing.xl },
 
   headline: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 40, lineHeight: 45 },
   headlineMd: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 34, lineHeight: 41 },
@@ -356,17 +395,30 @@ const styles = StyleSheet.create({
     width: 26
   },
   topicGlyph: { color: orbita.colors.bone, fontFamily: orbita.fonts.body, fontSize: 13 },
-  insightBody: { marginLeft: 26 + orbita.spacing.md },
+  insightBody: { marginLeft: 26 + orbita.spacing.md, marginTop: orbita.spacing.sm },
   tab: { alignItems: "center" },
   tabLabel: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.mono, fontSize: 13 },
   tabLabelActive: { color: orbita.colors.copper },
   tabUnderline: { backgroundColor: orbita.colors.copper, borderRadius: 1, height: 2, marginTop: orbita.spacing.sm, width: 34 },
 
-  insightRow: { paddingVertical: 28, borderBottomColor: orbita.colors.line, borderBottomWidth: 1 },
+  insightRow: { paddingTop: orbita.spacing.lg, paddingBottom: orbita.spacing.xxl, borderBottomColor: orbita.colors.line, borderBottomWidth: 1 },
   insightRowDim: { opacity: 0.55 },
   insightHead: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
   insightTitle: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 24, lineHeight: 30, flex: 1 },
   arrow: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 20, marginLeft: orbita.spacing.md },
+  chevron: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 22, lineHeight: 24, marginLeft: orbita.spacing.md },
+  chevronOpen: { color: orbita.colors.copper, transform: [{ rotate: "180deg" }] },
+  insightExpanded: { marginTop: orbita.spacing.md },
+  insightDetail: { marginTop: 0 },
+  insightGuide: { marginTop: orbita.spacing.lg },
+  insightQuestion: { marginTop: orbita.spacing.xl },
+  insightQuestionText: {
+    color: orbita.colors.bone,
+    fontFamily: orbita.fonts.serif,
+    fontSize: 20,
+    lineHeight: 27,
+    marginTop: orbita.spacing.sm
+  },
 
   thumbnail: {
     alignItems: "center",

@@ -18,6 +18,11 @@ export function PersonalizingScreen({ step, onDone, onBack }: Props) {
   const [chart, setChart] = useState(8);
   const [transits, setTransits] = useState(0);
   const done = useRef(false);
+  // onDone en ref: si estuviera en las deps del effect, un re-render de arriba
+  // (p. ej. el cálculo de la tríada) re-ejecutaría el effect y cancelaría el
+  // timeout de avance → la pantalla quedaba pegada al 100%.
+  const onDoneRef = useRef(onDone);
+  onDoneRef.current = onDone;
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -30,10 +35,10 @@ export function PersonalizingScreen({ step, onDone, onBack }: Props) {
   useEffect(() => {
     if (chart >= 100 && transits >= 100 && !done.current) {
       done.current = true;
-      const t = setTimeout(onDone, 700);
+      const t = setTimeout(() => onDoneRef.current(), 700);
       return () => clearTimeout(t);
     }
-  }, [chart, transits, onDone]);
+  }, [chart, transits]);
 
   return (
     <Screen bg={A.transitsBg} wash={0.48}>

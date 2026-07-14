@@ -8,7 +8,7 @@ import { Header } from "../components/Header";
 import { Screen } from "../components/Screen";
 import { Body, Label, Title } from "../components/Type";
 import { font, GUTTER, orbita } from "../theme";
-import type { AccountFlow } from "../useAccount";
+import type { AccountFlow, OAuthProvider } from "../useAccount";
 
 type Props = {
   step: number;
@@ -18,12 +18,13 @@ type Props = {
   onCode: (v: string) => void;
   account: AccountFlow | null;
   onNext: () => void;
+  onOAuth: (provider: OAuthProvider) => void;
   onSkip: () => void;
   onBack: () => void;
 };
 
 /** 14 — Create account (save your chart). Con Clerk: email → código → sesión. */
-export function AccountScreen({ step, email, onEmail, code, onCode, account, onNext, onSkip, onBack }: Props) {
+export function AccountScreen({ step, email, onEmail, code, onCode, account, onNext, onOAuth, onSkip, onBack }: Props) {
   const codePhase = account?.phase === "code" && !account.isSignedIn;
   const subtitle = account?.isSignedIn
     ? "Tu cuenta ya está activa. Tus lecturas quedan guardadas."
@@ -69,6 +70,25 @@ export function AccountScreen({ step, email, onEmail, code, onCode, account, onN
         <View style={styles.primary}>
           <CTA label={ctaLabel} onPress={account?.busy ? () => undefined : onNext} />
         </View>
+
+        {account && !codePhase ? (
+          <>
+            <Text style={styles.divider}>O seguir con</Text>
+            <View style={styles.socials}>
+              <CTA
+                label={account.oauthBusy === "apple" ? "Un momento…" : "Continuar con Apple"}
+                variant="secondary"
+                onPress={() => (account.oauthBusy ? undefined : onOAuth("apple"))}
+              />
+              <View style={styles.gap} />
+              <CTA
+                label={account.oauthBusy === "google" ? "Un momento…" : "Continuar con Google"}
+                variant="secondary"
+                onPress={() => (account.oauthBusy ? undefined : onOAuth("google"))}
+              />
+            </View>
+          </>
+        ) : null}
 
         {account ? (
           <View style={styles.linksZone}>

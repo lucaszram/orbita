@@ -12,9 +12,9 @@
 import { useMemo } from "react";
 import { useAppState } from "@/hooks/useAppState";
 import { LiveAppDocs, useLiveApp, useLiveAppDocs } from "@/hooks/useLiveApp";
+import { chartMock } from "@/content/chartMock";
 import { createFallbackProfile, createTriad, toISODate } from "./readingEngine";
 import { Triad, UserProfile } from "./types";
-import { formatSign } from "./zodiac";
 
 // --- Types ---
 
@@ -113,7 +113,9 @@ export function buildCarta(profile: UserProfile, date = toISODate()): CartaData 
 }
 
 export function buildTransitos(profile: UserProfile): TransitosData {
-  const sunLabel = formatSign(profile.zodiacSign);
+  // El Sol natal sale de la carta (misma fuente que Home/Carta), no del perfil,
+  // para que el destacado no diga un signo distinto al de tu carta.
+  const sunLabel = chartMock.triad.sun.sign;
   return {
     // Dónde está cada planeta HOY (no es tu carta: es el cielo de todos).
     skyLabel: "HOY EN EL CIELO",
@@ -150,7 +152,7 @@ export function buildPerfil(profile: UserProfile): PerfilData {
   return {
     birthLine: formatBirthLine(profile),
     privacy: "Se usan solo para calcular tu carta. No los compartimos con nadie.",
-    plan: "Órbita Plus · activo.",
+    plan: "Plan gratuito.",
     accountEmail: null
   };
 }
@@ -219,12 +221,14 @@ function mergeLiveAppData(base: AppData, docs: LiveAppDocs, email: string | null
     perfil = { ...perfil, birthLine: parts.join("  ·  ") };
   }
   if (docs.subscription) {
+    // El backend migró el entitlement pago a "orbita_pro"; aceptamos también el
+    // "plus" histórico para no romper suscripciones ya emitidas.
+    const isPaid = docs.subscription.entitlement === "plus" || docs.subscription.entitlement === "orbita_pro";
     perfil = {
       ...perfil,
-      plan:
-        docs.subscription.entitlement === "plus"
-          ? `Órbita Plus · ${docs.subscription.status === "active" ? "activo" : docs.subscription.status ?? "activo"}.`
-          : "Plan gratuito."
+      plan: isPaid
+        ? `Órbita Plus · ${docs.subscription.status === "active" ? "activo" : docs.subscription.status ?? "activo"}.`
+        : "Plan gratuito."
     };
   }
 

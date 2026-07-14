@@ -15,10 +15,19 @@
       "channel": "preview"
     },
     "production": {
-      "channel": "production"
+      "channel": "production",
+      "environment": "production",
+      "autoIncrement": true
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "ascAppId": "6788918249",
+        "ascApiKeyPath": "/Users/lucas/Downloads/AuthKey_86YBJ46Z9W.p8",
+        "ascApiKeyId": "86YBJ46Z9W",
+        "ascApiKeyIssuerId": "837e336c-5b7b-4231-b1c3-b94cc94a048e"
+      }
+    }
   }
 }

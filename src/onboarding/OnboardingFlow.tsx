@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -24,9 +24,15 @@ import { PaywallScreen, type PlanId } from "./screens/PaywallScreen";
 import { PersonalizingScreen } from "./screens/PersonalizingScreen";
 import { SplashScreen } from "./screens/SplashScreen";
 import { orbita } from "./theme";
-import { useAccountFlow, useBackendPersist } from "./useAccount";
+import { useAccountFlow, useBackendPersist, useOnboardingChart, useOnboardingComputeTriad } from "./useAccount";
+import type { OnboardingChart } from "./useAccount";
 
 const TOTAL = 15;
+
+// Paywall temporalmente DESACTIVADO (2-3 semanas, mientras refinamos el onboarding
+// y el flujo). Con `false`, al terminar el onboarding se entra DIRECTO a la app sin
+// pasar por el paso de pago (step 14). Para reactivar: PAYWALL_ENABLED = true.
+const PAYWALL_ENABLED = false;
 
 const ELEMENTS: Record<ZodiacSign, string> = {
   aries: "Fuego",
@@ -45,6 +51,11 @@ const ELEMENTS: Record<ZodiacSign, string> = {
 
 const DEFAULT_TOPICS: Topic[] = ["claridad", "energia"];
 
+/** {hour, minute} (hora ya en 24h, 0–23) → "HH:MM" (lo que espera el backend). */
+function to24hFromParts(t: BirthTime): string {
+  return `${String(t.hour).padStart(2, "0")}:${String(t.minute).padStart(2, "0")}`;
+}
+
 /** Onboarding container — owns flow state and navigation, dispatches screens. */
 export function OnboardingFlow() {
   const fontsLoaded = useOrbitaFonts();
@@ -57,13 +68,19 @@ export function OnboardingFlow() {
   const [birthDate, setBirthDate] = useState<BirthDateParts>({ day: 15, month: 1, year: 1996 });
   const [placeQuery, setPlaceQuery] = useState("");
   const [birthPlace, setBirthPlace] = useState<PlaceOption | undefined>();
-  const [birthTime, setBirthTime] = useState<BirthTime>({ hour: 8, minute: 30, period: "AM" });
+  const [birthTime, setBirthTime] = useState<BirthTime>({ hour: 12, minute: 0 });
   const [timeUnknown, setTimeUnknown] = useState(false);
   const [email, setEmail] = useState("");
   const [accountCode, setAccountCode] = useState("");
   const [plan, setPlan] = useState<PlanId>("annual");
   const account = useAccountFlow();
   const persistBackend = useBackendPersist();
+  const chartPreview = useOnboardingChart();
+  const computeTriad = useOnboardingComputeTriad();
+  const [computed, setComputed] = useState<OnboardingChart | undefined>();
+  const [retryTick, setRetryTick] = useState(0);
+  const calcFired = useRef(false);
+  const computedSig = useRef<string | null>(null);
 
   // Dev preview: jump to any step via ?debugStep=N.
   useEffect(() => {
@@ -86,8 +103,52 @@ export function OnboardingFlow() {
   const dateShort = `${birthDate.day} ${MONTHS[birthDate.month - 1].slice(0, 3)} ${birthDate.year}`;
   const timeLabel = timeUnknown
     ? "Sin hora"
-    : `${String(birthTime.hour).padStart(2, "0")}:${String(birthTime.minute).padStart(2, "0")} ${birthTime.period}`;
+    : `${String(birthTime.hour).padStart(2, "0")}:${String(birthTime.minute).padStart(2, "0")}`;
   const placeShort = birthPlace?.label.split(",")[0] ?? "";
+
+  // Al llegar al preview (paso 14) disparamos el cálculo REAL de la carta una vez.
+  // Con sesión Clerk persiste birthData + carta + primera lectura; sin sesión no
+  // hace nada (persistBackend chequea isSignedIn) y el preview degrada a solo-Sol.
+  useEffect(() => {
+    if (step !== 14 || calcFired.current || !persistBackend) return;
+    calcFired.current = true;
+    void persistBackend({
+      birthDate: birthDateISO,
+      birthTime: timeUnknown ? undefined : timeLabel,
+      birthPlaceLabel: birthPlace?.label,
+      latitude: birthPlace?.latitude,
+      longitude: birthPlace?.longitude,
+      timezone: birthPlace?.timezone,
+    });
+  }, [step, persistBackend, birthDateISO, timeUnknown, timeLabel, birthPlace]);
+
+  // Tríada real SIN login: al llegar a "Personalizing"(11) calculamos la carta con
+  // el endpoint público, para que el preview muestre Luna/Ascendente reales aunque
+  // el usuario no se haya logueado todavía. Requiere lugar (coords del geocoding).
+  useEffect(() => {
+    if (step < 11 || !computeTriad || !birthPlace) return;
+    const birthTimeStr = timeUnknown ? undefined : to24hFromParts(birthTime);
+    // Firma de los datos: si cambia (el usuario editó fecha/hora/lugar) recalcula;
+    // si es la misma, no vuelve a pegarle a la API. Antes un ref "fired" dejaba
+    // pegada la tríada de una persona anterior.
+    const sig = `${birthDateISO}|${birthTimeStr ?? "?"}|${birthPlace.label}`;
+    if (computedSig.current === sig) return;
+    computedSig.current = sig;
+    let cancelled = false;
+    computeTriad({
+      birthDate: birthDateISO,
+      birthTime: birthTimeStr,
+      birthTimePrecision: timeUnknown ? "unknown" : "known",
+      birthPlaceLabel: birthPlace.label,
+      latitude: birthPlace.latitude,
+      longitude: birthPlace.longitude,
+      timezone: birthPlace.timezone,
+    })
+      .then((r) => { if (!cancelled) setComputed(r); })
+      .catch(() => { computedSig.current = null; });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, computeTriad, birthPlace, birthDateISO, timeUnknown, birthTime.hour, birthTime.minute, retryTick]);
 
   const accountNext = async () => {
     if (!account || account.isSignedIn) {
@@ -101,6 +162,15 @@ export function OnboardingFlow() {
       return;
     }
     const ok = await account.verify(accountCode.trim());
+    if (ok) next();
+  };
+
+  const accountOAuth = async (provider: "google" | "apple") => {
+    if (!account) {
+      next();
+      return;
+    }
+    const ok = await account.oauth(provider);
     if (ok) next();
   };
 
@@ -126,8 +196,17 @@ export function OnboardingFlow() {
         timezone: birthPlace?.timezone,
       });
     }
-    router.replace("/(tabs)");
+    // Al salir del onboarding se entra a la Home "primera impresión" (fresh=1):
+    // arranca con la carta natal arriba. La Home normal (sin la carta) es la de
+    // uso diario. La carta queda accesible siempre desde el Perfil.
+    router.replace({ pathname: "/(tabs)", params: { fresh: "1" } });
   };
+
+  // Sin paywall: al llegar al paso de pago (step 14) se entra directo a la app.
+  useEffect(() => {
+    if (step === 14 && !PAYWALL_ENABLED) void submit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
 
   if (!fontsLoaded) return <View style={styles.fill} />;
 
@@ -232,6 +311,7 @@ export function OnboardingFlow() {
           onCode={setAccountCode}
           account={account}
           onNext={accountNext}
+          onOAuth={accountOAuth}
           onSkip={next}
           onBack={back}
         />
@@ -239,7 +319,28 @@ export function OnboardingFlow() {
       break;
     case 14:
     default:
-      screen = <PaywallScreen plan={plan} onPlan={setPlan} onUnlock={submit} onBack={back} />;
+      // Paso 14 = paywall único. La tríada real va arriba como gancho (antes era
+      // una pantalla de preview aparte, que hacía parecer que pagabas dos veces).
+      // Desactivado temporalmente (PAYWALL_ENABLED=false): el useEffect de arriba
+      // entra directo a la app; acá solo mostramos loading para no flashear el pago.
+      screen = PAYWALL_ENABLED ? (
+        <PaywallScreen
+          plan={plan}
+          onPlan={setPlan}
+          onUnlock={submit}
+          onBack={back}
+          chart={computed ?? chartPreview}
+          sunFallback={signLabel}
+          timeKnown={!timeUnknown}
+          onRetry={() => {
+            computedSig.current = null;
+            setComputed(undefined);
+            setRetryTick((t) => t + 1);
+          }}
+        />
+      ) : (
+        <View style={styles.fill} />
+      );
       break;
   }
 

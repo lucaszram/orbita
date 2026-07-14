@@ -1,0 +1,104 @@
+import { useState } from "react";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Eyebrow, Section } from "@/components/orbita/kit";
+import { CARD_BACK, majorById } from "@/content/tarotDeck";
+import { orbita } from "@/theme/orbita";
+
+// Mock: hoy "La Luna" (XVIII). El tarot real lo baraja el backend.
+const LUNA = majorById(18)!;
+
+// TODO: pendiente backend — la carta del día (endpoint `tarot` sembrado por
+// usuario+fecha) + diccionario verificado de arquetipos (correspondencia
+// astrológica) + prompt del puente honesto (carta × tránsito). Hoy: mock tipado.
+const MOCK = {
+  nombre: "La Luna",
+  beats: [
+    { label: "QUÉ ES", body: "La carta de la intuición y de lo que se mueve por debajo: eso que sabés sin poder explicarlo del todo." },
+    { label: "CÓMO INFLUYE HOY", body: "Te pide fiarte de la corazonada antes que de la excusa, y no apurar una lectura de lo que sentís." },
+    { label: "CÓMO SE CONECTA CON TU CIELO", body: "Encaja con tu tránsito: Saturno sobre tu Venus en casa 3 pone el foco en lo que callás en los vínculos." }
+  ]
+};
+
+/** "Tu carta de hoy": ritual de revelar. Primero boca abajo (sin ver) → tocás →
+ *  se revela la carta + los 3 beats (qué es / cómo influye / con tu cielo). */
+export function CartaDelDia() {
+  const [revealed, setRevealed] = useState(false);
+  const reveal = () => setRevealed(true);
+  const hide = () => setRevealed(false);
+  return (
+    <Section style={styles.section}>
+      <Eyebrow>TU CARTA DE HOY</Eyebrow>
+
+      {!revealed ? (
+        <View style={styles.center}>
+          <Pressable onPress={reveal} style={({ pressed }) => pressed && styles.pressed} accessibilityRole="button">
+            <View style={styles.cardBack}>
+              <Image source={CARD_BACK} style={styles.backImg} resizeMode="cover" />
+            </View>
+          </Pressable>
+          <Text style={styles.revealCta}>Tocá para revelar</Text>
+          <Text style={styles.note}>Una carta por día · se abre a las 9:00</Text>
+        </View>
+      ) : (
+        <View>
+          <View style={styles.center}>
+            <Pressable onPress={hide} style={({ pressed }) => pressed && styles.pressed} accessibilityRole="button">
+              <View style={styles.cardFace}>
+                <Image source={LUNA.image} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                <View style={styles.faceScrim} />
+                <Text style={styles.faceRoman}>{LUNA.roman}</Text>
+                <Text style={styles.faceLabel}>{MOCK.nombre}</Text>
+              </View>
+            </Pressable>
+            <Text style={styles.hideCta}>Tocá la carta para ocultarla</Text>
+          </View>
+          <Text style={styles.leadIn}>Te salió {MOCK.nombre}.</Text>
+          {MOCK.beats.map((b) => (
+            <View key={b.label} style={styles.beat}>
+              <Text style={styles.beatLabel}>{b.label}</Text>
+              <Text style={styles.beatBody}>{b.body}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+    </Section>
+  );
+}
+
+const CARD_W = 150;
+const CARD_H = 224;
+const styles = StyleSheet.create({
+  section: { borderTopColor: orbita.colors.line, borderTopWidth: 1 },
+  center: { alignItems: "center", marginTop: orbita.spacing.lg },
+  pressed: { opacity: 0.75 },
+
+  // --- carta boca abajo ---
+  cardBack: {
+    borderRadius: 14,
+    height: CARD_H,
+    overflow: "hidden",
+    width: CARD_W
+  },
+  backImg: { height: CARD_H, width: CARD_W },
+  revealCta: { color: orbita.colors.copper, fontFamily: orbita.fonts.monoMedium, fontSize: 12, letterSpacing: 1.5, marginTop: orbita.spacing.xl, textAlign: "center" },
+  note: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.body, fontSize: 12, marginTop: orbita.spacing.sm, textAlign: "center" },
+
+  // --- carta revelada ---
+  cardFace: {
+    borderColor: "rgba(196,106,58,0.7)",
+    borderRadius: 14,
+    borderWidth: 1.5,
+    height: CARD_H,
+    justifyContent: "flex-end",
+    overflow: "hidden",
+    width: CARD_W
+  },
+  faceScrim: { backgroundColor: "rgba(7,8,10,0.5)", bottom: 0, height: 84, left: 0, position: "absolute", right: 0 },
+  faceRoman: { color: orbita.colors.copper, fontFamily: orbita.fonts.monoMedium, fontSize: 10, letterSpacing: 2, textAlign: "center" },
+  faceLabel: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 20, paddingBottom: orbita.spacing.md, textAlign: "center" },
+  hideCta: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.mono, fontSize: 11, letterSpacing: 0.5, marginTop: orbita.spacing.md, textAlign: "center" },
+  leadIn: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 24, lineHeight: 29, marginTop: orbita.spacing.xl },
+  beat: { marginTop: orbita.spacing.lg },
+  beatLabel: { color: orbita.colors.copper, fontFamily: orbita.fonts.monoMedium, fontSize: 11, letterSpacing: 0.5 },
+  beatBody: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 15, lineHeight: 21, marginTop: orbita.spacing.xs }
+});
