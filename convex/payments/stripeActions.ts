@@ -1,15 +1,20 @@
-"use node";
 import { actionGeneric as action, makeFunctionReference } from "convex/server";
 import { v } from "convex/values";
-import Stripe from "stripe";
+import {
+  buildStripeCheckoutForm,
+  buildStripeCustomerForm,
+  buildStripePortalForm,
+  createStripeApi,
+  requireStripeString
+} from "../lib/stripeApi";
 
 const getBindingRef = makeFunctionReference<"query">("payments/stripeInternal:getStripeBinding");
 const upsertCustomerRef = makeFunctionReference<"mutation">("payments/stripeInternal:upsertStripeCustomer");
 
-function stripeClient(): Stripe {
+function stripeClient(): ReturnType<typeof createStripeApi> {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) throw new Error("STRIPE_SECRET_KEY not configured");
-  return new Stripe(key);
+  return createStripeApi(key);
 }
 
 function priceForPlan(plan: "weekly" | "yearly" | "lifetime"): string {
@@ -44,31 +49,20 @@ export const createCheckoutSession = action({
     const binding: { stripeCustomerId?: string } = await ctx.runQuery(getBindingRef, { clerkUserId });
     let customerId = binding.stripeCustomerId;
     if (!customerId) {
-      const customer = await stripe.customers.create({
-        email: identity.email ?? undefined,
-        metadata: { clerkUserId }
-      });
-      customerId = customer.id;
+      const customer = await stripe.post<unknown>(
+        "/customers",
+        buildStripeCustomerForm({ email: identity.email, clerkUserId })
+      );
+      customerId = requireStripeString(customer, "id");
       await ctx.runMutation(upsertCustomerRef, { clerkUserId, customerId });
     }
 
-    const mode: Stripe.Checkout.SessionCreateParams.Mode = plan === "lifetime" ? "payment" : "subscription";
+    const session = await stripe.post<unknown>(
+      "/checkout/sessions",
+      buildStripeCheckoutForm({ plan, customerId, priceId, clerkUserId, webUrl })
+    );
 
-    const session = await stripe.checkout.sessions.create({
-      mode,
-      customer: customerId,
-      line_items: [{ price: priceId, quantity: 1 }],
-      client_reference_id: clerkUserId,
-      metadata: { clerkUserId, plan },
-      ...(mode === "subscription"
-        ? { subscription_data: { metadata: { clerkUserId, plan } } }
-        : { payment_intent_data: { metadata: { clerkUserId, plan } } }),
-      success_url: `${webUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${webUrl}/paywall`
-    });
-
-    if (!session.url) throw new Error("Stripe did not return a checkout url");
-    return { url: session.url };
+    return { url: requireStripeString(session, "url") };
   }
 });
 
@@ -85,11 +79,11 @@ export const createPortalSession = action({
     const binding: { stripeCustomerId?: string } = await ctx.runQuery(getBindingRef, { clerkUserId });
     if (!binding.stripeCustomerId) throw new Error("No Stripe customer for this user");
 
-    const session = await stripe.billingPortal.sessions.create({
-      customer: binding.stripeCustomerId,
-      return_url: `${webAppUrl()}/profile`
-    });
+    const session = await stripe.post<unknown>(
+      "/billing_portal/sessions",
+      buildStripePortalForm({ customerId: binding.stripeCustomerId, webUrl: webAppUrl() })
+    );
 
-    return { url: session.url };
+    return { url: requireStripeString(session, "url") };
   }
 });
