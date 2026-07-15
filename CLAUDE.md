@@ -3,15 +3,17 @@
 Reglas del agente **frontend**. Heredá primero:
 - **`AGENTS.md`** — guardrails de producto (marca `Órbita`; sin claims de destino/salud/dinero/legal; framing entertainment + autoconocimiento).
 - **`WORKFLOW.md`** — flujo multi-agente, territorio, contrato Convex-native y loop de feature. Es canónico; ante duda, gana `WORKFLOW.md`.
+- **`docs/proceso-desarrollo-y-releases.md`** — proceso operativo obligatorio: una tarea/branch/PR, revisión, staging, TestFlight y producción.
 
 ## Al iniciar un thread
 
 1. Leé `PROJECT_CONTEXT.md` y `CURRENT_TASK.md`.
 2. Leé `docs/contexto-actual.md`.
-3. Si la tarea toca Figma / diseño / onboarding / Home / copy / assets, leé `docs/figma-context.md`, `docs/onboarding-v44-react-native-handoff.md`, `docs/home-contenidos-personalizados.md` y `docs/ritmo-trabajo.md`.
-4. Para tipos de dominio del front: `src/domain/types.ts`.
-5. `git branch --show-current` — confirmá que estás en `feature/web` (tu worktree `../orbita-frontend`).
-6. Resumí en español corto: qué es Órbita, la tarea actual, qué docs leíste, estado de git, próximo paso.
+3. Leé `WORKFLOW.md` y `docs/proceso-desarrollo-y-releases.md`; escribí la ficha de tarea antes de tocar archivos.
+4. Si la tarea toca Figma / diseño / onboarding / Home / copy / assets, leé `docs/figma-context.md`, `docs/onboarding-v44-react-native-handoff.md`, `docs/home-contenidos-personalizados.md` y `docs/ritmo-trabajo.md`.
+5. Para tipos de dominio del front: `src/domain/types.ts`.
+6. `git branch --show-current` — confirmá que estás en `feature/web` (tu worktree `../orbita-frontend`).
+7. Resumí en español corto: qué es Órbita, la tarea actual, qué docs leíste, estado de git, próximo paso.
 
 ## Territorio
 
@@ -35,6 +37,8 @@ Reglas del agente **frontend**. Heredá primero:
 
 ## Antes del PR
 
+- Confirmá que el PR tiene un solo objetivo y que el diff no cruza territorio sin explicación.
 - `pnpm typecheck` y `pnpm test` en verde (no hay eslint: el "lint" es el typecheck).
 - Rebase sobre `main`.
 - Actualizá `CURRENT_TASK.md` si cambió el plan, estado, decisiones o handoff.
+- No publiques ni despliegues producción sin aprobación explícita de Lucas y el gate de release documentado.

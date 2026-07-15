@@ -2,6 +2,8 @@
 
 Guía única del flujo de trabajo del repo **Órbita**. Dos agentes de IA laburando **como pares** sobre el mismo proyecto sin pisarse: Codex se ocupa del backend (Convex), Claude del frontend (Expo / React Native + Figma), y se comunican a través del contrato de Convex.
 
+> El proceso operativo de tareas, ramas, Pull Requests, revisión, ambientes, TestFlight, incidentes y releases vive en [`docs/proceso-desarrollo-y-releases.md`](docs/proceso-desarrollo-y-releases.md) y es obligatorio para ambos agentes.
+
 > **Stack real:** Expo SDK 54 (React Native, expo-router, NativeWind) + Convex (funciones serverless + DB) + Clerk (auth). **No es un monorepo** `/apps` + `/packages`: es un solo árbol donde el contrato entre back y front **ya existe de forma nativa** en Convex (schema + tipos autogenerados). Ver sección 4.
 
 ---
@@ -12,6 +14,8 @@ Guía única del flujo de trabajo del repo **Órbita**. Dos agentes de IA labura
 - **Territorio claro.** Codex es dueño de `convex/`, Claude de `app/` + `src/`. Nadie edita archivos del otro.
 - **Un solo canal de comunicación:** el contrato de Convex (`convex/schema.ts` + las firmas `args`/`returns` de cada función). Si un lado necesita algo del otro, lo pide vía un cambio de contrato, no metiendo mano en el código ajeno.
 - **Todo entra por PR.** Nadie commitea a `main` directo.
+- **Un objetivo, una rama, un PR.** Contrato, implementación, infraestructura y limpieza general no se mezclan salvo que sean inseparables y el PR lo justifique.
+- **Merge no significa deploy.** `main` se valida en staging; producción requiere un Release Candidate probado y aprobación explícita de Lucas.
 
 ---
 
@@ -166,10 +170,13 @@ En este stack **no hay `/packages/shared` que escribir a mano.** El contrato ent
 
 ## 6. El loop de una feature típica
 
-1. **Contrato.** Se define/actualiza `convex/schema.ts` + firmas de funciones (lo hace quien detecta la necesidad). Anotar en `convex/CHANGELOG.md`. Commit de contrato **solo**.
-2. **Backend (Codex).** En `../orbita-backend`, implementa las funciones Convex validando contra el contrato. Corre `pnpm convex:dev` (regenera `_generated/`), commitea `convex/_generated/`. `pnpm test` + `pnpm typecheck` en verde. PR a `main`.
-3. **Frontend (Claude).** En `../orbita-frontend`, `git pull` de `main` (trae `_generated/`), trae el diseño de Figma, construye la UI consumiendo los tipos de `api.*` (contra mock si el back todavía no mergeó). Estados completos. `pnpm typecheck` en verde. PR a `main`.
-4. **Merge.** Cada uno rebasa sobre `main` antes del PR. Se mergea. Integración real cuando ambos PRs están arriba.
+1. **Ficha.** Se define objetivo, aceptación, owner, territorio, riesgo, pruebas, rollout, rollback y fuera de alcance.
+2. **Contrato.** Si cambia, se actualiza `convex/schema.ts` + firmas de funciones y `convex/CHANGELOG.md` en un PR **solo de contrato**.
+3. **Backend (Codex).** En `../orbita-backend`, implementa las funciones Convex validando contra el contrato. Corre `pnpm convex:dev` (regenera `_generated/`), commitea `convex/_generated/`. `pnpm test` + `pnpm typecheck` en verde. PR a `main`.
+4. **Frontend (Claude).** En `../orbita-frontend`, actualiza su base desde `main`, trae el diseño de Figma y construye la UI consumiendo los tipos de `api.*` (contra mock si el back todavía no mergeó). Estados completos. PR separado a `main`.
+5. **Revisión.** Cada PR demuestra alcance, checks, evidencia y compatibilidad; no incorpora mejoras laterales durante la revisión.
+6. **Merge.** Cada rama se actualiza sobre `main` antes del merge. Integración real cuando los PRs necesarios están arriba y staging está verde.
+7. **Release.** Un release se corta desde un commit identificable; el RC productivo se prueba en TestFlight y el mismo binario aprobado pasa al App Store.
 
 ---
 
@@ -187,13 +194,17 @@ Meter un agente adentro de la terminal del otro **no** es el patrón por defecto
 ## 8. Checklist antes de cada tarea
 
 - [ ] Leí `AGENTS.md` (Codex) o `CLAUDE.md` (Claude) y este `WORKFLOW.md`.
+- [ ] Leí `docs/proceso-desarrollo-y-releases.md` y escribí la ficha de tarea.
 - [ ] Confirmé mi branch: `git branch --show-current` (¿es la mía? `feature/api` o `feature/web`).
+- [ ] El worktree está limpio o entiendo exactamente cada cambio existente; no voy a mezclar trabajo ajeno.
+- [ ] Esta tarea tiene un solo objetivo y un fuera-de-alcance explícito.
 - [ ] No estoy asumiendo la forma de la API de memoria: la leo del contrato (`convex/schema.ts` + `convex/_generated`).
 - [ ] Si necesito cruzar el límite de territorio, lo convierto en un cambio de contrato (+ entrada en `convex/CHANGELOG.md`) en vez de hacerlo yo.
 - [ ] (Backend) Si toqué el contrato o funciones, regeneré y commiteé `convex/_generated/`.
 - [ ] (Frontend) Hice `git pull` de `main` para tener el `_generated/` al día antes de consumir tipos.
 - [ ] `pnpm typecheck` y `pnpm test` en verde antes del PR. *(No hay eslint en este repo: el "lint verde" es el typecheck verde.)*
 - [ ] Rebase sobre `main` antes de abrir el PR.
+- [ ] Completé el template de PR con riesgo, evidencia, rollout y rollback.
 
 ---
 
