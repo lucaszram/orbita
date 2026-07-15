@@ -21,12 +21,19 @@ El puente de tipos (`convex/_generated/`) se deriva de acá y lo commitea el bac
 
 ---
 
+## 2026-07-15 — Contrato del ritual diario: reveal irreversible e historial
+
+- **Qué cambió:** `dailyGuides` suma `revealedAt?: number`. Se define `daily.revealCard({ localDate })`, que devuelve el timestamp del primer reveal, y `daily.getStrip({ from, to })`, que devuelve `{ localDate, cartaId, revealed }[]` para el archivo diario.
+- **Por qué:** el binario iOS necesita distinguir una carta generada de una carta revelada y mostrar el historial sin crear otra tabla.
+- **Quién lo pidió:** frontend + producto.
+- **Estado:** contrato aprobado; implementación backend en el PR siguiente. La forma ya está validada en Convex producción `exciting-bat-311`.
+
 ## 2026-07-15 — Edición de datos natales consistente
 
 - **Qué cambió:** las firmas públicas se mantienen. `onboarding.completeBirthData` ahora elimina una hora anterior cuando `birthTimePrecision="unknown"`; `charts.current` resuelve la carta que coincide con los datos natales vigentes; y `readings.generateToday` recalcula la lectura existente del día si cambió la carta, timezone o versión de contenido.
 - **Por qué:** el editor del build 11 espera confirmación del backend y no puede confirmar un estado que después reaparece con la hora o lectura anteriores.
 - **Quién lo pidió:** frontend + revisión backend.
-- **Estado:** implementado, pendiente de PR y deploy.
+- **Estado:** implementado, pendiente de deploy.
 
 ## 2026-07-15 — Stripe Checkout/Portal sin SDK Node (sin cambio de contrato)
 - **Qué cambió:** `payments/stripeActions.ts` mantiene las mismas firmas públicas pero usa la API REST de Stripe mediante `fetch`; se elimina el SDK `stripe` y el runtime `"use node"`.
