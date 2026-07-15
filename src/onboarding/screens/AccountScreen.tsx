@@ -3,12 +3,13 @@ import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import { Text } from "@/components/ui/text";
 
 import { A } from "../assets";
+import { CodeInput } from "../components/CodeInput";
 import { CTA } from "../components/CTA";
 import { Header } from "../components/Header";
 import { Screen } from "../components/Screen";
 import { Body, Label, Title } from "../components/Type";
 import { font, GUTTER, orbita } from "../theme";
-import type { AccountFlow, OAuthProvider } from "../useAccount";
+import { SOCIAL_LOGIN_ENABLED, type AccountFlow, type OAuthProvider } from "../useAccount";
 
 type Props = {
   step: number;
@@ -17,7 +18,8 @@ type Props = {
   code: string;
   onCode: (v: string) => void;
   account: AccountFlow | null;
-  onNext: () => void;
+  /** `codeOverride`: la auto-verificación del CodeInput pasa el código directo. */
+  onNext: (codeOverride?: string) => void;
   onOAuth: (provider: OAuthProvider) => void;
   onSkip: () => void;
   onBack: () => void;
@@ -42,36 +44,29 @@ export function AccountScreen({ step, email, onEmail, code, onCode, account, onN
 
         <Label style={styles.fieldLabel}>{codePhase ? "Código" : "Email"}</Label>
         {codePhase ? (
-          <TextInput
-            value={code}
-            onChangeText={onCode}
-            placeholder="123456"
-            placeholderTextColor={orbita.faint}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="number-pad"
-            style={styles.input}
-          />
+          <CodeInput value={code} onChange={onCode} onFilled={(filled) => onNext(filled)} />
         ) : (
-          <TextInput
-            value={email}
-            onChangeText={onEmail}
-            placeholder="tu@email.com"
-            placeholderTextColor={orbita.faint}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="email-address"
-            style={styles.input}
-          />
+          <>
+            <TextInput
+              value={email}
+              onChangeText={onEmail}
+              placeholder="tu@email.com"
+              placeholderTextColor={orbita.faint}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+              style={styles.input}
+            />
+            <View style={styles.inputLine} />
+          </>
         )}
-        <View style={styles.inputLine} />
         {account?.error ? <Text style={styles.error}>{account.error}</Text> : null}
 
         <View style={styles.primary}>
-          <CTA label={ctaLabel} onPress={account?.busy ? () => undefined : onNext} />
+          <CTA label={ctaLabel} onPress={account?.busy ? () => undefined : () => onNext()} />
         </View>
 
-        {account && !codePhase ? (
+        {SOCIAL_LOGIN_ENABLED && account && !codePhase ? (
           <>
             <Text style={styles.divider}>O seguir con</Text>
             <View style={styles.socials}>
@@ -101,7 +96,7 @@ export function AccountScreen({ step, email, onEmail, code, onCode, account, onN
               <Text style={styles.quietLink}>Seguir sin cuenta</Text>
             </Pressable>
           </View>
-        ) : (
+        ) : SOCIAL_LOGIN_ENABLED ? (
           <>
             <Text style={styles.divider}>O seguir con</Text>
             <View style={styles.socials}>
@@ -110,7 +105,7 @@ export function AccountScreen({ step, email, onEmail, code, onCode, account, onN
               <CTA label="Continuar con Google" variant="secondary" onPress={onNext} />
             </View>
           </>
-        )}
+        ) : null}
 
         <View style={styles.spacer} />
       </View>

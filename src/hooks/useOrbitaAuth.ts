@@ -9,6 +9,8 @@ export type OrbitaAuth = {
   isAuthenticated: boolean;
   /** Convex todavía confirmando. */
   isConnecting: boolean;
+  /** Id estable del usuario Clerk (clave del snapshot local por cuenta). */
+  userId?: string;
   email?: string;
   name?: string;
   imageUrl?: string;
@@ -34,6 +36,7 @@ export function useOrbitaAuth(): OrbitaAuth {
     isSignedIn: !!auth.isSignedIn,
     isAuthenticated: convexAuth.isAuthenticated,
     isConnecting: convexAuth.isLoading,
+    userId: auth.userId ?? undefined,
     email,
     name: user?.firstName ?? user?.username ?? undefined,
     imageUrl: user?.hasImage ? user?.imageUrl : undefined,

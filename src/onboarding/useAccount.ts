@@ -1,11 +1,11 @@
 import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useAction, useConvex, useMutation, useQuery } from "convex/react";
 
 import { deviceTimezone } from "@/hooks/useLiveApp";
 import { useOrbitaAuth } from "@/hooks/useOrbitaAuth";
-import { appApi } from "@/services/appRefs";
+import { appApi, type BirthDataDoc } from "@/services/appRefs";
 import { backendConfig } from "@/services/backendProviders";
 import { publicLabApi } from "@/services/publicLabRefs";
 
@@ -13,6 +13,11 @@ import { publicLabApi } from "@/services/publicLabRefs";
 WebBrowser.maybeCompleteAuthSession();
 
 export type OAuthProvider = "google" | "apple";
+
+// Lanzamiento v1 sin login social: Clerk prod exige credenciales OAuth propias
+// de Google y la guideline 4.8 de Apple obliga a Sign in with Apple si hay
+// Google. Reactivar cuando ambas estén configuradas (decisión Lucas 2026-07-14).
+export const SOCIAL_LOGIN_ENABLED = false;
 
 /**
  * Cuenta Clerk (email + código) y persistencia Convex para el onboarding
@@ -45,14 +50,48 @@ export function useAccountFlow(): AccountFlow | null {
   return useAccountFlowInner();
 }
 
+/** OAuth SSO (Apple/Google) compartido entre alta de cuenta y sign-in. */
+function useSSOOauth(
+  setError: (v: string | null) => void,
+  setOauthBusy: (v: OAuthProvider | null) => void,
+): (provider: OAuthProvider) => Promise<boolean> {
+  const { useSSO } = require("@clerk/expo") as typeof import("@clerk/expo");
+  const { startSSOFlow } = useSSO();
+  return useCallback(
+    async (provider: OAuthProvider): Promise<boolean> => {
+      setError(null);
+      setOauthBusy(provider);
+      try {
+        const strategy = provider === "google" ? "oauth_google" : "oauth_apple";
+        const { createdSessionId, setActive } = await startSSOFlow({
+          strategy,
+          redirectUrl: AuthSession.makeRedirectUri()
+        });
+        if (createdSessionId && setActive) {
+          await setActive({ session: createdSessionId });
+          return true;
+        }
+        // El usuario canceló el navegador o falta un paso (MFA): no es un error duro.
+        return false;
+      } catch (e) {
+        setError(clerkErrorMessage(e));
+        return false;
+      } finally {
+        setOauthBusy(null);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [startSSOFlow]
+  );
+}
+
 function useAccountFlowInner(): AccountFlow {
-  const { useAuth, useSSO } = require("@clerk/expo") as typeof import("@clerk/expo");
+  const { useAuth } = require("@clerk/expo") as typeof import("@clerk/expo");
   // La API clásica (create/prepare/attempt) vive en el subpath legacy en @clerk/expo v3.
   const { useSignIn, useSignUp } = require("@clerk/expo/legacy") as typeof import("@clerk/expo/legacy");
   const { signUp, setActive: setActiveSignUp } = useSignUp();
   const { signIn, setActive: setActiveSignIn } = useSignIn();
   const { isSignedIn } = useAuth();
-  const { startSSOFlow } = useSSO();
   const [phase, setPhase] = useState<"email" | "code">("email");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -125,31 +164,7 @@ function useAccountFlowInner(): AccountFlow {
     [setActiveSignIn, setActiveSignUp, signIn, signUp]
   );
 
-  const oauth = useCallback(
-    async (provider: OAuthProvider): Promise<boolean> => {
-      setError(null);
-      setOauthBusy(provider);
-      try {
-        const strategy = provider === "google" ? "oauth_google" : "oauth_apple";
-        const { createdSessionId, setActive } = await startSSOFlow({
-          strategy,
-          redirectUrl: AuthSession.makeRedirectUri()
-        });
-        if (createdSessionId && setActive) {
-          await setActive({ session: createdSessionId });
-          return true;
-        }
-        // El usuario canceló el navegador o falta un paso (MFA): no es un error duro.
-        return false;
-      } catch (e) {
-        setError(clerkErrorMessage(e));
-        return false;
-      } finally {
-        setOauthBusy(null);
-      }
-    },
-    [startSSOFlow]
-  );
+  const oauth = useSSOOauth(setError, setOauthBusy);
 
   return {
     phase,
@@ -165,6 +180,140 @@ function useAccountFlowInner(): AccountFlow {
       setPhase("email");
     }
   };
+}
+
+// ---------------------------------------------------------------------------
+// Sign-in de usuarios existentes (pantalla 01C "Bienvenido de nuevo").
+// A diferencia de useAccountFlow (alta primero), acá se intenta SOLO sign-in:
+// si el email no tiene cuenta, se avisa en vez de crear una cuenta silenciosa.
+// ---------------------------------------------------------------------------
+
+export function useSignInFlow(): AccountFlow | null {
+  if (!HAS_BACKEND) return null;
+  return useSignInFlowInner();
+}
+
+function useSignInFlowInner(): AccountFlow {
+  const { useAuth } = require("@clerk/expo") as typeof import("@clerk/expo");
+  const { useSignIn } = require("@clerk/expo/legacy") as typeof import("@clerk/expo/legacy");
+  const { signIn, setActive: setActiveSignIn } = useSignIn();
+  const { isSignedIn } = useAuth();
+  const [phase, setPhase] = useState<"email" | "code">("email");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [oauthBusy, setOauthBusy] = useState<OAuthProvider | null>(null);
+
+  const start = useCallback(
+    async (emailAddress: string) => {
+      if (!signIn) return;
+      setBusy(true);
+      setError(null);
+      try {
+        const attempt = await signIn.create({ identifier: emailAddress });
+        const factor = attempt.supportedFirstFactors?.find((f) => f.strategy === "email_code") as
+          | { emailAddressId?: string }
+          | undefined;
+        await signIn.prepareFirstFactor({ strategy: "email_code", emailAddressId: factor?.emailAddressId ?? "" });
+        setPhase("code");
+      } catch (e) {
+        const code = (e as { errors?: Array<{ code?: string }> })?.errors?.[0]?.code;
+        if (code === "form_identifier_not_found") {
+          setError("No encontramos una cuenta con ese email. Si sos nuevo, empezá creando tu carta.");
+        } else {
+          setError(clerkErrorMessage(e));
+        }
+      } finally {
+        setBusy(false);
+      }
+    },
+    [signIn]
+  );
+
+  const verify = useCallback(
+    async (code: string): Promise<boolean> => {
+      if (!signIn) return false;
+      setBusy(true);
+      setError(null);
+      try {
+        const result = await signIn.attemptFirstFactor({ strategy: "email_code", code });
+        if (result.status === "complete" && setActiveSignIn) {
+          await setActiveSignIn({ session: result.createdSessionId });
+          return true;
+        }
+        setError("El código no coincide. Fijate en tu mail.");
+        return false;
+      } catch (e) {
+        setError(clerkErrorMessage(e));
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [setActiveSignIn, signIn]
+  );
+
+  const oauth = useSSOOauth(setError, setOauthBusy);
+
+  return {
+    phase,
+    busy,
+    error,
+    isSignedIn: !!isSignedIn,
+    oauthBusy,
+    start,
+    verify,
+    oauth,
+    resetToEmail: () => {
+      setError(null);
+      setPhase("email");
+    }
+  };
+}
+
+/**
+ * Post-login (o arranque con sesión y sin perfil local): trae los datos de
+ * nacimiento guardados en Convex para decidir el destino. Con datos → derecho
+ * a la Home (saltea el onboarding); sin datos → sigue el alta con la sesión ya
+ * activa. La sesión Clerk puede ser reciente y el token de Convex tardar:
+ * reintenta unos segundos y distingue "no hay datos" de "no pudimos traerlos"
+ * (el error real muestra reintento, nunca finge que el usuario está listo).
+ */
+export type SignInHydrateResult =
+  | {
+      status: "ok";
+      birthData: BirthDataDoc | null;
+      /**
+       * Id Clerk confirmado por el backend (`getOrCreateCurrentUser`). Usar
+       * ESTE para restaurar el snapshot local: justo después de `setActive`
+       * el estado de React (`useAuth`) puede no haber re-renderizado todavía.
+       */
+      clerkUserId: string | null;
+    }
+  | { status: "error" };
+
+export function useSignInHydrate(): (() => Promise<SignInHydrateResult>) | null {
+  if (!HAS_BACKEND) return null;
+  return useSignInHydrateInner();
+}
+
+function useSignInHydrateInner(): () => Promise<SignInHydrateResult> {
+  const convex = useConvex();
+  return useCallback(async () => {
+    for (let i = 0; i < 12; i++) {
+      try {
+        const user = await convex.mutation(appApi.users.getOrCreateCurrentUser, {});
+        const birthData = await convex.query(appApi.birthData.getCurrent, {});
+        return {
+          status: "ok",
+          birthData,
+          clerkUserId: typeof user?.clerkUserId === "string" ? user.clerkUserId : null
+        };
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 700));
+      }
+    }
+    return { status: "error" };
+  }, [convex]);
 }
 
 // ---------------------------------------------------------------------------
@@ -302,9 +451,38 @@ export type PersistBirthData = (input: {
   timezone?: string;
 }) => Promise<void>;
 
+/**
+ * Persistencia con errores TRAGADOS (onboarding: la copia local ya existe y
+ * el flujo no debe cortarse). Para "Editar datos" usar la variante estricta.
+ */
 export function useBackendPersist(): PersistBirthData | null {
   if (!HAS_BACKEND) return null;
+  return useBackendPersistSwallowInner();
+}
+
+/**
+ * Persistencia ESTRICTA: propaga el error. Con sesión iniciada, "Guardar" en
+ * Editar datos espera la confirmación del backend y muestra error/reintento
+ * si falla (sin sesión resuelve sin hacer nada, igual que la otra variante).
+ */
+export function useBackendPersistStrict(): PersistBirthData | null {
+  if (!HAS_BACKEND) return null;
   return useBackendPersistInner();
+}
+
+function useBackendPersistSwallowInner(): PersistBirthData {
+  const persist = useBackendPersistInner();
+  return useCallback(
+    async (input) => {
+      try {
+        await persist(input);
+      } catch (e) {
+        // La copia local ya existe: el backend puede fallar sin romper el flujo.
+        console.warn("Órbita: persistencia backend falló (la app sigue local)", e);
+      }
+    },
+    [persist]
+  );
 }
 
 function useBackendPersistInner(): PersistBirthData {
@@ -320,24 +498,19 @@ function useBackendPersistInner(): PersistBirthData {
   return useCallback(
     async (input) => {
       if (!isSignedIn) return;
-      try {
-        const birthTimezone = input.timezone ?? deviceTimezone();
-        await ensureUser({});
-        await completeBirthData({
-          birthDate: input.birthDate,
-          birthTime: input.birthTime,
-          birthTimePrecision: input.birthTime ? "known" : "unknown",
-          birthPlaceLabel: input.birthPlaceLabel ?? "Sin especificar",
-          latitude: input.latitude,
-          longitude: input.longitude,
-          timezone: birthTimezone
-        });
-        await calculateChart({});
-        await generateToday({ localDate: new Date().toISOString().slice(0, 10), timezone: deviceTimezone() });
-      } catch (e) {
-        // La copia local ya existe: el backend puede fallar sin romper el flujo.
-        console.warn("Órbita: persistencia backend falló (la app sigue local)", e);
-      }
+      const birthTimezone = input.timezone ?? deviceTimezone();
+      await ensureUser({});
+      await completeBirthData({
+        birthDate: input.birthDate,
+        birthTime: input.birthTime,
+        birthTimePrecision: input.birthTime ? "known" : "unknown",
+        birthPlaceLabel: input.birthPlaceLabel ?? "Sin especificar",
+        latitude: input.latitude,
+        longitude: input.longitude,
+        timezone: birthTimezone
+      });
+      await calculateChart({});
+      await generateToday({ localDate: new Date().toISOString().slice(0, 10), timezone: deviceTimezone() });
     },
     [calculateChart, completeBirthData, ensureUser, generateToday, isSignedIn]
   );
