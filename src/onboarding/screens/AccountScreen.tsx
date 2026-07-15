@@ -8,7 +8,7 @@ import { Header } from "../components/Header";
 import { Screen } from "../components/Screen";
 import { Body, Label, Title } from "../components/Type";
 import { font, GUTTER, orbita } from "../theme";
-import type { AccountFlow, OAuthProvider } from "../useAccount";
+import { SOCIAL_LOGIN_ENABLED, type AccountFlow, type OAuthProvider } from "../useAccount";
 
 type Props = {
   step: number;
@@ -71,7 +71,7 @@ export function AccountScreen({ step, email, onEmail, code, onCode, account, onN
           <CTA label={ctaLabel} onPress={account?.busy ? () => undefined : onNext} />
         </View>
 
-        {account && !codePhase ? (
+        {SOCIAL_LOGIN_ENABLED && account && !codePhase ? (
           <>
             <Text style={styles.divider}>O seguir con</Text>
             <View style={styles.socials}>
@@ -101,7 +101,7 @@ export function AccountScreen({ step, email, onEmail, code, onCode, account, onN
               <Text style={styles.quietLink}>Seguir sin cuenta</Text>
             </Pressable>
           </View>
-        ) : (
+        ) : SOCIAL_LOGIN_ENABLED ? (
           <>
             <Text style={styles.divider}>O seguir con</Text>
             <View style={styles.socials}>
@@ -110,7 +110,7 @@ export function AccountScreen({ step, email, onEmail, code, onCode, account, onN
               <CTA label="Continuar con Google" variant="secondary" onPress={onNext} />
             </View>
           </>
-        )}
+        ) : null}
 
         <View style={styles.spacer} />
       </View>
