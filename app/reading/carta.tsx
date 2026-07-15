@@ -38,6 +38,7 @@ function CartaTablaLive() {
     return (
       <DetailScreen eyebrow="Carta">
         <EmptyState
+          eyebrow="TU CARTA NATAL"
           title="Todavía no hay carta"
           body="Completá tu fecha, hora y lugar de nacimiento para calcular tu carta natal."
           cta="COMPLETAR MIS DATOS"

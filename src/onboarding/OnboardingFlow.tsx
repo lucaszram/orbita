@@ -22,9 +22,17 @@ import { DailyGuidanceScreen } from "./screens/DailyGuidanceScreen";
 import { type Identity, IdentifyScreen } from "./screens/IdentifyScreen";
 import { PaywallScreen, type PlanId } from "./screens/PaywallScreen";
 import { PersonalizingScreen } from "./screens/PersonalizingScreen";
+import { SignInScreen } from "./screens/SignInScreen";
 import { SplashScreen } from "./screens/SplashScreen";
 import { orbita } from "./theme";
-import { useAccountFlow, useBackendPersist, useOnboardingChart, useOnboardingComputeTriad } from "./useAccount";
+import {
+  useAccountFlow,
+  useBackendPersist,
+  useOnboardingChart,
+  useOnboardingComputeTriad,
+  useSignInFlow,
+  useSignInHydrate,
+} from "./useAccount";
 import type { OnboardingChart } from "./useAccount";
 
 const TOTAL = 15;
@@ -74,6 +82,9 @@ export function OnboardingFlow() {
   const [accountCode, setAccountCode] = useState("");
   const [plan, setPlan] = useState<PlanId>("annual");
   const account = useAccountFlow();
+  const signInFlow = useSignInFlow();
+  const signInHydrate = useSignInHydrate();
+  const [signInOpen, setSignInOpen] = useState(false);
   const persistBackend = useBackendPersist();
   const chartPreview = useOnboardingChart();
   const computeTriad = useOnboardingComputeTriad();
@@ -174,6 +185,29 @@ export function OnboardingFlow() {
     if (ok) next();
   };
 
+  // Login de usuario existente (01C): con carta guardada en Convex se entra
+  // derecho a la Home (recrea el perfil local desde birthData, sin repetir el
+  // onboarding); sin carta, sigue el onboarding con la sesión ya activa y los
+  // datos se persisten al final como siempre.
+  const signInDone = async () => {
+    const birth = signInHydrate ? await signInHydrate() : null;
+    if (birth) {
+      await createProfile({
+        name: "Visitante",
+        birthDate: birth.birthDate,
+        birthTime: birth.birthTimePrecision === "known" ? birth.birthTime : undefined,
+        birthPlace: birth.birthPlaceLabel,
+        interests: DEFAULT_TOPICS,
+        guidanceTone: "protectora",
+        notificationTime: "09:00",
+      });
+      router.replace("/(tabs)");
+      return;
+    }
+    setSignInOpen(false);
+    setStep(1);
+  };
+
   const submit = async () => {
     const birthTimeValue = timeUnknown ? undefined : timeLabel;
     await createProfile({
@@ -196,10 +230,17 @@ export function OnboardingFlow() {
         timezone: birthPlace?.timezone,
       });
     }
-    // Al salir del onboarding se entra a la Home "primera impresión" (fresh=1):
-    // arranca con la carta natal arriba. La Home normal (sin la carta) es la de
-    // uso diario. La carta queda accesible siempre desde el Perfil.
-    router.replace({ pathname: "/(tabs)", params: { fresh: "1" } });
+    // Al salir del onboarding, la primera entrega: la ceremonia de recepción de la
+    // carta natal (/recepcion, full-screen, una sola vez). La tríada calculada viaja
+    // por params para no depender de que Convex ya haya persistido la carta.
+    router.replace({
+      pathname: "/recepcion",
+      params: {
+        ...(computed?.sun ? { sol: computed.sun } : {}),
+        ...(computed?.moon ? { luna: computed.moon } : {}),
+        ...(computed?.ascendant ? { asc: computed.ascendant } : {}),
+      },
+    });
   };
 
   // Sin paywall: al llegar al paso de pago (step 14) se entra directo a la app.
@@ -210,10 +251,20 @@ export function OnboardingFlow() {
 
   if (!fontsLoaded) return <View style={styles.fill} />;
 
+  // Puerta "Ya tengo cuenta" (01C): vive fuera de la numeración de pasos.
+  if (signInOpen && signInFlow) {
+    return (
+      <View className="dark" style={styles.fill}>
+        <StatusBar style="light" />
+        <SignInScreen flow={signInFlow} onSignedIn={signInDone} onBack={() => setSignInOpen(false)} />
+      </View>
+    );
+  }
+
   let screen: ReactNode;
   switch (step) {
     case 0:
-      screen = <SplashScreen onNext={next} />;
+      screen = <SplashScreen onNext={next} onSignIn={signInFlow ? () => setSignInOpen(true) : undefined} />;
       break;
     case 1:
       screen = <AlignScreen onNext={next} onBack={back} />;

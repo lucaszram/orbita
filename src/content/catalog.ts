@@ -62,7 +62,7 @@ export const weeklyColorMeanings = [
     color: "Lavanda",
     symbol: "estrella",
     focus: "proteccion" as Topic,
-    meaning: "Suaviza energía cargada sin apagar tu intuición.",
+    meaning: "Baja el volumen de lo de afuera para escuchar lo tuyo.",
     action: "Usalo cuando necesites filtrar ruido ajeno."
   },
   {
@@ -330,13 +330,13 @@ const topicCopy: Record<Topic, Omit<ContentTemplate, "id" | "kind" | "topic">> =
   proteccion: {
     tone: "protector",
     title: "Protección diaria",
-    body: "Cuidarte no es cerrarte. Es elegir dónde sí y dónde no poner tu energía.",
+    body: "Hoy vas a tener más frentes que ganas, y no todos te corresponden. Cuidarte también es elegir dónde no estar; el aire que libera una sola ausencia bien elegida se nota el resto del día.",
     action: "Cancelá o posponé una cosa que hoy no te corresponde."
   },
   luna: {
     tone: "expansivo",
     title: "Pulso lunar",
-    body: "Hay emociones que solo piden ser vistas. No las conviertas todas en tareas.",
+    body: "No todo lo que te pasa hoy pide un plan. Algunas cosas alcanza con nombrarlas; mañana, con la marea más baja, decidís si eran tema de verdad.",
     action: "Dale nombre a lo que sentís y dejalo escrito."
   }
 };
@@ -347,7 +347,7 @@ export const contentTemplates: ContentTemplate[] = [
     kind: "daily-message" as const,
     zodiacSign: sign as ZodiacSign,
     tone: "suave" as const,
-    title: "Tu mensaje de hoy",
+    title: "Tu lectura de hoy",
     body,
     action: "Elegí una acción pequeña y cumplila antes del mediodía."
   })),
@@ -363,7 +363,7 @@ export const contentTemplates: ContentTemplate[] = [
     topic: "claridad",
     tone: "directo",
     title: "Cuando todo se mezcla",
-    body: "Si una conversación se repite, cambiá la pregunta. A veces la llave no es insistir, es precisar.",
+    body: "Si una conversación se repite y siempre muere en el mismo punto, insistir con las mismas palabras no la va a destrabar. Cambiá la pregunta: definí qué necesitás saber exactamente, y preguntá eso.",
     action: "Preguntá qué necesitás saber, no lo que temés escuchar."
   },
   {
@@ -372,7 +372,7 @@ export const contentTemplates: ContentTemplate[] = [
     topic: "proteccion",
     tone: "protector",
     title: "Energía prestada",
-    body: "No cargues emociones ajenas como si fueran prueba de amor. Acompañar no es absorber.",
+    body: "Alguien cerca tuyo está pesado, y tu primer gesto va a ser cargarlo vos. Se puede acompañar sin absorber: preguntá qué necesita de verdad antes de hacerte cargo. La mitad de las veces alcanza con escuchar.",
     action: "Devolvé con cariño una responsabilidad que no es tuya."
   },
   {
@@ -381,7 +381,7 @@ export const contentTemplates: ContentTemplate[] = [
     topic: "luna",
     tone: "expansivo",
     title: "La luna también baja",
-    body: "No todos los días piden manifestar. Algunos piden limpiar, descansar y escuchar.",
-    action: "Cerrá una pequeña deuda emocional con vos."
+    body: "Hay días de cosechar y días de ordenar la cocina. Si hoy no aparece nada nuevo para mostrar, no perdiste el día: ordenar, descansar y ponerte al día también sostienen la semana.",
+    action: "Empezá por lo más chico que tengas pendiente."
   }
 ];

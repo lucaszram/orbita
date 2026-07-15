@@ -4,6 +4,7 @@ import { router } from "expo-router";
 import { useAction } from "convex/react";
 import { DetailScreen } from "@/components/home/DetailScreen";
 import { Body, Divider, Eyebrow, H2, MonoLine, Pill } from "@/components/orbita/kit";
+import { ErrorState, LoadingState } from "@/components/orbita/states";
 import { FullBleedHero } from "@/components/orbita/ImmersiveHero";
 import { moonPhaseMock } from "@/content/moonPhaseMock";
 import { useAppData } from "@/domain/appData";
@@ -14,29 +15,53 @@ import { orbita } from "@/theme/orbita";
 
 /** Fase lunar (Figma V4.7 · 06 Luna/Calendario) — luna full-bleed + acción lunar. */
 export default function LunaScreen() {
-  const { isLive } = useLiveApp();
-  if (!isLive) {
-    // Guest / sin sesión: mock tipado, misma forma que el payload real.
+  const { status, retrySession } = useLiveApp();
+  // Mock SOLO para invitado confirmado; transitorios de sesión = carga estable.
+  if (status === "guest") {
     return <LunaView payload={moonPhaseMock} />;
+  }
+  if (status === "error") {
+    return (
+      <DetailScreen eyebrow="Luna">
+        <ErrorState onRetry={retrySession} />
+      </DetailScreen>
+    );
+  }
+  if (status !== "live") {
+    return (
+      <DetailScreen eyebrow="Luna">
+        <LoadingState />
+      </DetailScreen>
+    );
   }
   return <LunaLive />;
 }
 
 function LunaLive() {
   const getMoonPhase = useAction(proposedSkyApi.getMoonPhase);
-  const [payload, setPayload] = useState<MoonPhasePayload | null>(null);
+  // undefined = cargando · null = proveedor no configurado / error → mock
+  const [payload, setPayload] = useState<MoonPhasePayload | null | undefined>(undefined);
   const fired = useRef(false);
 
   useEffect(() => {
     if (fired.current) return;
     fired.current = true;
     getMoonPhase({ localDate: toISODate(), timezone: deviceTimezone() })
-      // El backend devuelve null si el proveedor no está configurado o falla;
-      // en ese caso seguimos con el mock (nunca pantalla rota).
       .then((data) => setPayload(data))
-      .catch(() => setPayload(null));
+      .catch((e) => {
+        console.warn("[orbita] sky.getMoonPhase falló:", e?.message ?? e);
+        setPayload(null);
+      });
   }, [getMoonPhase]);
 
+  // Cargando es cargando: nada de pintar el mock y pisarlo cuando llega lo real.
+  if (payload === undefined) {
+    return (
+      <DetailScreen eyebrow="Luna">
+        <LoadingState />
+      </DetailScreen>
+    );
+  }
   return <LunaView payload={payload ?? moonPhaseMock} />;
 }
 

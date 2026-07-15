@@ -6,6 +6,8 @@ import { CartaCard } from "@/components/home/CartaCard";
 import { useAppData } from "@/domain/appData";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { backendConfig } from "@/services/backendProviders";
+import { clearFirstRunFlags } from "@/services/firstRun";
+import { testingReplay } from "@/services/testingReplay";
 import { orbita } from "@/theme/orbita";
 
 export default function PerfilScreen() {
@@ -40,7 +42,7 @@ export default function PerfilScreen() {
             {auth?.name ? (
               <Note>
                 {perfil.accountEmail.includes("privaterelay.appleid.com")
-                  ? "Conectada con Apple"
+                  ? "Cuenta conectada con Apple"
                   : perfil.accountEmail}
               </Note>
             ) : null}
@@ -54,6 +56,11 @@ export default function PerfilScreen() {
             {backendConfig.isConfigured ? (
               <Note>Creá tu cuenta al final del onboarding (Editar datos) para guardar tu carta y tus lecturas.</Note>
             ) : null}
+            {/* Aun sin email visible (handshake lento / sesión zombie) tiene que existir
+                una salida: cierra la sesión de Clerk si la hay y vuelve a la entrada. */}
+            <Pressable onPress={handleLogout} accessibilityRole="button" style={styles.logoutBtn} hitSlop={8}>
+              <Text style={styles.logoutText}>Cerrar sesión / reiniciar</Text>
+            </Pressable>
           </View>
         )}
         <Divider />
@@ -63,6 +70,28 @@ export default function PerfilScreen() {
         </Pressable>
         <View style={{ height: orbita.spacing.xl }} />
         <Pill label="EDITAR DATOS" onPress={() => router.push("/onboarding")} />
+
+        {/* ─── TESTING · SACAR ANTES DEL LAUNCH ───────────────────────────────
+            Repite el "primer día" COMPLETO sin re-hacer el onboarding: borra los
+            flags de primera vez, arma el replay de sesión (la Home trata la carta
+            de hoy como no sacada y el flip es local, ver testingReplay.ts) y entra
+            a la ceremonia. Ceremonia → QUÉ ES → intro del tarot → flip → EL RITUAL,
+            todo con los datos reales. */}
+        <Divider />
+        <Eyebrow>TESTING (sacar antes del launch)</Eyebrow>
+        <Pressable
+          onPress={async () => {
+            await clearFirstRunFlags();
+            testingReplay.arm();
+            router.push("/recepcion");
+          }}
+          accessibilityRole="button"
+          style={styles.testingBtn}
+          hitSlop={8}
+        >
+          <Text style={styles.testingText}>REPETIR PRIMER DÍA</Text>
+        </Pressable>
+        {/* ─── FIN TESTING ──────────────────────────────────────────────────── */}
       </Section>
     </OrbitaScreen>
   );
@@ -80,6 +109,23 @@ const styles = StyleSheet.create({
   },
   logoutText: {
     color: orbita.colors.bone,
+    fontFamily: orbita.fonts.monoMedium,
+    fontSize: 12,
+    letterSpacing: 1
+  },
+  // TESTING · sacar junto con el botón antes del launch.
+  testingBtn: {
+    alignSelf: "flex-start",
+    borderColor: "rgba(196,106,58,0.6)",
+    borderRadius: 999,
+    borderStyle: "dashed",
+    borderWidth: 1,
+    marginTop: orbita.spacing.md,
+    paddingHorizontal: orbita.spacing.lg,
+    paddingVertical: orbita.spacing.sm
+  },
+  testingText: {
+    color: orbita.colors.copper,
     fontFamily: orbita.fonts.monoMedium,
     fontSize: 12,
     letterSpacing: 1

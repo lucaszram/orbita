@@ -10,26 +10,30 @@ import "../global.css";
 LogBox.ignoreLogs(["[expo-notifications]"]);
 import { AppStateProvider } from "@/hooks/useAppState";
 import { BackendProviders, backendConfig } from "@/services/backendProviders";
+import { OrbitaSessionProvider } from "@/services/session";
 import { InstallPing } from "@/components/InstallPing";
 
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <BackendProviders>
-        {backendConfig.hasConvex ? <InstallPing /> : null}
-        <AppStateProvider>
-          <StatusBar style="dark" />
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="index" />
-            <Stack.Screen name="onboarding" />
-            <Stack.Screen name="lab" />
-            <Stack.Screen name="backoffice" />
-            <Stack.Screen name="studio" />
-            <Stack.Screen name="reading" />
-            <Stack.Screen name="carta-full" />
-            <Stack.Screen name="(tabs)" />
-          </Stack>
-        </AppStateProvider>
+        {/* UNA sesión para toda la app (ver incidente-home-carga-2026-07-13). */}
+        <OrbitaSessionProvider>
+          {backendConfig.hasConvex ? <InstallPing /> : null}
+          <AppStateProvider>
+            <StatusBar style="dark" />
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="index" />
+              <Stack.Screen name="onboarding" />
+              <Stack.Screen name="lab" />
+              <Stack.Screen name="backoffice" />
+              <Stack.Screen name="studio" />
+              <Stack.Screen name="reading" />
+              <Stack.Screen name="carta-full" />
+              <Stack.Screen name="(tabs)" />
+            </Stack>
+          </AppStateProvider>
+        </OrbitaSessionProvider>
       </BackendProviders>
     </SafeAreaProvider>
   );

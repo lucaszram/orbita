@@ -1,5 +1,5 @@
-import { ReactNode } from "react";
-import { Image, StyleSheet, Text, View } from "react-native";
+import { ReactNode, useEffect, useRef } from "react";
+import { Animated, Easing, Image, StyleSheet, Text, View } from "react-native";
 import { EditorialThumb } from "@/components/orbita/HeroImage";
 import { orbita } from "@/theme/orbita";
 import { Pill } from "./kit";
@@ -32,31 +32,63 @@ function Centered({ children }: { children: ReactNode }) {
   return <View style={styles.wrap}>{children}</View>;
 }
 
-export function LoadingState() {
+export function LoadingState({
+  eyebrow = "UN MOMENTO",
+  title = "Leyendo tu cielo.",
+  body = "La lectura de hoy llega en segundos."
+}: {
+  eyebrow?: string;
+  title?: string;
+  body?: string;
+}) {
+  const spin = useRef(new Animated.Value(0)).current;
+  const sweep = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const orbitLoop = Animated.loop(
+      Animated.timing(spin, { toValue: 1, duration: 6000, easing: Easing.linear, useNativeDriver: true })
+    );
+    const barLoop = Animated.loop(
+      Animated.timing(sweep, { toValue: 1, duration: 1600, easing: Easing.inOut(Easing.ease), useNativeDriver: true })
+    );
+    orbitLoop.start();
+    barLoop.start();
+    return () => {
+      orbitLoop.stop();
+      barLoop.stop();
+    };
+  }, [spin, sweep]);
+
+  const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] });
+  // La barra no marca progreso real (no lo conocemos): barre en loop, señal honesta de "trabajando".
+  const translateX = sweep.interpolate({ inputRange: [0, 1], outputRange: [-96, 240] });
+
   return (
     <Centered>
       <View style={styles.orbit}>
         <Emblem kind="moon" />
-        <View style={styles.orbitRing} />
-        <View style={styles.orbitDot} />
+        <Animated.View style={[styles.orbitSpinner, { transform: [{ rotate }] }]}>
+          <View style={styles.orbitRing} />
+          <View style={styles.orbitDot} />
+        </Animated.View>
       </View>
-      <Text style={styles.eyebrow}>UN MOMENTO</Text>
-      <Text style={styles.title}>Leyendo tu cielo.</Text>
-      <Text style={styles.body}>La lectura de hoy llega en segundos.</Text>
+      <Text style={styles.eyebrow}>{eyebrow}</Text>
+      <Text style={styles.title}>{title}</Text>
+      <Text style={styles.body}>{body}</Text>
       <View style={styles.track}>
-        <View style={styles.fill} />
+        <Animated.View style={[styles.fill, { transform: [{ translateX }] }]} />
       </View>
     </Centered>
   );
 }
 
-export function EmptyState({ title, body, cta, onCta }: { title: string; body: string; cta?: string; onCta?: () => void }) {
+export function EmptyState({ title, body, cta, onCta, eyebrow = "GUARDADAS" }: { title: string; body: string; cta?: string; onCta?: () => void; eyebrow?: string }) {
   return (
     <Centered>
       <View style={styles.emblemZone}>
         <Emblem kind="phase" />
       </View>
-      <Text style={styles.eyebrow}>GUARDADAS</Text>
+      <Text style={styles.eyebrow}>{eyebrow}</Text>
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.body}>{body}</Text>
       {cta ? (
@@ -115,6 +147,13 @@ const styles = StyleSheet.create({
     shadowRadius: 46
   },
   orbit: { alignItems: "center", justifyContent: "center", marginBottom: orbita.spacing.xxl, padding: 22 },
+  orbitSpinner: {
+    alignItems: "center",
+    height: 214,
+    justifyContent: "center",
+    position: "absolute",
+    width: 214
+  },
   orbitRing: {
     borderColor: "rgba(244,238,228,0.22)",
     borderRadius: 107,
@@ -162,9 +201,10 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     height: 4,
     marginTop: orbita.spacing.xxl,
+    overflow: "hidden",
     width: 240
   },
-  fill: { backgroundColor: orbita.colors.copper, borderRadius: 2, height: 4, width: "40%" },
+  fill: { backgroundColor: orbita.colors.copper, borderRadius: 2, height: 4, width: 96 },
 
   lockedWrap: { paddingTop: orbita.spacing.xl },
   thumb: { marginBottom: orbita.spacing.xl },

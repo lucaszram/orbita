@@ -34,6 +34,7 @@ function ValoresLive() {
     return (
       <DetailScreen eyebrow="Mapa de valores">
         <EmptyState
+          eyebrow="MAPA DE VALORES"
           title="Todavía no hay mapa"
           body="Completá tu fecha, hora y lugar de nacimiento para calcular tu mapa de valores."
           cta="COMPLETAR MIS DATOS"

@@ -1,56 +1,39 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { appApi, NatalChartDoc } from "@/services/appRefs";
 import { backendConfig } from "@/services/backendProviders";
-import { OrbitaAuth, useOrbitaAuth } from "@/hooks/useOrbitaAuth";
+import { OrbitaAuth } from "@/hooks/useOrbitaAuth";
+import { useOrbitaSession, type SessionStatus } from "@/services/session";
 
 /**
- * Capa live nativa (no hay `?live=1` como en web): live ⟺ Convex configurado
- * + sesión Clerk autenticada en Convex. Mock/local-first: sin sesión, la app
- * se comporta exactamente igual que siempre.
+ * Capa live nativa. Desde el incidente del 2026-07-13, esto es un CONSUMIDOR del
+ * `OrbitaSessionProvider` (src/services/session.tsx): una sola máquina de estados
+ * de sesión para toda la app, en vez de un `userReady` local por pantalla.
  *
- * Los guards `HAS_CONVEX`/`HAS_CLERK` son constantes de módulo (los envs no
- * cambian en runtime), así que el orden de hooks es estable aunque haya
- * returns tempranos. Queries condicionales via `"skip"` (convex >= 1.x).
+ * Regla para las pantallas: mock SOLO con `status === "guest"`. `booting` /
+ * `reconnecting` = carga estable; `error` = error visible con reintento.
  */
 const HAS_CONVEX = backendConfig.hasConvex;
-const HAS_CLERK = backendConfig.hasClerk;
 
 export type LiveApp = {
-  /** Hay sesión y la fila `users` ya existe: se pueden correr queries. */
+  /** Compat: `status === "live"` (sesión confirmada + fila `users` garantizada). */
   isLive: boolean;
   isAuthLoading: boolean;
   auth: OrbitaAuth | null;
+  /** Estado explícito de sesión — usar esto para decidir mock vs carga vs error. */
+  status: SessionStatus;
+  /** Reintenta la inicialización tras `status === "error"`. */
+  retrySession: () => void;
 };
 
-const OFFLINE: LiveApp = { isLive: false, isAuthLoading: false, auth: null };
-
 export function useLiveApp(): LiveApp {
-  if (!HAS_CONVEX || !HAS_CLERK) return OFFLINE;
-  return useLiveAppInner();
-}
-
-function useLiveAppInner(): LiveApp {
-  const auth = useOrbitaAuth();
-  const ensureUser = useMutation(appApi.users.getOrCreateCurrentUser);
-  const [userReady, setUserReady] = useState(false);
-
-  useEffect(() => {
-    if (!auth.isAuthenticated) {
-      setUserReady(false);
-      return;
-    }
-    // Crear la fila `users` ANTES de cualquier query (si no, charts.current tira Server Error).
-    ensureUser({})
-      .then(() => setUserReady(true))
-      .catch(() => setUserReady(true));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auth.isAuthenticated]);
-
+  const session = useOrbitaSession();
   return {
-    isLive: auth.isAuthenticated && userReady,
-    isAuthLoading: !auth.isLoaded || auth.isConnecting,
-    auth
+    isLive: session.isLive,
+    isAuthLoading: session.isAuthLoading,
+    auth: session.auth,
+    status: session.status,
+    retrySession: session.retrySession
   };
 }
 

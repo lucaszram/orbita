@@ -1,11 +1,11 @@
 import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useAction, useConvex, useMutation, useQuery } from "convex/react";
 
 import { deviceTimezone } from "@/hooks/useLiveApp";
 import { useOrbitaAuth } from "@/hooks/useOrbitaAuth";
-import { appApi } from "@/services/appRefs";
+import { appApi, type BirthDataDoc } from "@/services/appRefs";
 import { backendConfig } from "@/services/backendProviders";
 import { publicLabApi } from "@/services/publicLabRefs";
 
@@ -13,6 +13,11 @@ import { publicLabApi } from "@/services/publicLabRefs";
 WebBrowser.maybeCompleteAuthSession();
 
 export type OAuthProvider = "google" | "apple";
+
+// Lanzamiento v1 sin login social: Clerk prod exige credenciales OAuth propias
+// de Google y la guideline 4.8 de Apple obliga a Sign in with Apple si hay
+// Google. Reactivar cuando ambas estén configuradas (decisión Lucas 2026-07-14).
+export const SOCIAL_LOGIN_ENABLED = false;
 
 /**
  * Cuenta Clerk (email + código) y persistencia Convex para el onboarding
@@ -45,14 +50,48 @@ export function useAccountFlow(): AccountFlow | null {
   return useAccountFlowInner();
 }
 
+/** OAuth SSO (Apple/Google) compartido entre alta de cuenta y sign-in. */
+function useSSOOauth(
+  setError: (v: string | null) => void,
+  setOauthBusy: (v: OAuthProvider | null) => void,
+): (provider: OAuthProvider) => Promise<boolean> {
+  const { useSSO } = require("@clerk/expo") as typeof import("@clerk/expo");
+  const { startSSOFlow } = useSSO();
+  return useCallback(
+    async (provider: OAuthProvider): Promise<boolean> => {
+      setError(null);
+      setOauthBusy(provider);
+      try {
+        const strategy = provider === "google" ? "oauth_google" : "oauth_apple";
+        const { createdSessionId, setActive } = await startSSOFlow({
+          strategy,
+          redirectUrl: AuthSession.makeRedirectUri()
+        });
+        if (createdSessionId && setActive) {
+          await setActive({ session: createdSessionId });
+          return true;
+        }
+        // El usuario canceló el navegador o falta un paso (MFA): no es un error duro.
+        return false;
+      } catch (e) {
+        setError(clerkErrorMessage(e));
+        return false;
+      } finally {
+        setOauthBusy(null);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [startSSOFlow]
+  );
+}
+
 function useAccountFlowInner(): AccountFlow {
-  const { useAuth, useSSO } = require("@clerk/expo") as typeof import("@clerk/expo");
+  const { useAuth } = require("@clerk/expo") as typeof import("@clerk/expo");
   // La API clásica (create/prepare/attempt) vive en el subpath legacy en @clerk/expo v3.
   const { useSignIn, useSignUp } = require("@clerk/expo/legacy") as typeof import("@clerk/expo/legacy");
   const { signUp, setActive: setActiveSignUp } = useSignUp();
   const { signIn, setActive: setActiveSignIn } = useSignIn();
   const { isSignedIn } = useAuth();
-  const { startSSOFlow } = useSSO();
   const [phase, setPhase] = useState<"email" | "code">("email");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -125,31 +164,7 @@ function useAccountFlowInner(): AccountFlow {
     [setActiveSignIn, setActiveSignUp, signIn, signUp]
   );
 
-  const oauth = useCallback(
-    async (provider: OAuthProvider): Promise<boolean> => {
-      setError(null);
-      setOauthBusy(provider);
-      try {
-        const strategy = provider === "google" ? "oauth_google" : "oauth_apple";
-        const { createdSessionId, setActive } = await startSSOFlow({
-          strategy,
-          redirectUrl: AuthSession.makeRedirectUri()
-        });
-        if (createdSessionId && setActive) {
-          await setActive({ session: createdSessionId });
-          return true;
-        }
-        // El usuario canceló el navegador o falta un paso (MFA): no es un error duro.
-        return false;
-      } catch (e) {
-        setError(clerkErrorMessage(e));
-        return false;
-      } finally {
-        setOauthBusy(null);
-      }
-    },
-    [startSSOFlow]
-  );
+  const oauth = useSSOOauth(setError, setOauthBusy);
 
   return {
     phase,
@@ -165,6 +180,120 @@ function useAccountFlowInner(): AccountFlow {
       setPhase("email");
     }
   };
+}
+
+// ---------------------------------------------------------------------------
+// Sign-in de usuarios existentes (pantalla 01C "Bienvenido de nuevo").
+// A diferencia de useAccountFlow (alta primero), acá se intenta SOLO sign-in:
+// si el email no tiene cuenta, se avisa en vez de crear una cuenta silenciosa.
+// ---------------------------------------------------------------------------
+
+export function useSignInFlow(): AccountFlow | null {
+  if (!HAS_BACKEND) return null;
+  return useSignInFlowInner();
+}
+
+function useSignInFlowInner(): AccountFlow {
+  const { useAuth } = require("@clerk/expo") as typeof import("@clerk/expo");
+  const { useSignIn } = require("@clerk/expo/legacy") as typeof import("@clerk/expo/legacy");
+  const { signIn, setActive: setActiveSignIn } = useSignIn();
+  const { isSignedIn } = useAuth();
+  const [phase, setPhase] = useState<"email" | "code">("email");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [oauthBusy, setOauthBusy] = useState<OAuthProvider | null>(null);
+
+  const start = useCallback(
+    async (emailAddress: string) => {
+      if (!signIn) return;
+      setBusy(true);
+      setError(null);
+      try {
+        const attempt = await signIn.create({ identifier: emailAddress });
+        const factor = attempt.supportedFirstFactors?.find((f) => f.strategy === "email_code") as
+          | { emailAddressId?: string }
+          | undefined;
+        await signIn.prepareFirstFactor({ strategy: "email_code", emailAddressId: factor?.emailAddressId ?? "" });
+        setPhase("code");
+      } catch (e) {
+        const code = (e as { errors?: Array<{ code?: string }> })?.errors?.[0]?.code;
+        if (code === "form_identifier_not_found") {
+          setError("No encontramos una cuenta con ese email. Si sos nuevo, empezá creando tu carta.");
+        } else {
+          setError(clerkErrorMessage(e));
+        }
+      } finally {
+        setBusy(false);
+      }
+    },
+    [signIn]
+  );
+
+  const verify = useCallback(
+    async (code: string): Promise<boolean> => {
+      if (!signIn) return false;
+      setBusy(true);
+      setError(null);
+      try {
+        const result = await signIn.attemptFirstFactor({ strategy: "email_code", code });
+        if (result.status === "complete" && setActiveSignIn) {
+          await setActiveSignIn({ session: result.createdSessionId });
+          return true;
+        }
+        setError("El código no coincide. Fijate en tu mail.");
+        return false;
+      } catch (e) {
+        setError(clerkErrorMessage(e));
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [setActiveSignIn, signIn]
+  );
+
+  const oauth = useSSOOauth(setError, setOauthBusy);
+
+  return {
+    phase,
+    busy,
+    error,
+    isSignedIn: !!isSignedIn,
+    oauthBusy,
+    start,
+    verify,
+    oauth,
+    resetToEmail: () => {
+      setError(null);
+      setPhase("email");
+    }
+  };
+}
+
+/**
+ * Post-login: trae los datos de nacimiento guardados en Convex para decidir
+ * el destino. Con carta → derecho a la Home (saltea el onboarding); sin carta
+ * → sigue el onboarding con la sesión ya activa. La sesión Clerk recién se
+ * activó, así que el token de Convex puede tardar: reintenta unos segundos.
+ */
+export function useSignInHydrate(): (() => Promise<BirthDataDoc | null>) | null {
+  if (!HAS_BACKEND) return null;
+  return useSignInHydrateInner();
+}
+
+function useSignInHydrateInner(): () => Promise<BirthDataDoc | null> {
+  const convex = useConvex();
+  return useCallback(async () => {
+    for (let i = 0; i < 12; i++) {
+      try {
+        await convex.mutation(appApi.users.getOrCreateCurrentUser, {});
+        return await convex.query(appApi.birthData.getCurrent, {});
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 700));
+      }
+    }
+    return null;
+  }, [convex]);
 }
 
 // ---------------------------------------------------------------------------

@@ -12,8 +12,8 @@ type Fila = { sign: ZodiacSign; label: string; why: string; level: string; stron
 // carta en cada ventana) la deriva Codex de chart × tránsitos. Hoy: mock tipado.
 const MOCK: Record<Ventana, Fila[]> = {
   hoy: [
-    { sign: "cancer", label: "Cáncer", why: "Fluye con tu Luna — te entienden sin que tengas que explicar.", level: "ALTA", strong: true },
-    { sign: "escorpio", label: "Escorpio", why: "Misma intensidad, mismo fondo. Se reconocen.", level: "FUERTE", strong: true },
+    { sign: "cancer", label: "Cáncer", why: "Agua, como tu Luna: hoy cuesta menos hablar de lo que pesa.", level: "ALTA", strong: true },
+    { sign: "escorpio", label: "Escorpio", why: "Mismo elemento que tu Luna: lo hondo sale con menos esfuerzo.", level: "FUERTE", strong: true },
     { sign: "acuario", label: "Acuario", why: "Hay chispa, pero tu base pide cercanía y ellos, aire.", level: "EN TENSIÓN", strong: false }
   ],
   semana: [
@@ -22,9 +22,9 @@ const MOCK: Record<Ventana, Fila[]> = {
     { sign: "aries", label: "Aries", why: "Empuje, pero cuidá el apuro.", level: "EN TENSIÓN", strong: false }
   ],
   mes: [
-    { sign: "piscis", label: "Piscis", why: "Un mes sensible; con ellos, se sintoniza hondo.", level: "ALTA", strong: true },
+    { sign: "piscis", label: "Piscis", why: "Ahí está tu Luna: el clima emocional se entiende más rápido.", level: "ALTA", strong: true },
     { sign: "libra", label: "Libra", why: "Se buscan el equilibrio y los acuerdos.", level: "FUERTE", strong: true },
-    { sign: "leo", label: "Leo", why: "Se admiran, pero los dos quieren el centro.", level: "EN TENSIÓN", strong: false }
+    { sign: "leo", label: "Leo", why: "Tu mismo Sol: el brillo se entiende; el centro, se negocia.", level: "EN TENSIÓN", strong: false }
   ]
 };
 

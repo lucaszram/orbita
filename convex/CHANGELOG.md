@@ -21,6 +21,24 @@ El puente de tipos (`convex/_generated/`) se deriva de acá y lo commitea el bac
 
 ---
 
+## 2026-07-15 — Rueda natal real para invitados (ceremonia de recepción)
+- **Qué cambió:** el front necesita `publicLab.previewNatalChart(birthData): NatalChartPayload` — cálculo COMPLETO de carta (triad + placements + houses + aspects, la misma forma que consume `mapNatalChart` desde `charts.current`) sin sesión y sin persistir nada. Hoy `publicLab.previewDailyHome` expone solo `natalBase` (la tríada).
+- **Por qué:** la ceremonia de recepción del día 1 (`app/recepcion.tsx`) muestra la rueda natal. Decisión de producto (Lucas 2026-07-15): la rueda aparece SIEMPRE y es SIEMPRE la del usuario — se eliminó la rueda demo para invitados. Con cuenta ya usa `charts.current`; para invitado falta este endpoint. Cuando exista, también reemplaza el `chartMock` del tab Carta guest.
+- **Quién lo pidió:** Lucas (vía frontend/Claude).
+- **Estado:** propuesto (stub en `convex/schema.ts`). Mientras tanto la ceremonia guest muestra el fondo estelar sin rueda.
+
+## 2026-07-13 — `dailyGuides` invalida payloads anteriores al ritual de carta
+- **Qué cambió:** `daily.getGuide()` agrega `payloadVersion: "orbita-daily-guide-v2"`; solo reutiliza caches que tengan esa versión y una carta válida. Si encuentra un documento anterior, reemplaza su `payload` sin borrar `revealedAt`. `daily.revealCard()` rechaza payloads obsoletos.
+- **Por qué:** una usuaria tenía una guía del día creada antes del lanzamiento del ritual. La app recibió ese cache viejo, permitió el flip y mostró una cara vacía.
+- **Quién lo pidió:** backend, a partir de incidente real reportado por Lucas.
+- **Estado:** implementado, validado con 59/59 pruebas y sincronizado el 2026-07-13 a Convex dev `dutiful-viper-815`; pendiente reapertura de la app para regenerar el documento de Sofía.
+
+## 2026-07-13 — Ritual diario persistente + tira del Diario
+- **Qué cambió:** `dailyGuides` suma `revealedAt?: number`; `daily.revealCard({ localDate })` persiste de forma idempotente el primer reveal; `daily.getStrip({ from, to })` devuelve por fecha `cartaId` y estado `revealed`; `daily.getGuide` incorpora la carta determinística del día en su payload.
+- **Por qué:** hacer irreversible el ritual de carta diaria, conservarlo entre sesiones/dispositivos y alimentar la tira histórica del Diario.
+- **Quién lo pidió:** frontend (Claude), como parte de la nueva entrada de Home/Diario.
+- **Estado:** implementado y sincronizado el 2026-07-13 con el deployment dev `dutiful-viper-815`. Falta verificación end-to-end desde la app.
+
 ## 2026-07-10 — Calidad de generación diaria: anti-redundancia + voz criolla (feedback usuario Sofi)
 - **Qué reportó el usuario (Sofi, 2026-07-10):**
   - **HACÉ repite el body** casi palabra por palabra ("marcá/elegí la tarea que desbloquea el resto… veinte minutos" en ambos) → *"dice lo mismo tal cual"*.

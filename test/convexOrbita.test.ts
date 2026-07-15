@@ -40,6 +40,7 @@ import {
   buildPublicTransitTimelineResponse
 } from "../convex/publicLab";
 import { sanitizeAppFacingPayload } from "../convex/webB0Seed";
+import { isCurrentDailyGuidePayload } from "../convex/daily";
 
 function buildFixtureAstrologyChart() {
   const input = normalizeBirthInput({
@@ -106,6 +107,30 @@ test("builds user fields from a Clerk-like identity", () => {
   assert.equal(fields.email, "mica@example.com");
   assert.equal(fields.name, "Mica");
   assert.equal(fields.updatedAt, 123);
+});
+
+test("rejects stale daily guide caches that predate the card contract", () => {
+  assert.equal(
+    isCurrentDailyGuidePayload({
+      headline: "Guía anterior",
+      body: "Sin carta"
+    }),
+    false
+  );
+  assert.equal(
+    isCurrentDailyGuidePayload({
+      payloadVersion: "orbita-daily-guide-v2",
+      carta: { id: 16, nombre: "La Torre", beats: [] }
+    }),
+    true
+  );
+  assert.equal(
+    isCurrentDailyGuidePayload({
+      payloadVersion: "orbita-daily-guide-v2",
+      carta: { id: "16", nombre: "La Torre", beats: [] }
+    }),
+    false
+  );
 });
 
 test("sanitizes provider raw and request details before Web B0 QA persistence", () => {

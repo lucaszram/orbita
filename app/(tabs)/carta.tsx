@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { router } from "expo-router";
 import { useAction, useQuery } from "convex/react";
 
@@ -13,6 +13,7 @@ import { chartMock } from "@/content/chartMock";
 import { personalityMock } from "@/content/personalityMock";
 import { valuesMock } from "@/content/valuesMock";
 import { useLiveApp } from "@/hooks/useLiveApp";
+import { markFirstRun, useFirstRun } from "@/services/firstRun";
 import {
   appApi,
   type NatalChartAspect,
@@ -30,8 +31,24 @@ import { orbita } from "@/theme/orbita";
  * la app. Con sesión, data real de `charts.current`; invitado → demo (chartMock).
  */
 export default function CartaScreen() {
-  const { isLive } = useLiveApp();
-  if (!isLive) return <CartaView payload={chartMock} reading={personalityMock} values={valuesMock} />;
+  const { status, retrySession } = useLiveApp();
+  // Mock SOLO para invitado confirmado. Un estado transitorio de sesión (arranque,
+  // reconexión) muestra carga estable — nunca la carta demo de Escorpio.
+  if (status === "guest") return <CartaView payload={chartMock} reading={personalityMock} values={valuesMock} />;
+  if (status === "error") {
+    return (
+      <OrbitaScreen right="Carta">
+        <ErrorState onRetry={retrySession} />
+      </OrbitaScreen>
+    );
+  }
+  if (status !== "live") {
+    return (
+      <OrbitaScreen right="Carta">
+        <LoadingState />
+      </OrbitaScreen>
+    );
+  }
   return <CartaLive />;
 }
 
@@ -59,6 +76,7 @@ function CartaLive() {
     return (
       <OrbitaScreen right="Carta">
         <EmptyState
+          eyebrow="TU CARTA NATAL"
           title="Todavía no hay carta"
           body="Completá tu fecha, hora y lugar de nacimiento para calcular tu carta natal."
           cta="COMPLETAR MIS DATOS"
@@ -77,7 +95,10 @@ function CartaLive() {
       </OrbitaScreen>
     );
   }
-  return <CartaView payload={payload} reading={reading ?? personalityMock} values={values ?? valuesMock} />;
+  // `reading` es LLM y tarda la primera vez: undefined (query en vuelo) o null (todavía
+  // no generada) → la vista muestra "se está escribiendo", NUNCA el mock como si fuera
+  // tu lectura. `values` es derivado del chart (instantáneo), el fallback no se ve.
+  return <CartaView payload={payload} reading={reading ?? null} values={values ?? valuesMock} />;
 }
 
 // --- Vista ---------------------------------------------------------------
@@ -95,12 +116,27 @@ function CartaView({
   values
 }: {
   payload: NatalChartPayload;
-  reading: PersonalityReadingPayload;
+  /** null = la lectura LLM todavía se está escribiendo (primera visita tarda). */
+  reading: PersonalityReadingPayload | null;
   values: ValuesMapPayload;
 }) {
   const { width } = useWindowDimensions();
   const [view, setView] = useState<"circulo" | "tabla">("circulo");
   const [selected, setSelected] = useState<string | undefined>();
+  // QUÉ ES (B5b): la primera visita de la vida explica qué es una carta natal.
+  // La decisión se toma UNA vez al hidratar los flags (si se marcara y releyera,
+  // el bloque desaparecería delante del usuario); queda visible toda la visita.
+  const { ready: flagsReady, flags } = useFirstRun();
+  const [showQueEs, setShowQueEs] = useState(false);
+  const queEsDecided = useRef(false);
+  useEffect(() => {
+    if (!flagsReady || queEsDecided.current) return;
+    queEsDecided.current = true;
+    if (!flags.cartaQueEsVisto) {
+      setShowQueEs(true);
+      void markFirstRun({ cartaQueEsVisto: true });
+    }
+  }, [flagsReady, flags]);
   const wheelSize = Math.min(width - orbita.spacing.gutter * 2, 360);
   const radarSize = Math.min(width - orbita.spacing.gutter * 2, 340);
   const sel = payload.placements.find((p) => p.key === selected);
@@ -108,7 +144,7 @@ function CartaView({
   const angular = payload.houses.filter((h) => [1, 4, 7, 10].includes(h.house)).sort((a, b) => a.house - b.house);
   // La explicación completa va VISIBLE abajo (sector por sector). El mapa de valores
   // se intercala en el medio.
-  const sections = reading.sections ?? [];
+  const sections = reading?.sections ?? [];
   const mid = Math.ceil(sections.length / 2);
   const sectionsA = sections.slice(0, mid);
   const sectionsB = sections.slice(mid);
@@ -119,6 +155,17 @@ function CartaView({
         <Eyebrow>Tu carta natal</Eyebrow>
         <H2>Tu mapa de origen.</H2>
       </Section>
+
+      {showQueEs ? (
+        <Section style={{ paddingTop: 0, paddingBottom: orbita.spacing.lg }}>
+          <Eyebrow>QUÉ ES</Eyebrow>
+          <Body bone>
+            Tu signo es una sola pieza: el Sol. La carta es el resto — Luna, ascendente, diez planetas y doce casas,
+            donde estaban en el momento y lugar exactos en que naciste. Es el mapa de cómo funcionás. Todo lo que
+            Órbita te lea, se lee acá.
+          </Body>
+        </Section>
+      ) : null}
 
       <CartaTriad triad={payload.triad} />
 
@@ -154,7 +201,17 @@ function CartaView({
         </Section>
       )}
 
-      {/* Toda la explicación, VISIBLE (sector por sector). */}
+      {/* Toda la explicación, VISIBLE (sector por sector). Mientras el LLM la escribe
+          (primera visita), lo decimos — no mostramos una lectura de maqueta como tuya. */}
+      {reading === null ? (
+        <Section style={{ paddingTop: orbita.spacing.xxl }}>
+          <Eyebrow>Tu carta, explicada</Eyebrow>
+          <View style={styles.writingRow}>
+            <ActivityIndicator color={orbita.colors.copper} size="small" />
+            <Body>Tu lectura se está escribiendo sobre tu carta real. Tarda un momento la primera vez.</Body>
+          </View>
+        </Section>
+      ) : null}
       {sectionsA.length > 0 ? (
         <Section style={{ paddingTop: orbita.spacing.xxl }}>
           <Eyebrow>Tu carta, explicada</Eyebrow>
@@ -215,7 +272,7 @@ function CartaView({
         {payload.limitations.map((l) => (
           <Note key={l}>{l}</Note>
         ))}
-        <Note>{reading.disclaimer}</Note>
+        {reading ? <Note>{reading.disclaimer}</Note> : null}
       </Section>
     </OrbitaScreen>
   );
@@ -305,6 +362,7 @@ function LinkRow({ label, onPress }: { label: string; onPress?: () => void }) {
 
 const styles = StyleSheet.create({
   wheelWrap: { alignItems: "center", paddingHorizontal: orbita.spacing.gutter, paddingTop: orbita.spacing.lg },
+  writingRow: { alignItems: "center", flexDirection: "row", gap: orbita.spacing.md, paddingTop: orbita.spacing.md },
   selLine: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 17, marginTop: orbita.spacing.lg, textAlign: "center" },
 
   triadCard: {

@@ -398,7 +398,12 @@ export default defineSchema({
     userId: v.id("users"),
     localDate: v.string(),
     payload: v.any(),
-    createdAt: v.number()
+    createdAt: v.number(),
+    // Cuándo la persona DIO VUELTA la carta de ese día. Generado ≠ revelado: el payload
+    // (con la carta ya sorteada) se crea al abrir la app, pero la carta vive boca abajo
+    // hasta que la tocan. Va como campo propio y no dentro de `payload` porque el payload
+    // se escribe una sola vez y esto se escribe después. `undefined` = todavía sin sacar.
+    revealedAt: v.optional(v.number())
   }).index("by_user_date", ["userId", "localDate"])
 });
 
@@ -511,4 +516,26 @@ export default defineSchema({
 //      efecto humano (agua -> "desde lo sensible y la memoria", etc.).
 // Afecta convex/daily.ts (buildDailyPrompt), convex/lib/orbita.ts (energy template
 // + buildTopicReadings). Detalle en convex/CHANGELOG.md (2026-07-10).
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// TODO: pendiente backend — Rueda natal REAL para invitados (propuesto por frontend, 2026-07-15)
+//
+// La ceremonia de recepción (`app/recepcion.tsx`, día 1 post-onboarding) muestra
+// la rueda natal. Con cuenta usa `charts.current`; para INVITADO hoy no existe
+// carta completa pública (`publicLab.previewDailyHome` devuelve solo natalBase =
+// tríada). Decisión de producto (Lucas 2026-07-15): la rueda aparece SIEMPRE y es
+// SIEMPRE 100% la del usuario — nada de demo. Falta el cálculo público completo:
+//
+//   publicLab.previewNatalChart({
+//     birthDate: string,             // ISO
+//     birthTime?: string,
+//     latitude?: number, longitude?: number, timezone?: string,
+//   }): NatalChartPayload            // MISMA forma que charts.current→mapNatalChart:
+//                                    // { triad, placements[], houses[], aspects[], accuracy }
+//                                    // (ver src/services/appRefs.ts NatalChartPayload)
+//
+// Preview puro (mismo provider que previewDailyHome), sin persistir. El front la
+// consume en la ceremonia y puede reusarla en el tab Carta guest (hoy chartMock).
+// Detalle en convex/CHANGELOG.md (2026-07-15).
 // ---------------------------------------------------------------------------

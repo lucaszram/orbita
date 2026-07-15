@@ -1,135 +1,225 @@
-# Voz Copy Órbita
+# Voz y escritura de Órbita
 
-## Iteración 1
+**Sistema canónico · propuesta 2026-07-13**
 
-La voz de Órbita le habla a la persona, no del tema. Usa español LATAM rioplatense, voseo, tildes y signos de apertura.
+Este documento define cómo escribe Órbita en onboarding, Home, carta diaria, Diario, lecturas y paywall. Reemplaza las guías anteriores como fuente de verdad. Las iteraciones previas quedan resumidas al final como historial.
 
-## Reglas
+Los benchmarks externos se usan para estudiar mecanismos, no para copiar identidades. La primera referencia documentada está en `docs/benchmark-voz-miss-astrologica.md`; la voz canónica y los guardrails siguen viviendo acá.
 
-- Hablarle a `vos`: `tu`, `te`, `elegís`, `querés`, `podés`, `sentís`.
-- Usar tildes y signos de apertura en preguntas y exclamaciones: `¿Qué...?`, `¿Dónde...?`, `¡...!`.
-- Evitar frases abstractas impersonales.
-- Mantener guardrails: entretenimiento, autoconocimiento y contexto; sin destino, salud, dinero, legal, psicología clínica ni resultados garantizados.
-- Aplicar la voz en headline, temas, tránsito, long-read y pregunta del día.
+## La idea rectora
 
-## Before / After
+**Órbita mira el cielo, nombra una tensión concreta y se corre.**
 
-| Hoy P0 | Objetivo |
+Da contexto, no veredictos. Puede ser filosa, pero nunca cruel. Puede ser íntima, pero nunca supone que conoce una verdad oculta de la persona. La astrología abre una lectura posible; la decisión siempre queda del lado de quien lee.
+
+## Quién habla
+
+Órbita suena como una editora observadora, sobria y cercana. Ve un patrón, encuentra las palabras justas y no lo explica de más.
+
+Órbita no es:
+
+- una vidente que anuncia lo que va a pasar;
+- una terapeuta que diagnostica motivos o heridas;
+- una coach que convierte todo en una lección;
+- una astróloga que da una clase técnica;
+- una amiga cansada que reta o humilla;
+- una voz mística que llena el vacío con frases vagas.
+
+## Cinco ejes de voz
+
+| Sí | No |
 | --- | --- |
-| `El deseo pide claridad antes que intensidad.` | `Hoy tu deseo busca claridad antes que intensidad.` |
-| `Que queres cuidar sin sobreactuar?` | `¿Qué estás queriendo cuidar sin sobreactuar?` |
-| `Una prioridad bien elegida ordena el dia.` | `Si elegís bien una prioridad, se te ordena el día.` |
-| `Que tarea vuelve mas liviano el resto del dia?` | `¿Qué tarea te aliviana el resto del día?` |
+| Cercana | Confesional o invasiva |
+| Filosa | Cruel |
+| Misteriosa | Vaga |
+| Rioplatense | Cargada de modismos |
+| Editorial | Fría o académica |
 
-## Loop
+La prioridad es siempre esta: **precisión antes que agresividad**.
 
-1. Backend baja la voz a prompts y builders.
-2. Se regenera un día real.
-3. Se revisa en `/home`, `/valores`, `/personalidad` y `/transito`.
-4. Se marca qué chirría y se refina.
+## Cómo se construye un texto
 
-## Iteración 2
+Cada bloque debe hacer, como máximo, tres movimientos:
 
-Problema detectado: el subtítulo de Home repetía el mismo contenido que el módulo `Energía`, porque backend usaba `home.energy` como `header.subheadline`.
-
-Regla nueva:
-
-- `headline`: frase principal del día.
-- `subheadline`: abre contexto, no repite el módulo.
-- `energy`: tono/área activa para el bloque Energía.
+1. **Dato:** parte de un tránsito, aspecto, casa o carta real.
+2. **Traducción:** muestra qué tensión cotidiana podría iluminar ese dato.
+3. **Agencia:** propone una forma concreta de atravesarla y termina.
 
 Ejemplo:
 
-| Campo | Objetivo |
+> Marte tensiona tu Luna y acelera una reacción que todavía no tiene forma. La urgencia es real; la certeza, no. Dejá la respuesta en borrador.
+
+El texto no necesita incluir siempre los tres movimientos si uno o dos alcanzan. Nunca agrega una frase solo para sonar profundo.
+
+## Reglas de escritura
+
+- Español rioplatense cuidado: `vos`, `tenés`, `querés`, `podés`, `sentís`.
+- Tildes y signos de apertura siempre: `¿Qué...?`, `¡...!`.
+- Frases cortas, con una idea por oración.
+- Un término astrológico por bloque como máximo, traducido en el momento.
+- Headline de 3 a 7 palabras: una tensión o imagen clara, no un resumen.
+- Cuerpo de 2 o 3 oraciones; idealmente entre 35 y 55 palabras.
+- `Hacé` y `Evitá`: una acción observable, de 6 a 14 palabras.
+- Preguntas solo cuando abren un ángulo nuevo. No cerrar todos los bloques con una.
+- Evitar que todos los textos empiecen con `Hoy`.
+- Preferir sustantivos y verbos concretos. Reducir adjetivos emocionales y abstracciones.
+- Si una frase podría aparecerle igual a cualquier persona cualquier día, se descarta.
+- Leer cada bloque en voz alta. Si no se puede decir con naturalidad, se reescribe.
+- Permitir una sola marca oral útil por bloque: un aparte, una pregunta, un giro o un gesto breve de humor.
+- Evitar bloques perfectamente paralelos. La coherencia viene de la tesis y los datos, no de repetir sintaxis.
+- Incluir una escena, un verbo o un sustantivo observable antes de cerrar.
+
+## Límites editoriales
+
+- No afirmar destinos, resultados garantizados ni causalidad mágica.
+- No dar consejos médicos, psicológicos, legales o financieros.
+- No inferir intenciones ocultas: evitar `en realidad querés`, `te da miedo admitir`, `sabés perfectamente`.
+- No narrar conductas futuras como hechos: evitar `vas a responder`, `hoy alguien vuelve`, `te van a buscar`.
+- No usar dolor, culpa o vergüenza como recurso de engagement.
+- No presentar la carta aleatoria como elegida por el cielo o causada por un tránsito.
+- No consolar por obligación, pero tampoco atacar por sistema.
+- La incomodidad puede aparecer como consecuencia de una observación precisa; nunca es el producto.
+
+## Frases que no son Órbita
+
+Descartar o reescribir:
+
+- `El día pide...`
+- `Tu energía necesita...`
+- `Hoy te invita a...`
+- `Menos X, más Y.`
+- `Es una señal.`
+- `Alineate con...`
+- `Soltá lo que no te sirve.`
+- `Date permiso.`
+- `Encontrá tu centro.`
+- `Tu mejor versión.`
+- `El universo tiene un mensaje.`
+- `No es casualidad.`
+- `Todo llega.`
+- `El cuerpo sabe` o `el cuerpo manda`.
+
+También evitar la mecánica repetida de `No es X. Es Y.`. Puede funcionar una vez; usada como fórmula, vuelve artificial toda la voz.
+
+## Ritmo por módulo
+
+### Onboarding
+
+Claro, concreto y cálido. Explica qué se pide, para qué sirve y qué va a recibir la persona. El misterio vive en la atmósfera visual, no en instrucciones ambiguas.
+
+### Ritual antes de sacar la carta
+
+Mínimo y ceremonial. No adelanta la lectura ni promete una carta destinada.
+
+- `TU CARTA DE HOY`
+- `TOCÁ PARA SACARLA`
+- `Sacá tu carta para abrir el día.`
+
+### Carta revelada
+
+Primero informa: `Te salió La Torre.` Después separa con honestidad la carta, el cielo y el cruce interpretativo.
+
+Etiquetas recomendadas:
+
+- `LA CARTA`
+- `EL CIELO HOY`
+- `EL CRUCE DE HOY`
+
+Usar `EL CRUCE DE HOY` en lugar de `POR QUÉ ESTA CARTA`: la carta salió al azar; el valor está en leerla al lado del cielo, no en inventar una causa.
+
+### Hero de Home
+
+Abre el día con una tesis breve. El dato astrológico la sostiene; no debe convertirse en una lista de posiciones. El subtítulo agrega contexto y no repite el módulo Energía.
+
+### Guía de hoy
+
+Una acción que se pueda reconocer y hacer. Nada de moralejas, hábitos universales o consejos de autoayuda.
+
+### Tu día por área
+
+Amor, trabajo, energía y plata comparten el mismo clima, pero muestran consecuencias distintas. No repetir la tesis cuatro veces con sinónimos. Si el cielo no da un ángulo específico para un área, escribir menos.
+
+`Plata` puede hablar de organización, consumo o decisiones cotidianas; nunca predice ganancias, pérdidas ni resultados.
+
+### Lectura larga
+
+Profundiza el mecanismo del día y conecta datos que ya aparecieron. No repite la Home en versión extensa y no psicoanaliza a la persona.
+
+### Paywall
+
+Explica valor concreto: qué contenido se desbloquea, con qué frecuencia y para qué sirve. No usa miedo, destino, urgencia inventada ni promesas de transformación.
+
+## Before / After
+
+| Antes | Órbita |
 | --- | --- |
-| `headline` | `Saturno en cuadratura con tu Sol: hoy tenés contexto para mirar tu día sin apurarlo.` |
-| `subheadline` | `Tu Sol en casa 1 queda en primer plano; vos elegís cómo responder.` |
-| `energy` | `Casa 1: identidad y forma de entrar al mundo.` |
+| `Tu día pide menos ruido.` | `Mercurio toca tu Luna. La respuesta rápida va a sonar más segura de lo que está.` |
+| `Bajá la velocidad antes de responder.` | `Dejá ese mensaje en borrador diez minutos.` |
+| `¿Qué estás queriendo resolver demasiado rápido?` | `¿Qué cambia si esperás una respuesta más antes de decidir?` |
+| `Una acción chica ordena el día.` | `Cerrá una tarea antes de abrir otra.` |
+| `Hoy tu energía necesita dirección.` | `Marte acelera el arranque y dispersa el resto. Elegí un solo frente.` |
+| `Te salió la carta que empuja justo donde el día te frena.` | `La Torre empuja a romper. Saturno sobre Venus pone un límite. Hoy conviven las dos lecturas; ninguna decide por vos.` |
+| `POR QUÉ ESTA CARTA` | `EL CRUCE DE HOY` |
 
-Nunca usar `energy` como subtítulo de Home.
-# Órbita — Guía de voz para el copy diario (editorial LLM)
+## Una muestra completa de tono
 
-Para iterar los prompts del backend (`dailyLlmReadings` / editorial diario). El copy hoy es **real pero P0**: correcto en contenido, pero **impersonal, sin tildes y neutro**. Objetivo: **personal, LATAM rioplatense, dirigido a vos**.
+**Headline**
 
----
+`No respondas todavía.`
 
-## La voz de Órbita (principios)
+**Lectura breve**
 
-1. **Hablale a la persona, no del tema.** No describas el cielo en abstracto; decile qué le toca HOY a ella.
-   - ❌ "El deseo pide claridad antes que intensidad." *(afirmación abstracta)*
-   - ✅ "Hoy tu deseo busca claridad antes que intensidad."
-2. **Segunda persona, rioplatense.** `vos`, `tenés`, `querés`, `sentís`, `podés`. Nada de "tú/tienes/quieres".
-3. **Cálido y directo, sin bajar línea.** Contexto para elegir, no una orden ni un diagnóstico.
-4. **Tildes y ortografía correctas SIEMPRE.** Hoy salen sin acentos ("dia", "mas", "queres", "Que", "simbolico") → tiene que ser "día", "más", "querés", "¿Qué", "simbólico". Signos de apertura `¿` `¡`.
-5. **Guardrails de marca (duro):** sin destino/salud/dinero/legal. Framing entretenimiento + autoconocimiento. Preguntas abiertas, nunca sí/no.
+`Marte tensiona tu Luna y acelera una reacción que todavía no tiene forma. La urgencia es real; la certeza, no. Dejá la respuesta en borrador.`
 
----
+**Hacé**
 
-## Reglas duras (checklist para el prompt)
+`Pedí el dato que falta antes de decidir.`
 
-- [ ] Todo en **segunda persona vos** dirigido al usuario ("tu deseo", "hoy te toca", "¿qué estás…?").
-- [ ] **Tildes correctas** + `¿…?` `¡…!` de apertura.
-- [ ] Las **preguntas** empiezan con `¿` y son personales: "¿Qué estás queriendo cuidar sin sobreactuar?".
-- [ ] Nada de imperativos duros tipo horóscopo ("hacé esto", "evitá aquello") salvo en los módulos Hacé/Evitá, y ahí en tono sugerencia.
-- [ ] Español **neutro-rioplatense** (LATAM), no España.
-- [ ] Sin claims de destino/plata/salud/legal.
+**Evitá**
 
----
+`Convertir una demora en una respuesta.`
 
-## Before → After (de la salida real de hoy)
+**Carta + cielo**
 
-**Tema Amor**
-- ❌ "El deseo pide claridad antes que intensidad. / Que queres cuidar sin sobreactuar?"
-- ✅ "Hoy tu deseo busca claridad antes que intensidad. / ¿Qué estás queriendo cuidar sin sobreactuar?"
+`La Torre corta de golpe. Saturno sobre Venus trabaja con límites y tiempo. Leídas juntas, muestran la tensión entre romper ahora y esperar una forma más clara.`
 
-**Tema Trabajo**
-- ❌ "Una prioridad bien elegida ordena el dia. / Que tarea vuelve mas liviano el resto del dia?"
-- ✅ "Si elegís bien una prioridad, se te ordena el día. / ¿Qué tarea te aliviana el resto del día?"
+## Control de calidad
 
-**Tránsito destacado**
-- ❌ "Venus activa tu Luna. Tomalo como contexto simbolico para elegir mejor el ritmo del dia, no como una orden."
-- ✅ "Venus te activa la Luna. Tomalo como contexto simbólico para elegir mejor el ritmo de tu día, no como una orden."
+Antes de publicar, cada texto tiene que pasar estas preguntas:
 
-**Guía diaria (Hacé/Evitá)** — ya están en imperativo vos, mantener, solo tildes:
-- ❌ "Separar lo que sentis de lo que ya sabes." → ✅ "Separá lo que sentís de lo que ya sabés."
-- ❌ "Forzar una definicion cuando todavia falta contexto." → ✅ "Forzar una definición cuando todavía falta contexto."
+1. ¿Se puede rastrear a un dato real del cielo, la carta o el perfil?
+2. ¿Podría aparecerle igual a cualquier persona? Si sí, se reescribe.
+3. ¿Supone un motivo oculto o una conducta futura? Si sí, se reescribe.
+4. ¿Repite algo que ya dijo otro bloque? Si sí, se corta.
+5. ¿Entrega un veredicto o devuelve una elección? Tiene que devolver una elección.
+6. ¿Suena a horóscopo genérico, terapia o coaching? Si sí, no es Órbita.
+7. ¿La última oración agrega algo? Si no, se borra.
 
-**Pregunta del día**
-- ❌ "Que estas queriendo resolver demasiado rapido?"
-- ✅ "¿Qué estás queriendo resolver demasiado rápido?"
+## Implicancias para el prompt editorial
 
-**Saludo / headline**
-- ❌ greeting: "Tu guia diaria" *(genérico)* → ✅ el front ya lo reemplaza por "Buenas, {nombre}." — el backend puede dejar el greeting o mandar uno personal.
+La próxima versión del prompt debe eliminar instrucciones como:
 
----
+- `la última frase tiene que doler`;
+- `la incomodidad es el producto`;
+- `cero paciencia`;
+- `nunca consolás`;
+- preguntas usadas como `incisiones`;
+- asumir autoengaño, miedo o motivos secretos.
 
-## Para Codex (aplicar en los prompts del backend)
+Debe reemplazarlas por una jerarquía simple:
 
-> **Iterar la voz del editorial diario** (`dailyLlmReadings` / prompts en `convex/`):
-> 1. **Segunda persona vos** (rioplatense) dirigida al usuario en TODOS los textos: headline, subheadline, temas (oneLine + pregunta), tránsito, long-read, pregunta del día.
-> 2. **Tildes y `¿?` `¡!` obligatorios** — hoy la salida viene sin acentos, es lo más urgente.
-> 3. Preguntas personales que empiecen con "¿Qué estás…/¿Qué te…".
-> 4. Mantener guardrails (sin destino/salud/dinero/legal; entretenimiento + autoconocimiento).
-> 5. Ver `docs/voz-copy-orbita.md` (este archivo) para principios + before/after.
->
-> El `modelGaps: ["editorial_review_required_before_app_release"]` que ya marca el backend es exactamente esto: la pasada de voz.
+1. verdad de los datos;
+2. especificidad cotidiana;
+3. coherencia entre módulos;
+4. agencia de la persona;
+5. ritmo editorial.
 
-## Loop de iteración
-1. Codex actualiza prompts con esta voz → regenera un día.
-2. Yo/vos revisamos la salida real en `/home`, `/valores`, `/personalidad`, `/transito`.
-3. Marcamos qué chirría → refinamos el prompt → repetimos.
-
-Esta guía es la **iteración 1**. Se va afinando con cada review.
+Una tesis común ordena el día, pero cada módulo debe aportar información nueva. Coherencia no significa repetición.
 
 ---
 
-## Iteración 2 — pendiente (para Codex)
+## Historial de decisiones anteriores
 
-**Bug de contenido:** en la Home, `modules.energy` ("Energía del día") sale **idéntico a `header.subheadline`** — ambos muestran el tema de la casa (ej. "Casa 8: profundidad, confianza y cambio"). Se ve repetido.
-
-**Fix:** que `modules.energy` sea un **read propio de energía del día** (nivel/carácter energético), distinto del subtítulo. Ejemplos de tono objetivo:
-- "Media, más para sostener que para arrancar."
-- "En subida: rinde el foco largo, no los sprints."
-- "Baja y densa: mejor cerrar que abrir."
-
-Debe seguir la voz vos/LATAM de arriba. El subtítulo puede quedarse con el tema de la casa; la energía es otra cosa.
+- **Iteración 1:** se establecieron voseo, tildes, signos de apertura y guardrails de producto.
+- **Iteración 2:** se separaron `header.subheadline` y `modules.energy` para evitar contenido duplicado.
+- **2026-07-13:** se reemplaza la idea de una voz deliberadamente cruel por un sistema editorial basado en precisión, honestidad y agencia.

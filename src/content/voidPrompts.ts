@@ -22,7 +22,7 @@ export const VOID_CATEGORIES: VoidCategoryDef[] = [
     glyph: "☉",
     prompts: [
       "¿Qué estoy evitando?",
-      "¿Qué necesito soltar?",
+      "¿Qué decisión vengo pateando?",
       "¿Qué parte mía pide atención?",
       "¿Dónde me estoy escondiendo?",
       "¿Qué me estoy exigiendo de más?"

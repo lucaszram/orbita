@@ -3,6 +3,7 @@ import { useAction } from "convex/react";
 import { router } from "expo-router";
 import { DetailScreen } from "@/components/home/DetailScreen";
 import { Divider, Eyebrow, TabStrip } from "@/components/orbita/kit";
+import { ErrorState, LoadingState } from "@/components/orbita/states";
 import { GlyphRow } from "@/components/orbita/GlyphRow";
 import { useAppData } from "@/domain/appData";
 import { useLiveApp } from "@/hooks/useLiveApp";
@@ -17,8 +18,23 @@ function todayLocalDate(): string {
 }
 
 export default function TransitosPorAreaScreen() {
-  const { isLive } = useLiveApp();
-  if (!isLive) return <TransitosPorAreaMock />;
+  const { status, retrySession } = useLiveApp();
+  // Mock SOLO para invitado confirmado; transitorios de sesión = carga estable.
+  if (status === "guest") return <TransitosPorAreaMock />;
+  if (status === "error") {
+    return (
+      <DetailScreen eyebrow="Tránsitos">
+        <ErrorState onRetry={retrySession} />
+      </DetailScreen>
+    );
+  }
+  if (status !== "live") {
+    return (
+      <DetailScreen eyebrow="Tránsitos">
+        <LoadingState />
+      </DetailScreen>
+    );
+  }
   return <TransitosPorAreaLive />;
 }
 
@@ -55,7 +71,8 @@ function TransitosPorAreaMock() {
  */
 function TransitosPorAreaLive() {
   const getToday = useAction(proposedApi.transitToday);
-  const [payload, setPayload] = useState<TransitDetailPayload | null>(null);
+  // undefined = cargando · null = falló → mock (nunca pantalla rota)
+  const [payload, setPayload] = useState<TransitDetailPayload | null | undefined>(undefined);
 
   useEffect(() => {
     let alive = true;
@@ -63,7 +80,8 @@ function TransitosPorAreaLive() {
       .then((r) => {
         if (alive) setPayload(r as TransitDetailPayload);
       })
-      .catch(() => {
+      .catch((e) => {
+        console.warn("[orbita] transits.getToday falló:", e?.message ?? e);
         if (alive) setPayload(null);
       });
     return () => {
@@ -71,6 +89,18 @@ function TransitosPorAreaLive() {
     };
   }, [getToday]);
 
+  // Cargando es cargando: el mock solo si la llamada FALLÓ.
+  if (payload === undefined) {
+    return (
+      <DetailScreen eyebrow="Tránsitos">
+        <LoadingState
+          eyebrow="TRÁNSITOS"
+          title={"Leyendo\nel cielo de hoy."}
+          body="Cruzamos las posiciones de hoy con tu carta natal. Tarda unos segundos."
+        />
+      </DetailScreen>
+    );
+  }
   if (!payload) return <TransitosPorAreaMock />;
 
   return (

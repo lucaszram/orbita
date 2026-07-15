@@ -15,7 +15,7 @@ export function AlignScreen({ onNext, onBack }: { onNext: () => void; onBack: ()
     <Screen bg={A.dailyTexture} wash={0.44}>
       <Header step={1} total={15} onBack={onBack} />
       <View style={styles.body}>
-        <Title style={styles.title}>Alineate con el ritmo del universo</Title>
+        <Title style={styles.title}>El cielo de hoy,{"\n"}leído sobre tu carta</Title>
         <Body style={styles.sub}>Descifrá amor, trabajo y camino personal desde tu carta.</Body>
 
         <View style={styles.gridZone}>

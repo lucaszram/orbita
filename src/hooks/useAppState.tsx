@@ -32,6 +32,7 @@ import {
   storeProfile,
   storeSavedReadings
 } from "@/services/storage";
+import { clearFirstRunFlags } from "@/services/firstRun";
 import { scheduleDailyReminder } from "@/services/notifications";
 
 type CreateProfileInput = OnboardingProfile;
@@ -238,6 +239,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setSavedReadings([]);
     setJournalEntries([]);
     await clearLocalData();
+    await clearFirstRunFlags();
   }, []);
 
   const value = useMemo(

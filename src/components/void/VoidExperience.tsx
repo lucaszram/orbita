@@ -15,6 +15,7 @@ import {
   type VoidTodayPayload
 } from "@/services/appRefs";
 import { VOID_CATEGORIES } from "@/content/voidPrompts";
+import { ErrorState, LoadingState } from "@/components/orbita/states";
 import { orbita } from "@/theme/orbita";
 
 const TEXTURE = require("../../../assets/orbita/optimized/core/orbita_daily_texture_b.jpg");
@@ -22,7 +23,7 @@ const DEFAULT_QUESTION = "¿Qué estás apurando?";
 
 /** Respuesta editorial de maqueta (sin sesión o si el backend falla). */
 const ORACLE = {
-  answer: "Lo que apurás\nno es la respuesta:\nes el alivio.",
+  answer: "La urgencia es real.\nLa certeza,\ntodavía no.",
   mejorPregunta: "¿Qué cambiaría si esperás 24 horas?",
   paso: "UN PASO · ESCRIBÍ LA DECISIÓN\nY DEJALA DORMIR HASTA MAÑANA"
 };
@@ -46,9 +47,19 @@ type VoidViewProps = {
  * (showBack=true). Live con sesión (cupo + sugeridas personalizadas), mock sin sesión.
  */
 export function VoidExperience({ showBack = true }: { showBack?: boolean }) {
-  const { isLive } = useLiveApp();
-  if (!isLive) {
+  const { status, retrySession } = useLiveApp();
+  // Demo SOLO para invitado confirmado. En transitorios de sesión, carga estable:
+  // si un autenticado preguntara durante el arranque recibiría la respuesta de
+  // maqueta como si fuera suya (el vicio del incidente 2026-07-13).
+  if (status === "guest") {
     return <VoidView ask={null} today={null} categories={VOID_CATEGORIES} onUnlock={null} showBack={showBack} />;
+  }
+  if (status !== "live") {
+    return (
+      <View style={{ backgroundColor: orbita.colors.background, flex: 1, justifyContent: "center" }}>
+        {status === "error" ? <ErrorState onRetry={retrySession} /> : <LoadingState />}
+      </View>
+    );
   }
   return <VoidLive showBack={showBack} />;
 }
@@ -58,18 +69,40 @@ function VoidLive({ showBack }: { showBack: boolean }) {
   const today = useQuery(proposedApi.voidToday, {}) ?? null;
   const suggested = useAction(proposedApi.voidSuggested);
   const setPro = useMutation(proposedApi.setStubPro);
-  const [categories, setCategories] = useState<VoidPromptCategory[]>(VOID_CATEGORIES);
+  // null = esperando las sugeridas del backend. Antes se mostraban las genéricas
+  // de VOID_CATEGORIES y se pisaban al llegar las personalizadas: la lista saltaba
+  // de 4 a 6 preguntas delante del usuario. Con sesión, las genéricas son solo
+  // fallback (error o backend demasiado lento), nunca un estado intermedio visible.
+  const [categories, setCategories] = useState<VoidPromptCategory[] | null>(null);
   const fired = useRef(false);
 
   useEffect(() => {
     if (fired.current) return;
     fired.current = true;
+    // Gana el primero que setea: si el fallback ya mostró las genéricas, una
+    // respuesta tardía del backend NO vuelve a pisar la lista (sería el mismo salto).
+    const fallback = setTimeout(() => setCategories((c) => c ?? VOID_CATEGORIES), 10000);
     suggested({})
       .then((r) => {
-        if (r?.categories?.length) setCategories(r.categories);
+        setCategories((c) => c ?? (r?.categories?.length ? r.categories : VOID_CATEGORIES));
       })
-      .catch(() => {});
+      .catch((e) => {
+        console.warn("[orbita] void.suggested falló:", e?.message ?? e);
+        setCategories((c) => c ?? VOID_CATEGORIES);
+      })
+      .finally(() => clearTimeout(fallback));
   }, [suggested]);
+
+  // Gate único de carga: preguntas personalizadas + cupo del día. Nada de la
+  // entrada se renderiza con placeholders que después se pisan (ni la lista de
+  // preguntas ni el contador "TE QUEDAN X DE Y HOY").
+  if (!categories || !today) {
+    return (
+      <View style={{ backgroundColor: orbita.colors.background, flex: 1, justifyContent: "center" }}>
+        <LoadingState eyebrow="EL UMBRAL" title={"Preparando\ntus preguntas."} body="Las sugeridas de hoy se arman con tu carta." />
+      </View>
+    );
+  }
 
   const onUnlock = () => {
     setPro({}).catch(() => {});
@@ -112,6 +145,14 @@ function VoidView({ ask, today, categories, onUnlock, showBack }: VoidViewProps)
   };
   const basadoEn = `BASADO EN TU LUNA EN ${carta.triad.moon.label.toUpperCase()}\nY TU ASCENDENTE EN ${carta.triad.ascendant.label.toUpperCase()}`;
 
+  // Volver de la respuesta a la lista de preguntas. Antes esto NO existía en el tab
+  // (showBack=false) y la respuesta era un callejón sin salida.
+  const volverAEntrada = () => {
+    setPhase("entrada");
+    setPayload(null);
+    setLocked(false);
+  };
+
   // Respuesta a mostrar: la real del backend cuando llegó; si no, la maqueta.
   const shownQuestion = payload?.question ?? question;
   const shownAnswer = payload?.answer ?? ORACLE.answer;
@@ -130,7 +171,9 @@ function VoidView({ ask, today, categories, onUnlock, showBack }: VoidViewProps)
     loop.start();
     let cancelled = false;
 
-    // Con sesión: respuesta real. Sin sesión o ante error: maqueta + cadencia falsa.
+    // Con sesión: respuesta real. Si el backend FALLA, volvemos a la entrada — nunca
+    // mostrar la maqueta como si fuera la respuesta a TU pregunta (eso era mentirle
+    // al usuario y es el mismo vicio del "flash de mock" del resto de la app).
     if (ask) {
       ask({ question })
         .then((res) => {
@@ -139,11 +182,12 @@ function VoidView({ ask, today, categories, onUnlock, showBack }: VoidViewProps)
           setPayload(res.locked ? null : res);
           setPhase("respuesta");
         })
-        .catch(() => {
+        .catch((e) => {
           if (cancelled) return;
+          console.warn("[orbita] void.ask falló:", e?.message ?? e);
           setLocked(false);
           setPayload(null);
-          setPhase("respuesta");
+          setPhase("entrada");
         });
       return () => {
         cancelled = true;
@@ -171,10 +215,16 @@ function VoidView({ ask, today, categories, onUnlock, showBack }: VoidViewProps)
         style={StyleSheet.absoluteFill}
       />
 
-      {showBack && phase !== "escuchando" ? (
+      {(showBack || phase === "respuesta") && phase !== "escuchando" ? (
         <View style={[styles.topbar, { paddingTop: insets.top + orbita.spacing.sm }]}>
           <Pressable
-            onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)"))}
+            onPress={() =>
+              phase === "respuesta"
+                ? volverAEntrada()
+                : router.canGoBack()
+                  ? router.back()
+                  : router.replace("/(tabs)")
+            }
             hitSlop={12}
             accessibilityRole="button"
           >

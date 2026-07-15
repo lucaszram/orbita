@@ -591,7 +591,7 @@ const aspectLabels: Record<string, string> = {
 
 const majorAspects = new Set(["conjunction", "opposition", "square", "trine", "sextile"]);
 
-const houseThemes: Record<number, string> = {
+export const houseThemes: Record<number, string> = {
   1: "identidad y forma de entrar al mundo",
   2: "recursos, cuerpo y valor propio",
   3: "mente, palabra y entorno cercano",

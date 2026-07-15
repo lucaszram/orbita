@@ -97,7 +97,7 @@ export function PaywallScreen({ plan, onPlan, onUnlock, onBack, chart, sunFallba
             selected={plan === "weekly"}
             onPress={() => onPlan("weekly")}
             label="Semanal"
-            caption="Desbloquea tu carta natal completa"
+            caption="Desbloqueá tu carta natal completa"
             price="$5"
             subprice="por semana"
           />

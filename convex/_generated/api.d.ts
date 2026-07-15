@@ -22,6 +22,7 @@ import type * as lib_astrologyApi from "../lib/astrologyApi.js";
 import type * as lib_backoffice from "../lib/backoffice.js";
 import type * as lib_entitlements from "../lib/entitlements.js";
 import type * as lib_orbita from "../lib/orbita.js";
+import type * as lib_tarot from "../lib/tarot.js";
 import type * as lib_users from "../lib/users.js";
 import type * as migrations from "../migrations.js";
 import type * as notifications from "../notifications.js";
@@ -65,6 +66,7 @@ declare const fullApi: ApiFromModules<{
   "lib/backoffice": typeof lib_backoffice;
   "lib/entitlements": typeof lib_entitlements;
   "lib/orbita": typeof lib_orbita;
+  "lib/tarot": typeof lib_tarot;
   "lib/users": typeof lib_users;
   migrations: typeof migrations;
   notifications: typeof notifications;

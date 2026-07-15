@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useAction } from "convex/react";
 import { Body, Divider, Eyebrow, H2, H3, MonoLine, Note, OrbitaScreen, Section } from "@/components/orbita/kit";
+import { ErrorState, LoadingState } from "@/components/orbita/states";
 import { FullBleedHero } from "@/components/orbita/ImmersiveHero";
 import { transitMock } from "@/content/transitMock";
 import { useLiveApp } from "@/hooks/useLiveApp";
@@ -33,18 +34,36 @@ function humanCopy(s?: string): string {
 }
 
 export default function TransitosScreen() {
-  const { isLive } = useLiveApp();
-  if (!isLive) return <TransitosView data={transitMock} />;
+  const { status, retrySession } = useLiveApp();
+  // Mock SOLO para invitado confirmado; transitorios de sesión = carga estable.
+  if (status === "guest") return <TransitosView data={transitMock} />;
+  if (status === "error") {
+    return (
+      <OrbitaScreen>
+        <ErrorState onRetry={retrySession} />
+      </OrbitaScreen>
+    );
+  }
+  if (status !== "live") {
+    return (
+      <OrbitaScreen>
+        <LoadingState />
+      </OrbitaScreen>
+    );
+  }
   return <TransitosLive />;
 }
 
 /**
- * Con sesión: cielo REAL del día vía la action `transits.getToday`. Mientras carga
- * o si falla, se muestra el tránsito mock (`transitMock`); nunca pantalla rota.
+ * Con sesión: cielo REAL del día vía la action `transits.getToday`.
+ * Mientras carga → estado de carga (Figma sección 07), NUNCA el mock: mostrar el mock
+ * y después pisarlo con la data real era el "flash de maqueta" en cada entrada.
+ * Solo si la action FALLA caemos al mock (mejor que pantalla rota), y queda logueado.
  */
 function TransitosLive() {
   const getToday = useAction(proposedApi.transitToday);
-  const [data, setData] = useState<TransitDetailPayload | null>(null);
+  // undefined = cargando · null = falló · payload = real
+  const [data, setData] = useState<TransitDetailPayload | null | undefined>(undefined);
 
   useEffect(() => {
     let alive = true;
@@ -52,7 +71,8 @@ function TransitosLive() {
       .then((r) => {
         if (alive) setData(r as TransitDetailPayload);
       })
-      .catch(() => {
+      .catch((e) => {
+        console.warn("[orbita] transits.getToday falló:", e?.message ?? e);
         if (alive) setData(null);
       });
     return () => {
@@ -60,6 +80,17 @@ function TransitosLive() {
     };
   }, [getToday]);
 
+  if (data === undefined) {
+    return (
+      <OrbitaScreen>
+        <LoadingState
+          eyebrow="TRÁNSITOS"
+          title={"Leyendo\nel cielo de hoy."}
+          body="Cruzamos las posiciones de hoy con tu carta natal. Tarda unos segundos."
+        />
+      </OrbitaScreen>
+    );
+  }
   return <TransitosView data={data ?? transitMock} />;
 }
 

@@ -17,7 +17,7 @@ export function DailyGuidanceScreen({ step, onNext, onBack }: { step: number; on
       <Header step={step} total={15} onBack={onBack} />
       <View style={styles.body}>
         <Title style={styles.title}>Guía diaria,{"\n"}ajustada a vos</Title>
-        <Body style={styles.sub}>Micro-rituales, señales y contexto para tu día.</Body>
+        <Body style={styles.sub}>Una lectura corta por día, hecha sobre tu carta.</Body>
 
         <View style={styles.orbit}>
           <Emblem source={A.heroEclipse} size={200} />
@@ -27,8 +27,8 @@ export function DailyGuidanceScreen({ step, onNext, onBack }: { step: number; on
           <TopicBadge img={A.sun} label="Energía" style={{ bottom: 24, right: 0 }} />
         </View>
 
-        <Text style={styles.readingTitle}>Tu energía{"\n"}se mueve suave</Text>
-        <Text style={styles.readingBody}>Una acción pequeña ordena el día.</Text>
+        <Text style={styles.readingTitle}>No respondas{"\n"}todavía</Text>
+        <Text style={styles.readingBody}>La respuesta rápida va a sonar más segura de lo que está.</Text>
 
         <View style={styles.spacer} />
         <View style={styles.footer}>

@@ -10,39 +10,39 @@ import { Body, Caption, Title } from "../components/Type";
 import { font, GUTTER, orbita } from "../theme";
 
 const ANTES = [
-  "Vivía en automático",
-  "No sabía qué priorizar",
-  "Dudaba de lo que quería",
-  "Me sentía agotada",
-  "Vínculos poco claros",
+  "Un texto igual para millones",
+  "Consejos que le sirven a cualquiera",
+  "Sin tu Luna ni tu ascendente",
+  "Energías sin un dato atrás",
+  "Nada que puedas verificar",
 ];
 
 const DESPUES = [
-  "Con calma y confianza",
-  "Conozco mis fortalezas y límites",
-  "Centrada y enfocada en lo importante",
-  "Confío más en mi intuición",
-  "Me vinculo con más claridad",
+  "Sol, Luna, ascendente y casas",
+  "El cielo de hoy sobre tus posiciones",
+  "Una escena concreta donde verlo",
+  "Cada frase sale de un dato",
+  "La decisión queda de tu lado",
 ];
 
 type Props = { step: number; onNext: () => void; onBack: () => void };
 
-/** 13 — Before / after Órbita. */
+/** 13 — Signo genérico vs. carta leída (sin promesa de transformación). */
 export function BeforeAfterScreen({ step, onNext, onBack }: Props) {
   return (
     <Screen bg={A.beforeAfterBg} bgOpacity={0.8} wash={0.6}>
       <Header step={step} total={15} onBack={onBack} />
       <View style={styles.body}>
-        <Title style={styles.title}>Antes y después{"\n"}de Órbita</Title>
-        <Body style={styles.sub}>Una guía diaria puede cambiar cómo mirás tu día.</Body>
+        <Title style={styles.title}>Tu signo solo{"\n"}no alcanza</Title>
+        <Body style={styles.sub}>Órbita lee el cielo del día sobre tu carta completa.</Body>
 
         <View style={styles.columns}>
-          <Column icon={A.moon} title="Antes" items={ANTES} positive={false} />
-          <Column icon={A.sun} title="Después" items={DESPUES} positive />
+          <Column icon={A.moon} title="Solo tu signo" items={ANTES} positive={false} />
+          <Column icon={A.sun} title="Tu carta" items={DESPUES} positive />
         </View>
 
         <View style={styles.spacer} />
-        <Caption style={styles.note}>No resuelve por vos. Te devuelve contexto.</Caption>
+        <Caption style={styles.note}>Entretenimiento y autoconocimiento: la decisión siempre es tuya.</Caption>
         <View style={styles.footer}>
           <CTA label="Continuar" onPress={onNext} />
         </View>
