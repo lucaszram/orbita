@@ -24,10 +24,18 @@ import { getZodiacSign } from "@/domain/zodiac";
 import { toHomeReading } from "@/domain/homeAdapter";
 import { useLiveApp, useLiveHome } from "@/hooks/useLiveApp";
 import {
+  buildAccountSnapshot,
+  mergeAccountLists,
+  planLogoutArchive
+} from "@/domain/accountLocalData";
+import {
+  clearAccountSnapshot,
   clearLocalData,
   getJournalEntries,
   getSavedReadings,
   getStoredProfile,
+  readAccountSnapshot,
+  storeAccountSnapshot,
   storeJournalEntries,
   storeProfile,
   storeSavedReadings
@@ -55,6 +63,16 @@ type AppStateValue = {
   removeSavedReading: (readingId: string) => Promise<void>;
   addJournalNote: (reading: DailyReading, note: string) => Promise<void>;
   resetApp: () => Promise<void>;
+  /**
+   * Paso 1 del logout (ANTES de cerrar Clerk): archiva el estado local bajo
+   * la cuenta (diario y lecturas NO se sincronizan con Convex; borrarlos
+   * sería pérdida real). LANZA si no puede archivar — hay datos sin userId o
+   * falló la escritura — y en ese caso el caller NO debe cerrar la sesión.
+   * Después de un signOut exitoso, el caller limpia con `resetApp()`.
+   */
+  archiveAccountData: (userId: string | null) => Promise<void>;
+  /** Re-login en este teléfono: restaura y mergea lo archivado de esa cuenta. */
+  restoreAccountData: (userId: string) => Promise<{ restored: boolean; profileRestored: boolean }>;
 };
 
 const AppStateContext = createContext<AppStateValue | null>(null);
@@ -118,9 +136,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, [profile, savedReadings]);
 
   // Live (Convex): sin sesión, `payload` es null y todo queda igual que siempre.
+  // `isAuthLoading` sostiene la última lectura live durante una reconexión
+  // para no pisar contenido real con el engine local delante del usuario.
   const localDate = toISODate();
-  const { isLive } = useLiveApp();
-  const { payload: liveHomePayload, saveLive } = useLiveHome(isLive, localDate);
+  const { isLive, isAuthLoading } = useLiveApp();
+  const { payload: liveHomePayload, saveLive } = useLiveHome(isLive, localDate, isAuthLoading);
 
   const engineHomeReading = useMemo(
     () => createHomeReading(profile ?? createFallbackProfile(), toISODate()),
@@ -240,6 +260,48 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     await clearLocalData();
   }, []);
 
+  const archiveAccountData = useCallback(
+    async (userId: string | null) => {
+      const snapshot = buildAccountSnapshot(profile, savedReadings, journalEntries, new Date().toISOString());
+      const plan = planLogoutArchive(userId, snapshot);
+      if (plan === "skip") return;
+      if (plan === "error") {
+        throw new Error("Órbita: logout con datos locales pero sin userId para archivarlos");
+      }
+      // AsyncStorage puede fallar: se propaga y el logout se aborta.
+      await storeAccountSnapshot(userId as string, snapshot);
+    },
+    [profile, savedReadings, journalEntries]
+  );
+
+  const restoreAccountData = useCallback(
+    async (userId: string): Promise<{ restored: boolean; profileRestored: boolean }> => {
+      const snapshot = await readAccountSnapshot(userId);
+      if (!snapshot) return { restored: false, profileRestored: false };
+      const merged = mergeAccountLists(snapshot, { savedReadings, journalEntries });
+      setSavedReadings(merged.savedReadings);
+      setJournalEntries(merged.journalEntries);
+      await Promise.all([
+        storeSavedReadings(merged.savedReadings),
+        storeJournalEntries(merged.journalEntries)
+      ]);
+      // El perfil archivado vuelve solo si no hay uno activo; si Convex tiene
+      // birthData, el caller lo pisa después con el remoto (el remoto gana).
+      let profileRestored = false;
+      if (snapshot.profile && !profile) {
+        const normalized = normalizeProfile(snapshot.profile);
+        if (normalized) {
+          setProfile(normalized);
+          await storeProfile(normalized);
+          profileRestored = true;
+        }
+      }
+      await clearAccountSnapshot(userId);
+      return { restored: true, profileRestored };
+    },
+    [profile, savedReadings, journalEntries]
+  );
+
   const value = useMemo(
     () => ({
       isReady,
@@ -258,10 +320,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       saveTodayReading,
       removeSavedReading,
       addJournalNote,
-      resetApp
+      resetApp,
+      archiveAccountData,
+      restoreAccountData
     }),
     [
       addJournalNote,
+      archiveAccountData,
       createProfile,
       homeReading,
       homeSource,
@@ -271,6 +336,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       relationshipReading,
       removeSavedReading,
       resetApp,
+      restoreAccountData,
       saveTodayReading,
       savedReadings,
       todayReading,

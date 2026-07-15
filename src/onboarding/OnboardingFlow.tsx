@@ -7,6 +7,7 @@ import { getZodiacSign, signLabels } from "@/domain/zodiac";
 import type { Topic, ZodiacSign } from "@/domain/types";
 import { useAppState } from "@/hooks/useAppState";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
+import { backendConfig } from "@/services/backendProviders";
 
 import { AccountScreen } from "./screens/AccountScreen";
 import { AlignScreen } from "./screens/AlignScreen";
@@ -28,6 +29,14 @@ import { useAccountFlow, useBackendPersist, useOnboardingChart, useOnboardingCom
 import type { OnboardingChart } from "./useAccount";
 
 const TOTAL = 15;
+
+// Con backend hay puerta "Ya tengo cuenta" en la entrada (paso 0).
+const HAS_BACKEND = backendConfig.hasConvex && backendConfig.hasClerk;
+
+// Paso donde arranca la carga de datos de nacimiento (continuación del alta
+// post-login para una cuenta sin birthData: `/onboarding?resume=datos`).
+const STEP_BIRTHDATE = 4;
+const STEP_ACCOUNT = 13;
 
 // Paywall temporalmente DESACTIVADO (2-3 semanas, mientras refinamos el onboarding
 // y el flujo). Con `false`, al terminar el onboarding se entra DIRECTO a la app sin
@@ -61,9 +70,11 @@ export function OnboardingFlow() {
   const fontsLoaded = useOrbitaFonts();
   const router = useRouter();
   const { createProfile } = useAppState();
-  const params = useLocalSearchParams<{ debugStep?: string }>();
+  const params = useLocalSearchParams<{ debugStep?: string; resume?: string }>();
 
-  const [step, setStep] = useState(0);
+  // `resume=datos`: sesión activa sin datos de nacimiento → continuar el alta
+  // desde la fecha, sin repetir splash/pitch ni crear una segunda cuenta.
+  const [step, setStep] = useState(() => (params.resume === "datos" ? STEP_BIRTHDATE : 0));
   const [identity, setIdentity] = useState<Identity>("ella");
   const [birthDate, setBirthDate] = useState<BirthDateParts>({ day: 15, month: 1, year: 1996 });
   const [placeQuery, setPlaceQuery] = useState("");
@@ -87,6 +98,12 @@ export function OnboardingFlow() {
     const n = Number(params.debugStep);
     if (Number.isFinite(n) && n >= 0 && n < TOTAL) setStep(n);
   }, [params.debugStep]);
+
+  // Respaldo del resume: si los params llegan un render después del mount,
+  // el useState inicial no los vio. Solo salta si todavía está en la entrada.
+  useEffect(() => {
+    if (params.resume === "datos") setStep((s) => (s === 0 ? STEP_BIRTHDATE : s));
+  }, [params.resume]);
 
   const next = () => setStep((s) => Math.min(TOTAL - 1, s + 1));
   const back = () => setStep((s) => Math.max(0, s - 1));
@@ -208,12 +225,24 @@ export function OnboardingFlow() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
+  // Sesión ya activa (login previo o continuación del alta): el paso de crear
+  // cuenta se saltea solo — nunca pedir crear/iniciar sesión de nuevo.
+  useEffect(() => {
+    if (step === STEP_ACCOUNT && account?.isSignedIn) next();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, account?.isSignedIn]);
+
   if (!fontsLoaded) return <View style={styles.fill} />;
 
   let screen: ReactNode;
   switch (step) {
     case 0:
-      screen = <SplashScreen onNext={next} />;
+      screen = (
+        <SplashScreen
+          onNext={next}
+          onSignIn={HAS_BACKEND ? () => router.push("/iniciar-sesion") : undefined}
+        />
+      );
       break;
     case 1:
       screen = <AlignScreen onNext={next} onBack={back} />;

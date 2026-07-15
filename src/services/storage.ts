@@ -1,4 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  accountSnapshotKey,
+  parseAccountSnapshot,
+  type AccountSnapshot
+} from "@/domain/accountLocalData";
 import { DailyReading, JournalEntry, UserProfile } from "@/domain/types";
 
 const keys = {
@@ -51,4 +56,18 @@ export async function storeJournalEntries(entries: JournalEntry[]): Promise<void
 
 export async function clearLocalData(): Promise<void> {
   await AsyncStorage.multiRemove([keys.profile, keys.savedReadings, keys.journal]);
+}
+
+// --- Snapshot local por cuenta (logout sin pérdida; ver domain/accountLocalData) ---
+
+export async function storeAccountSnapshot(userId: string, snapshot: AccountSnapshot): Promise<void> {
+  await AsyncStorage.setItem(accountSnapshotKey(userId), JSON.stringify(snapshot));
+}
+
+export async function readAccountSnapshot(userId: string): Promise<AccountSnapshot | null> {
+  return parseAccountSnapshot(await AsyncStorage.getItem(accountSnapshotKey(userId)));
+}
+
+export async function clearAccountSnapshot(userId: string): Promise<void> {
+  await AsyncStorage.removeItem(accountSnapshotKey(userId));
 }

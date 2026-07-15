@@ -271,28 +271,48 @@ function useSignInFlowInner(): AccountFlow {
 }
 
 /**
- * Post-login: trae los datos de nacimiento guardados en Convex para decidir
- * el destino. Con carta → derecho a la Home (saltea el onboarding); sin carta
- * → sigue el onboarding con la sesión ya activa. La sesión Clerk recién se
- * activó, así que el token de Convex puede tardar: reintenta unos segundos.
+ * Post-login (o arranque con sesión y sin perfil local): trae los datos de
+ * nacimiento guardados en Convex para decidir el destino. Con datos → derecho
+ * a la Home (saltea el onboarding); sin datos → sigue el alta con la sesión ya
+ * activa. La sesión Clerk puede ser reciente y el token de Convex tardar:
+ * reintenta unos segundos y distingue "no hay datos" de "no pudimos traerlos"
+ * (el error real muestra reintento, nunca finge que el usuario está listo).
  */
-export function useSignInHydrate(): (() => Promise<BirthDataDoc | null>) | null {
+export type SignInHydrateResult =
+  | {
+      status: "ok";
+      birthData: BirthDataDoc | null;
+      /**
+       * Id Clerk confirmado por el backend (`getOrCreateCurrentUser`). Usar
+       * ESTE para restaurar el snapshot local: justo después de `setActive`
+       * el estado de React (`useAuth`) puede no haber re-renderizado todavía.
+       */
+      clerkUserId: string | null;
+    }
+  | { status: "error" };
+
+export function useSignInHydrate(): (() => Promise<SignInHydrateResult>) | null {
   if (!HAS_BACKEND) return null;
   return useSignInHydrateInner();
 }
 
-function useSignInHydrateInner(): () => Promise<BirthDataDoc | null> {
+function useSignInHydrateInner(): () => Promise<SignInHydrateResult> {
   const convex = useConvex();
   return useCallback(async () => {
     for (let i = 0; i < 12; i++) {
       try {
-        await convex.mutation(appApi.users.getOrCreateCurrentUser, {});
-        return await convex.query(appApi.birthData.getCurrent, {});
+        const user = await convex.mutation(appApi.users.getOrCreateCurrentUser, {});
+        const birthData = await convex.query(appApi.birthData.getCurrent, {});
+        return {
+          status: "ok",
+          birthData,
+          clerkUserId: typeof user?.clerkUserId === "string" ? user.clerkUserId : null
+        };
       } catch {
         await new Promise((resolve) => setTimeout(resolve, 700));
       }
     }
-    return null;
+    return { status: "error" };
   }, [convex]);
 }
 
@@ -431,9 +451,38 @@ export type PersistBirthData = (input: {
   timezone?: string;
 }) => Promise<void>;
 
+/**
+ * Persistencia con errores TRAGADOS (onboarding: la copia local ya existe y
+ * el flujo no debe cortarse). Para "Editar datos" usar la variante estricta.
+ */
 export function useBackendPersist(): PersistBirthData | null {
   if (!HAS_BACKEND) return null;
+  return useBackendPersistSwallowInner();
+}
+
+/**
+ * Persistencia ESTRICTA: propaga el error. Con sesión iniciada, "Guardar" en
+ * Editar datos espera la confirmación del backend y muestra error/reintento
+ * si falla (sin sesión resuelve sin hacer nada, igual que la otra variante).
+ */
+export function useBackendPersistStrict(): PersistBirthData | null {
+  if (!HAS_BACKEND) return null;
   return useBackendPersistInner();
+}
+
+function useBackendPersistSwallowInner(): PersistBirthData {
+  const persist = useBackendPersistInner();
+  return useCallback(
+    async (input) => {
+      try {
+        await persist(input);
+      } catch (e) {
+        // La copia local ya existe: el backend puede fallar sin romper el flujo.
+        console.warn("Órbita: persistencia backend falló (la app sigue local)", e);
+      }
+    },
+    [persist]
+  );
 }
 
 function useBackendPersistInner(): PersistBirthData {
@@ -449,24 +498,19 @@ function useBackendPersistInner(): PersistBirthData {
   return useCallback(
     async (input) => {
       if (!isSignedIn) return;
-      try {
-        const birthTimezone = input.timezone ?? deviceTimezone();
-        await ensureUser({});
-        await completeBirthData({
-          birthDate: input.birthDate,
-          birthTime: input.birthTime,
-          birthTimePrecision: input.birthTime ? "known" : "unknown",
-          birthPlaceLabel: input.birthPlaceLabel ?? "Sin especificar",
-          latitude: input.latitude,
-          longitude: input.longitude,
-          timezone: birthTimezone
-        });
-        await calculateChart({});
-        await generateToday({ localDate: new Date().toISOString().slice(0, 10), timezone: deviceTimezone() });
-      } catch (e) {
-        // La copia local ya existe: el backend puede fallar sin romper el flujo.
-        console.warn("Órbita: persistencia backend falló (la app sigue local)", e);
-      }
+      const birthTimezone = input.timezone ?? deviceTimezone();
+      await ensureUser({});
+      await completeBirthData({
+        birthDate: input.birthDate,
+        birthTime: input.birthTime,
+        birthTimePrecision: input.birthTime ? "known" : "unknown",
+        birthPlaceLabel: input.birthPlaceLabel ?? "Sin especificar",
+        latitude: input.latitude,
+        longitude: input.longitude,
+        timezone: birthTimezone
+      });
+      await calculateChart({});
+      await generateToday({ localDate: new Date().toISOString().slice(0, 10), timezone: deviceTimezone() });
     },
     [calculateChart, completeBirthData, ensureUser, generateToday, isSignedIn]
   );
