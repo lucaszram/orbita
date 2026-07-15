@@ -130,10 +130,9 @@ export const completeBirthData = mutation({
       .withIndex("by_user", (q: any) => q.eq("userId", user._id))
       .first();
 
-    const payload = omitUndefined({
+    const payloadWithoutTime = omitUndefined({
       userId: user._id,
       birthDate: args.birthDate,
-      birthTime: normalizedBirthTime,
       birthTimePrecision: args.birthTimePrecision,
       birthPlaceLabel: args.birthPlaceLabel,
       placeId: args.placeId,
@@ -146,8 +145,21 @@ export const completeBirthData = mutation({
     });
 
     const birthDataId = existingBirthData
-      ? (await ctx.db.patch(existingBirthData._id, payload), existingBirthData._id)
-      : await ctx.db.insert("birthData", { ...payload, createdAt: now });
+      ? (
+          // En un patch de Convex, `undefined` elimina un campo opcional. No
+          // pasarlo por omitUndefined: "No sé la hora" debe borrar la hora
+          // anterior en vez de dejarla escondida detrás de precision=unknown.
+          await ctx.db.patch(existingBirthData._id, {
+            ...payloadWithoutTime,
+            birthTime: normalizedBirthTime
+          }),
+          existingBirthData._id
+        )
+      : await ctx.db.insert("birthData", {
+          ...payloadWithoutTime,
+          ...omitUndefined({ birthTime: normalizedBirthTime }),
+          createdAt: now
+        });
 
     const draft = args.clientDraftId
       ? await ctx.db
@@ -162,21 +174,24 @@ export const completeBirthData = mutation({
     if (draft) {
       await ctx.db.patch(
         draft._id,
-        omitUndefined({
-          userId: user._id,
-          currentStep: Math.max(draft.currentStep ?? 0, 11),
-          birthDate: args.birthDate,
-          birthTime: normalizedBirthTime,
-          birthTimePrecision: args.birthTimePrecision,
-          birthPlaceLabel: args.birthPlaceLabel,
-          placeId: args.placeId,
-          placeProvider: args.placeProvider,
-          latitude: args.latitude,
-          longitude: args.longitude,
-          timezone: args.timezone,
-          accountState: "created",
-          updatedAt: now
-        })
+        {
+          ...omitUndefined({
+            userId: user._id,
+            currentStep: Math.max(draft.currentStep ?? 0, 11),
+            birthDate: args.birthDate,
+            birthTimePrecision: args.birthTimePrecision,
+            birthPlaceLabel: args.birthPlaceLabel,
+            placeId: args.placeId,
+            placeProvider: args.placeProvider,
+            latitude: args.latitude,
+            longitude: args.longitude,
+            timezone: args.timezone,
+            accountState: "created",
+            updatedAt: now
+          }),
+          // Igual que birthData: limpiar una hora previa cuando pasa a unknown.
+          birthTime: normalizedBirthTime
+        }
       );
     }
 

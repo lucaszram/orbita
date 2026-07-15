@@ -7,6 +7,7 @@ import {
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { runAstrologyApiNatalChart } from "./lib/astrologyApi";
+import { buildBirthDataHash, buildNatalChartCacheKey } from "./lib/birthDataConsistency";
 import {
   ASTROLOGY_API_CHART_CALCULATION_VERSION,
   buildWebB0PersonalityReadingPayload,
@@ -25,27 +26,17 @@ async function getCurrentBirthData(ctx: any, userId: string) {
     .first();
 }
 
-function roundedCoordinate(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) ? Number(value.toFixed(6)) : null;
-}
-
-function buildBirthDataHash(birthData: any) {
-  return JSON.stringify({
-    birthDate: birthData.birthDate,
-    birthTime: birthData.birthTime ?? null,
-    birthTimePrecision: birthData.birthTimePrecision,
-    birthPlaceLabel: birthData.birthPlaceLabel,
-    latitude: roundedCoordinate(birthData.latitude),
-    longitude: roundedCoordinate(birthData.longitude),
-    timezone: birthData.timezone
-  });
-}
-
-function buildNatalChartCacheKey(userId: string, birthDataHash: string) {
-  return `natal:${ASTROLOGY_API_CHART_CALCULATION_VERSION}:${userId}:${birthDataHash}`;
-}
-
 async function getCurrentChart(ctx: any, userId: string) {
+  const birthData = await getCurrentBirthData(ctx, userId);
+  if (birthData) {
+    const cacheKey = buildNatalChartCacheKey(userId, buildBirthDataHash(birthData));
+    const exactChart = await ctx.db
+      .query("natalCharts")
+      .withIndex("by_cacheKey", (q: any) => q.eq("cacheKey", cacheKey))
+      .first();
+    if (exactChart) return exactChart;
+  }
+
   return (
     (await ctx.db
       .query("natalCharts")

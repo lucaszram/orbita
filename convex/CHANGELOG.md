@@ -21,6 +21,13 @@ El puente de tipos (`convex/_generated/`) se deriva de acá y lo commitea el bac
 
 ---
 
+## 2026-07-15 — Edición de datos natales consistente
+
+- **Qué cambió:** las firmas públicas se mantienen. `onboarding.completeBirthData` ahora elimina una hora anterior cuando `birthTimePrecision="unknown"`; `charts.current` resuelve la carta que coincide con los datos natales vigentes; y `readings.generateToday` recalcula la lectura existente del día si cambió la carta, timezone o versión de contenido.
+- **Por qué:** el editor del build 11 espera confirmación del backend y no puede confirmar un estado que después reaparece con la hora o lectura anteriores.
+- **Quién lo pidió:** frontend + revisión backend.
+- **Estado:** implementado, pendiente de PR y deploy.
+
 ## 2026-07-15 — Stripe Checkout/Portal sin SDK Node (sin cambio de contrato)
 - **Qué cambió:** `payments/stripeActions.ts` mantiene las mismas firmas públicas pero usa la API REST de Stripe mediante `fetch`; se elimina el SDK `stripe` y el runtime `"use node"`.
 - **Por qué:** el SDK hacía que la evaluación del deploy de producción agotara el timeout. El backend completo sin ese módulo se evalúa en segundos.
