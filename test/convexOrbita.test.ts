@@ -40,6 +40,51 @@ import {
   buildPublicTransitTimelineResponse
 } from "../convex/publicLab";
 import { sanitizeAppFacingPayload } from "../convex/webB0Seed";
+import {
+  buildBirthDataHash,
+  buildNatalChartCacheKey,
+  dailyReadingNeedsRefresh
+} from "../convex/lib/birthDataConsistency";
+
+test("birth data cache identity changes when known time is removed", () => {
+  const base = {
+    birthDate: "1996-01-15",
+    birthPlaceLabel: "Buenos Aires, Argentina",
+    latitude: -34.6037,
+    longitude: -58.3816,
+    timezone: "America/Argentina/Buenos_Aires"
+  };
+  const known = buildBirthDataHash({ ...base, birthTime: "08:30", birthTimePrecision: "known" });
+  const unknown = buildBirthDataHash({ ...base, birthTimePrecision: "unknown" });
+
+  assert.notEqual(known, unknown);
+  assert.match(buildNatalChartCacheKey("user_123", unknown), /^natal:orbita-astrologyapi-western-v1:user_123:/);
+});
+
+test("daily reading refreshes when the natal chart changes", () => {
+  const existing = {
+    natalChartId: "chart_old",
+    timezone: "America/Argentina/Buenos_Aires",
+    contentVersion: "orbita-daily-stub-v1"
+  };
+
+  assert.equal(
+    dailyReadingNeedsRefresh(existing, "chart_new", existing.timezone, existing.contentVersion),
+    true
+  );
+  assert.equal(
+    dailyReadingNeedsRefresh(existing, "chart_old", existing.timezone, existing.contentVersion),
+    false
+  );
+  assert.equal(
+    dailyReadingNeedsRefresh(existing, "chart_old", "America/New_York", existing.contentVersion),
+    true
+  );
+  assert.equal(
+    dailyReadingNeedsRefresh(existing, "chart_old", existing.timezone, "orbita-daily-v2"),
+    true
+  );
+});
 
 function buildFixtureAstrologyChart() {
   const input = normalizeBirthInput({
