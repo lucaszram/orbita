@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import { Text } from "@/components/ui/text";
 
 import { A } from "../assets";
+import { CodeInput } from "../components/CodeInput";
 import { CTA } from "../components/CTA";
 import { Screen } from "../components/Screen";
 import { Body, Label, Title } from "../components/Type";
@@ -45,7 +46,9 @@ export function SignInScreen({ flow, onSignedIn, onBack }: Props) {
     }
   };
 
-  const submit = async () => {
+  // `codeOverride`: la auto-verificación del CodeInput pasa el código recién
+  // completado directo (el estado `code` todavía no re-renderizó).
+  const submit = async (codeOverride?: string) => {
     if (busy) return;
     if (flow.isSignedIn) {
       await finish();
@@ -57,7 +60,7 @@ export function SignInScreen({ flow, onSignedIn, onBack }: Props) {
       await flow.start(trimmed);
       return;
     }
-    const ok = await flow.verify(code.trim());
+    const ok = await flow.verify((codeOverride ?? code).trim());
     if (ok) await finish();
   };
 
@@ -82,29 +85,26 @@ export function SignInScreen({ flow, onSignedIn, onBack }: Props) {
           <>
             <Label style={styles.fieldLabel}>{codePhase ? "Código" : "Email"}</Label>
             {codePhase ? (
-              <TextInput
+              <CodeInput
                 value={code}
-                onChangeText={setCode}
-                placeholder="123456"
-                placeholderTextColor={orbita.faint}
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="number-pad"
-                style={styles.input}
+                onChange={setCode}
+                onFilled={(filled) => void submit(filled)}
               />
             ) : (
-              <TextInput
-                value={email}
-                onChangeText={setEmail}
-                placeholder="tu@email.com"
-                placeholderTextColor={orbita.faint}
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="email-address"
-                style={styles.input}
-              />
+              <>
+                <TextInput
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder="tu@email.com"
+                  placeholderTextColor={orbita.faint}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="email-address"
+                  style={styles.input}
+                />
+                <View style={styles.inputLine} />
+              </>
             )}
-            <View style={styles.inputLine} />
           </>
         ) : null}
         {flow.error ? <Text style={styles.error}>{flow.error}</Text> : null}

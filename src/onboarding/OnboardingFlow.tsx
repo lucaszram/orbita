@@ -167,7 +167,9 @@ export function OnboardingFlow() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, computeTriad, birthPlace, birthDateISO, timeUnknown, birthTime.hour, birthTime.minute, retryTick]);
 
-  const accountNext = async () => {
+  // `codeOverride`: la auto-verificación del CodeInput pasa el código recién
+  // completado directo (el estado `accountCode` todavía no re-renderizó).
+  const accountNext = async (codeOverride?: string) => {
     if (!account || account.isSignedIn) {
       next();
       return;
@@ -178,7 +180,7 @@ export function OnboardingFlow() {
       await account.start(trimmed);
       return;
     }
-    const ok = await account.verify(accountCode.trim());
+    const ok = await account.verify((codeOverride ?? accountCode).trim());
     if (ok) next();
   };
 
