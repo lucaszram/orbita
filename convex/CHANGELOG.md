@@ -21,6 +21,12 @@ El puente de tipos (`convex/_generated/`) se deriva de acá y lo commitea el bac
 
 ---
 
+## 2026-07-15 — Stripe Checkout/Portal sin SDK Node (sin cambio de contrato)
+- **Qué cambió:** `payments/stripeActions.ts` mantiene las mismas firmas públicas pero usa la API REST de Stripe mediante `fetch`; se elimina el SDK `stripe` y el runtime `"use node"`.
+- **Por qué:** el SDK hacía que la evaluación del deploy de producción agotara el timeout. El backend completo sin ese módulo se evalúa en segundos.
+- **Quién lo pidió:** producto/backend para estabilizar producción.
+- **Estado:** implementado y verificado en producción `exciting-bat-311`.
+
 ## 2026-07-10 — Calidad de generación diaria: anti-redundancia + voz criolla (feedback usuario Sofi)
 - **Qué reportó el usuario (Sofi, 2026-07-10):**
   - **HACÉ repite el body** casi palabra por palabra ("marcá/elegí la tarea que desbloquea el resto… veinte minutos" en ambos) → *"dice lo mismo tal cual"*.
