@@ -398,7 +398,10 @@ export default defineSchema({
     userId: v.id("users"),
     localDate: v.string(),
     payload: v.any(),
-    createdAt: v.number()
+    createdAt: v.number(),
+    // Generar la guía no revela la carta. La primera interacción guarda esta
+    // marca y el reveal queda irreversible para ese día.
+    revealedAt: v.optional(v.number())
   }).index("by_user_date", ["userId", "localDate"])
 });
 
