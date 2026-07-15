@@ -1,5 +1,9 @@
 # Current Task
 
+## Proceso operativo aprobado — 2026-07-15
+
+Lucas aprobó incorporar un flujo incremental y sostenible: **un objetivo, una rama, un PR**, con responsabilidades claras para Codex/Claude/Lucas, revisión por alcance, ambientes separados y producción detrás de un Release Candidate probado en TestFlight. La implementación se divide en PRs: (1) documentación + template de PR; (2) CI básico; (3) protección de `main` y territorios; (4) staging/smoke tests; (5) TestFlight con aprobación manual; (6) monitoreo/backups/rollback. Producción sigue primero en modo recuperación: se congelan features nuevas, no los fixes necesarios para levantar y validar el servicio. Fuente operativa nueva: `docs/proceso-desarrollo-y-releases.md`.
+
 ## Goal
 
 Keep Órbita easy to continue from a fresh Codex thread without depending on old chat history.

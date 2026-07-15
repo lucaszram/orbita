@@ -5,14 +5,17 @@ At the start of every new thread in this project:
 1. Read `PROJECT_CONTEXT.md`.
 2. Read `CURRENT_TASK.md` if it exists.
 3. Read `docs/contexto-actual.md`.
-4. If the task touches Figma, design, onboarding, Home, copy, or assets, read `docs/figma-context.md`, `docs/ritmo-trabajo.md`, and `docs/assets-needed.md`.
-5. Inspect the current workspace state before changing files. Try `git status --short`; if this folder is not a git checkout, say that plainly and continue with file inspection.
-6. Briefly summarize what you understand: project, current goal, relevant files, and next step.
-7. Do not assume old thread history. Treat these markdown files as the source of truth.
+4. Read `WORKFLOW.md` and `docs/proceso-desarrollo-y-releases.md` before planning or changing files.
+5. If the task touches Figma, design, onboarding, Home, copy, or assets, read `docs/figma-context.md`, `docs/ritmo-trabajo.md`, and `docs/assets-needed.md`.
+6. Inspect the current workspace state before changing files. Try `git status --short`; if this folder is not a git checkout, say that plainly and continue with file inspection.
+7. Briefly summarize what you understand: project, current goal, relevant files, and next step.
+8. Do not assume old thread history. Treat these markdown files as the source of truth.
 
 ## Project Rules
 
 - Keep changes scoped.
+- Follow **one objective, one branch, one PR**. If a second independent objective appears, split it into another task/PR.
+- Start every task with the brief defined in `docs/proceso-desarrollo-y-releases.md`: objective, acceptance criteria, owner, allowed territory, risk, tests, rollout, rollback, and out-of-scope.
 - Prefer existing project patterns, documents, and naming.
 - First define exact copy and screen structure; then touch Figma or code.
 - For Figma work, use the current file and pages listed in `docs/figma-context.md`.
@@ -27,6 +30,7 @@ At the start of every new thread in this project:
 - **El contrato** entre back y front es `convex/schema.ts` + las firmas `args`/`returns` de cada función. Todo cambio de contrato se anota en `convex/CHANGELOG.md` y se commitea **solo**, sin mezclarlo con una feature.
 - Trabajás en el worktree `../orbita-backend` (branch `feature/api`). Todo entra por PR a `main`; rebase antes del PR.
 - Antes del PR: `pnpm test` + `pnpm typecheck` en verde (no hay eslint).
+- Ningún agente despliega o publica producción sin aprobación explícita de Lucas y los gates de `docs/proceso-desarrollo-y-releases.md`.
 
 ## Product Guardrails
 
