@@ -13,6 +13,33 @@ export function shouldShowCartaQueEs(flags: FirstRunFlags): boolean {
   return !flags.cartaQueEsVisto;
 }
 
+/**
+ * QUÉ ES se decide POR VISITA (ciclo de foco del tab), no por montaje: los
+ * tabs quedan montados, y con una decisión por montaje REPETIR PRIMER DÍA no
+ * re-mostraba el bloque al volver a Carta. Reglas:
+ * - al ganar foco, con flags hidratados, se decide UNA vez para toda la visita;
+ * - marcar `cartaQueEsVisto` durante la visita no esconde el bloque en curso;
+ * - al perder el foco, la próxima visita decide de nuevo.
+ */
+export type CartaQueEsVisita = { decidida: boolean; mostrar: boolean };
+
+export const QUE_ES_VISITA_INICIAL: CartaQueEsVisita = { decidida: false, mostrar: false };
+
+export function decidirCartaQueEs(
+  visita: CartaQueEsVisita,
+  flagsReady: boolean,
+  flags: FirstRunFlags
+): { visita: CartaQueEsVisita; marcarVisto: boolean } {
+  if (!flagsReady || visita.decidida) return { visita, marcarVisto: false };
+  const mostrar = shouldShowCartaQueEs(flags);
+  return { visita: { decidida: true, mostrar }, marcarVisto: mostrar };
+}
+
+/** Al perder el foco: la visita se cierra y la próxima vuelve a decidir. */
+export function cerrarVisitaCartaQueEs(): CartaQueEsVisita {
+  return QUE_ES_VISITA_INICIAL;
+}
+
 /** Claves de AsyncStorage que son DATA del usuario: perfil, dueño, lecturas
  *  guardadas (+ lápidas de borrado pendiente) y diario. */
 export const USER_DATA_STORAGE_KEYS = [
@@ -27,10 +54,23 @@ export const USER_DATA_STORAGE_KEYS = [
 export const FIRST_DAY_REPLAY_CLEARS = [storageKeys.firstRun] as const;
 
 /**
- * El control interno REPETIR PRIMER DÍA existe solo apuntando a
- * desarrollo/testing. Producción = Clerk live (`pk_live…`, EAS production):
- * ahí JAMÁS se muestra. Sin key o con `pk_test` es dev/demo.
+ * Producción = Clerk live (`pk_live…`, EAS production).
  */
 export function isProductionBackend(clerkPublishableKey: string | undefined): boolean {
   return typeof clerkPublishableKey === "string" && clerkPublishableKey.startsWith("pk_live");
+}
+
+/**
+ * El control REPETIR PRIMER DÍA falla CERRADO: exige la bandera pública
+ * explícita `EXPO_PUBLIC_ENABLE_FIRST_DAY_REPLAY === "true"` (opt-in por
+ * .env.local, nunca en EAS production) Y que la build no use Clerk live.
+ * `pk_test` solo NO alcanza: ya hubo un environment de production apuntando
+ * a dev por accidente; el default (bandera ausente/otra cosa) lo oculta en
+ * TODA build.
+ */
+export function firstDayReplayEnabled(opts: {
+  enableFlag: string | undefined;
+  clerkPublishableKey: string | undefined;
+}): boolean {
+  return opts.enableFlag === "true" && !isProductionBackend(opts.clerkPublishableKey);
 }

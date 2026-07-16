@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { useAction, useQuery } from "convex/react";
 
 import { Body, Divider, Eyebrow, H2, Note, OrbitaScreen, Section, TabStrip } from "@/components/orbita/kit";
@@ -13,7 +13,11 @@ import { chartMock } from "@/content/chartMock";
 import { personalityMock } from "@/content/personalityMock";
 import { valuesMock } from "@/content/valuesMock";
 import { useLiveApp } from "@/hooks/useLiveApp";
-import { shouldShowCartaQueEs } from "@/domain/firstDay";
+import {
+  cerrarVisitaCartaQueEs,
+  decidirCartaQueEs,
+  QUE_ES_VISITA_INICIAL
+} from "@/domain/firstDay";
 import { markFirstRun, useFirstRun } from "@/services/firstRun";
 import {
   appApi,
@@ -103,21 +107,35 @@ function CartaView({
   const { width } = useWindowDimensions();
   const [view, setView] = useState<"circulo" | "tabla">("circulo");
   const [selected, setSelected] = useState<string | undefined>();
-  // QUÉ ES (Figma sección 13, B5b): la primera visita de la vida al tab explica
-  // qué es una carta natal. La decisión se toma UNA vez al hidratar los flags
-  // (si se marcara y releyera, el bloque desaparecería delante del usuario);
-  // queda visible toda la visita y se marca visto al presentarlo.
+  // QUÉ ES (Figma sección 13, B5b): la primera visita al tab explica qué es
+  // una carta natal. La decisión es POR VISITA (ciclo de foco, ver
+  // domain/firstDay): los tabs quedan montados, así que REPETIR PRIMER DÍA
+  // necesita que un nuevo foco vuelva a decidir; y marcar visto durante la
+  // visita no esconde el bloque en curso.
   const { ready: flagsReady, flags } = useFirstRun();
   const [showQueEs, setShowQueEs] = useState(false);
-  const queEsDecided = useRef(false);
-  useEffect(() => {
-    if (!flagsReady || queEsDecided.current) return;
-    queEsDecided.current = true;
-    if (shouldShowCartaQueEs(flags)) {
-      setShowQueEs(true);
-      void markFirstRun({ cartaQueEsVisto: true });
-    }
-  }, [flagsReady, flags]);
+  const queEsVisita = useRef(QUE_ES_VISITA_INICIAL);
+  useFocusEffect(
+    useCallback(() => {
+      const decision = decidirCartaQueEs(queEsVisita.current, flagsReady, flags);
+      if (decision.visita === queEsVisita.current) return;
+      queEsVisita.current = decision.visita;
+      setShowQueEs(decision.visita.mostrar);
+      if (decision.marcarVisto) {
+        void markFirstRun({ cartaQueEsVisto: true });
+      }
+    }, [flagsReady, flags])
+  );
+  useFocusEffect(
+    // Callback estable: su cleanup corre SOLO al perder el foco de verdad
+    // (no en re-renders), y ahí la próxima visita queda lista para decidir.
+    useCallback(() => {
+      return () => {
+        queEsVisita.current = cerrarVisitaCartaQueEs();
+        setShowQueEs(false);
+      };
+    }, [])
+  );
   const wheelSize = Math.min(width - orbita.spacing.gutter * 2, 360);
   const radarSize = Math.min(width - orbita.spacing.gutter * 2, 340);
   const sel = payload.placements.find((p) => p.key === selected);

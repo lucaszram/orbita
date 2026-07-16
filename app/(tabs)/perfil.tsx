@@ -5,7 +5,7 @@ import { Body, Divider, Eyebrow, H2, MonoLine, Note, OrbitaScreen, Pill, Section
 import { FullBleedHero } from "@/components/orbita/ImmersiveHero";
 import { CartaCard } from "@/components/home/CartaCard";
 import { useAppData } from "@/domain/appData";
-import { isProductionBackend } from "@/domain/firstDay";
+import { firstDayReplayEnabled } from "@/domain/firstDay";
 import { useAppState } from "@/hooks/useAppState";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { backendConfig } from "@/services/backendProviders";
@@ -117,12 +117,16 @@ export default function PerfilScreen() {
         <Pill label="EDITAR DATOS" onPress={() => router.push("/editar-datos")} />
 
         {/* ─── TESTING · SACAR ANTES DEL LAUNCH ─────────────────────────────
-            Solo apuntando a dev/testing (jamás con Clerk pk_live). Repite el
-            recorrido educativo del primer día: borra ÚNICAMENTE los flags de
-            primera vez (orbita:first-run) y entra a la ceremonia. No toca
-            perfil, sesión, carta natal, guardadas ni diario; el reveal real de
-            HOY es irreversible server-side y sigue revelado. */}
-        {!isProductionBackend(backendConfig.clerkPublishableKey) ? (
+            Falla CERRADO: exige EXPO_PUBLIC_ENABLE_FIRST_DAY_REPLAY="true"
+            (opt-in por .env.local; nunca en EAS production) Y sin Clerk
+            pk_live. Repite el recorrido educativo del primer día: borra
+            ÚNICAMENTE los flags de primera vez (orbita:first-run) y entra a
+            la ceremonia. No toca perfil, sesión, carta natal, guardadas ni
+            diario; el reveal real de HOY es irreversible server-side. */}
+        {firstDayReplayEnabled({
+          enableFlag: process.env.EXPO_PUBLIC_ENABLE_FIRST_DAY_REPLAY,
+          clerkPublishableKey: backendConfig.clerkPublishableKey
+        }) ? (
           <>
             <Divider />
             <Eyebrow>TESTING (sacar antes del launch)</Eyebrow>
