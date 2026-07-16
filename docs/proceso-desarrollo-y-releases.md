@@ -25,17 +25,18 @@ Ejemplos que deben dividirse:
 
 Una tarea grande se convierte en una secuencia de PRs chicos con un orden explícito.
 
-## 2. Estado excepcional actual: recuperación
+## 2. Estado actual: recuperación técnica completa, promoción pendiente
 
-Al 2026-07-15 producción está en recuperación. Hasta declarar una nueva línea base estable:
+Al 2026-07-16 Convex de producción y los dominios Clerk están operativos, y los PRs #6, #7 y #8 forman la nueva línea base de código en `main`. Esto no significa que exista una nueva versión móvil publicada.
 
-- se congelan features nuevas destinadas a producción;
-- se permiten únicamente cambios necesarios para diagnosticar, recuperar y validar el servicio;
+- `main` puede recibir features y fixes puntuales, revisados y reversibles;
+- mergear un PR no autoriza ni ejecuta un deploy;
+- producción, EAS y App Store permanecen sin cambios hasta aprobar un Release Candidate;
 - no se publica una OTA ni se envía una versión al App Store sin una prueba real en TestFlight;
-- cada fix del incidente debe dejar evidencia y, cuando corresponda, un test de regresión;
-- una vez recuperada la app, se etiqueta el commit/build estable y comienza el flujo normal de este documento.
+- antes del próximo build se verifican variables EAS, versión/build, checks automáticos, smoke tests y rollback;
+- cada fix de incidente debe dejar evidencia y, cuando corresponda, un test de regresión.
 
-Congelar producción significa preservar una versión que funciona, no preservar el estado roto.
+Congelar producción significa preservar la versión distribuida mientras el trabajo continúa de forma controlada en `main`.
 
 ## 3. Roles y territorios
 
@@ -295,11 +296,11 @@ El siguiente agente debe poder continuar leyendo archivos del repo, sin depender
 
 ## 17. Implementación gradual
 
-1. Documentación + template de PR.
-2. CI básico: typecheck, tests y export.
-3. Protección de `main` y validación de territorios.
-4. Staging y smoke tests.
-5. TestFlight automatizado con aprobación manual.
-6. Monitoreo, backups y rollback practicado.
+1. ✅ Documentación + template de PR.
+2. ⏳ CI básico: typecheck, tests y export.
+3. ⏳ Protección de `main` y validación de territorios.
+4. ⏳ Staging y smoke tests.
+5. ⏳ TestFlight automatizado con aprobación manual.
+6. ⏳ Monitoreo, backups y rollback practicado.
 
 Cada etapa debe quedar funcionando antes de sumar la siguiente.
