@@ -9,6 +9,7 @@ import {
   useState
 } from "react";
 import { useMutation, useQuery } from "convex/react";
+import { liveAppGate, type UserRowState } from "@/domain/screenPhase";
 import { appApi, NatalChartDoc, SavedReadingListItem } from "@/services/appRefs";
 import { backendConfig } from "@/services/backendProviders";
 import { OrbitaAuth, useOrbitaAuth } from "@/hooks/useOrbitaAuth";
@@ -49,8 +50,6 @@ const OFFLINE: LiveApp = {
   retryUser: () => undefined,
   auth: null
 };
-
-type UserRowState = "idle" | "pending" | "ready" | "error";
 
 type SessionValue = {
   auth: OrbitaAuth;
@@ -111,14 +110,10 @@ export function useLiveApp(): LiveApp {
   const session = useContext(SessionContext);
   if (!session) return OFFLINE;
   const { auth, userRow, retryUser } = session;
-  return {
-    isLive: auth.isAuthenticated && userRow === "ready",
-    isAuthLoading:
-      !auth.isLoaded || auth.isConnecting || (auth.isAuthenticated && userRow === "pending"),
-    userError: userRow === "error",
-    retryUser,
-    auth
-  };
+  // Gate puro (domain/screenPhase): una sesión autenticada con la fila users
+  // todavía en "idle" (primer render, antes de que corra el efecto) o
+  // "pending" es CARGA — el render inicial jamás puede caer en "invitado".
+  return { ...liveAppGate(auth, userRow), retryUser, auth };
 }
 
 export function deviceTimezone(): string {

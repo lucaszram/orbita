@@ -1,5 +1,5 @@
 import { ReactNode } from "react";
-import { Image, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Image, StyleSheet, Text, View } from "react-native";
 import { EditorialThumb } from "@/components/orbita/HeroImage";
 import { orbita } from "@/theme/orbita";
 import { Pill } from "./kit";
@@ -32,6 +32,18 @@ function Centered({ children }: { children: ReactNode }) {
   return <View style={styles.wrap}>{children}</View>;
 }
 
+/** Pantalla mínima de carga (regla anti-flash de mocks): fondo de Órbita (lo
+ *  da el wrapper), indicador sutil cobre y una sola línea. Se usa en todo
+ *  gate de sesión o dato pendiente — nunca contenido anterior o demo debajo. */
+export function MinimalLoading() {
+  return (
+    <Centered>
+      <ActivityIndicator color={orbita.colors.copper} />
+      <Text style={[styles.body, { marginTop: orbita.spacing.lg }]}>Cargando tu cielo…</Text>
+    </Centered>
+  );
+}
+
 export function LoadingState() {
   return (
     <Centered>
@@ -50,13 +62,26 @@ export function LoadingState() {
   );
 }
 
-export function EmptyState({ title, body, cta, onCta }: { title: string; body: string; cta?: string; onCta?: () => void }) {
+export function EmptyState({
+  title,
+  body,
+  cta,
+  onCta,
+  eyebrow = "GUARDADAS"
+}: {
+  title: string;
+  body: string;
+  cta?: string;
+  onCta?: () => void;
+  /** Etiqueta contextual de la pantalla (default histórico: GUARDADAS). */
+  eyebrow?: string;
+}) {
   return (
     <Centered>
       <View style={styles.emblemZone}>
         <Emblem kind="phase" />
       </View>
-      <Text style={styles.eyebrow}>GUARDADAS</Text>
+      <Text style={styles.eyebrow}>{eyebrow}</Text>
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.body}>{body}</Text>
       {cta ? (
