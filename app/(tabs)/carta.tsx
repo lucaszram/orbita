@@ -1,17 +1,16 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { router } from "expo-router";
 import { useAction, useQuery } from "convex/react";
 
 import { Body, Divider, Eyebrow, H2, Note, OrbitaScreen, Section, TabStrip } from "@/components/orbita/kit";
 import { glyphFor } from "@/components/orbita/GlyphRow";
+import { GuestState } from "@/components/orbita/GuestState";
 import { NatalWheel } from "@/components/orbita/NatalWheel";
-import { EmptyState, ErrorState, LoadingState } from "@/components/orbita/states";
+import { EmptyState, ErrorState, MinimalLoading } from "@/components/orbita/states";
 import { mapNatalChart } from "@/components/web/orbita-chart";
 import { Radar } from "@/components/web/orbita-values";
-import { chartMock } from "@/content/chartMock";
-import { personalityMock } from "@/content/personalityMock";
-import { valuesMock } from "@/content/valuesMock";
+import { dataPhase, sessionPhase } from "@/domain/screenPhase";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import {
   appApi,
@@ -27,11 +26,39 @@ import { orbita } from "@/theme/orbita";
 /**
  * Carta natal — hub de entrada post-onboarding. Junta la carta (rueda real +
  * tríada + posiciones + aspectos + casas) y conecta a las partes distribuidas de
- * la app. Con sesión, data real de `charts.current`; invitado → demo (chartMock).
+ * la app. Con sesión, data real de `charts.current`; invitado → estado honesto.
  */
 export default function CartaScreen() {
-  const { isLive } = useLiveApp();
-  if (!isLive) return <CartaView payload={chartMock} reading={personalityMock} values={valuesMock} />;
+  const live = useLiveApp();
+  const phase = sessionPhase(live);
+  // Sin mocks: invitado confirmado → estado honesto. Mientras la sesión
+  // resuelve o reconecta → carga mínima; sesión rota → error + retry.
+  if (phase === "cargando") {
+    return (
+      <OrbitaScreen right="Carta">
+        <MinimalLoading />
+      </OrbitaScreen>
+    );
+  }
+  if (phase === "error") {
+    return (
+      <OrbitaScreen right="Carta">
+        <ErrorState onRetry={live.retryUser} />
+      </OrbitaScreen>
+    );
+  }
+  if (phase === "invitado") {
+    // Sin mocks: estado honesto de invitado, nunca la carta demo como si fuera tuya.
+    return (
+      <OrbitaScreen right="Carta">
+        <GuestState
+          eyebrow="TU CARTA NATAL"
+          title={"Tu carta se calcula\ncon tu cuenta."}
+          body="Órbita usa tu fecha, hora y lugar de nacimiento reales para dibujar tu carta natal completa y explicártela."
+        />
+      </OrbitaScreen>
+    );
+  }
   return <CartaLive />;
 }
 
@@ -39,26 +66,36 @@ function CartaLive() {
   const doc = useQuery(appApi.charts.current, {});
   const reading = useQuery(appApi.charts.personalityReading, {});
   const values = useQuery(appApi.charts.valuesMap, {});
-  // Dispara la generación LLM natal una vez; no-opea si ya está cacheada o no hay carta.
+  // Dispara la generación LLM natal (no-opea si ya está cacheada o no hay
+  // carta). Si FALLA, la pantalla lo dice con REINTENTAR — sin esto, "reading"
+  // quedaría null para siempre y la carga sería eterna.
   const generate = useAction(appApi.charts.generatePersonalityReading);
-  const fired = useRef(false);
+  const [generateFailed, setGenerateFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    if (fired.current) return;
-    fired.current = true;
-    generate({}).catch(() => {});
-  }, [generate]);
+    let alive = true;
+    setGenerateFailed(false);
+    generate({}).catch(() => {
+      if (alive) setGenerateFailed(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [generate, attempt]);
 
   if (doc === undefined) {
     return (
       <OrbitaScreen right="Carta">
-        <LoadingState />
+        <MinimalLoading />
       </OrbitaScreen>
     );
   }
   if (doc === null) {
+    // El backend confirmó que no hay carta: vacío real.
     return (
       <OrbitaScreen right="Carta">
         <EmptyState
+          eyebrow="TU CARTA NATAL"
           title="Todavía no hay carta"
           body="Completá tu fecha, hora y lugar de nacimiento para calcular tu carta natal."
           cta="COMPLETAR MIS DATOS"
@@ -77,7 +114,28 @@ function CartaLive() {
       </OrbitaScreen>
     );
   }
-  return <CartaView payload={payload} reading={reading ?? personalityMock} values={values ?? valuesMock} />;
+  // La pantalla se muestra COMPLETA o no se muestra: mientras falte la lectura
+  // (undefined = query en vuelo; null = todavía escribiéndose) o el mapa de
+  // valores, pantalla mínima. Fallo del generador → error real con reintento.
+  const readingPhase = dataPhase({
+    pending: reading == null || values == null,
+    failed: generateFailed
+  });
+  if (readingPhase === "error") {
+    return (
+      <OrbitaScreen right="Carta">
+        <ErrorState onRetry={() => setAttempt((a) => a + 1)} />
+      </OrbitaScreen>
+    );
+  }
+  if (readingPhase === "cargando") {
+    return (
+      <OrbitaScreen right="Carta">
+        <MinimalLoading />
+      </OrbitaScreen>
+    );
+  }
+  return <CartaView payload={payload} reading={reading!} values={values!} />;
 }
 
 // --- Vista ---------------------------------------------------------------

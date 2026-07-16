@@ -3,21 +3,49 @@ import { router } from "expo-router";
 import { useQuery } from "convex/react";
 import { DetailScreen } from "@/components/home/DetailScreen";
 import { H2, Note } from "@/components/orbita/kit";
-import { EmptyState, LoadingState } from "@/components/orbita/states";
+import { GuestState } from "@/components/orbita/GuestState";
+import { EmptyState, ErrorState, LoadingState, MinimalLoading } from "@/components/orbita/states";
 import { Radar } from "@/components/web/orbita-values";
-import { valuesMock } from "@/content/valuesMock";
+import { sessionPhase } from "@/domain/screenPhase";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { appApi, type ValuesMapPayload } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
 
 /**
  * Mapa de valores (nativo): radar de 8 ejes + impulsa/pesa. Con sesión, data
- * real (`charts.valuesMap`); sin sesión, mock. Reusa el `Radar` compartido —
+ * real (`charts.valuesMap`); invitado → estado honesto. Reusa el `Radar` compartido —
  * una sola implementación del radar para web y nativo.
  */
 export default function ValoresScreen() {
-  const { isLive } = useLiveApp();
-  if (!isLive) return <ValoresView payload={valuesMock} />;
+  const live = useLiveApp();
+  const phase = sessionPhase(live);
+  // Sin mocks: invitado confirmado → estado honesto; sesión resolviendo → carga mínima.
+  if (phase === "cargando") {
+    return (
+      <DetailScreen eyebrow="Mapa de valores">
+        <MinimalLoading />
+      </DetailScreen>
+    );
+  }
+  if (phase === "error") {
+    return (
+      <DetailScreen eyebrow="Mapa de valores">
+        <ErrorState onRetry={live.retryUser} />
+      </DetailScreen>
+    );
+  }
+  if (phase === "invitado") {
+    // Sin mocks: estado honesto de invitado, nunca el radar demo como si fuera tuyo.
+    return (
+      <DetailScreen eyebrow="Mapa de valores">
+        <GuestState
+          eyebrow="MAPA DE VALORES"
+          title={"Tu mapa sale\nde tu carta."}
+          body="Qué te impulsa y qué te pesa se deriva de tu carta natal real. Se calcula con tu cuenta."
+        />
+      </DetailScreen>
+    );
+  }
   return <ValoresLive />;
 }
 

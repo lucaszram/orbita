@@ -6,9 +6,10 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "convex/react";
 import { NatalWheel } from "@/components/orbita/NatalWheel";
-import { EmptyState, ErrorState, LoadingState } from "@/components/orbita/states";
+import { GuestState } from "@/components/orbita/GuestState";
+import { EmptyState, ErrorState, LoadingState, MinimalLoading } from "@/components/orbita/states";
 import { mapNatalChart } from "@/components/web/orbita-chart";
-import { chartMock } from "@/content/chartMock";
+import { sessionPhase } from "@/domain/screenPhase";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
 import { appApi, type NatalChartPayload } from "@/services/appRefs";
@@ -18,11 +19,38 @@ const TEXTURE = require("../assets/orbita/optimized/core/orbita_daily_texture_b.
 
 /**
  * Carta natal a pantalla completa e inmersiva: solo la rueda, con pinch-zoom + pan
- * (ScrollView nativo iOS). Sin tab bar. Data real con sesión, mock para invitados.
+ * (ScrollView nativo iOS). Sin tab bar. Data real con sesión; invitado → estado honesto.
  */
 export default function CartaFullScreen() {
-  const { isLive } = useLiveApp();
-  if (!isLive) return <CartaFullView payload={chartMock} />;
+  const live = useLiveApp();
+  const phase = sessionPhase(live);
+  // Sin mocks: invitado confirmado → estado honesto; sesión resolviendo → carga mínima.
+  if (phase === "cargando") {
+    return (
+      <Frame>
+        <MinimalLoading />
+      </Frame>
+    );
+  }
+  if (phase === "error") {
+    return (
+      <Frame>
+        <ErrorState onRetry={live.retryUser} />
+      </Frame>
+    );
+  }
+  if (phase === "invitado") {
+    // Sin mocks: estado honesto de invitado, nunca la rueda demo como si fuera tuya.
+    return (
+      <Frame>
+        <GuestState
+          eyebrow="TU CARTA NATAL"
+          title={"Tu carta se calcula\ncon tu cuenta."}
+          body="Órbita usa tu fecha, hora y lugar de nacimiento reales para dibujar tu carta natal completa y explicártela."
+        />
+      </Frame>
+    );
+  }
   return <CartaFullLive />;
 }
 
