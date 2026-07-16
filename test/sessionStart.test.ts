@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   commitProfileCreation,
+  runSessionAttempts,
   withTimeout,
   onboardingInputFromBirthData,
   resolveProfileOwnerAtCreation,
@@ -271,6 +272,102 @@ describe("withTimeout — las llamadas Convex encoladas no cuelgan la sesión", 
 
   it("propaga el rechazo original si llega antes del tope", async () => {
     await assert.rejects(withTimeout(Promise.reject(new Error("server")), 50), /server/);
+  });
+});
+
+describe("runSessionAttempts — el presupuesto de la recuperación es ESTRICTO", () => {
+  const never = () => new Promise<never>(() => undefined);
+
+  it("intentos que cuelgan: termina en error DENTRO del presupuesto (nunca ~budget+llamada+pausa)", async () => {
+    // Con el loop viejo: intento1 (100ms de tope pleno) + pausa (50) +
+    // intento2 con tope PLENO (100) ≈ 250ms+. Con presupuesto estricto, el
+    // segundo intento queda acotado al restante → total ≤ ~150ms + scheduler.
+    const start = Date.now();
+    const result = await runSessionAttempts({
+      budgetMs: 150,
+      callTimeoutMs: 100,
+      retryPauseMs: 50,
+      attempt: (timebox) => timebox(never())
+    });
+    const elapsed = Date.now() - start;
+    assert.equal(result.status, "error");
+    assert.ok(elapsed < 220, `tardó ${elapsed}ms: el presupuesto no es estricto`);
+  });
+
+  it("la pausa también queda acotada al restante (no estira el presupuesto)", async () => {
+    const start = Date.now();
+    const result = await runSessionAttempts({
+      budgetMs: 80,
+      callTimeoutMs: 60,
+      retryPauseMs: 500,
+      attempt: () => Promise.reject(new Error("server"))
+    });
+    const elapsed = Date.now() - start;
+    assert.equal(result.status, "error");
+    assert.ok(elapsed < 160, `tardó ${elapsed}ms: la pausa no respetó el restante`);
+  });
+
+  it("éxito directo → ok con el valor del intento", async () => {
+    const result = await runSessionAttempts({
+      budgetMs: 200,
+      callTimeoutMs: 100,
+      retryPauseMs: 10,
+      attempt: async (timebox) => {
+        const a = await timebox(Promise.resolve("dato"));
+        return { a };
+      }
+    });
+    assert.deepEqual(result, { status: "ok", value: { a: "dato" } });
+  });
+
+  it("falla transitoria → reintenta dentro del presupuesto y termina ok", async () => {
+    let calls = 0;
+    const result = await runSessionAttempts({
+      budgetMs: 500,
+      callTimeoutMs: 100,
+      retryPauseMs: 10,
+      attempt: async (timebox) => {
+        calls += 1;
+        if (calls === 1) throw new Error("token todavía no listo");
+        return timebox(Promise.resolve("recuperado"));
+      }
+    });
+    assert.equal(calls, 2);
+    assert.deepEqual(result, { status: "ok", value: "recuperado" });
+  });
+
+  it("ciclo completo estilo hydrate: 1ª llamada lenta pero OK, 2ª colgada, reintento cerca del deadline → corta en el presupuesto", async () => {
+    // El caso original: budget=200, tope por llamada=100, pausa=20.
+    // Intento 1: la "mutation" resuelve lenta (50ms) y la "query" cuelga →
+    //   timebox la corta a los ~100ms (t≈150); pausa 20 → t≈170.
+    // Intento 2 arranca cerca del deadline (restante ≈30): su "mutation",
+    //   que resolvería a los 50ms, queda acotada al restante y muere ≈200.
+    // Con el bug viejo (tope pleno por llamada sin mirar el restante), el
+    // intento 2 correría 50 + 100 completos → total ≥ ~320ms.
+    const slowOk = <V,>(ms: number, value: V) =>
+      new Promise<V>((resolve) => setTimeout(() => resolve(value), ms));
+    let attempts = 0;
+    let queryStarts = 0;
+    const start = Date.now();
+    const result = await runSessionAttempts({
+      budgetMs: 200,
+      callTimeoutMs: 100,
+      retryPauseMs: 20,
+      attempt: async (timebox) => {
+        attempts += 1;
+        await timebox(slowOk(50, "user")); // mutation: lenta pero exitosa
+        queryStarts += 1;
+        await timebox(never()); // query: encolada para siempre
+        return "nunca";
+      }
+    });
+    const elapsed = Date.now() - start;
+    assert.equal(result.status, "error");
+    assert.equal(attempts, 2, "el reintento cerca del deadline debe ocurrir");
+    // La query solo se alcanzó en el intento 1: en el 2 la mutation quedó
+    // acotada al restante (~30ms) y murió antes de resolver a los 50ms.
+    assert.equal(queryStarts, 1, "la mutation del intento 2 no quedó acotada al restante");
+    assert.ok(elapsed < 280, `tardó ${elapsed}ms: el límite por llamada no respeta el restante`);
   });
 });
 

@@ -154,6 +154,41 @@ export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
+/**
+ * Ciclo de reintentos con presupuesto ESTRICTO. `withTimeout` solo acota una
+ * llamada; sin esto, un intento que arranca cerca del final del presupuesto
+ * podía correr sus llamadas completas y la pantalla tardar ~21s en ofrecer
+ * reintento con un presupuesto "de 15s". Acá cada llamada (vía `timebox`) y
+ * cada pausa quedan acotadas al tiempo RESTANTE: el total nunca supera el
+ * presupuesto (+ el margen del scheduler).
+ */
+export async function runSessionAttempts<T>(opts: {
+  budgetMs: number;
+  callTimeoutMs: number;
+  retryPauseMs: number;
+  attempt: (timebox: <V>(promise: Promise<V>) => Promise<V>) => Promise<T>;
+  /** Inyectables para tests. */
+  now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
+}): Promise<{ status: "ok"; value: T } | { status: "error" }> {
+  const now = opts.now ?? (() => Date.now());
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const deadline = now() + opts.budgetMs;
+  const remaining = () => deadline - now();
+  while (remaining() > 0) {
+    const timebox = <V,>(promise: Promise<V>) =>
+      withTimeout(promise, Math.max(1, Math.min(opts.callTimeoutMs, remaining())));
+    try {
+      return { status: "ok", value: await opts.attempt(timebox) };
+    } catch {
+      const pause = Math.min(opts.retryPauseMs, remaining());
+      if (pause <= 0) break;
+      await sleep(pause);
+    }
+  }
+  return { status: "error" };
+}
+
 /** Forma mínima del doc `birthData` de Convex que necesita la hidratación. */
 export type RemoteBirthData = {
   birthDate: string;
