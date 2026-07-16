@@ -43,20 +43,44 @@ export function resetDailyGuideStore() {
   emit();
 }
 
+/**
+ * Qué clave LEE el hook y qué retiene para el próximo render. `userKey=null`
+ * es ambiguo (reconexión transitoria O signed-out definitivo), así que el
+ * caller lo desambigua con `holdLastKey` (= `isAuthLoading` de la sesión):
+ *
+ *  - con clave actual (sesión live) se lee y retiene esa clave;
+ *  - durante carga/reconexión (`holdLastKey`) se sigue leyendo la última,
+ *    para no degradar a "cargando" por un parpadeo de red;
+ *  - con signed-out CONFIRMADO la retención se SUELTA: el payload
+ *    personalizado de la cuenta anterior no puede renderizarse en modo guest
+ *    ni resucitar en una reconexión posterior.
+ */
+export function resolveGuideReadKey(input: {
+  currentKey: string | null;
+  lastKey: string | null;
+  holdLastKey: boolean;
+}): { readKey: string | null; nextLastKey: string | null } {
+  if (input.currentKey) return { readKey: input.currentKey, nextLastKey: input.currentKey };
+  if (input.holdLastKey) return { readKey: input.lastKey, nextLastKey: input.lastKey };
+  return { readKey: null, nextLastKey: null };
+}
+
 export function useDailyGuide(
   /** Clave estable del usuario (`auth.userId` de Clerk; el email puede cambiar).
    *  `null` = sin sesión live confirmada: no dispara. */
   userKey: string | null,
-  localDate: string
+  localDate: string,
+  /** true mientras la sesión carga/reconecta (`isAuthLoading`): retiene la última
+   *  clave. false con `userKey=null` = signed-out confirmado: suelta la retención. */
+  holdLastKey: boolean
 ): { state: DailyGuideState; retry: () => void } {
   const run = useAction(proposedApi.dailyGuide);
 
   const key = userKey ? `${userKey}:${localDate}` : null;
-  // Durante una reconexión `userKey` se vuelve null transitoriamente; recordamos la
-  // última clave para seguir MOSTRANDO lo que ya había en vez de volver a "cargando".
   const lastKeyRef = useRef<string | null>(null);
-  if (key) lastKeyRef.current = key;
-  const readKey = key ?? lastKeyRef.current;
+  const resolved = resolveGuideReadKey({ currentKey: key, lastKey: lastKeyRef.current, holdLastKey });
+  lastKeyRef.current = resolved.nextLastKey;
+  const readKey = resolved.readKey;
 
   const subscribe = useCallback((cb: () => void) => {
     listeners.add(cb);

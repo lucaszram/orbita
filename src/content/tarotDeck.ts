@@ -42,10 +42,10 @@ export const CARD_BACK: ImageSourcePropType = require("../../assets/orbita/optim
 
 export const majorById = (id: number) => MAJOR_ARCANA.find((c) => c.id === id);
 
-/** Carta del dÃ­a para el modo INVITADO (sin backend que sortee ni recuerde):
- *  sorteo determinÃ­stico por fecha (FNV-1a) â la misma carta para todos los
- *  invitados ese dÃ­a, estable durante todo el dÃ­a. Los beats son la versiÃ³n
- *  genÃ©rica: la ontologÃ­a editorial curada por carta llega en una tanda
+/** Carta del día para el modo INVITADO (sin backend que sortee ni recuerde):
+ *  sorteo determinístico por fecha (FNV-1a) — la misma carta para todos los
+ *  invitados ese día, estable durante todo el día. Los beats son la versión
+ *  genérica: la ontología editorial curada por carta llega en una tanda
  *  aparte, y la lectura completa (carta + tu cielo) es del backend. */
 export function guestCardOfTheDay(localDate: string) {
   let hash = 0x811c9dc5;

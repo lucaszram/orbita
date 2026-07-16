@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Image, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { useAction, useQuery } from "convex/react";
 import { DetailScreen } from "@/components/home/DetailScreen";
 import { Body, Divider, Eyebrow, H2 } from "@/components/orbita/kit";
@@ -22,7 +22,12 @@ const DAYS_SHOWN = 14;
  *  racha). No se puede "recuperar" un día perdido: la carta era de ese día.
  */
 export default function DiarioScreen() {
-  const { isLive } = useLiveApp();
+  // Mismo guard que la Home (hotfix #6): `isLive` también es false mientras
+  // Clerk/Convex cargan o reconectan — invitado es SOLO Clerk resuelto sin
+  // sesión. Una cuenta existente nunca ve la carta guest ni "Creá tu cuenta"
+  // durante una reconexión: ve carga estable o error con reintento.
+  const { isLive, isAuthLoading, userError, retryUser, auth } = useLiveApp();
+  const guest = !isAuthLoading && !userError && !auth?.isSignedIn;
   const days = useMemo(() => lastNDays(DAYS_SHOWN), []);
   const today = toLocalDate();
 
@@ -43,7 +48,7 @@ export default function DiarioScreen() {
   // Invitado: el reveal de HOY vive en memoria de sesión (guestRitual) — la tira y el
   // detalle lo reflejan para no contradecir a la Home; el resto de los días no tiene
   // archivo sin cuenta y queda boca abajo.
-  const guestToday = !isLive && guestRitual.isRevealed(today) ? guestCardOfTheDay(today) : null;
+  const guestToday = guest && guestRitual.isRevealed(today) ? guestCardOfTheDay(today) : null;
 
   const celdas: DiaCelda[] = useMemo(
     () =>
@@ -115,7 +120,19 @@ export default function DiarioScreen() {
 
       <Text style={styles.dayLabel}>{dayLabel(selectedDate, today).toUpperCase()}</Text>
 
-      {!isLive ? (
+      {isAuthLoading ? (
+        /* Sesión resolviéndose: carga estable, nunca el estado guest. */
+        <View style={styles.center}>
+          <ActivityIndicator color={orbita.colors.copper} />
+        </View>
+      ) : userError ? (
+        <>
+          <Body>No pudimos abrir tu sesión.</Body>
+          <Pressable onPress={retryUser} accessibilityRole="button" style={styles.retryBtn} hitSlop={8}>
+            <Text style={styles.retryText}>REINTENTAR</Text>
+          </Pressable>
+        </>
+      ) : guest ? (
         guestToday && selectedDate === today ? (
           <>
             <View style={styles.center}>
@@ -213,5 +230,20 @@ const styles = StyleSheet.create({
     fontFamily: orbita.fonts.body,
     fontSize: 13,
     textAlign: "center"
+  },
+  retryBtn: {
+    alignSelf: "flex-start",
+    borderColor: orbita.colors.line,
+    borderRadius: 999,
+    borderWidth: 1,
+    marginTop: orbita.spacing.md,
+    paddingHorizontal: orbita.spacing.lg,
+    paddingVertical: orbita.spacing.sm
+  },
+  retryText: {
+    color: orbita.colors.copper,
+    fontFamily: orbita.fonts.monoMedium,
+    fontSize: 12,
+    letterSpacing: 1
   }
 });

@@ -78,7 +78,10 @@ export default function HomeScreen() {
   const today = toLocalDate();
   // Clave estable del usuario: el clerkUserId (el email puede cambiar).
   const userKey = isLive ? auth?.userId ?? null : null;
-  const { state: dailyState, retry: retryDaily } = useDailyGuide(userKey, today);
+  // La retención de la última clave del caché SOLO vale durante carga/reconexión
+  // (isAuthLoading); un signed-out confirmado la suelta — el payload de la cuenta
+  // anterior no puede renderizarse en modo guest.
+  const { state: dailyState, retry: retryDaily } = useDailyGuide(userKey, today, isAuthLoading);
   const daily: DailyGuidePayload | null = dailyState.status === "ready" ? dailyState.payload : null;
 
   // El ritual. `revealedAt` vive en el server, así que sobrevive a cerrar la app: la
@@ -161,24 +164,29 @@ export default function HomeScreen() {
   // (misma carta para todos los invitados ese día) para que el ritual no quede muerto.
   const carta = guest ? guestCardOfTheDay(today) : daily?.carta;
 
-  // La tríada del hero: mock SOLO para invitado. Una Home autenticada espera su carta
-  // real (gate de render más abajo) — nunca arranca mostrando la tríada de la demo.
-  let chartPayload: NatalChartPayload = chartMock;
-  if (isLive && knownChartDoc) {
+  // La tríada del hero: el mock es EXCLUSIVO del invitado. Una Home autenticada
+  // solo muestra su carta real: mientras la query está en vuelo, el doc todavía
+  // no existe (null) o el payload no mapea, `chart` queda null y el gate de
+  // render de abajo espera con carga estable — nunca la tríada de la demo.
+  let chartPayload: NatalChartPayload | null = null;
+  if (guest) {
+    chartPayload = chartMock;
+  } else if (knownChartDoc) {
     try {
       chartPayload = mapNatalChart(knownChartDoc);
     } catch {
-      chartPayload = chartMock;
+      chartPayload = null;
     }
   }
-  const heroTriad = triadFromChart(chartPayload);
-  const chartReady = guest || knownChartDoc !== undefined;
+  const chart = chartPayload;
+  const chartReady = chart !== null;
+  const heroTriad = chart ? triadFromChart(chart) : null;
 
   // Invitado: el texto del día sale del MISMO signo que la tríada (el chart), no del
   // profile — así "PARA LEO" no choca con una frase de otro signo. Logueado usa el LLM.
-  const guestDaily = guest
+  const guestDaily = guest && chart
     ? (() => {
-        const key = chartPayload.triad.sun.sign.toLowerCase().normalize("NFD").replace(new RegExp("[\\u0300-\\u036f]", "g"), "");
+        const key = chart.triad.sun.sign.toLowerCase().normalize("NFD").replace(new RegExp("[\\u0300-\\u036f]", "g"), "");
         const v = signHomeBank[key as ZodiacSign]?.[0];
         return v ? { headline: v.headline, body: v.body, clima: v.clima } : null;
       })()
@@ -282,7 +290,7 @@ export default function HomeScreen() {
 
         {/* Guía del día en vuelo o caída: carga estable / error con reintento. Nunca el
             texto del engine local pisado después por el real ("flash de maqueta"). */}
-        {!dayReady ? (
+        {!dayReady || !heroTriad ? (
           dailyState.status === "error" ? (
             <View style={styles.loadingBlock}>
               <Text style={styles.errorTitle}>{dailyState.message}</Text>
