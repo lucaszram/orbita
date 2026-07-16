@@ -23,10 +23,10 @@ El puente de tipos (`convex/_generated/`) se deriva de acá y lo commitea el bac
 
 ## 2026-07-15 — Contrato del ritual diario: reveal irreversible e historial
 
-- **Qué cambió:** `dailyGuides` suma `revealedAt?: number`. Se define `daily.revealCard({ localDate })`, que devuelve el timestamp del primer reveal, y `daily.getStrip({ from, to })`, que devuelve `{ localDate, cartaId, revealed }[]` para el archivo diario.
+- **Qué cambió:** `dailyGuides` suma `revealedAt?: number`. `daily.revealCard({ localDate })` devuelve el timestamp del primer reveal y `daily.getStrip({ from, to })` devuelve `{ localDate, cartaId, revealed }[]` para el archivo diario. `daily.getGuide()` incorpora una carta determinística y versiona el payload como `orbita-daily-guide-v2`, invalidando caches anteriores que no pueden sostener el ritual.
 - **Por qué:** el binario iOS necesita distinguir una carta generada de una carta revelada y mostrar el historial sin crear otra tabla.
 - **Quién lo pidió:** frontend + producto.
-- **Estado:** contrato aprobado; implementación backend en el PR siguiente. La forma ya está validada en Convex producción `exciting-bat-311`.
+- **Estado:** implementado en backend y cubierto por tests; pendiente de merge y deploy coordinado con la Home nueva.
 
 ## 2026-07-15 — Edición de datos natales consistente
 
