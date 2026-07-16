@@ -45,6 +45,8 @@ import {
   buildNatalChartCacheKey,
   dailyReadingNeedsRefresh
 } from "../convex/lib/birthDataConsistency";
+import { isCurrentDailyGuidePayload, localDateForTimezone } from "../convex/daily";
+import { drawCard } from "../convex/lib/tarot";
 
 test("birth data cache identity changes when known time is removed", () => {
   const base = {
@@ -151,6 +153,47 @@ test("builds user fields from a Clerk-like identity", () => {
   assert.equal(fields.email, "mica@example.com");
   assert.equal(fields.name, "Mica");
   assert.equal(fields.updatedAt, 123);
+});
+
+test("rejects stale daily guide caches that predate the card contract", () => {
+  assert.equal(
+    isCurrentDailyGuidePayload({
+      headline: "Guía anterior",
+      body: "Sin carta"
+    }),
+    false
+  );
+  assert.equal(
+    isCurrentDailyGuidePayload({
+      payloadVersion: "orbita-daily-guide-v2",
+      carta: { id: 16, nombre: "La Torre", beats: [] }
+    }),
+    true
+  );
+  assert.equal(
+    isCurrentDailyGuidePayload({
+      payloadVersion: "orbita-daily-guide-v2",
+      carta: { id: "16", nombre: "La Torre", beats: [] }
+    }),
+    false
+  );
+});
+
+test("daily tarot draw is stable per user and date", () => {
+  const first = drawCard({ userId: "user_123", localDate: "2026-07-15" });
+  const repeated = drawCard({ userId: "user_123", localDate: "2026-07-15" });
+
+  assert.deepEqual(repeated, first);
+  assert.ok(first.id >= 0 && first.id <= 21);
+  assert.ok(first.nombre.length > 0);
+  assert.ok(first.correspondencia.length > 0);
+});
+
+test("daily date follows the user's timezone around midnight", () => {
+  const instant = new Date("2026-07-16T02:30:00.000Z");
+
+  assert.equal(localDateForTimezone("America/Argentina/Buenos_Aires", instant), "2026-07-15");
+  assert.equal(localDateForTimezone("Asia/Tokyo", instant), "2026-07-16");
 });
 
 test("sanitizes provider raw and request details before Web B0 QA persistence", () => {
