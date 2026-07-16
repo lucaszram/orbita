@@ -4,6 +4,13 @@
 
 Esta sección es la fuente de verdad actual. El contenido posterior queda como historial y contexto técnico.
 
+### Mazo completo de 78 cartas — coordinación backend/frontend
+
+- Decisión de producto cerrada por Lucas: Órbita usa el mazo completo de **78 cartas**, no solo los 22 arcanos mayores.
+- Backend aislado en `codex/tarot-78-contract`: conserva los ids históricos `0–21`, asigna ids estables `22–77` a los 56 menores y verifica que cada id tenga su asset optimizado. La carta nueva excluye lo que salió en los seis días calendario anteriores (ventana móvil de siete días; puede reaparecer al octavo). Los documentos ya generados no se vuelven a sortear.
+- Gate obligatorio: **no mergear ni desplegar el backend antes del frontend compatible**. Claude debe ampliar el mapa estático de imágenes/contenido y todos los consumidores de `carta.id`/`cartaId` a `0–77` en un PR separado; después se prueban ambos lados juntos en dev.
+- Validación backend local: typecheck verde, 173/173 tests y `git diff --check` limpio. Producción, Convex dev, EAS, TestFlight y Figma no fueron tocados.
+
 ### Recuperación de contenido posterior a la pasada RC
 
 - Lucas validó en el simulador Release de `main`: sesión y datos reales, Home, reveal diario, carta natal, edición, reapertura y logout/login pasaron. Quedan fuera de aprobación la lectura natal corta y la recuperación del archivo anterior.
