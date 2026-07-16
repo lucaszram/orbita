@@ -27,23 +27,30 @@ export type UserRowState = "idle" | "pending" | "ready" | "error";
 export type AuthSnapshot = {
   isLoaded: boolean;
   isConnecting: boolean;
+  /** Clerk: hay una sesión de usuario restaurada/activa. */
+  isSignedIn: boolean;
+  /** Convex: el token de esa sesión ya fue validado por el backend. */
   isAuthenticated: boolean;
 };
 
 /**
  * Deriva el gate de sesión desde el estado crudo de Clerk/Convex. Es la única
- * fuente de `isLive`/`isAuthLoading` (la consume `useLiveApp`). Regla clave:
- * una sesión autenticada cuya fila `users` todavía no está `ready`/`error`
- * (incluido el PRIMER render, con `userRow="idle"` antes de que corra el
- * efecto) es SIEMPRE carga — jamás "invitado", que es la fase que puede
- * renderizar la demo.
+ * fuente de `isLive`/`isAuthLoading` (la consume `useLiveApp`). Reglas clave:
+ * - Clerk cargado con `isSignedIn=true` pero Convex todavía sin validar el
+ *   token (`isAuthenticated=false`) es CARGA, aunque `isConnecting=false` y
+ *   `userRow="idle"`: hay una sesión real en handshake, jamás "invitado".
+ * - Una sesión autenticada cuya fila `users` todavía no está `ready`/`error`
+ *   (incluido el PRIMER render, con `userRow="idle"` antes de que corra el
+ *   efecto) también es carga.
  */
 export function liveAppGate(auth: AuthSnapshot, userRow: UserRowState): SessionGate {
+  const clerkSignedInSinConvex = auth.isSignedIn && !auth.isAuthenticated;
   return {
     isLive: auth.isAuthenticated && userRow === "ready",
     isAuthLoading:
       !auth.isLoaded ||
       auth.isConnecting ||
+      clerkSignedInSinConvex ||
       (auth.isAuthenticated && (userRow === "idle" || userRow === "pending")),
     userError: userRow === "error"
   };

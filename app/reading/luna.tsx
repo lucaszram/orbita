@@ -3,11 +3,10 @@ import { View } from "react-native";
 import { router } from "expo-router";
 import { useAction } from "convex/react";
 import { DetailScreen } from "@/components/home/DetailScreen";
-import { Body, Divider, Eyebrow, H2, MonoLine, Pill } from "@/components/orbita/kit";
+import { Body, Divider, Eyebrow, H2, Pill } from "@/components/orbita/kit";
 import { FullBleedHero } from "@/components/orbita/ImmersiveHero";
 import { GuestState } from "@/components/orbita/GuestState";
 import { ErrorState, MinimalLoading } from "@/components/orbita/states";
-import { useAppData } from "@/domain/appData";
 import { sessionPhase } from "@/domain/screenPhase";
 import { deviceTimezone, useLiveApp } from "@/hooks/useLiveApp";
 import { toISODate } from "@/domain/readingEngine";
@@ -90,14 +89,12 @@ function LunaLive() {
 }
 
 function LunaView({ payload }: { payload: MoonPhasePayload }) {
-  // `weekStrip` no viene del payload de fase lunar → lo tomamos del mock de `lunar`.
-  const { lunar } = useAppData();
+  // El hero va sin la tira semanal: `weekStrip` salía del mock de `useAppData`
+  // y la app no muestra datos inventados. Vuelve cuando el payload real la traiga.
   return (
     <DetailScreen eyebrow="Fase lunar">
       <View style={{ marginHorizontal: -orbita.spacing.gutter }}>
-        <FullBleedHero kind="luna" height={280}>
-          <MonoLine>{lunar.weekStrip}</MonoLine>
-        </FullBleedHero>
+        <FullBleedHero kind="luna" height={280} />
       </View>
       <View style={{ height: orbita.spacing.lg }} />
       <Eyebrow>FASE LUNAR</Eyebrow>

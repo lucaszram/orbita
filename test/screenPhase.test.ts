@@ -2,9 +2,21 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { dataPhase, liveAppGate, sessionPhase } from "../src/domain/screenPhase";
 
-const AUTH_OK = { isLoaded: true, isConnecting: false, isAuthenticated: true };
+const AUTH_OK = { isLoaded: true, isConnecting: false, isSignedIn: true, isAuthenticated: true };
 
 describe("liveAppGate — la carrera del primer render (userRow='idle')", () => {
+  it("Clerk isSignedIn=true con Convex isAuthenticated=false → cargando, JAMÁS invitado", () => {
+    // Sesión restaurada por Clerk, token todavía sin validar en Convex:
+    // isConnecting puede ser false y userRow 'idle' — sigue siendo carga.
+    const handshake = liveAppGate(
+      { isLoaded: true, isConnecting: false, isSignedIn: true, isAuthenticated: false },
+      "idle"
+    );
+    assert.equal(handshake.isLive, false);
+    assert.equal(handshake.isAuthLoading, true);
+    assert.equal(sessionPhase(handshake), "cargando");
+    assert.notEqual(sessionPhase(handshake), "invitado");
+  });
   it("sesión ya autenticada con la fila users SIN resolver (idle) → SIEMPRE cargando", () => {
     // Clerk restauró la sesión pero el efecto de ensureUser todavía no corrió:
     // el gate viejo daba isLive=false + isAuthLoading=false → 'invitado' → mocks.
@@ -22,18 +34,24 @@ describe("liveAppGate — la carrera del primer render (userRow='idle')", () => 
 
   it("Clerk sin cargar o reconectando → cargando, incluso sin autenticación", () => {
     assert.equal(
-      sessionPhase(liveAppGate({ isLoaded: false, isConnecting: false, isAuthenticated: false }, "idle")),
+      sessionPhase(
+        liveAppGate({ isLoaded: false, isConnecting: false, isSignedIn: false, isAuthenticated: false }, "idle")
+      ),
       "cargando"
     );
     assert.equal(
-      sessionPhase(liveAppGate({ isLoaded: true, isConnecting: true, isAuthenticated: false }, "idle")),
+      sessionPhase(
+        liveAppGate({ isLoaded: true, isConnecting: true, isSignedIn: false, isAuthenticated: false }, "idle")
+      ),
       "cargando"
     );
   });
 
-  it("invitado CONFIRMADO: Clerk resuelto, sin conexión en curso, sin sesión", () => {
+  it("invitado CONFIRMADO: Clerk resuelto, sin sesión (isSignedIn=false), sin conexión en curso", () => {
     assert.equal(
-      sessionPhase(liveAppGate({ isLoaded: true, isConnecting: false, isAuthenticated: false }, "idle")),
+      sessionPhase(
+        liveAppGate({ isLoaded: true, isConnecting: false, isSignedIn: false, isAuthenticated: false }, "idle")
+      ),
       "invitado"
     );
   });

@@ -4,9 +4,8 @@ import { useAction, useQuery } from "convex/react";
 import { DetailScreen } from "@/components/home/DetailScreen";
 import { Body, Divider, Eyebrow, H2 } from "@/components/orbita/kit";
 import { TarotStrip, type DiaCelda } from "@/components/diario/TarotStrip";
-import { CARD_BACK, guestCardOfTheDay, majorById } from "@/content/tarotDeck";
+import { CARD_BACK, majorById } from "@/content/tarotDeck";
 import { dayLabel, lastNDays, monthLabel, toLocalDate } from "@/domain/dateStrip";
-import { guestRitual } from "@/domain/guestRitual";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { proposedApi, type DailyGuidePayload } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
@@ -45,29 +44,19 @@ export default function DiarioScreen() {
     [strip]
   );
 
-  // Invitado: el reveal de HOY vive en memoria de sesión (guestRitual) — la tira y el
-  // detalle lo reflejan para no contradecir a la Home; el resto de los días no tiene
-  // archivo sin cuenta y queda boca abajo.
-  const guestToday = guest && guestRitual.isRevealed(today) ? guestCardOfTheDay(today) : null;
-
   const celdas: DiaCelda[] = useMemo(
     () =>
       days.map((iso) => {
         const entry = byDate.get(iso);
         const date = new Date(`${iso}T12:00:00`);
-        const isGuestToday = guestToday != null && iso === today;
         return {
           wd: WEEKDAYS[date.getDay()],
           n: String(date.getDate()),
-          image: isGuestToday
-            ? majorById(guestToday.id)?.image ?? null
-            : entry?.cartaId != null
-              ? majorById(entry.cartaId)?.image ?? null
-              : null,
-          revealed: isGuestToday || Boolean(entry?.revealed)
+          image: entry?.cartaId != null ? majorById(entry.cartaId)?.image ?? null : null,
+          revealed: Boolean(entry?.revealed)
         };
       }),
-    [byDate, days, guestToday, today]
+    [byDate, days]
   );
 
   // La lectura del día elegido. `getGuide` es cache-first por (usuario, fecha): para un
@@ -133,20 +122,9 @@ export default function DiarioScreen() {
           </Pressable>
         </>
       ) : guest ? (
-        guestToday && selectedDate === today ? (
-          <>
-            <View style={styles.center}>
-              <View style={styles.bigCard}>
-                <Image source={majorById(guestToday.id)?.image ?? CARD_BACK} style={styles.bigImg} resizeMode="cover" />
-              </View>
-            </View>
-            <H2>Te salió {guestToday.nombre}.</H2>
-            <View style={{ height: orbita.spacing.md }} />
-            <Body>Creá tu cuenta para que tus días se vayan guardando acá.</Body>
-          </>
-        ) : (
-          <Body>Creá tu cuenta para que tus días se vayan guardando acá.</Body>
-        )
+        /* Sin cuenta no hay archivo (y la Home guest ya no sortea cartas
+           locales): estado honesto, cero datos inventados. */
+        <Body>Creá tu cuenta para que tus días se vayan guardando acá.</Body>
       ) : isRevealed && (carta || entryCard) ? (
         <>
           <View style={styles.center}>

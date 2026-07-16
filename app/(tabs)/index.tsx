@@ -14,11 +14,9 @@ import {
 } from "@/components/home/sections";
 import { useMutation, useQuery } from "convex/react";
 import { Eyebrow, InsightRow, Section } from "@/components/orbita/kit";
+import { GuestState } from "@/components/orbita/GuestState";
 import { LoadingState } from "@/components/orbita/states";
 import { mapNatalChart } from "@/components/web/orbita-chart";
-import { chartMock } from "@/content/chartMock";
-import { guestCardOfTheDay } from "@/content/tarotDeck";
-import { guestRitual } from "@/domain/guestRitual";
 import { lastNDays, toLocalDate } from "@/domain/dateStrip";
 import { useDailyGuide } from "@/services/dailyGuideStore";
 import { markFirstRun, useFirstRun } from "@/services/firstRun";
@@ -28,8 +26,7 @@ import { useAppState } from "@/hooks/useAppState";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
 import { useRequireProfile } from "@/hooks/useRequireProfile";
-import { HomeTopic, Topic, Triad, ZodiacSign } from "@/domain/types";
-import { signHomeBank } from "@/content/signHomeBank";
+import { HomeTopic, Topic, Triad } from "@/domain/types";
 import { appApi, proposedApi, type DailyGuidePayload, type NatalChartPayload } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
 
@@ -57,9 +54,9 @@ export default function HomeScreen() {
   const { isReady, profile } = useRequireProfile();
   const { homeReading, saveTodayReading } = useAppState();
   const { isLive, isAuthLoading, userError, retryUser, auth } = useLiveApp();
-  // Mock SOLO para invitado CONFIRMADO (Clerk resuelto y sin sesión). Mientras la
-  // sesión carga o reconecta (`isAuthLoading`) la Home muestra carga estable: una
-  // sesión existente no ve datos demo ni un segundo (incidente 2026-07-13).
+  // Invitado CONFIRMADO (Clerk resuelto y sin sesión) → estado honesto, sin datos
+  // inventados (decisión 2026-07-16). Mientras la sesión carga o reconecta
+  // (`isAuthLoading`) la Home muestra carga estable (incidente 2026-07-13).
   const guest = !isAuthLoading && !userError && !auth?.isSignedIn;
   const chartDoc = useQuery(appApi.charts.current, isLive ? {} : "skip");
   // La query se saltea durante una reconexión; recordamos el último doc para no
@@ -93,15 +90,11 @@ export default function HomeScreen() {
   const stripRef = useRef<typeof stripQ>(undefined);
   if (stripQ !== undefined) stripRef.current = stripQ;
   const strip = stripQ !== undefined ? stripQ : stripRef.current;
-  // Invitado: no hay backend que recuerde nada, así que el ritual es solo de esta
-  // sesión. Vive en guestRitual (módulo) para que el Diario cuente lo mismo.
-  const [guestRevealed, setGuestRevealed] = useState(() => guestRitual.isRevealed(today));
-
   // LA regla del incidente: `revealedAt` (getStrip) puede llegar ANTES que la carta
   // (getGuide). "Revelada" sin carta válida es CARGA inconsistente, no una carta dada
   // vuelta — si no, el flip gira hacia una cara vacía (solo el marco cobre).
   const stripRevealed = Boolean(strip?.find((d) => d.localDate === today)?.revealed);
-  const revealed = guest ? guestRevealed : stripRevealed && daily?.carta != null;
+  const revealed = stripRevealed && daily?.carta != null;
 
   // Primera vez (Bloque B): la intro del tarot vive hasta el primer reveal de la
   // vida; el bloque EL RITUAL aparece solo el día en que ese primer reveal ocurre.
@@ -115,12 +108,6 @@ export default function HomeScreen() {
   }
 
   async function pullCard(): Promise<boolean> {
-    if (guest) {
-      guestRitual.markRevealed(today);
-      setGuestRevealed(true);
-      marcarPrimerRitual();
-      return true;
-    }
     if (dailyState.status !== "ready" || !daily?.carta) {
       if (dailyState.status === "error") retryDaily();
       return false;
@@ -140,13 +127,13 @@ export default function HomeScreen() {
   const ayer = stripDays[stripDays.length - 2];
   const huecoAyer = prevRevealed > 0 && !(strip ?? []).find((d) => d.localDate === ayer)?.revealed;
   const vueltaCompleta =
-    !guest && stripDays.every((iso) => (iso === today ? revealed : (strip ?? []).find((d) => d.localDate === iso)?.revealed));
+    stripDays.every((iso) => (iso === today ? revealed : (strip ?? []).find((d) => d.localDate === iso)?.revealed));
   const totalRevealed = prevRevealed + (revealed ? 1 : 0);
 
   // Día 2+: el eyebrow de la carta boca abajo reconoce el regreso (B3).
   let cartaCtaLabel: string | undefined;
   let cartaCtaSub: string | undefined;
-  if (!guest && prevRevealed > 0) {
+  if (prevRevealed > 0) {
     cartaCtaLabel = "HAY UNA CARTA NUEVA";
     cartaCtaSub = huecoAyer
       ? "Las de ayer no se recuperan. La de hoy sí."
@@ -157,20 +144,17 @@ export default function HomeScreen() {
 
   // Día 1 (nunca sacó una carta): la intro explica el tarot EN su lugar de trabajo,
   // no en otra pantalla (decisión 2026-07-14: la ceremonia es solo la carta natal).
-  const introTarot = flagsReady && !flags.ritualExplicado && !revealed && (guest || prevRevealed === 0);
+  const introTarot = flagsReady && !flags.ritualExplicado && !revealed && prevRevealed === 0;
 
-  // Con sesión, la carta la sortea y la escribe el backend. Sin sesión, sorteo local
-  // (misma carta para todos los invitados ese día) para que el ritual no quede muerto.
-  const carta = guest ? guestCardOfTheDay(today) : daily?.carta;
+  // La carta del día la sortea y la escribe el backend (el invitado no llega
+  // a esta parte del render: ve el estado honesto).
+  const carta = daily?.carta;
 
-  // La tríada del hero: el mock es EXCLUSIVO del invitado. Una Home autenticada
-  // solo muestra su carta real: mientras la query está en vuelo, el doc todavía
-  // no existe (null) o el payload no mapea, `chart` queda null y el gate de
-  // render de abajo espera con carga estable — nunca la tríada de la demo.
+  // La tríada del hero sale SOLO de la carta real: mientras la query está en
+  // vuelo, el doc no existe (null) o el payload no mapea, `chart` queda null y
+  // el gate de render espera con carga estable.
   let chartPayload: NatalChartPayload | null = null;
-  if (guest) {
-    chartPayload = chartMock;
-  } else if (knownChartDoc) {
+  if (knownChartDoc) {
     try {
       chartPayload = mapNatalChart(knownChartDoc);
     } catch {
@@ -181,20 +165,10 @@ export default function HomeScreen() {
   const chartReady = chart !== null;
   const heroTriad = chart ? triadFromChart(chart) : null;
 
-  // Invitado: el texto del día sale del MISMO signo que la tríada (el chart), no del
-  // profile — así "PARA LEO" no choca con una frase de otro signo. Logueado usa el LLM.
-  const guestDaily = guest && chart
-    ? (() => {
-        const key = chart.triad.sun.sign.toLowerCase().normalize("NFD").replace(new RegExp("[\\u0300-\\u036f]", "g"), "");
-        const v = signHomeBank[key as ZodiacSign]?.[0];
-        return v ? { headline: v.headline, body: v.body, clima: v.clima } : null;
-      })()
-    : null;
-
-  // ¿Qué se puede mostrar? Invitado: siempre (es la demo). Live: cuando la guía Y la
-  // carta natal llegaron. booting/reconnecting/error de sesión: nunca contenido demo.
+  // ¿Qué se puede mostrar? Con sesión: cuando la guía Y la carta natal llegaron.
+  // booting/reconnecting/error de sesión: nunca contenido a medias.
   const sessionPending = isAuthLoading;
-  const dayReady = guest || (dailyState.status === "ready" && chartReady);
+  const dayReady = dailyState.status === "ready" && chartReady;
 
   if (!isReady || !profile || !fontsLoaded) {
     return <View style={styles.screen} />;
@@ -236,11 +210,21 @@ export default function HomeScreen() {
               <Text style={styles.retryText}>REINTENTAR</Text>
             </Pressable>
           </View>
+        ) : guest ? (
+          /* Invitado confirmado: cero datos inventados (ni tríada demo, ni carta
+             sorteada local, ni signHomeBank). Estado honesto con CTA. */
+          <View style={styles.loadingBlock}>
+            <GuestState
+              eyebrow="TU DÍA"
+              title={"Tu día se lee\nsobre tu carta."}
+              body="La carta diaria, la guía y tus lecturas se generan sobre tu carta natal real. Creá tu cuenta o entrá para abrir el día."
+            />
+          </View>
         ) : (
           <>
         {/* El ritual es la puerta de entrada: la tira de días (tu racha) y la carta boca
             abajo. Recién cuando la sacás se abre el día. */}
-        <DiarioStrip isLive={isLive} guestCardId={guest && guestRevealed ? carta?.id ?? null : null} />
+        <DiarioStrip isLive={isLive} guestCardId={null} />
 
         {/* Bajo la tira: el hito de la vuelta completa (7 de 7) o, los primeros días,
             la explicación de qué es la tira (B2/B4). Nunca los dos a la vez. */}
@@ -265,7 +249,7 @@ export default function HomeScreen() {
           carta={carta}
           revealed={revealed}
           onReveal={pullCard}
-          disabled={!guest && dailyState.status !== "ready"}
+          disabled={dailyState.status !== "ready"}
           cielo={daily?.destacado}
           ctaLabel={cartaCtaLabel}
           ctaSub={cartaCtaSub}
@@ -317,7 +301,7 @@ export default function HomeScreen() {
           <SignalTop
             reading={homeReading}
             triad={heroTriad}
-            daily={daily ?? guestDaily ?? undefined}
+            daily={daily ?? undefined}
             name={auth?.name}
             onProfundizar={() => router.push("/reading/deep-dive")}
             onVerCarta={() => router.push("/(tabs)/carta")}
