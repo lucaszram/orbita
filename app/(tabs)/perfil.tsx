@@ -1,22 +1,51 @@
+import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { Body, Divider, Eyebrow, H2, MonoLine, Note, OrbitaScreen, Pill, Section } from "@/components/orbita/kit";
 import { FullBleedHero } from "@/components/orbita/ImmersiveHero";
 import { CartaCard } from "@/components/home/CartaCard";
 import { useAppData } from "@/domain/appData";
+import { useAppState } from "@/hooks/useAppState";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { backendConfig } from "@/services/backendProviders";
 import { orbita } from "@/theme/orbita";
 
 export default function PerfilScreen() {
   const { perfil } = useAppData();
-  const { auth } = useLiveApp();
+  const { archiveAccountData, resetApp } = useAppState();
+  const { auth, isAuthLoading, userError, retryUser } = useLiveApp();
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState(false);
 
   async function handleLogout() {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    setLogoutError(false);
     try {
+      // 1. Archivar PRIMERO, con la sesión todavía viva: el diario y las
+      //    lecturas guardadas NO están en Convex; si el snapshot no se puede
+      //    escribir (o hay datos sin userId), se aborta el logout — nunca
+      //    pérdida silenciosa.
+      await archiveAccountData(auth?.userId ?? null);
+      // 2. Cerrar Clerk. Un fallo acá también mantiene la sesión y muestra
+      //    reintento: no fingimos que salió bien.
       await auth?.signOut();
     } catch {
-      // Aún si Clerk falla, salimos a un estado limpio.
+      setLogoutError(true);
+      setLoggingOut(false);
+      return;
+    }
+    // 3. Recién ahora limpiar el estado activo (nada visible para el próximo
+    //    usuario; reingresar con esta cuenta en este teléfono lo restaura) y
+    //    volver a la entrada estable, sin repetir el video. El invitado puro
+    //    nunca ve este botón.
+    try {
+      await resetApp();
+    } catch {
+      // El snapshot ya se escribió y el perfil quedó marcado con su dueño en
+      // disco (archiveAccountData): aunque esta limpieza falle, el arranque
+      // detecta "perfil ajeno sin sesión" y lo purga — los datos de la cuenta
+      // no pueden reaparecer al reiniciar.
     }
     router.replace("/onboarding");
   }
@@ -34,25 +63,46 @@ export default function PerfilScreen() {
         <Note>{perfil.privacy}</Note>
         <Divider />
         <Eyebrow>CUENTA</Eyebrow>
-        {perfil.accountEmail ? (
+        {auth?.isSignedIn ? (
           <View>
-            <Body bone>{auth?.name ?? perfil.accountEmail}</Body>
-            {auth?.name ? (
+            <Body bone>{auth.name ?? auth.email ?? "Tu cuenta"}</Body>
+            {auth.email ? (
               <Note>
-                {perfil.accountEmail.includes("privaterelay.appleid.com")
-                  ? "Conectada con Apple"
-                  : perfil.accountEmail}
+                {auth.email.includes("privaterelay.appleid.com") ? "Conectada con Apple" : auth.email}
+              </Note>
+            ) : null}
+            {userError ? (
+              <Pressable onPress={retryUser} accessibilityRole="button" hitSlop={8}>
+                <Note>No pudimos sincronizar tu cuenta. Tocá para reintentar.</Note>
+              </Pressable>
+            ) : isAuthLoading ? (
+              <Note>Sincronizando con tu cielo…</Note>
+            ) : null}
+            {logoutError ? (
+              <Note>
+                No pudimos cerrar sesión de forma segura. Tus datos siguen acá; probá de nuevo.
               </Note>
             ) : null}
             <Pressable onPress={handleLogout} accessibilityRole="button" style={styles.logoutBtn} hitSlop={8}>
-              <Text style={styles.logoutText}>Cerrar sesión</Text>
+              <Text style={styles.logoutText}>
+                {loggingOut ? "Un momento…" : logoutError ? "Reintentar cerrar sesión" : "Cerrar sesión"}
+              </Text>
             </Pressable>
           </View>
+        ) : isAuthLoading ? (
+          // Clerk/Convex todavía cargando: estado neutro, NUNCA afirmar invitado.
+          <Body bone>Conectando tu cuenta…</Body>
         ) : (
           <View>
             <Body bone>Modo invitado · datos solo en este teléfono.</Body>
             {backendConfig.isConfigured ? (
-              <Note>Creá tu cuenta al final del onboarding (Editar datos) para guardar tu carta y tus lecturas.</Note>
+              <Pressable
+                onPress={() => router.push("/iniciar-sesion")}
+                accessibilityRole="button"
+                hitSlop={8}
+              >
+                <Note>¿Ya tenés cuenta? Iniciá sesión para recuperar tu carta y tus lecturas.</Note>
+              </Pressable>
             ) : null}
           </View>
         )}
@@ -62,7 +112,7 @@ export default function PerfilScreen() {
           <Body bone>{perfil.plan}</Body>
         </Pressable>
         <View style={{ height: orbita.spacing.xl }} />
-        <Pill label="EDITAR DATOS" onPress={() => router.push("/onboarding")} />
+        <Pill label="EDITAR DATOS" onPress={() => router.push("/editar-datos")} />
       </Section>
     </OrbitaScreen>
   );
