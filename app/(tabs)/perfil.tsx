@@ -5,9 +5,11 @@ import { Body, Divider, Eyebrow, H2, MonoLine, Note, OrbitaScreen, Pill, Section
 import { FullBleedHero } from "@/components/orbita/ImmersiveHero";
 import { CartaCard } from "@/components/home/CartaCard";
 import { useAppData } from "@/domain/appData";
+import { isProductionBackend } from "@/domain/firstDay";
 import { useAppState } from "@/hooks/useAppState";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { backendConfig } from "@/services/backendProviders";
+import { clearFirstRunFlags } from "@/services/firstRun";
 import { orbita } from "@/theme/orbita";
 
 export default function PerfilScreen() {
@@ -113,6 +115,31 @@ export default function PerfilScreen() {
         </Pressable>
         <View style={{ height: orbita.spacing.xl }} />
         <Pill label="EDITAR DATOS" onPress={() => router.push("/editar-datos")} />
+
+        {/* ─── TESTING · SACAR ANTES DEL LAUNCH ─────────────────────────────
+            Solo apuntando a dev/testing (jamás con Clerk pk_live). Repite el
+            recorrido educativo del primer día: borra ÚNICAMENTE los flags de
+            primera vez (orbita:first-run) y entra a la ceremonia. No toca
+            perfil, sesión, carta natal, guardadas ni diario; el reveal real de
+            HOY es irreversible server-side y sigue revelado. */}
+        {!isProductionBackend(backendConfig.clerkPublishableKey) ? (
+          <>
+            <Divider />
+            <Eyebrow>TESTING (sacar antes del launch)</Eyebrow>
+            <Pressable
+              onPress={async () => {
+                await clearFirstRunFlags();
+                router.push("/recepcion");
+              }}
+              accessibilityRole="button"
+              style={styles.testingBtn}
+              hitSlop={8}
+            >
+              <Text style={styles.testingText}>REPETIR PRIMER DÍA</Text>
+            </Pressable>
+          </>
+        ) : null}
+        {/* ─── FIN TESTING ─────────────────────────────────────────────── */}
       </Section>
     </OrbitaScreen>
   );
@@ -130,6 +157,23 @@ const styles = StyleSheet.create({
   },
   logoutText: {
     color: orbita.colors.bone,
+    fontFamily: orbita.fonts.monoMedium,
+    fontSize: 12,
+    letterSpacing: 1
+  },
+  // TESTING · sacar junto con el botón antes del launch.
+  testingBtn: {
+    alignSelf: "flex-start",
+    borderColor: "rgba(196,106,58,0.6)",
+    borderRadius: 999,
+    borderStyle: "dashed",
+    borderWidth: 1,
+    marginTop: orbita.spacing.md,
+    paddingHorizontal: orbita.spacing.lg,
+    paddingVertical: orbita.spacing.sm
+  },
+  testingText: {
+    color: orbita.colors.copper,
     fontFamily: orbita.fonts.monoMedium,
     fontSize: 12,
     letterSpacing: 1

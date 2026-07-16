@@ -13,6 +13,8 @@ import { chartMock } from "@/content/chartMock";
 import { personalityMock } from "@/content/personalityMock";
 import { valuesMock } from "@/content/valuesMock";
 import { useLiveApp } from "@/hooks/useLiveApp";
+import { shouldShowCartaQueEs } from "@/domain/firstDay";
+import { markFirstRun, useFirstRun } from "@/services/firstRun";
 import {
   appApi,
   type NatalChartAspect,
@@ -101,6 +103,21 @@ function CartaView({
   const { width } = useWindowDimensions();
   const [view, setView] = useState<"circulo" | "tabla">("circulo");
   const [selected, setSelected] = useState<string | undefined>();
+  // QUÉ ES (Figma sección 13, B5b): la primera visita de la vida al tab explica
+  // qué es una carta natal. La decisión se toma UNA vez al hidratar los flags
+  // (si se marcara y releyera, el bloque desaparecería delante del usuario);
+  // queda visible toda la visita y se marca visto al presentarlo.
+  const { ready: flagsReady, flags } = useFirstRun();
+  const [showQueEs, setShowQueEs] = useState(false);
+  const queEsDecided = useRef(false);
+  useEffect(() => {
+    if (!flagsReady || queEsDecided.current) return;
+    queEsDecided.current = true;
+    if (shouldShowCartaQueEs(flags)) {
+      setShowQueEs(true);
+      void markFirstRun({ cartaQueEsVisto: true });
+    }
+  }, [flagsReady, flags]);
   const wheelSize = Math.min(width - orbita.spacing.gutter * 2, 360);
   const radarSize = Math.min(width - orbita.spacing.gutter * 2, 340);
   const sel = payload.placements.find((p) => p.key === selected);
@@ -119,6 +136,17 @@ function CartaView({
         <Eyebrow>Tu carta natal</Eyebrow>
         <H2>Tu mapa de origen.</H2>
       </Section>
+
+      {showQueEs ? (
+        <Section style={{ paddingTop: 0, paddingBottom: orbita.spacing.lg }}>
+          <Eyebrow>QUÉ ES</Eyebrow>
+          <Body bone>
+            Tu signo es una sola pieza: el Sol. La carta es el resto — Luna, ascendente, diez planetas y doce casas,
+            donde estaban en el momento y lugar exactos en que naciste. Es el mapa de cómo funcionás. Todo lo que
+            Órbita te lea, se lee acá.
+          </Body>
+        </Section>
+      ) : null}
 
       <CartaTriad triad={payload.triad} />
 

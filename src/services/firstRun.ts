@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { storageKeys } from "@/domain/storageKeys";
 
 /** Hitos de primera vez del "día 1" (Bloque B del plan Hook, 2026-07-14).
  *
@@ -16,7 +17,7 @@ export type FirstRunFlags = {
   cartaQueEsVisto?: boolean;
 };
 
-const KEY = "orbita:first-run";
+const KEY = storageKeys.firstRun;
 
 // Cache de módulo + suscriptores: todas las pantallas ven el mismo estado sin
 // recargar de AsyncStorage, y un mark en la Home actualiza al tab Carta montado.
