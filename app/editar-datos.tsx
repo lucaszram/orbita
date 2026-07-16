@@ -1,6 +1,14 @@
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import {
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View
+} from "react-native";
 import { Redirect, useRouter } from "expo-router";
 
 import { Text } from "@/components/ui/text";
@@ -176,7 +184,20 @@ export default function EditarDatosRoute() {
         </Pressable>
       </View>
 
-      <View style={styles.body}>
+      {/* Header fijo; el formulario scrollea (en pantallas chicas "Lugar",
+          los resultados y Guardar/Cancelar quedaban fuera de pantalla) y
+          esquiva el teclado en iOS. keyboardShouldPersistTaps: se puede
+          elegir una ciudad de la lista con el teclado abierto. */}
+      <KeyboardAvoidingView
+        style={styles.fill}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <ScrollView
+          style={styles.fill}
+          contentContainerStyle={styles.body}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
         <Title>Tus datos{"\n"}de nacimiento.</Title>
         <Body style={styles.sub}>Afinan toda la lectura. Guardá solo si cambiaste algo.</Body>
 
@@ -282,14 +303,15 @@ export default function EditarDatosRoute() {
         >
           <Text style={styles.cancelText}>Cancelar</Text>
         </Pressable>
-      </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   backBtn: { alignItems: "flex-start", height: 30, justifyContent: "center", width: 28 },
-  body: { flex: 1, paddingHorizontal: GUTTER, paddingTop: 18 },
+  body: { flexGrow: 1, paddingBottom: 48, paddingHorizontal: GUTTER, paddingTop: 18 },
   cancelRow: { alignItems: "center", marginTop: 16, paddingBottom: 10 },
   cancelText: { color: orbita.faint, fontFamily: font.sans, fontSize: 14 },
   chev: { color: orbita.bone, fontFamily: font.sans, fontSize: 26, lineHeight: 30 },
@@ -310,7 +332,7 @@ const styles = StyleSheet.create({
   picker: { alignSelf: "center" },
   placeCurrent: { marginTop: 6 },
   saveError: { color: "#D07A5A", marginBottom: 12 },
-  spacer: { flex: 1, minHeight: 18 },
+  spacer: { height: 24 },
   sub: { marginTop: 10 },
   timeRow: {
     alignItems: "center",
