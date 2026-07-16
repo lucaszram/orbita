@@ -1,5 +1,11 @@
 # Contrato — CHANGELOG
 
+## 2026-07-16 — Recuperación remota de lecturas guardadas
+- **Qué cambió:** nueva query autenticada `readings.listSaved({ limit? })`. Devuelve, de más nueva a más vieja, `{ savedReadingId, readingId, readingDate, readingPayload, note, createdAt }` para las lecturas que sí llegaron a `savedReadings` en Convex. Límite por defecto 60, máximo 120.
+- **Por qué:** un simulador o teléfono nuevo no tiene el `AsyncStorage` anterior. La app necesita mergear el archivo remoto con el local sin confundir “remoto vacío” con “borrar lo local”.
+- **Límite honesto:** esto recupera lecturas guardadas explícitamente; no inventa cartas que solo se revelaron localmente antes de existir `dailyGuides`.
+- **Estado:** backend implementado; frontend pendiente de validar cada payload, integrar `listSaved` y `unsave`, y mergear por `readingPayload.id` (fecha+carta como fallback), con lo local primero.
+
 ## 2026-07-16 — Recuperación del motor natal largo original
 - **Qué cambió:** `charts.generatePersonalityReading()` vuelve a usar el motor rico `generateNatalReadingWithGateway`, preservado en `b341606`/snapshot productivo `135861e`. El prompt recibe la carta completa (placements, casas, aspectos y precisión), genera los siete capítulos canónicos (`identidad`, `emocional`, `mente`, `amor`, `impulso`, `expansion`, `estructura`) y usa un presupuesto de 7000 tokens. Se elimina el motor inline posterior que reducía la carta a siete líneas aisladas y 1400 tokens.
 - **Contrato:** no cambia ninguna firma pública. `charts.personalityReading()` conserva `PersonalityReadingPayload` y sigue cayendo a la plantilla determinística mientras se genera la lectura rica.
