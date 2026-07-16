@@ -1,5 +1,11 @@
 # Contrato — CHANGELOG
 
+## 2026-07-16 — Recuperación del motor natal largo original
+- **Qué cambió:** `charts.generatePersonalityReading()` vuelve a usar el motor rico `generateNatalReadingWithGateway`, preservado en `b341606`/snapshot productivo `135861e`. El prompt recibe la carta completa (placements, casas, aspectos y precisión), genera los siete capítulos canónicos (`identidad`, `emocional`, `mente`, `amor`, `impulso`, `expansion`, `estructura`) y usa un presupuesto de 7000 tokens. Se elimina el motor inline posterior que reducía la carta a siete líneas aisladas y 1400 tokens.
+- **Contrato:** no cambia ninguna firma pública. `charts.personalityReading()` conserva `PersonalityReadingPayload` y sigue cayendo a la plantilla determinística mientras se genera la lectura rica.
+- **Regresión cubierta:** el parser rechaza respuestas incompletas o desordenadas; las pruebas exigen los siete capítulos, Júpiter, casas, aspectos, integraciones Sol+Ascendente y Venus+Marte, y el presupuesto largo.
+- **Guardrails:** entretenimiento y autoconocimiento; sin destino, salud, dinero, consejo legal ni posiciones/casas inventadas.
+
 Registro de cambios del **contrato** entre backend (Codex) y frontend (Claude).
 El contrato es `convex/schema.ts` + las firmas `args`/`returns` de cada función Convex pública.
 El puente de tipos (`convex/_generated/`) se deriva de acá y lo commitea el backend.
