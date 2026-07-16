@@ -151,7 +151,8 @@ export default function DiarioScreen() {
         <>
           <View style={styles.center}>
             <View style={styles.bigCard}>
-              {image ? <Image source={image} style={styles.bigImg} resizeMode="cover" /> : null}
+              {/* id fuera del mazo local → dorso, nunca el marco vacío */}
+              <Image source={image ?? CARD_BACK} style={styles.bigImg} resizeMode="cover" />
             </View>
           </View>
           <H2>Te salió {cardName}.</H2>

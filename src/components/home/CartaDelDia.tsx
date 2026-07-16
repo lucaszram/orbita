@@ -141,7 +141,9 @@ export function CartaDelDia({
     transform: [{ scale: interpolate(breath.value, [0, 1], [1, 1.08]) }]
   }));
 
-  const image = carta ? cardById(carta.id)?.image : undefined;
+  // Carta con id fuera del mazo local (payload futuro/dañado): la cara cae
+  // al dorso, nunca queda sin imagen.
+  const image = carta ? cardById(carta.id)?.image ?? CARD_BACK : undefined;
 
   return (
     <Section style={styles.section}>

@@ -94,3 +94,47 @@ const MINORS: TarotCatalogCard[] = SUITS.flatMap((suit, suitIndex) =>
 
 /** Las 78 cartas, posicionales: `TAROT_CATALOG[id].id === id`. */
 export const TAROT_CATALOG: ReadonlyArray<TarotCatalogCard> = Object.freeze([...MAJORS, ...MINORS]);
+
+/** Sorteo determinístico del INVITADO: FNV-1a de la fecha sobre el mazo
+ *  completo — mismo dominio 0–77 que el sorteo real del backend. La misma
+ *  fecha da siempre el mismo id, para todos los invitados. */
+export function guestCardIdForDate(localDate: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < localDate.length; i += 1) {
+    hash ^= localDate.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0) % TAROT_CATALOG.length;
+}
+
+/** Carta del día para el modo INVITADO (sin backend que sortee ni recuerde).
+ *  Los beats son la versión genérica (datos mecánicos del catálogo); la
+ *  lectura completa (carta + tu cielo) es del backend. Sin imagen: eso lo
+ *  resuelve el consumidor con `cardById` de tarotDeck. */
+export function guestCardOfTheDay(localDate: string) {
+  const card = TAROT_CATALOG[guestCardIdForDate(localDate)];
+  const suit = card.suit ? SUITS.find((s) => s.key === card.suit) : undefined;
+  const queEs =
+    card.arcana === "major"
+      ? `${card.nombre} es uno de los 22 Arcanos Mayores del tarot. Su correspondencia astrológica es ${card.correspondencia}.`
+      : `${card.nombre} es uno de los 56 Arcanos Menores del tarot. Su palo es ${suit?.label ?? ""} (${suit?.element ?? ""}).`;
+  return {
+    id: card.id,
+    nombre: card.nombre,
+    correspondencia: card.correspondencia,
+    beats: [
+      {
+        label: "QUÉ ES",
+        body: queEs
+      },
+      {
+        label: "CÓMO INFLUYE HOY",
+        body: `Usala como lente del día: qué de ${card.nombre} aparece hoy en lo que tenés entre manos.`
+      },
+      {
+        label: "CÓMO SE CONECTA CON TU CIELO",
+        body: "Creá tu cuenta para que la carta se lea sobre tu carta natal y los tránsitos de hoy."
+      }
+    ]
+  };
+}

@@ -1,5 +1,9 @@
 import type { ImageSourcePropType } from "react-native";
-import { SUITS, TAROT_CATALOG, type TarotCatalogCard } from "./tarotCatalog";
+import { TAROT_CATALOG, type TarotCatalogCard } from "./tarotCatalog";
+
+// El sorteo del invitado es puro (sin assets) y vive en el catálogo; se
+// re-exporta acá para que los consumidores sigan importando de tarotDeck.
+export { guestCardIdForDate, guestCardOfTheDay } from "./tarotCatalog";
 
 /** El mazo completo con sus ilustraciones. El catálogo (ids, nombres, keys)
  *  vive en `tarotCatalog.ts` (puro, testeable en node); acá solo se le suma
@@ -85,7 +89,8 @@ const IMAGES: Record<string, ImageSourcePropType> = {
   pentacles_page: require("../../assets/orbita/optimized/tarot/pentacles_page.jpg"),
   pentacles_knight: require("../../assets/orbita/optimized/tarot/pentacles_knight.jpg"),
   pentacles_queen: require("../../assets/orbita/optimized/tarot/pentacles_queen.jpg"),
-  pentacles_king: require("../../assets/orbita/optimized/tarot/pentacles_king.jpg"),};
+  pentacles_king: require("../../assets/orbita/optimized/tarot/pentacles_king.jpg")
+};
 
 export const TAROT_DECK: ReadonlyArray<TarotDeckCard> = TAROT_CATALOG.map((card) => ({
   ...card,
@@ -106,41 +111,3 @@ export const CARD_BACK: ImageSourcePropType = require("../../assets/orbita/optim
 /** Resolución por id 0–77 (contrato PR #15). Un id fuera de rango (payload
  *  futuro/dañado) devuelve undefined: los consumidores caen al dorso. */
 export const cardById = (id: number): TarotDeckCard | undefined => TAROT_DECK[id];
-
-/** Carta del día para el modo INVITADO (sin backend que sortee ni recuerde):
- *  sorteo determinístico por fecha (FNV-1a) sobre el mazo COMPLETO — mismo
- *  dominio 0–77 que el sorteo real. La misma carta para todos los invitados
- *  ese día, estable durante todo el día. Los beats son la versión genérica
- *  (datos mecánicos del catálogo); la lectura completa es del backend. */
-export function guestCardOfTheDay(localDate: string) {
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < localDate.length; i += 1) {
-    hash ^= localDate.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  const card = TAROT_DECK[(hash >>> 0) % TAROT_DECK.length];
-  const suit = card.suit ? SUITS.find((s) => s.key === card.suit) : undefined;
-  const queEs =
-    card.arcana === "major"
-      ? `${card.nombre} es uno de los 22 Arcanos Mayores del tarot. Su correspondencia astrológica es ${card.correspondencia}.`
-      : `${card.nombre} es uno de los 56 Arcanos Menores del tarot. Su palo es ${suit?.label ?? ""} (${suit?.element ?? ""}).`;
-  return {
-    id: card.id,
-    nombre: card.nombre,
-    correspondencia: card.correspondencia,
-    beats: [
-      {
-        label: "QUÉ ES",
-        body: queEs
-      },
-      {
-        label: "CÓMO INFLUYE HOY",
-        body: `Usala como lente del día: qué de ${card.nombre} aparece hoy en lo que tenés entre manos.`
-      },
-      {
-        label: "CÓMO SE CONECTA CON TU CIELO",
-        body: "Creá tu cuenta para que la carta se lea sobre tu carta natal y los tránsitos de hoy."
-      }
-    ]
-  };
-}

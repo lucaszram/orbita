@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
-import { TAROT_CATALOG } from "../src/content/tarotCatalog";
+import { guestCardIdForDate, guestCardOfTheDay, TAROT_CATALOG } from "../src/content/tarotCatalog";
 
 const ASSETS_DIR = path.resolve(process.cwd(), "assets/orbita/optimized/tarot");
 
@@ -55,11 +55,54 @@ describe("catálogo de 78 cartas — espejo del contrato PR #15", () => {
     assert.equal(TAROT_CATALOG[64].correspondencia, "Oros · Tierra");
   });
 
+  it("un id fuera del mazo NO resuelve: los consumidores caen al dorso (CARD_BACK)", () => {
+    // `cardById` de tarotDeck es acceso posicional sobre este catálogo; acá se
+    // fija el contrato: fuera de 0–77 → undefined, jamás una carta equivocada.
+    assert.equal(TAROT_CATALOG[78], undefined);
+    assert.equal(TAROT_CATALOG[-1], undefined);
+    assert.equal(TAROT_CATALOG[Number.NaN as unknown as number], undefined);
+  });
+
   it("cada carta tiene su asset real en assets/orbita/optimized/tarot (y el dorso existe)", () => {
     for (const card of TAROT_CATALOG) {
       const file = path.join(ASSETS_DIR, `${card.key}.jpg`);
       assert.ok(existsSync(file), `falta el asset ${card.key}.jpg (id ${card.id}, ${card.nombre})`);
     }
     assert.ok(existsSync(path.join(ASSETS_DIR, "orbita_card_back_orbits.jpg")));
+  });
+});
+
+describe("sorteo del invitado — determinístico sobre el mazo completo", () => {
+  const year2026 = Array.from({ length: 366 }, (_, i) => {
+    const date = new Date(Date.UTC(2026, 0, 1 + i));
+    return date.toISOString().slice(0, 10);
+  });
+
+  it("la misma fecha da siempre el mismo id", () => {
+    for (const date of ["2026-07-16", "2026-01-01", "2026-12-31"]) {
+      assert.equal(guestCardIdForDate(date), guestCardIdForDate(date));
+    }
+  });
+
+  it("todo un año cae dentro de 0–77, con enteros, y usa el mazo completo (no solo mayores)", () => {
+    const ids = year2026.map((date) => guestCardIdForDate(date));
+    for (const id of ids) {
+      assert.ok(Number.isInteger(id) && id >= 0 && id <= 77, `id fuera de rango: ${id}`);
+    }
+    assert.ok(ids.some((id) => id > 21), "el sorteo nunca salió de los mayores: no está usando las 78");
+  });
+
+  it("guestCardOfTheDay usa exactamente ese id (y los datos del catálogo)", () => {
+    for (const date of ["2026-07-16", "2026-02-14", "2026-11-30"]) {
+      const id = guestCardIdForDate(date);
+      const card = guestCardOfTheDay(date);
+      assert.equal(card.id, id);
+      assert.equal(card.nombre, TAROT_CATALOG[id].nombre);
+      assert.equal(card.correspondencia, TAROT_CATALOG[id].correspondencia);
+      assert.equal(card.beats.length, 3);
+      // el beat QUÉ ES describe el arcano correcto según su tipo
+      const esperado = TAROT_CATALOG[id].arcana === "major" ? "22 Arcanos Mayores" : "56 Arcanos Menores";
+      assert.ok(card.beats[0].body.includes(esperado));
+    }
   });
 });
