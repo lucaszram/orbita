@@ -10,6 +10,7 @@ const keys = {
   profile: "orbita:profile",
   profileOwner: "orbita:profile-owner",
   savedReadings: "orbita:saved-readings",
+  savedReadingTombstones: "orbita:saved-readings-tombstones",
   journal: "orbita:journal"
 };
 
@@ -47,6 +48,17 @@ export async function storeSavedReadings(readings: DailyReading[]): Promise<void
   await writeJSON(keys.savedReadings, readings);
 }
 
+// Lápidas de guardadas borradas (claves de savedReadingsSync): impiden que el
+// merge remoto resucite una lectura y dejan pendiente el `unsave` en Convex.
+export async function getSavedReadingTombstones(): Promise<string[]> {
+  const stored = await readJSON<string[]>(keys.savedReadingTombstones, []);
+  return Array.isArray(stored) ? stored.filter((key) => typeof key === "string") : [];
+}
+
+export async function storeSavedReadingTombstones(tombstones: string[]): Promise<void> {
+  await writeJSON(keys.savedReadingTombstones, tombstones);
+}
+
 export async function getJournalEntries(): Promise<JournalEntry[]> {
   return readJSON<JournalEntry[]>(keys.journal, []);
 }
@@ -70,7 +82,13 @@ export async function storeProfileOwner(userId: string | null): Promise<void> {
 }
 
 export async function clearLocalData(): Promise<void> {
-  await AsyncStorage.multiRemove([keys.profile, keys.profileOwner, keys.savedReadings, keys.journal]);
+  await AsyncStorage.multiRemove([
+    keys.profile,
+    keys.profileOwner,
+    keys.savedReadings,
+    keys.savedReadingTombstones,
+    keys.journal
+  ]);
 }
 
 // --- Snapshot local por cuenta (logout sin pérdida; ver domain/accountLocalData) ---

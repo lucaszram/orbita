@@ -9,7 +9,7 @@ import {
   useState
 } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { appApi, NatalChartDoc } from "@/services/appRefs";
+import { appApi, NatalChartDoc, SavedReadingListItem } from "@/services/appRefs";
 import { backendConfig } from "@/services/backendProviders";
 import { OrbitaAuth, useOrbitaAuth } from "@/hooks/useOrbitaAuth";
 
@@ -184,6 +184,45 @@ function useLiveHomeInner(isLive: boolean, localDate: string, holdLive: boolean)
   return {
     payload: record?.payload ?? held,
     saveLive: isLive ? saveLive : null
+  };
+}
+
+export type LiveSavedReadings = {
+  /** Filas de `readings.listSaved`, o null sin live / mientras la query resuelve. */
+  rows: SavedReadingListItem[] | null;
+  /** true solo mientras hay live y el archivo remoto todavía no llegó. */
+  loading: boolean;
+  /** Borra una fila remota; true si el backend la eliminó (null sin live). */
+  unsaveRemote: ((savedReadingId: string) => Promise<boolean>) | null;
+};
+
+const NO_LIVE_SAVED: LiveSavedReadings = { rows: null, loading: false, unsaveRemote: null };
+
+export function useLiveSavedReadings(isLive: boolean): LiveSavedReadings {
+  if (!HAS_CONVEX) return NO_LIVE_SAVED;
+  return useLiveSavedReadingsInner(isLive);
+}
+
+function useLiveSavedReadingsInner(isLive: boolean): LiveSavedReadings {
+  const rows = useQuery(appApi.readings.listSaved, isLive ? {} : "skip");
+  const unsave = useMutation(appApi.readings.unsave);
+
+  const unsaveRemote = useCallback(
+    async (savedReadingId: string) => {
+      try {
+        return (await unsave({ savedReadingId })) === true;
+      } catch {
+        // sin red: la lápida local queda pendiente y se reintenta después
+        return false;
+      }
+    },
+    [unsave]
+  );
+
+  return {
+    rows: Array.isArray(rows) ? rows : null,
+    loading: isLive && rows === undefined,
+    unsaveRemote: isLive ? unsaveRemote : null
   };
 }
 

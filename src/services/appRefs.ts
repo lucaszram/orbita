@@ -103,6 +103,17 @@ export type DailyReadingDoc = Doc<{
   payload: PublicDailyHome;
 }>;
 
+/** Fila de `readings.listSaved` (contrato PR #12): archivo remoto de guardadas. */
+export type SavedReadingListItem = {
+  savedReadingId: string;
+  readingId: string | null;
+  readingDate: string;
+  /** Payload legado completo; el front lo valida antes de usarlo. */
+  readingPayload: unknown;
+  note: string | null;
+  createdAt: number;
+};
+
 export type OnboardingDraftInput = {
   clientDraftId?: string;
   currentStep: number;
@@ -389,7 +400,22 @@ export const appApi = {
       { readingId?: string; readingDate: string; readingPayload: unknown; note?: string },
       unknown
     >,
-    unsave: anyApi.readings.unsave as FunctionReference<"mutation", "public", { readingId: string }, unknown>
+    // Archivo remoto de guardadas (contrato PR #12): más nueva primero; el
+    // front valida cada `readingPayload` y mergea con lo local primero.
+    listSaved: anyApi.readings.listSaved as FunctionReference<
+      "query",
+      "public",
+      { limit?: number },
+      SavedReadingListItem[]
+    >,
+    // `readingId` acá es el _id de `dailyReadings` (casi siempre ausente en
+    // nuestras filas); el borrado real va por `savedReadingId`.
+    unsave: anyApi.readings.unsave as FunctionReference<
+      "mutation",
+      "public",
+      { savedReadingId?: string; readingId?: string },
+      boolean
+    >
   },
   subscriptions: {
     getCurrent: anyApi.subscriptions.getCurrent as FunctionReference<
