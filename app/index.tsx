@@ -36,6 +36,7 @@ export default function IndexRoute() {
   const [clerkTimedOut, setClerkTimedOut] = useState(false);
   const [authTick, setAuthTick] = useState(0);
 
+
   useEffect(() => {
     if (IS_WEB || !BACKEND_CONFIGURED || auth?.isLoaded) return;
     const t = setTimeout(() => setClerkTimedOut(true), CLERK_LOAD_TIMEOUT_MS);
@@ -98,7 +99,14 @@ export default function IndexRoute() {
     return () => {
       cancelled = true;
     };
-  }, [decision, recovery, hydrate, createProfile, recoveryTick]);
+    // OJO: `recovery` NO va en las deps. El propio setRecovery("loading")
+    // re-ejecutaba el efecto, el cleanup marcaba cancelled=true y los
+    // callbacks del hydrate en vuelo quedaban todos cancelados: nadie seteaba
+    // done/error y el arranque quedaba en spinner para siempre (reproducido
+    // en la reinstalación con sesión activa). El guard usa el valor fresco de
+    // cada re-render disparado por las otras deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [decision, hydrate, createProfile, recoveryTick]);
 
   // Restos de un logout que no terminó de limpiar (perfil con dueño y sin
   // sesión): purgar antes de mostrar nada. Los datos ya fueron archivados

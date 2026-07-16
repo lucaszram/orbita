@@ -131,6 +131,29 @@ export function shouldAdoptPendingProfile(s: {
   return s.adoptionPending && s.hasProfile && !s.profileOwner && s.isSignedIn && !!s.userId;
 }
 
+/**
+ * Promise con tope duro. Las llamadas de Convex NO rechazan cuando el
+ * websocket/la auth no terminan de conectar: se ENCOLAN indefinidamente, así
+ * que un retry-loop que solo captura excepciones puede colgarse para siempre
+ * (spinner infinito en la recuperación). Todo camino de sesión que espere al
+ * backend debe pasar por acá.
+ */
+export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("orbita-session-timeout")), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+}
+
 /** Forma mínima del doc `birthData` de Convex que necesita la hidratación. */
 export type RemoteBirthData = {
   birthDate: string;

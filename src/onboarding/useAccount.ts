@@ -3,6 +3,7 @@ import * as WebBrowser from "expo-web-browser";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAction, useConvex, useMutation, useQuery } from "convex/react";
 
+import { withTimeout } from "@/domain/sessionStart";
 import { deviceTimezone } from "@/hooks/useLiveApp";
 import { useOrbitaAuth } from "@/hooks/useOrbitaAuth";
 import { appApi, type BirthDataDoc } from "@/services/appRefs";
@@ -296,13 +297,26 @@ export function useSignInHydrate(): (() => Promise<SignInHydrateResult>) | null 
   return useSignInHydrateInner();
 }
 
+// Una llamada Convex sin conexión/auth se ENCOLA sin rechazar: cada intento
+// lleva tope duro y el loop completo tiene presupuesto — la recuperación
+// termina SIEMPRE (ok o error con reintento), nunca spinner infinito.
+const HYDRATE_BUDGET_MS = 15000;
+const HYDRATE_CALL_TIMEOUT_MS = 5000;
+
 function useSignInHydrateInner(): () => Promise<SignInHydrateResult> {
   const convex = useConvex();
   return useCallback(async () => {
-    for (let i = 0; i < 12; i++) {
+    const deadline = Date.now() + HYDRATE_BUDGET_MS;
+    while (Date.now() < deadline) {
       try {
-        const user = await convex.mutation(appApi.users.getOrCreateCurrentUser, {});
-        const birthData = await convex.query(appApi.birthData.getCurrent, {});
+        const user = await withTimeout(
+          convex.mutation(appApi.users.getOrCreateCurrentUser, {}),
+          HYDRATE_CALL_TIMEOUT_MS
+        );
+        const birthData = await withTimeout(
+          convex.query(appApi.birthData.getCurrent, {}),
+          HYDRATE_CALL_TIMEOUT_MS
+        );
         return {
           status: "ok",
           birthData,

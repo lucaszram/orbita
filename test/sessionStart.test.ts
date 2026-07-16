@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   commitProfileCreation,
+  withTimeout,
   onboardingInputFromBirthData,
   resolveProfileOwnerAtCreation,
   resolveStart,
@@ -252,6 +253,24 @@ describe("carrera post-verify — el perfil termina con el owner correcto", () =
       }),
       false
     );
+  });
+});
+
+describe("withTimeout — las llamadas Convex encoladas no cuelgan la sesión", () => {
+  it("resuelve normal dentro del tope", async () => {
+    const value = await withTimeout(Promise.resolve("ok"), 50);
+    assert.equal(value, "ok");
+  });
+
+  it("una promesa que nunca resuelve (mutation encolada) rechaza al vencer el tope", async () => {
+    await assert.rejects(
+      withTimeout(new Promise(() => undefined), 30),
+      /orbita-session-timeout/
+    );
+  });
+
+  it("propaga el rechazo original si llega antes del tope", async () => {
+    await assert.rejects(withTimeout(Promise.reject(new Error("server")), 50), /server/);
   });
 });
 
