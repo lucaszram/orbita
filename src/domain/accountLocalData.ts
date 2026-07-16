@@ -17,6 +17,13 @@ export type AccountSnapshot = {
   profile: UserProfile | null;
   savedReadings: DailyReading[];
   journalEntries: JournalEntry[];
+  /**
+   * Lápidas de guardadas con `unsave` remoto todavía sin confirmar (ver
+   * savedReadingsSync). Viajan con la cuenta: si se pierden en el logout, la
+   * lectura borrada resucita desde `listSaved` en el próximo login. Ausente
+   * en snapshots viejos → [].
+   */
+  savedReadingTombstones: string[];
 };
 
 /** Límites de las listas activas (los mismos que usa useAppState). */
@@ -31,14 +38,21 @@ export function buildAccountSnapshot(
   profile: UserProfile | null,
   savedReadings: DailyReading[],
   journalEntries: JournalEntry[],
-  savedAt: string
+  savedAt: string,
+  savedReadingTombstones: string[] = []
 ): AccountSnapshot {
-  return { version: 1, savedAt, profile, savedReadings, journalEntries };
+  return { version: 1, savedAt, profile, savedReadings, journalEntries, savedReadingTombstones };
 }
 
-/** ¿Hay algo que valga la pena archivar? (Si no, no se escribe snapshot.) */
+/** ¿Hay algo que valga la pena archivar? (Si no, no se escribe snapshot.)
+ *  Una lápida pendiente también es data: perderla resucita un borrado. */
 export function snapshotHasData(snapshot: AccountSnapshot): boolean {
-  return snapshot.profile != null || snapshot.savedReadings.length > 0 || snapshot.journalEntries.length > 0;
+  return (
+    snapshot.profile != null ||
+    snapshot.savedReadings.length > 0 ||
+    snapshot.journalEntries.length > 0 ||
+    snapshot.savedReadingTombstones.length > 0
+  );
 }
 
 /**
@@ -73,7 +87,10 @@ export function parseAccountSnapshot(raw: string | null): AccountSnapshot | null
       savedAt: typeof value.savedAt === "string" ? value.savedAt : "",
       profile: value.profile && typeof value.profile === "object" ? (value.profile as UserProfile) : null,
       savedReadings: value.savedReadings as DailyReading[],
-      journalEntries: value.journalEntries as JournalEntry[]
+      journalEntries: value.journalEntries as JournalEntry[],
+      savedReadingTombstones: Array.isArray(value.savedReadingTombstones)
+        ? (value.savedReadingTombstones as unknown[]).filter((key): key is string => typeof key === "string")
+        : []
     };
   } catch {
     return null;

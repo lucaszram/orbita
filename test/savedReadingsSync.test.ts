@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { MAX_SAVED_READINGS } from "../src/domain/accountLocalData";
+import {
+  buildAccountSnapshot,
+  MAX_SAVED_READINGS,
+  parseAccountSnapshot,
+  planLogoutArchive,
+  snapshotHasData
+} from "../src/domain/accountLocalData";
 import {
   addTombstoneKeys,
   isDailyReadingPayload,
@@ -68,6 +74,19 @@ describe("parseRemoteSavedReadings — validar antes de mezclar", () => {
     assert.equal(isDailyReadingPayload({ ...reading("r1"), headline: "" }), false);
     assert.equal(isDailyReadingPayload([]), false);
   });
+
+  it("tarotCard puede faltar, pero si viene malformada la fila se descarta", () => {
+    const sinCarta = { ...reading("r1"), tarotCard: undefined };
+    assert.equal(isDailyReadingPayload(sinCarta), true);
+    assert.equal(isDailyReadingPayload({ ...reading("r1"), tarotCard: {} }), false);
+    assert.equal(isDailyReadingPayload({ ...reading("r1"), tarotCard: { id: "" } }), false);
+    assert.equal(isDailyReadingPayload({ ...reading("r1"), tarotCard: "el-mago" }), false);
+    assert.equal(isDailyReadingPayload({ ...reading("r1"), tarotCard: ["el-mago"] }), false);
+    assert.deepEqual(
+      parseRemoteSavedReadings([{ savedReadingId: "s1", readingPayload: { ...reading("r1"), tarotCard: {} } }]),
+      []
+    );
+  });
 });
 
 describe("mergeRemoteSavedReadings — lo local primero, el remoto solo aporta", () => {
@@ -115,6 +134,23 @@ describe("mergeRemoteSavedReadings — lo local primero, el remoto solo aporta",
     assert.equal(merged.length, 2);
   });
 
+  it("sin carta no hay fallback: dos lecturas parciales del mismo día no se mezclan", () => {
+    const sinCartaLocal = { ...reading("a", "2026-07-15"), tarotCard: undefined } as unknown as DailyReading;
+    const sinCartaRemota: RemoteSavedReading = {
+      savedReadingId: "saved_b",
+      reading: { ...reading("b", "2026-07-15"), tarotCard: undefined, saved: true } as unknown as DailyReading
+    };
+    // solo clave por id: nada de `dc:fecha::`
+    assert.deepEqual(readingMatchKeys(sinCartaLocal), ["id:a"]);
+    // no se dedupean entre sí…
+    const { merged, changed } = mergeRemoteSavedReadings([sinCartaLocal], [sinCartaRemota], []);
+    assert.equal(changed, true);
+    assert.equal(merged.length, 2);
+    // …ni una lápida de la parcial "a" borra la parcial "b" del mismo día
+    const tombstones = addTombstoneKeys([], readingMatchKeys(sinCartaLocal));
+    assert.deepEqual(remoteRowsToUnsave([sinCartaRemota], tombstones), []);
+  });
+
   it("una lápida bloquea la resurrección de una lectura borrada", () => {
     const borrada = reading("r1");
     const tombstones = addTombstoneKeys([], readingMatchKeys(borrada));
@@ -145,6 +181,51 @@ describe("lápidas — el unsave remoto se confirma antes de levantarlas", () =>
     const tombstones = addTombstoneKeys([], readingMatchKeys(reading("local-id", "2026-07-15", "la-luna")));
     const pending = remoteRowsToUnsave([remote("remoto-id", "2026-07-15", "la-luna")], tombstones);
     assert.equal(pending.length, 1);
+  });
+
+  it("borrar → logout → login con unsave pendiente: la lápida viaja con la cuenta y no hay resurrección", () => {
+    // 1. Borrado local; el `unsave` remoto queda pendiente (lento/offline).
+    const borrada = reading("r1");
+    const tombstones = addTombstoneKeys([], readingMatchKeys(borrada));
+
+    // 2. Logout: las lápidas pendientes cuentan como data y entran al snapshot.
+    const snapshot = buildAccountSnapshot(null, [], [], "2026-07-16T12:00:00.000Z", tombstones);
+    assert.equal(snapshotHasData(snapshot), true);
+    assert.equal(planLogoutArchive("user_abc", snapshot), "archive");
+    assert.equal(planLogoutArchive(null, snapshot), "error"); // nunca perderlas sin respaldo
+
+    // 3. Login en el mismo teléfono: el snapshot restaura las lápidas…
+    const parsed = parseAccountSnapshot(JSON.stringify(snapshot));
+    assert.ok(parsed);
+    assert.deepEqual(parsed.savedReadingTombstones, tombstones);
+    const restauradas = addTombstoneKeys([], parsed.savedReadingTombstones);
+
+    // 4. …el servidor todavía devuelve la fila: no re-entra al merge y el
+    // borrado pendiente se retoma.
+    const { changed } = mergeRemoteSavedReadings([], [remote("r1")], restauradas);
+    assert.equal(changed, false);
+    const pendientes = remoteRowsToUnsave([remote("r1")], restauradas);
+    assert.equal(pendientes.length, 1);
+    assert.equal(pendientes[0].savedReadingId, "saved_r1");
+  });
+
+  it("snapshots viejos sin el campo siguen siendo válidos (lápidas = [])", () => {
+    const legado = JSON.stringify({
+      version: 1,
+      savedAt: "t",
+      profile: null,
+      savedReadings: [reading("r1")],
+      journalEntries: []
+    });
+    const parsed = parseAccountSnapshot(legado);
+    assert.ok(parsed);
+    assert.deepEqual(parsed.savedReadingTombstones, []);
+    // y basura adentro del campo no rompe el login
+    const conBasura = parseAccountSnapshot(
+      JSON.stringify({ ...JSON.parse(legado), savedReadingTombstones: ["id:r1", 42, null] })
+    );
+    assert.ok(conBasura);
+    assert.deepEqual(conBasura.savedReadingTombstones, ["id:r1"]);
   });
 
   it("add/remove: sin duplicados, con techo, y levantar deja re-guardar", () => {

@@ -392,7 +392,16 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   const archiveAccountData = useCallback(
     async (userId: string | null) => {
-      const snapshot = buildAccountSnapshot(profile, savedReadings, journalEntries, new Date().toISOString());
+      // Las lápidas pendientes viajan con la cuenta: si el `unsave` remoto no
+      // llegó a confirmarse, el próximo login las necesita para no resucitar
+      // la lectura desde `listSaved`.
+      const snapshot = buildAccountSnapshot(
+        profile,
+        savedReadings,
+        journalEntries,
+        new Date().toISOString(),
+        savedTombstones
+      );
       const plan = planLogoutArchive(userId, snapshot);
       if (plan === "skip") return;
       if (plan === "error") {
@@ -405,7 +414,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       // mostrárselo al próximo usuario.
       await storeProfileOwner(userId as string);
     },
-    [profile, savedReadings, journalEntries]
+    [profile, savedReadings, savedTombstones, journalEntries]
   );
 
   const restoreAccountData = useCallback(
@@ -419,6 +428,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         storeSavedReadings(merged.savedReadings),
         storeJournalEntries(merged.journalEntries)
       ]);
+      // Restaurar las lápidas archivadas: el efecto de sync retoma los
+      // `unsave` pendientes y el merge remoto no resucita lo borrado.
+      if (snapshot.savedReadingTombstones.length > 0) {
+        const nextTombstones = addTombstoneKeys(savedTombstones, snapshot.savedReadingTombstones);
+        setSavedTombstones(nextTombstones);
+        await storeSavedReadingTombstones(nextTombstones);
+      }
       // El perfil archivado vuelve solo si no hay uno activo; si Convex tiene
       // birthData, el caller lo pisa después con el remoto (el remoto gana).
       let profileRestored = false;
@@ -435,7 +451,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       await clearAccountSnapshot(userId);
       return { restored: true, profileRestored };
     },
-    [profile, savedReadings, journalEntries]
+    [profile, savedReadings, savedTombstones, journalEntries]
   );
 
   // Adopción diferida: el perfil se creó con la sesión recién activada pero

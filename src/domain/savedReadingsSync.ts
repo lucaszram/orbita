@@ -29,10 +29,17 @@ function isNonEmptyString(value: unknown): value is string {
 /**
  * ¿El payload remoto alcanza para vivir en la lista local? Pedimos lo que la
  * pantalla de guardadas y el dedupe realmente usan; el resto viaja tal cual.
+ * `tarotCard` puede faltar (payloads legados), pero si viene tiene que traer
+ * un id real: una carta malformada rompería el dedupe fecha+carta.
  */
 export function isDailyReadingPayload(value: unknown): value is DailyReading {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const reading = value as Partial<DailyReading>;
+  const reading = value as Partial<DailyReading> & { tarotCard?: unknown };
+  if (reading.tarotCard != null) {
+    const card = reading.tarotCard;
+    if (typeof card !== "object" || Array.isArray(card)) return false;
+    if (!isNonEmptyString((card as { id?: unknown }).id)) return false;
+  }
   return (
     isNonEmptyString(reading.id) &&
     isNonEmptyString(reading.date) &&
@@ -61,14 +68,18 @@ export function parseRemoteSavedReadings(rows: unknown): RemoteSavedReading[] {
   return result;
 }
 
-/** Claves de identidad de una lectura: id exacto + fecha+carta como fallback. */
+/**
+ * Claves de identidad de una lectura: id exacto + fecha+carta como fallback.
+ * El fallback existe SOLO con carta real: sin `tarotCard.id`, una clave
+ * `dc:fecha::` mezclaría lecturas parciales distintas del mismo día.
+ */
 export function readingMatchKeys(
   reading: Pick<DailyReading, "id" | "date"> & { tarotCard?: { id?: string } }
 ): string[] {
   const keys: string[] = [];
   if (isNonEmptyString(reading.id)) keys.push(`id:${reading.id}`);
-  if (isNonEmptyString(reading.date)) {
-    keys.push(`dc:${reading.date}::${reading.tarotCard?.id ?? ""}`);
+  if (isNonEmptyString(reading.date) && isNonEmptyString(reading.tarotCard?.id)) {
+    keys.push(`dc:${reading.date}::${reading.tarotCard.id}`);
   }
   return keys;
 }
