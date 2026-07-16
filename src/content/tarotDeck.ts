@@ -41,3 +41,36 @@ export const MAJOR_ARCANA: MajorArcana[] = [
 export const CARD_BACK: ImageSourcePropType = require("../../assets/orbita/optimized/tarot/orbita_card_back_orbits.jpg");
 
 export const majorById = (id: number) => MAJOR_ARCANA.find((c) => c.id === id);
+
+/** Carta del día para el modo INVITADO (sin backend que sortee ni recuerde):
+ *  sorteo determinístico por fecha (FNV-1a) — la misma carta para todos los
+ *  invitados ese día, estable durante todo el día. Los beats son la versión
+ *  genérica: la ontología editorial curada por carta llega en una tanda
+ *  aparte, y la lectura completa (carta + tu cielo) es del backend. */
+export function guestCardOfTheDay(localDate: string) {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < localDate.length; i += 1) {
+    hash ^= localDate.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  const card = MAJOR_ARCANA[(hash >>> 0) % MAJOR_ARCANA.length];
+  return {
+    id: card.id,
+    nombre: card.nombre,
+    correspondencia: card.correspondencia,
+    beats: [
+      {
+        label: "QUÉ ES",
+        body: `${card.nombre} es uno de los 22 Arcanos Mayores del tarot. Su correspondencia astrológica es ${card.correspondencia}.`
+      },
+      {
+        label: "CÓMO INFLUYE HOY",
+        body: `Usala como lente del día: qué de ${card.nombre} aparece hoy en lo que tenés entre manos.`
+      },
+      {
+        label: "CÓMO SE CONECTA CON TU CIELO",
+        body: "Creá tu cuenta para que la carta se lea sobre tu carta natal y los tránsitos de hoy."
+      }
+    ]
+  };
+}
