@@ -1,3 +1,4 @@
+import { accountSnapshotKeyPrefix } from "./storageKeys";
 import type { DailyReading, JournalEntry, UserProfile } from "./types";
 
 /**
@@ -31,7 +32,7 @@ export const MAX_SAVED_READINGS = 60;
 export const MAX_JOURNAL_ENTRIES = 120;
 
 export function accountSnapshotKey(userId: string): string {
-  return `orbita:account-snapshot:${userId}`;
+  return `${accountSnapshotKeyPrefix}${userId}`;
 }
 
 export function buildAccountSnapshot(

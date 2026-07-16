@@ -4,15 +4,8 @@ import {
   parseAccountSnapshot,
   type AccountSnapshot
 } from "@/domain/accountLocalData";
+import { storageKeys as keys } from "@/domain/storageKeys";
 import { DailyReading, JournalEntry, UserProfile } from "@/domain/types";
-
-const keys = {
-  profile: "orbita:profile",
-  profileOwner: "orbita:profile-owner",
-  savedReadings: "orbita:saved-readings",
-  savedReadingTombstones: "orbita:saved-readings-tombstones",
-  journal: "orbita:journal"
-};
 
 async function readJSON<T>(key: string, fallback: T): Promise<T> {
   const rawValue = await AsyncStorage.getItem(key);
