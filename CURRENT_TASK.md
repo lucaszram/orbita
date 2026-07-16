@@ -4,6 +4,12 @@
 
 Esta sección es la fuente de verdad actual. El contenido posterior queda como historial y contexto técnico.
 
+### Recuperación de contenido posterior a la pasada RC
+
+- Lucas validó en el simulador Release de `main`: sesión y datos reales, Home, reveal diario, carta natal, edición, reapertura y logout/login pasaron. Quedan fuera de aprobación la lectura natal corta y la recuperación del archivo anterior.
+- Cambio aislado: rama `codex/natal-reading-long-v2`. Backend solamente. La lectura rica que Lucas había visto sí existía en `b341606` y quedó preservada en el snapshot productivo `135861e`; `1d31e2a` la reemplazó después por un motor inline corto. PR #11 recupera el motor original: carta completa (placements, casas, aspectos y precisión), siete capítulos temáticos, parser estricto y pruebas anti-regresión. **Gate visual aprobado por Lucas el 2026-07-16 en el simulador dev**; el pulido editorial posterior queda para otro cambio. No toca Figma, `app/**`, `src/**`, Home, sesión, EAS ni producción.
+- Siguiente cambio, en otro PR: exponer las lecturas guardadas remotas y reconciliarlas con el archivo local. Las cartas simplemente reveladas antes del nuevo `dailyGuides` no existen todas en servidor y no deben inventarse.
+
 ### Línea base integrada en `main`
 
 - `a8c82b1` — PR #6: sesión, navegación, edición de datos y logout seguro. Lucas validó en simulador sesión existente, datos natales correctos, edición y persistencia, logout y reingreso sin pérdida.

@@ -43,6 +43,7 @@ type GatewayGenerateText = (args: {
   prompt: string;
   system: string;
   tags: string[];
+  maxTokens?: number;
 }) => Promise<{
   text: string;
   usage?: {
@@ -269,6 +270,7 @@ async function defaultGatewayGenerateText(args: {
   prompt: string;
   system: string;
   tags: string[];
+  maxTokens?: number;
 }) {
   const response = await fetch(AI_GATEWAY_CHAT_COMPLETIONS_URL, {
     method: "POST",
@@ -284,7 +286,7 @@ async function defaultGatewayGenerateText(args: {
         { role: "user", content: args.prompt }
       ],
       temperature: 0.7,
-      max_tokens: 900,
+      max_tokens: args.maxTokens ?? 900,
       stream: false,
       providerOptions: {
         gateway: {
@@ -466,4 +468,248 @@ export function mergeDailyHomeWithLlm(args: MergeDailyHomeArgs) {
     modelGaps: Array.from(new Set([...baseGaps, ...args.llm.gaps])),
     mode: generated ? `${dailyHome.mode ?? "daily_home"}+llm_gateway` : dailyHome.mode
   };
+}
+
+// ---------------------------------------------------------------------------
+// Interpretación natal larga — 7 capítulos temáticos desde la carta completa.
+// ---------------------------------------------------------------------------
+
+export type NatalReadingSection = {
+  key: string;
+  title: string;
+  intro: string;
+  placement: { label: string; planet: string; sign?: string; house?: number };
+  body: string;
+  questions: string[];
+};
+
+export type NatalReadingPayload = {
+  headline: string;
+  sections: NatalReadingSection[];
+  disclaimer: string;
+};
+
+export type NatalReadingResult = {
+  status: "success" | "disabled" | "not_configured" | "error";
+  provider: "vercel-ai-gateway";
+  model?: string;
+  promptVersion: string;
+  cacheVersion: string;
+  payload?: NatalReadingPayload;
+  usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number };
+  gaps: string[];
+  warnings: string[];
+  error?: string;
+};
+
+export const NATAL_SECTION_KEYS = [
+  "identidad",
+  "emocional",
+  "mente",
+  "amor",
+  "impulso",
+  "expansion",
+  "estructura"
+] as const;
+
+const NATAL_SECTION_SPEC = [
+  { key: "identidad", title: "Tu identidad", planets: "Sol (identidad central) + Ascendente (cómo te presentás)" },
+  { key: "emocional", title: "Tu mundo emocional", planets: "Luna (necesidades emocionales, mundo interno)" },
+  { key: "mente", title: "Cómo pensás y comunicás", planets: "Mercurio (mente, aprendizaje, comunicación)" },
+  { key: "amor", title: "Amor y vínculos", planets: "Venus (cómo amás y disfrutás) + Marte (deseo)" },
+  { key: "impulso", title: "Tu impulso", planets: "Marte (acción, energía, cómo avanzás)" },
+  {
+    key: "expansion",
+    title: "Dónde te expandís",
+    planets: "Júpiter (crecimiento, dónde florecés) — sin promesas de suerte, dinero o éxito"
+  },
+  { key: "estructura", title: "Estructura y madurez", planets: "Saturno (límites, constancia y madurez)" }
+] as const;
+
+const NATAL_GUARDRAILS = [
+  "Producto de entretenimiento, autoconocimiento y contexto — nunca predicción ni diagnóstico.",
+  "No prometas destino, dinero, éxito, salud ni resultados garantizados en amor o trabajo.",
+  "No des órdenes ni consejo médico, legal, financiero o psicológico. Evitá 'tenés que'.",
+  "No copies la voz de proveedores astrológicos externos.",
+  "Español rioplatense con voseo, tildes y signos de apertura (¿ ¡)."
+];
+
+export function buildNatalReadingGatewayPrompt(chartPayload: unknown) {
+  const chart = asRecord(chartPayload);
+  const sectionsSpec = NATAL_SECTION_SPEC.map(
+    (section, index) => `${index + 1}. key "${section.key}" — "${section.title}": ${section.planets}`
+  ).join("\n");
+
+  return `Sos la capa editorial de Órbita. Escribí una lectura LARGA de la carta natal completa, organizada en 7 capítulos temáticos, en español rioplatense con voseo.
+
+Tono y estructura de CADA body (~4 párrafos que lleven al lector):
+1) Explicá en simple qué representa ese planeta o punto.
+2) Explicá qué aporta su signo concreto.
+3) Explicá qué agrega su casa concreta.
+4) Integrá los aspectos relevantes y cerrá con un borde de crecimiento, sin dar órdenes.
+
+Los capítulos no son siete posiciones aisladas: identidad integra Sol + Ascendente; amor integra Venus + Marte. Usá también casas y aspectos para explicar cómo se relacionan las piezas de esta carta.
+
+Guardrails obligatorios:
+${NATAL_GUARDRAILS.map((guardrail) => `- ${guardrail}`).join("\n")}
+
+Devolvé SOLO JSON válido con esta forma EXACTA (7 secciones, en este orden y con estas keys):
+{
+  "headline": "string",
+  "sections": [
+    {
+      "key": "identidad|emocional|mente|amor|impulso|expansion|estructura",
+      "title": "string",
+      "intro": "string",
+      "placement": { "label": "string", "planet": "string", "sign": "string opcional", "house": 7 },
+      "body": "string largo, ~4 párrafos separados por \\n\\n",
+      "questions": ["1 o 2 preguntas personales con ¿?"]
+    }
+  ],
+  "disclaimer": "string"
+}
+
+Las 7 secciones, en orden:
+${sectionsSpec}
+
+Usá únicamente los datos reales de la carta. Si falta el Ascendente o alguna casa por hora desconocida, no lo inventes: explicá suavemente el límite y trabajá con lo disponible.
+
+Carta natal normalizada completa:
+${compactForPrompt(
+    {
+      placements: chart.placements ?? chart.summary ?? null,
+      houses: chart.houses ?? null,
+      aspects: chart.aspects ?? null,
+      accuracy: chart.accuracy ?? null
+    },
+    9000
+  )}`;
+}
+
+export function parseNatalReadingText(text: string): NatalReadingPayload | null {
+  try {
+    const parsed = asRecord(JSON.parse(stripJsonFence(text)));
+    const rawSections = Array.isArray(parsed.sections) ? parsed.sections : [];
+    const sections: NatalReadingSection[] = rawSections
+      .map((raw): NatalReadingSection | null => {
+        const section = asRecord(raw);
+        const placement = asRecord(section.placement);
+        const key = readString(section.key);
+        const body = readString(section.body);
+        if (!key || body.split(/\n\s*\n/).filter(Boolean).length < 4) return null;
+
+        const questions = Array.isArray(section.questions)
+          ? section.questions
+              .filter((question): question is string => typeof question === "string" && question.trim().length > 0)
+              .map((question) => question.trim())
+              .slice(0, 2)
+          : [];
+        if (questions.length < 1) return null;
+
+        const normalizedPlacement: NatalReadingSection["placement"] = {
+          label: readString(placement.label),
+          planet: readString(placement.planet)
+        };
+        if (typeof placement.sign === "string") normalizedPlacement.sign = placement.sign;
+        if (typeof placement.house === "number") normalizedPlacement.house = placement.house;
+
+        return {
+          key,
+          title: readString(section.title, key),
+          intro: readString(section.intro),
+          placement: normalizedPlacement,
+          body,
+          questions
+        };
+      })
+      .filter((section): section is NatalReadingSection => section !== null);
+
+    if (
+      sections.length !== NATAL_SECTION_KEYS.length ||
+      sections.some((section, index) => section.key !== NATAL_SECTION_KEYS[index])
+    ) {
+      return null;
+    }
+
+    return {
+      headline: readString(parsed.headline, "Tu carta, leída de principio a fin."),
+      sections,
+      disclaimer: readString(
+        parsed.disclaimer,
+        "Esta lectura describe tendencias de tu carta natal, en clave de autoconocimiento. No es una predicción ni un diagnóstico."
+      )
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function generateNatalReadingWithGateway(args: {
+  chartPayload: unknown;
+  enabled?: boolean;
+  apiKey?: string;
+  model?: string;
+  generateText?: GatewayGenerateText;
+}): Promise<NatalReadingResult> {
+  const enabled = args.enabled ?? configuredEnabled();
+  const model = args.model?.trim() || configuredModel();
+  const apiKey = args.apiKey?.trim() || configuredApiKey();
+  const promptVersion = getAiGatewayNatalPromptVersion();
+  const cacheVersion = getAiGatewayNatalCacheVersion();
+  const base = { provider: "vercel-ai-gateway" as const, model, promptVersion, cacheVersion };
+
+  if (!enabled) {
+    return {
+      ...base,
+      status: "disabled",
+      gaps: ["llm_gateway_disabled"],
+      warnings: ["ORBITA_LLM_ENABLED_is_not_true"]
+    };
+  }
+
+  if (!apiKey || !model) {
+    return {
+      ...base,
+      status: "not_configured",
+      gaps: [
+        !apiKey ? "ai_gateway_api_key_not_configured" : "",
+        !model ? "orbita_llm_model_not_configured" : ""
+      ].filter(Boolean),
+      warnings: ["AI Gateway env is incomplete."]
+    };
+  }
+
+  const system =
+    "Sos la capa editorial de Órbita. Escribís lecturas de carta natal cálidas, precisas y pedagógicas, en español rioplatense con voseo, tildes, signos de apertura y guardrails estrictos.";
+
+  try {
+    const generated = await (args.generateText ?? defaultGatewayGenerateText)({
+      apiKey,
+      model,
+      prompt: buildNatalReadingGatewayPrompt(args.chartPayload),
+      system,
+      tags: ["feature:orbita-natal", "env:app", "user:app"],
+      maxTokens: 7000
+    });
+    const payload = parseNatalReadingText(generated.text);
+    if (!payload) {
+      return {
+        ...base,
+        status: "error",
+        usage: generated.usage,
+        gaps: ["ai_gateway_invalid_json_response"],
+        warnings: ["Non-JSON or incomplete natal reading."],
+        error: "Invalid JSON from AI Gateway."
+      };
+    }
+    return { ...base, status: "success", payload, usage: generated.usage, gaps: [], warnings: [] };
+  } catch (error) {
+    return {
+      ...base,
+      status: "error",
+      gaps: [gapForGatewayError(error)],
+      warnings: ["AI Gateway natal generation failed."],
+      error: error instanceof Error ? error.message : "Unknown AI Gateway error"
+    };
+  }
 }
