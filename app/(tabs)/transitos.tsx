@@ -3,8 +3,8 @@ import { StyleSheet, Text, View } from "react-native";
 import { useAction } from "convex/react";
 import { Body, Divider, Eyebrow, H2, H3, MonoLine, Note, OrbitaScreen, Section } from "@/components/orbita/kit";
 import { FullBleedHero } from "@/components/orbita/ImmersiveHero";
+import { GuestState } from "@/components/orbita/GuestState";
 import { ErrorState, MinimalLoading } from "@/components/orbita/states";
-import { transitMock } from "@/content/transitMock";
 import { sessionPhase } from "@/domain/screenPhase";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { proposedApi, type TransitDetailPayload } from "@/services/appRefs";
@@ -37,8 +37,8 @@ function humanCopy(s?: string): string {
 export default function TransitosScreen() {
   const live = useLiveApp();
   const phase = sessionPhase(live);
-  // Demo (transitMock) SOLO invitado confirmado; sesión resolviendo → carga
-  // mínima; sesión rota → error real. Nunca el mock como fallback.
+  // Sin mocks: invitado confirmado → estado honesto; sesión resolviendo →
+  // carga mínima; sesión rota → error real.
   if (phase === "cargando") {
     return (
       <OrbitaScreen>
@@ -53,14 +53,24 @@ export default function TransitosScreen() {
       </OrbitaScreen>
     );
   }
-  if (phase === "invitado") return <TransitosView data={transitMock} />;
+  if (phase === "invitado") {
+    return (
+      <OrbitaScreen>
+        <GuestState
+          eyebrow="TRÁNSITOS"
+          title={"El cielo se lee\nsobre tu carta."}
+          body="Los tránsitos de hoy se cruzan con tu carta natal real. Creá tu cuenta o entrá para leer el cielo sobre tus datos."
+        />
+      </OrbitaScreen>
+    );
+  }
   return <TransitosLive />;
 }
 
 /**
  * Con sesión: cielo REAL del día vía la action `transits.getToday`. Mientras
  * carga → pantalla mínima; si falla o el backend no tiene tránsito → error
- * real con REINTENTAR. El mock quedó solo para la demo de invitado.
+ * real con REINTENTAR.
  */
 function TransitosLive() {
   const getToday = useAction(proposedApi.transitToday);

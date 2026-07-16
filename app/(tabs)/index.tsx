@@ -24,7 +24,6 @@ import { useDailyGuide } from "@/services/dailyGuideStore";
 import { markFirstRun, useFirstRun } from "@/services/firstRun";
 import { CartaDelDia } from "@/components/home/CartaDelDia";
 import { DiarioStrip } from "@/components/diario/DiarioStrip";
-import { SintoniaSection } from "@/components/home/SintoniaSection";
 import { useAppState } from "@/hooks/useAppState";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
@@ -341,7 +340,9 @@ export default function HomeScreen() {
             lecturaLarga={daily?.lecturaLarga}
             cierre={daily?.cierre}
           />
-          <SintoniaSection />
+          {/* Sintonía: OCULTA hasta que el backend derive la sintonía real de
+              chart × tránsitos (hoy el componente solo tiene mock tipado y la
+              app no muestra mocks — decisión de producto 2026-07-16). */}
         </View>
           </>
         )}

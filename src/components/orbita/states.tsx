@@ -62,13 +62,26 @@ export function LoadingState() {
   );
 }
 
-export function EmptyState({ title, body, cta, onCta }: { title: string; body: string; cta?: string; onCta?: () => void }) {
+export function EmptyState({
+  title,
+  body,
+  cta,
+  onCta,
+  eyebrow = "GUARDADAS"
+}: {
+  title: string;
+  body: string;
+  cta?: string;
+  onCta?: () => void;
+  /** Etiqueta contextual de la pantalla (default histórico: GUARDADAS). */
+  eyebrow?: string;
+}) {
   return (
     <Centered>
       <View style={styles.emblemZone}>
         <Emblem kind="phase" />
       </View>
-      <Text style={styles.eyebrow}>GUARDADAS</Text>
+      <Text style={styles.eyebrow}>{eyebrow}</Text>
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.body}>{body}</Text>
       {cta ? (

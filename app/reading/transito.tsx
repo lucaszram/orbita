@@ -4,8 +4,8 @@ import { useAction } from "convex/react";
 import Svg, { Line } from "react-native-svg";
 import { DetailScreen } from "@/components/home/DetailScreen";
 import { Body, Divider, Eyebrow, H2, H3, Note } from "@/components/orbita/kit";
+import { GuestState } from "@/components/orbita/GuestState";
 import { ErrorState, MinimalLoading } from "@/components/orbita/states";
-import { transitMock } from "@/content/transitMock";
 import { sessionPhase } from "@/domain/screenPhase";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { proposedApi, type TransitDetailPayload } from "@/services/appRefs";
@@ -24,7 +24,7 @@ function todayLocalDate(): string {
 export default function TransitoDetalleScreen() {
   const live = useLiveApp();
   const phase = sessionPhase(live);
-  // Demo (transitMock) SOLO invitado confirmado; sesión resolviendo → carga mínima.
+  // Sin mocks: invitado confirmado → estado honesto; sesión resolviendo → carga mínima.
   if (phase === "cargando") {
     return (
       <DetailScreen eyebrow="Tránsito · Hoy">
@@ -39,7 +39,17 @@ export default function TransitoDetalleScreen() {
       </DetailScreen>
     );
   }
-  if (phase === "invitado") return <TransitoDetalle t={transitMock} />;
+  if (phase === "invitado") {
+    return (
+      <DetailScreen eyebrow="Tránsito · Hoy">
+        <GuestState
+          eyebrow="TRÁNSITOS"
+          title={"El cielo se lee\nsobre tu carta."}
+          body="Los tránsitos de hoy se cruzan con tu carta natal real. Creá tu cuenta o entrá para leer el cielo sobre tus datos."
+        />
+      </DetailScreen>
+    );
+  }
   return <TransitoDetalleLive />;
 }
 

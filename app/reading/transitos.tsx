@@ -2,15 +2,13 @@ import { useEffect, useState } from "react";
 import { useAction } from "convex/react";
 import { router } from "expo-router";
 import { DetailScreen } from "@/components/home/DetailScreen";
-import { Divider, Eyebrow, TabStrip } from "@/components/orbita/kit";
+import { Eyebrow } from "@/components/orbita/kit";
 import { GlyphRow } from "@/components/orbita/GlyphRow";
+import { GuestState } from "@/components/orbita/GuestState";
 import { ErrorState, MinimalLoading } from "@/components/orbita/states";
-import { useAppData } from "@/domain/appData";
 import { sessionPhase } from "@/domain/screenPhase";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { proposedApi, type TransitDetailPayload } from "@/services/appRefs";
-
-type Tab = "amor" | "trabajo" | "vinculos" | "energia";
 
 /** Fecha local YYYY-MM-DD (componentes locales, mismo criterio que la web; no UTC). */
 function todayLocalDate(): string {
@@ -21,7 +19,7 @@ function todayLocalDate(): string {
 export default function TransitosPorAreaScreen() {
   const live = useLiveApp();
   const phase = sessionPhase(live);
-  // Demo (cuatro áreas de ejemplo) SOLO invitado confirmado.
+  // Sin mocks: invitado confirmado → estado honesto (nunca áreas de ejemplo).
   if (phase === "cargando") {
     return (
       <DetailScreen eyebrow="Tránsitos">
@@ -36,33 +34,18 @@ export default function TransitosPorAreaScreen() {
       </DetailScreen>
     );
   }
-  if (phase === "invitado") return <TransitosPorAreaMock />;
+  if (phase === "invitado") {
+    return (
+      <DetailScreen eyebrow="Tránsitos">
+        <GuestState
+          eyebrow="TRÁNSITOS"
+          title={"El cielo se lee\nsobre tu carta."}
+          body="Los tránsitos de hoy se cruzan con tu carta natal real. Creá tu cuenta o entrá para leer el cielo sobre tus datos."
+        />
+      </DetailScreen>
+    );
+  }
   return <TransitosPorAreaLive />;
-}
-
-/** Vista demo del INVITADO: cuatro áreas de ejemplo (nunca fallback de carga/error). */
-function TransitosPorAreaMock() {
-  const { transitos } = useAppData();
-  const [tab, setTab] = useState<Tab>("amor");
-  return (
-    <DetailScreen eyebrow="Tránsitos">
-      <TabStrip
-        tabs={[
-          { key: "amor", label: "Amor" },
-          { key: "trabajo", label: "Trabajo" },
-          { key: "vinculos", label: "Vínculos" },
-          { key: "energia", label: "Energía" }
-        ]}
-        active={tab}
-        onChange={setTab}
-      />
-      <Divider />
-      <Eyebrow>TRÁNSITOS POR ÁREA</Eyebrow>
-      {transitos.porArea.map((t) => (
-        <GlyphRow key={t.title} title={t.title} body={t.body} onPress={() => router.push("/reading/transito")} />
-      ))}
-    </DetailScreen>
-  );
 }
 
 /**

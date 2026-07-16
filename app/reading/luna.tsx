@@ -5,8 +5,8 @@ import { useAction } from "convex/react";
 import { DetailScreen } from "@/components/home/DetailScreen";
 import { Body, Divider, Eyebrow, H2, MonoLine, Pill } from "@/components/orbita/kit";
 import { FullBleedHero } from "@/components/orbita/ImmersiveHero";
+import { GuestState } from "@/components/orbita/GuestState";
 import { ErrorState, MinimalLoading } from "@/components/orbita/states";
-import { moonPhaseMock } from "@/content/moonPhaseMock";
 import { useAppData } from "@/domain/appData";
 import { sessionPhase } from "@/domain/screenPhase";
 import { deviceTimezone, useLiveApp } from "@/hooks/useLiveApp";
@@ -18,7 +18,7 @@ import { orbita } from "@/theme/orbita";
 export default function LunaScreen() {
   const live = useLiveApp();
   const phase = sessionPhase(live);
-  // Demo (mock tipado) SOLO invitado confirmado; sesión resolviendo → carga mínima.
+  // Sin mocks: invitado confirmado → estado honesto; sesión resolviendo → carga mínima.
   if (phase === "cargando") {
     return (
       <DetailScreen eyebrow="Fase lunar">
@@ -33,7 +33,17 @@ export default function LunaScreen() {
       </DetailScreen>
     );
   }
-  if (phase === "invitado") return <LunaView payload={moonPhaseMock} />;
+  if (phase === "invitado") {
+    return (
+      <DetailScreen eyebrow="Fase lunar">
+        <GuestState
+          eyebrow="FASE LUNAR"
+          title={"La Luna de hoy,\ncon tu cuenta."}
+          body="La fase lunar del día y su acción se leen con tu cuenta. Creá la tuya o entrá para verla."
+        />
+      </DetailScreen>
+    );
+  }
   return <LunaLive />;
 }
 

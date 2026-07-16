@@ -1,6 +1,43 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { dataPhase, sessionPhase } from "../src/domain/screenPhase";
+import { dataPhase, liveAppGate, sessionPhase } from "../src/domain/screenPhase";
+
+const AUTH_OK = { isLoaded: true, isConnecting: false, isAuthenticated: true };
+
+describe("liveAppGate — la carrera del primer render (userRow='idle')", () => {
+  it("sesión ya autenticada con la fila users SIN resolver (idle) → SIEMPRE cargando", () => {
+    // Clerk restauró la sesión pero el efecto de ensureUser todavía no corrió:
+    // el gate viejo daba isLive=false + isAuthLoading=false → 'invitado' → mocks.
+    const idle = liveAppGate(AUTH_OK, "idle");
+    assert.equal(idle.isLive, false);
+    assert.equal(idle.isAuthLoading, true);
+    assert.equal(sessionPhase(idle), "cargando");
+  });
+
+  it("pending → cargando; ready → live; error → error", () => {
+    assert.equal(sessionPhase(liveAppGate(AUTH_OK, "pending")), "cargando");
+    assert.equal(sessionPhase(liveAppGate(AUTH_OK, "ready")), "live");
+    assert.equal(sessionPhase(liveAppGate(AUTH_OK, "error")), "error");
+  });
+
+  it("Clerk sin cargar o reconectando → cargando, incluso sin autenticación", () => {
+    assert.equal(
+      sessionPhase(liveAppGate({ isLoaded: false, isConnecting: false, isAuthenticated: false }, "idle")),
+      "cargando"
+    );
+    assert.equal(
+      sessionPhase(liveAppGate({ isLoaded: true, isConnecting: true, isAuthenticated: false }, "idle")),
+      "cargando"
+    );
+  });
+
+  it("invitado CONFIRMADO: Clerk resuelto, sin conexión en curso, sin sesión", () => {
+    assert.equal(
+      sessionPhase(liveAppGate({ isLoaded: true, isConnecting: false, isAuthenticated: false }, "idle")),
+      "invitado"
+    );
+  });
+});
 
 /**
  * Regla anti-flash de mocks: "invitado" es la ÚNICA fase que puede renderizar

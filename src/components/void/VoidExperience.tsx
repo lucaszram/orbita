@@ -7,8 +7,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
 import { useLiveApp } from "@/hooks/useLiveApp";
+import { GuestState } from "@/components/orbita/GuestState";
 import { ErrorState, MinimalLoading } from "@/components/orbita/states";
-import { useAppData } from "@/domain/appData";
 import { sessionPhase } from "@/domain/screenPhase";
 import {
   proposedApi,
@@ -22,22 +22,15 @@ import { orbita } from "@/theme/orbita";
 const TEXTURE = require("../../../assets/orbita/optimized/core/orbita_daily_texture_b.jpg");
 const DEFAULT_QUESTION = "¿Qué estás apurando?";
 
-/** Respuesta editorial de maqueta (sin sesión o si el backend falla). */
-const ORACLE = {
-  answer: "Lo que apurás\nno es la respuesta:\nes el alivio.",
-  mejorPregunta: "¿Qué cambiaría si esperás 24 horas?",
-  paso: "UN PASO · ESCRIBÍ LA DECISIÓN\nY DEJALA DORMIR HASTA MAÑANA"
-};
-
 type Phase = "entrada" | "escuchando" | "respuesta";
 
 type AskVoid = (args: { question: string }) => Promise<VoidAnswerPayload>;
 
 type VoidViewProps = {
-  ask: AskVoid | null;
+  ask: AskVoid;
   today: VoidTodayPayload | null;
   categories: VoidPromptCategory[];
-  onUnlock: (() => void) | null;
+  onUnlock: () => void;
   /** false cuando es raíz de tab (sin botón "volver"). */
   showBack: boolean;
 };
@@ -45,13 +38,13 @@ type VoidViewProps = {
 /**
  * El Vacío — experiencia completa (entrada → escuchando → respuesta), reutilizada
  * por el tab `app/(tabs)/vacio.tsx` (showBack=false) y por la ruta `app/reading/void.tsx`
- * (showBack=true). Live con sesión (cupo + sugeridas personalizadas), mock sin sesión.
+ * (showBack=true). Live con sesión (cupo + sugeridas personalizadas); invitado → estado honesto.
  */
 export function VoidExperience({ showBack = true }: { showBack?: boolean }) {
   const live = useLiveApp();
   const phase = sessionPhase(live);
-  // Demo (categorías genéricas + oráculo de maqueta) SOLO invitado confirmado;
-  // sesión resolviendo → carga mínima; sesión rota → error real.
+  // Sin mocks: invitado confirmado → estado honesto; sesión resolviendo →
+  // carga mínima; sesión rota → error real.
   if (phase === "cargando") {
     return (
       <VoidStateFrame>
@@ -67,7 +60,17 @@ export function VoidExperience({ showBack = true }: { showBack?: boolean }) {
     );
   }
   if (phase === "invitado") {
-    return <VoidView ask={null} today={null} categories={VOID_CATEGORIES} onUnlock={null} showBack={showBack} />;
+    // Sin mocks: el Umbral responde leyendo TU carta — sin cuenta no hay
+    // respuesta de maqueta presentada como personalizada.
+    return (
+      <VoidStateFrame>
+        <GuestState
+          eyebrow="EL UMBRAL"
+          title={"El Umbral responde\ncon tu carta."}
+          body="Tus preguntas se contestan leyendo tu carta natal y el cielo del día. Creá tu cuenta o entrá para cruzar."
+        />
+      </VoidStateFrame>
+    );
   }
   return <VoidLive showBack={showBack} />;
 }
@@ -138,7 +141,6 @@ function VoidLive({ showBack }: { showBack: boolean }) {
 function VoidView({ ask, today, categories, onUnlock, showBack }: VoidViewProps) {
   const insets = useSafeAreaInsets();
   const fontsLoaded = useOrbitaFonts();
-  const { carta } = useAppData();
   const [phase, setPhase] = useState<Phase>("entrada");
   const [typed, setTyped] = useState("");
   const [category, setCategory] = useState<string>(categories[0]?.key ?? "yo");
@@ -171,16 +173,10 @@ function VoidView({ ask, today, categories, onUnlock, showBack }: VoidViewProps)
     setLocked(false);
     setPhase("escuchando");
   };
-  const basadoEn = `BASADO EN TU LUNA EN ${carta.triad.moon.label.toUpperCase()}\nY TU ASCENDENTE EN ${carta.triad.ascendant.label.toUpperCase()}`;
-
-  // Respuesta a mostrar: la real del backend cuando llegó. La maqueta (ORACLE)
-  // solo puede verse en la demo de invitado (ask null); un fallo real cae en
-  // el estado askFailed, nunca acá.
+  // Respuesta a mostrar: SIEMPRE la real del backend (un fallo cae en
+  // askFailed; el invitado ni llega a esta vista).
   const shownQuestion = payload?.question ?? question;
-  const shownAnswer = payload?.answer ?? ORACLE.answer;
-  const shownBasadoEn = payload ? `BASADO EN\n${payload.basadoEn.join("\n")}` : basadoEn;
-  const shownMejorPregunta = payload?.mejorPregunta ?? ORACLE.mejorPregunta;
-  const shownPaso = payload?.paso ?? ORACLE.paso;
+  const shownBasadoEn = payload ? `BASADO EN\n${payload.basadoEn.join("\n")}` : "";
 
   useEffect(() => {
     if (phase !== "escuchando") return;
@@ -193,34 +189,24 @@ function VoidView({ ask, today, categories, onUnlock, showBack }: VoidViewProps)
     loop.start();
     let cancelled = false;
 
-    // Con sesión: respuesta real; si la action falla → estado de error real.
-    // La maqueta + cadencia falsa quedan SOLO para la demo de invitado (ask null).
-    if (ask) {
-      ask({ question })
-        .then((res) => {
-          if (cancelled) return;
-          setLocked(!!res.locked);
-          setPayload(res.locked ? null : res);
-          setPhase("respuesta");
-        })
-        .catch(() => {
-          if (cancelled) return;
-          setLocked(false);
-          setPayload(null);
-          setAskFailed(true);
-          setPhase("respuesta");
-        });
-      return () => {
-        cancelled = true;
-        loop.stop();
-      };
-    }
-
-    const t = setTimeout(() => setPhase("respuesta"), 2800);
+    // Respuesta real; si la action falla → estado de error real con reintento.
+    ask({ question })
+      .then((res) => {
+        if (cancelled) return;
+        setLocked(!!res.locked);
+        setPayload(res.locked ? null : res);
+        setPhase("respuesta");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setLocked(false);
+        setPayload(null);
+        setAskFailed(true);
+        setPhase("respuesta");
+      });
     return () => {
       cancelled = true;
       loop.stop();
-      clearTimeout(t);
     };
   }, [phase, pulse, ask, question]);
 
@@ -395,7 +381,7 @@ function VoidView({ ask, today, categories, onUnlock, showBack }: VoidViewProps)
           <View style={{ height: orbita.spacing.sm }} />
           <Text style={styles.questionSmall}>“{shownQuestion}”</Text>
           <View style={{ height: orbita.spacing.xxl * 1.5 }} />
-          <Text style={styles.answerBody}>{shownAnswer}</Text>
+          <Text style={styles.answerBody}>{payload?.answer}</Text>
           <View style={{ height: orbita.spacing.xxl * 1.5 }} />
           <View style={styles.tick} />
           <View style={{ height: orbita.spacing.xl }} />
@@ -403,9 +389,9 @@ function VoidView({ ask, today, categories, onUnlock, showBack }: VoidViewProps)
           <View style={{ height: orbita.spacing.xxl }} />
           <Text style={styles.microMonoCopper}>UNA MEJOR PREGUNTA</Text>
           <View style={{ height: orbita.spacing.sm }} />
-          <Text style={styles.betterQuestion}>{shownMejorPregunta}</Text>
+          <Text style={styles.betterQuestion}>{payload?.mejorPregunta}</Text>
           <View style={{ height: orbita.spacing.xxl }} />
-          <Text style={styles.microMono}>{shownPaso}</Text>
+          <Text style={styles.microMono}>{payload?.paso}</Text>
           <View style={{ height: orbita.spacing.xxl }} />
           <Text style={styles.footnote}>El Umbral no contesta sí o no.</Text>
         </ScrollView>

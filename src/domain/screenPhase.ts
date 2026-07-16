@@ -21,6 +21,34 @@ export type SessionGate = {
   isLive: boolean;
 };
 
+/** Estado de la fila `users` en Convex (ver OrbitaSessionProvider). */
+export type UserRowState = "idle" | "pending" | "ready" | "error";
+
+export type AuthSnapshot = {
+  isLoaded: boolean;
+  isConnecting: boolean;
+  isAuthenticated: boolean;
+};
+
+/**
+ * Deriva el gate de sesión desde el estado crudo de Clerk/Convex. Es la única
+ * fuente de `isLive`/`isAuthLoading` (la consume `useLiveApp`). Regla clave:
+ * una sesión autenticada cuya fila `users` todavía no está `ready`/`error`
+ * (incluido el PRIMER render, con `userRow="idle"` antes de que corra el
+ * efecto) es SIEMPRE carga — jamás "invitado", que es la fase que puede
+ * renderizar la demo.
+ */
+export function liveAppGate(auth: AuthSnapshot, userRow: UserRowState): SessionGate {
+  return {
+    isLive: auth.isAuthenticated && userRow === "ready",
+    isAuthLoading:
+      !auth.isLoaded ||
+      auth.isConnecting ||
+      (auth.isAuthenticated && (userRow === "idle" || userRow === "pending")),
+    userError: userRow === "error"
+  };
+}
+
 export type SessionPhase = "cargando" | "error" | "invitado" | "live";
 
 export function sessionPhase(gate: SessionGate): SessionPhase {
