@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Animated, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { router } from "expo-router";
@@ -7,7 +7,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
 import { useLiveApp } from "@/hooks/useLiveApp";
+import { ErrorState, MinimalLoading } from "@/components/orbita/states";
 import { useAppData } from "@/domain/appData";
+import { sessionPhase } from "@/domain/screenPhase";
 import {
   proposedApi,
   type VoidAnswerPayload,
@@ -46,34 +48,89 @@ type VoidViewProps = {
  * (showBack=true). Live con sesión (cupo + sugeridas personalizadas), mock sin sesión.
  */
 export function VoidExperience({ showBack = true }: { showBack?: boolean }) {
-  const { isLive } = useLiveApp();
-  if (!isLive) {
+  const live = useLiveApp();
+  const phase = sessionPhase(live);
+  // Demo (categorías genéricas + oráculo de maqueta) SOLO invitado confirmado;
+  // sesión resolviendo → carga mínima; sesión rota → error real.
+  if (phase === "cargando") {
+    return (
+      <VoidStateFrame>
+        <MinimalLoading />
+      </VoidStateFrame>
+    );
+  }
+  if (phase === "error") {
+    return (
+      <VoidStateFrame>
+        <ErrorState onRetry={live.retryUser} />
+      </VoidStateFrame>
+    );
+  }
+  if (phase === "invitado") {
     return <VoidView ask={null} today={null} categories={VOID_CATEGORIES} onUnlock={null} showBack={showBack} />;
   }
   return <VoidLive showBack={showBack} />;
 }
 
+/** Marco mínimo (fondo Órbita) para los estados de carga/error del Umbral. */
+function VoidStateFrame({ children }: { children: ReactNode }) {
+  return (
+    <View style={styles.screen}>
+      <StatusBar style="light" />
+      {children}
+    </View>
+  );
+}
+
 function VoidLive({ showBack }: { showBack: boolean }) {
   const ask = useAction(proposedApi.voidAsk);
-  const today = useQuery(proposedApi.voidToday, {}) ?? null;
+  const today = useQuery(proposedApi.voidToday, {});
   const suggested = useAction(proposedApi.voidSuggested);
   const setPro = useMutation(proposedApi.setStubPro);
-  const [categories, setCategories] = useState<VoidPromptCategory[]>(VOID_CATEGORIES);
-  const fired = useRef(false);
+  // null = las sugeridas personalizadas todavía no llegaron. Carga hasta la
+  // data real: nunca las categorías genéricas que después se pisan.
+  const [categories, setCategories] = useState<VoidPromptCategory[] | null>(null);
+  const [suggestedError, setSuggestedError] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    if (fired.current) return;
-    fired.current = true;
+    let alive = true;
+    setSuggestedError(false);
     suggested({})
       .then((r) => {
-        if (r?.categories?.length) setCategories(r.categories);
+        if (!alive) return;
+        // Éxito sin personalizadas: las genéricas son contenido curado válido
+        // (no se presentan como personalizadas).
+        setCategories(r?.categories?.length ? r.categories : VOID_CATEGORIES);
       })
-      .catch(() => {});
-  }, [suggested]);
+      .catch(() => {
+        if (alive) setSuggestedError(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [suggested, attempt]);
 
   const onUnlock = () => {
     setPro({}).catch(() => {});
   };
+
+  if (suggestedError) {
+    return (
+      <VoidStateFrame>
+        <ErrorState onRetry={() => setAttempt((a) => a + 1)} />
+      </VoidStateFrame>
+    );
+  }
+  // El gate espera las preguntas personalizadas Y el cupo del día: el contador
+  // no arranca en el default y se pisa delante del usuario.
+  if (categories === null || today === undefined) {
+    return (
+      <VoidStateFrame>
+        <MinimalLoading />
+      </VoidStateFrame>
+    );
+  }
 
   return <VoidView ask={ask} today={today} categories={categories} onUnlock={onUnlock} showBack={showBack} />;
 }
@@ -87,6 +144,9 @@ function VoidView({ ask, today, categories, onUnlock, showBack }: VoidViewProps)
   const [category, setCategory] = useState<string>(categories[0]?.key ?? "yo");
   const [payload, setPayload] = useState<VoidAnswerPayload | null>(null);
   const [locked, setLocked] = useState(false);
+  // La action real falló (solo puede pasar con sesión): respuesta = error con
+  // REINTENTAR, jamás el oráculo de maqueta como si fuera la respuesta.
+  const [askFailed, setAskFailed] = useState(false);
   const pulse = useRef(new Animated.Value(0.4)).current;
 
   const question = typed.trim() || DEFAULT_QUESTION;
@@ -102,6 +162,7 @@ function VoidView({ ask, today, categories, onUnlock, showBack }: VoidViewProps)
   // directo al estado de límite sin gastar una llamada.
   const askQuestion = (q: string) => {
     setTyped(q);
+    setAskFailed(false);
     if (noneLeft) {
       setLocked(true);
       setPhase("respuesta");
@@ -112,7 +173,9 @@ function VoidView({ ask, today, categories, onUnlock, showBack }: VoidViewProps)
   };
   const basadoEn = `BASADO EN TU LUNA EN ${carta.triad.moon.label.toUpperCase()}\nY TU ASCENDENTE EN ${carta.triad.ascendant.label.toUpperCase()}`;
 
-  // Respuesta a mostrar: la real del backend cuando llegó; si no, la maqueta.
+  // Respuesta a mostrar: la real del backend cuando llegó. La maqueta (ORACLE)
+  // solo puede verse en la demo de invitado (ask null); un fallo real cae en
+  // el estado askFailed, nunca acá.
   const shownQuestion = payload?.question ?? question;
   const shownAnswer = payload?.answer ?? ORACLE.answer;
   const shownBasadoEn = payload ? `BASADO EN\n${payload.basadoEn.join("\n")}` : basadoEn;
@@ -130,7 +193,8 @@ function VoidView({ ask, today, categories, onUnlock, showBack }: VoidViewProps)
     loop.start();
     let cancelled = false;
 
-    // Con sesión: respuesta real. Sin sesión o ante error: maqueta + cadencia falsa.
+    // Con sesión: respuesta real; si la action falla → estado de error real.
+    // La maqueta + cadencia falsa quedan SOLO para la demo de invitado (ask null).
     if (ask) {
       ask({ question })
         .then((res) => {
@@ -143,6 +207,7 @@ function VoidView({ ask, today, categories, onUnlock, showBack }: VoidViewProps)
           if (cancelled) return;
           setLocked(false);
           setPayload(null);
+          setAskFailed(true);
           setPhase("respuesta");
         });
       return () => {
@@ -295,6 +360,27 @@ function VoidView({ ask, today, categories, onUnlock, showBack }: VoidViewProps)
           <View style={styles.footer}>
             <Text style={styles.footnote}>El Umbral no contesta sí o no.</Text>
           </View>
+        </View>
+      ) : phase === "respuesta" && askFailed ? (
+        <View style={styles.center}>
+          <Text style={styles.eyebrow}>EL UMBRAL</Text>
+          <View style={{ height: orbita.spacing.xxl }} />
+          <Text style={styles.answer}>El Umbral no{"\n"}pudo responder.</Text>
+          <View style={{ height: orbita.spacing.xl }} />
+          <Text style={styles.microMono}>Parece la conexión.{"\n"}Tu pregunta sigue acá.</Text>
+          <View style={{ height: orbita.spacing.xxl }} />
+          <Pressable
+            onPress={() => {
+              setAskFailed(false);
+              setPhase("escuchando");
+            }}
+            style={({ pressed }) => [pressed && styles.pressed]}
+            accessibilityRole="button"
+          >
+            <View style={styles.ghostCta}>
+              <Text style={styles.ghostCtaText}>REINTENTAR</Text>
+            </View>
+          </Pressable>
         </View>
       ) : phase === "respuesta" ? (
         <ScrollView

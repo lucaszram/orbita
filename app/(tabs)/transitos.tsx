@@ -3,7 +3,9 @@ import { StyleSheet, Text, View } from "react-native";
 import { useAction } from "convex/react";
 import { Body, Divider, Eyebrow, H2, H3, MonoLine, Note, OrbitaScreen, Section } from "@/components/orbita/kit";
 import { FullBleedHero } from "@/components/orbita/ImmersiveHero";
+import { ErrorState, MinimalLoading } from "@/components/orbita/states";
 import { transitMock } from "@/content/transitMock";
+import { sessionPhase } from "@/domain/screenPhase";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { proposedApi, type TransitDetailPayload } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
@@ -33,34 +35,71 @@ function humanCopy(s?: string): string {
 }
 
 export default function TransitosScreen() {
-  const { isLive } = useLiveApp();
-  if (!isLive) return <TransitosView data={transitMock} />;
+  const live = useLiveApp();
+  const phase = sessionPhase(live);
+  // Demo (transitMock) SOLO invitado confirmado; sesión resolviendo → carga
+  // mínima; sesión rota → error real. Nunca el mock como fallback.
+  if (phase === "cargando") {
+    return (
+      <OrbitaScreen>
+        <MinimalLoading />
+      </OrbitaScreen>
+    );
+  }
+  if (phase === "error") {
+    return (
+      <OrbitaScreen>
+        <ErrorState onRetry={live.retryUser} />
+      </OrbitaScreen>
+    );
+  }
+  if (phase === "invitado") return <TransitosView data={transitMock} />;
   return <TransitosLive />;
 }
 
 /**
- * Con sesión: cielo REAL del día vía la action `transits.getToday`. Mientras carga
- * o si falla, se muestra el tránsito mock (`transitMock`); nunca pantalla rota.
+ * Con sesión: cielo REAL del día vía la action `transits.getToday`. Mientras
+ * carga → pantalla mínima; si falla o el backend no tiene tránsito → error
+ * real con REINTENTAR. El mock quedó solo para la demo de invitado.
  */
 function TransitosLive() {
   const getToday = useAction(proposedApi.transitToday);
-  const [data, setData] = useState<TransitDetailPayload | null>(null);
+  const [state, setState] = useState<
+    { kind: "loading" } | { kind: "error" } | { kind: "ok"; data: TransitDetailPayload }
+  >({ kind: "loading" });
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let alive = true;
+    setState({ kind: "loading" });
     getToday({ localDate: todayLocalDate() })
       .then((r) => {
-        if (alive) setData(r as TransitDetailPayload);
+        if (!alive) return;
+        setState(r ? { kind: "ok", data: r as TransitDetailPayload } : { kind: "error" });
       })
       .catch(() => {
-        if (alive) setData(null);
+        if (alive) setState({ kind: "error" });
       });
     return () => {
       alive = false;
     };
-  }, [getToday]);
+  }, [getToday, attempt]);
 
-  return <TransitosView data={data ?? transitMock} />;
+  if (state.kind === "loading") {
+    return (
+      <OrbitaScreen>
+        <MinimalLoading />
+      </OrbitaScreen>
+    );
+  }
+  if (state.kind === "error") {
+    return (
+      <OrbitaScreen>
+        <ErrorState onRetry={() => setAttempt((a) => a + 1)} />
+      </OrbitaScreen>
+    );
+  }
+  return <TransitosView data={state.data} />;
 }
 
 /**

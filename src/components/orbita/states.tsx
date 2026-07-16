@@ -1,5 +1,5 @@
 import { ReactNode } from "react";
-import { Image, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Image, StyleSheet, Text, View } from "react-native";
 import { EditorialThumb } from "@/components/orbita/HeroImage";
 import { orbita } from "@/theme/orbita";
 import { Pill } from "./kit";
@@ -30,6 +30,18 @@ function Emblem({ kind, size = 170 }: { kind: keyof typeof EMBLEMS; size?: numbe
 
 function Centered({ children }: { children: ReactNode }) {
   return <View style={styles.wrap}>{children}</View>;
+}
+
+/** Pantalla mínima de carga (regla anti-flash de mocks): fondo de Órbita (lo
+ *  da el wrapper), indicador sutil cobre y una sola línea. Se usa en todo
+ *  gate de sesión o dato pendiente — nunca contenido anterior o demo debajo. */
+export function MinimalLoading() {
+  return (
+    <Centered>
+      <ActivityIndicator color={orbita.colors.copper} />
+      <Text style={[styles.body, { marginTop: orbita.spacing.lg }]}>Cargando tu cielo…</Text>
+    </Centered>
+  );
 }
 
 export function LoadingState() {

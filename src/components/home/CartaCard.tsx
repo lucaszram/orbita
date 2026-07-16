@@ -1,9 +1,10 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { useQuery } from "convex/react";
 import { NatalWheel } from "@/components/orbita/NatalWheel";
 import { mapNatalChart } from "@/components/web/orbita-chart";
 import { chartMock } from "@/content/chartMock";
+import { sessionPhase } from "@/domain/screenPhase";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { appApi, type NatalChartPayload } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
@@ -12,20 +13,49 @@ import { orbita } from "@/theme/orbita";
  * Carta natal en la Home/Perfil: mini-rueda real + tríada + CTA al hub de la Carta
  * (`/(tabs)/carta`). `variant="card"` (default) = recuadro con borde (Perfil).
  * `variant="hero"` = full-bleed sin borde, primera impresión post-onboarding.
- * Data real con sesión, mock para invitados.
+ * Rueda demo (chartMock) SOLO invitado confirmado; con sesión, mientras la
+ * carta resuelve (o si falta / no se puede leer) la tarjeta espera — nunca la
+ * rueda demo presentada como tuya.
  */
 export function CartaCard({ variant = "card" }: { variant?: "card" | "hero" }) {
-  const { isLive } = useLiveApp();
-  const doc = useQuery(appApi.charts.current, isLive ? {} : "skip");
+  const live = useLiveApp();
+  const phase = sessionPhase(live);
+  const doc = useQuery(appApi.charts.current, phase === "live" ? {} : "skip");
   const hero = variant === "hero";
 
-  let payload: NatalChartPayload = chartMock;
-  if (isLive && doc) {
+  let payload: NatalChartPayload | null = null;
+  if (phase === "invitado") {
+    payload = chartMock;
+  } else if (phase === "live" && doc) {
     try {
       payload = mapNatalChart(doc);
     } catch {
-      payload = chartMock;
+      payload = null;
     }
+  }
+
+  if (!payload) {
+    // Sesión resolviendo, carta en vuelo, sin carta todavía o carta ilegible:
+    // placeholder de carga en el mismo marco. El tap lleva al hub, que muestra
+    // el estado real (carga / vacío / error).
+    return (
+      <View style={hero ? styles.heroSection : styles.section}>
+        <Pressable
+          onPress={() => router.push("/(tabs)/carta")}
+          style={({ pressed }) => [hero ? styles.hero : styles.card, pressed && styles.pressed]}
+          accessibilityRole="button"
+          accessibilityLabel="Ver mi carta natal"
+        >
+          <Text style={styles.eyebrow}>TU CARTA NATAL</Text>
+          <View style={[styles.wheelWrap, styles.pendingZone]}>
+            <ActivityIndicator color={orbita.colors.copper} />
+          </View>
+          <View style={styles.cta}>
+            <Text style={styles.ctaText}>VER MI CARTA →</Text>
+          </View>
+        </Pressable>
+      </View>
+    );
   }
   const t = payload.triad;
 
@@ -67,6 +97,8 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.7 },
   eyebrow: { color: orbita.colors.copper, fontFamily: orbita.fonts.monoMedium, fontSize: 12, letterSpacing: 2.5 },
   wheelWrap: { alignItems: "center", marginVertical: orbita.spacing.lg },
+  // Mismo alto que la rueda (232) para que el placeholder no salte al resolver.
+  pendingZone: { height: 232, justifyContent: "center" },
   triad: {
     color: orbita.colors.bone,
     fontFamily: orbita.fonts.monoMedium,

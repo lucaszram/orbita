@@ -6,9 +6,10 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "convex/react";
 import { NatalWheel } from "@/components/orbita/NatalWheel";
-import { EmptyState, ErrorState, LoadingState } from "@/components/orbita/states";
+import { EmptyState, ErrorState, LoadingState, MinimalLoading } from "@/components/orbita/states";
 import { mapNatalChart } from "@/components/web/orbita-chart";
 import { chartMock } from "@/content/chartMock";
+import { sessionPhase } from "@/domain/screenPhase";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
 import { appApi, type NatalChartPayload } from "@/services/appRefs";
@@ -21,8 +22,24 @@ const TEXTURE = require("../assets/orbita/optimized/core/orbita_daily_texture_b.
  * (ScrollView nativo iOS). Sin tab bar. Data real con sesión, mock para invitados.
  */
 export default function CartaFullScreen() {
-  const { isLive } = useLiveApp();
-  if (!isLive) return <CartaFullView payload={chartMock} />;
+  const live = useLiveApp();
+  const phase = sessionPhase(live);
+  // Demo (mock) SOLO invitado confirmado; sesión resolviendo → carga mínima.
+  if (phase === "cargando") {
+    return (
+      <Frame>
+        <MinimalLoading />
+      </Frame>
+    );
+  }
+  if (phase === "error") {
+    return (
+      <Frame>
+        <ErrorState onRetry={live.retryUser} />
+      </Frame>
+    );
+  }
+  if (phase === "invitado") return <CartaFullView payload={chartMock} />;
   return <CartaFullLive />;
 }
 

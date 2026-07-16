@@ -4,7 +4,9 @@ import { useAction } from "convex/react";
 import Svg, { Line } from "react-native-svg";
 import { DetailScreen } from "@/components/home/DetailScreen";
 import { Body, Divider, Eyebrow, H2, H3, Note } from "@/components/orbita/kit";
+import { ErrorState, MinimalLoading } from "@/components/orbita/states";
 import { transitMock } from "@/content/transitMock";
+import { sessionPhase } from "@/domain/screenPhase";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { proposedApi, type TransitDetailPayload } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
@@ -20,8 +22,24 @@ function todayLocalDate(): string {
 
 /** Tránsito / En el cielo (Figma V4.7 · 334:2): escena espacial + frecuencia + en la Tierra. */
 export default function TransitoDetalleScreen() {
-  const { isLive } = useLiveApp();
-  if (!isLive) return <TransitoDetalle t={transitMock} />;
+  const live = useLiveApp();
+  const phase = sessionPhase(live);
+  // Demo (transitMock) SOLO invitado confirmado; sesión resolviendo → carga mínima.
+  if (phase === "cargando") {
+    return (
+      <DetailScreen eyebrow="Tránsito · Hoy">
+        <MinimalLoading />
+      </DetailScreen>
+    );
+  }
+  if (phase === "error") {
+    return (
+      <DetailScreen eyebrow="Tránsito · Hoy">
+        <ErrorState onRetry={live.retryUser} />
+      </DetailScreen>
+    );
+  }
+  if (phase === "invitado") return <TransitoDetalle t={transitMock} />;
   return <TransitoDetalleLive />;
 }
 
@@ -35,12 +53,15 @@ function TransitoDetalleLive() {
   const [state, setState] = useState<
     { kind: "loading" } | { kind: "error" } | { kind: "ok"; data: TransitDetailPayload }
   >({ kind: "loading" });
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let alive = true;
+    setState({ kind: "loading" });
     getToday({ localDate: todayLocalDate() })
       .then((r) => {
-        if (alive) setState({ kind: "ok", data: r as TransitDetailPayload });
+        if (!alive) return;
+        setState(r ? { kind: "ok", data: r as TransitDetailPayload } : { kind: "error" });
       })
       .catch(() => {
         if (alive) setState({ kind: "error" });
@@ -48,7 +69,7 @@ function TransitoDetalleLive() {
     return () => {
       alive = false;
     };
-  }, [getToday]);
+  }, [getToday, attempt]);
 
   if (state.kind === "loading") {
     return (
@@ -60,9 +81,16 @@ function TransitoDetalleLive() {
       </DetailScreen>
     );
   }
-  // Error o dato ausente: caemos al mock; nunca pantalla rota.
-  if (state.kind === "error") return <TransitoDetalle t={transitMock} />;
-  return <TransitoDetalle t={state.data ?? transitMock} />;
+  // Error o dato ausente: error real con reintento — nunca el mock como si
+  // fuera tu cielo.
+  if (state.kind === "error") {
+    return (
+      <DetailScreen eyebrow="Tránsito · Hoy">
+        <ErrorState onRetry={() => setAttempt((a) => a + 1)} />
+      </DetailScreen>
+    );
+  }
+  return <TransitoDetalle t={state.data} />;
 }
 
 function TransitoDetalle({ t }: { t: TransitDetailPayload }) {

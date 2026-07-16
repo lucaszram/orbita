@@ -5,9 +5,10 @@ import { useQuery } from "convex/react";
 import { DetailScreen } from "@/components/home/DetailScreen";
 import { Divider, Eyebrow, Note, TabStrip } from "@/components/orbita/kit";
 import { GlyphRow } from "@/components/orbita/GlyphRow";
-import { EmptyState, ErrorState, LoadingState } from "@/components/orbita/states";
+import { EmptyState, ErrorState, LoadingState, MinimalLoading } from "@/components/orbita/states";
 import { mapNatalChart } from "@/components/web/orbita-chart";
 import { chartMock } from "@/content/chartMock";
+import { sessionPhase } from "@/domain/screenPhase";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { appApi, type NatalChartPayload } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
@@ -20,8 +21,24 @@ type Tab = "planetas" | "casas" | "aspectos";
  * hub muestra en el toggle TABLA.
  */
 export default function CartaPosicionesScreen() {
-  const { isLive } = useLiveApp();
-  if (!isLive) return <CartaTablaView payload={chartMock} />;
+  const live = useLiveApp();
+  const phase = sessionPhase(live);
+  // Demo (mock) SOLO invitado confirmado; sesión resolviendo → carga mínima.
+  if (phase === "cargando") {
+    return (
+      <DetailScreen eyebrow="Carta">
+        <MinimalLoading />
+      </DetailScreen>
+    );
+  }
+  if (phase === "error") {
+    return (
+      <DetailScreen eyebrow="Carta">
+        <ErrorState onRetry={live.retryUser} />
+      </DetailScreen>
+    );
+  }
+  if (phase === "invitado") return <CartaTablaView payload={chartMock} />;
   return <CartaTablaLive />;
 }
 

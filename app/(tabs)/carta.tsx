@@ -1,17 +1,18 @@
 import { useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { router } from "expo-router";
 import { useAction, useQuery } from "convex/react";
 
 import { Body, Divider, Eyebrow, H2, Note, OrbitaScreen, Section, TabStrip } from "@/components/orbita/kit";
 import { glyphFor } from "@/components/orbita/GlyphRow";
 import { NatalWheel } from "@/components/orbita/NatalWheel";
-import { EmptyState, ErrorState, LoadingState } from "@/components/orbita/states";
+import { EmptyState, ErrorState, LoadingState, MinimalLoading } from "@/components/orbita/states";
 import { mapNatalChart } from "@/components/web/orbita-chart";
 import { Radar } from "@/components/web/orbita-values";
 import { chartMock } from "@/content/chartMock";
 import { personalityMock } from "@/content/personalityMock";
 import { valuesMock } from "@/content/valuesMock";
+import { sessionPhase } from "@/domain/screenPhase";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import {
   appApi,
@@ -30,8 +31,25 @@ import { orbita } from "@/theme/orbita";
  * la app. Con sesión, data real de `charts.current`; invitado → demo (chartMock).
  */
 export default function CartaScreen() {
-  const { isLive } = useLiveApp();
-  if (!isLive) return <CartaView payload={chartMock} reading={personalityMock} values={valuesMock} />;
+  const live = useLiveApp();
+  const phase = sessionPhase(live);
+  // Regla anti-flash: demo (mocks) SOLO para invitado confirmado. Mientras la
+  // sesión resuelve o reconecta → carga mínima; sesión rota → error + retry.
+  if (phase === "cargando") {
+    return (
+      <OrbitaScreen right="Carta">
+        <MinimalLoading />
+      </OrbitaScreen>
+    );
+  }
+  if (phase === "error") {
+    return (
+      <OrbitaScreen right="Carta">
+        <ErrorState onRetry={live.retryUser} />
+      </OrbitaScreen>
+    );
+  }
+  if (phase === "invitado") return <CartaView payload={chartMock} reading={personalityMock} values={valuesMock} />;
   return <CartaLive />;
 }
 
@@ -77,7 +95,11 @@ function CartaLive() {
       </OrbitaScreen>
     );
   }
-  return <CartaView payload={payload} reading={reading ?? personalityMock} values={values ?? valuesMock} />;
+  // `reading` es la lectura LLM y tarda la primera vez: undefined (query en
+  // vuelo) o null (todavía no generada) → la vista muestra "se está
+  // escribiendo", NUNCA el mock como si fuera tu lectura. `values` pendiente →
+  // la sección del radar espera; jamás el radar demo.
+  return <CartaView payload={payload} reading={reading ?? null} values={values ?? null} />;
 }
 
 // --- Vista ---------------------------------------------------------------
@@ -95,8 +117,10 @@ function CartaView({
   values
 }: {
   payload: NatalChartPayload;
-  reading: PersonalityReadingPayload;
-  values: ValuesMapPayload;
+  /** null = la lectura LLM todavía se está escribiendo (la primera visita tarda). */
+  reading: PersonalityReadingPayload | null;
+  /** null = el mapa de valores todavía no llegó. */
+  values: ValuesMapPayload | null;
 }) {
   const { width } = useWindowDimensions();
   const [view, setView] = useState<"circulo" | "tabla">("circulo");
@@ -108,7 +132,7 @@ function CartaView({
   const angular = payload.houses.filter((h) => [1, 4, 7, 10].includes(h.house)).sort((a, b) => a.house - b.house);
   // La explicación completa va VISIBLE abajo (sector por sector). El mapa de valores
   // se intercala en el medio.
-  const sections = reading.sections ?? [];
+  const sections = reading?.sections ?? [];
   const mid = Math.ceil(sections.length / 2);
   const sectionsA = sections.slice(0, mid);
   const sectionsB = sections.slice(mid);
@@ -154,8 +178,18 @@ function CartaView({
         </Section>
       )}
 
-      {/* Toda la explicación, VISIBLE (sector por sector). */}
-      {sectionsA.length > 0 ? (
+      {/* Toda la explicación, VISIBLE (sector por sector). Mientras la lectura
+          LLM no llegó (primera visita), lo decimos de verdad — jamás el mock
+          de personalidad presentado como tuyo. */}
+      {reading === null ? (
+        <Section style={{ paddingTop: orbita.spacing.xxl }}>
+          <Eyebrow>Tu carta, explicada</Eyebrow>
+          <View style={styles.readingPending}>
+            <ActivityIndicator color={orbita.colors.copper} />
+          </View>
+          <Note>Tu lectura completa se está escribiendo sobre esta carta. Llega en un momento.</Note>
+        </Section>
+      ) : sectionsA.length > 0 ? (
         <Section style={{ paddingTop: orbita.spacing.xxl }}>
           <Eyebrow>Tu carta, explicada</Eyebrow>
           {sectionsA.map((s, i) => (
@@ -164,15 +198,18 @@ function CartaView({
         </Section>
       ) : null}
 
-      {/* Mapa de valores — en el medio de la explicación. */}
-      <Section style={{ paddingTop: orbita.spacing.xl }}>
-        <Eyebrow>Mapa de valores</Eyebrow>
-        <Body>Qué te impulsa y qué te pesa, leído desde tu carta.</Body>
-        <View style={styles.radarWrap}>
-          <Radar payload={values} size={radarSize} />
-        </View>
-        <Body>{values.note}</Body>
-      </Section>
+      {/* Mapa de valores — en el medio de la explicación. Pendiente → espera
+          sin radar demo. */}
+      {values ? (
+        <Section style={{ paddingTop: orbita.spacing.xl }}>
+          <Eyebrow>Mapa de valores</Eyebrow>
+          <Body>Qué te impulsa y qué te pesa, leído desde tu carta.</Body>
+          <View style={styles.radarWrap}>
+            <Radar payload={values} size={radarSize} />
+          </View>
+          <Body>{values.note}</Body>
+        </Section>
+      ) : null}
 
       {sectionsB.length > 0 ? (
         <Section style={{ paddingTop: orbita.spacing.xl }}>
@@ -215,7 +252,7 @@ function CartaView({
         {payload.limitations.map((l) => (
           <Note key={l}>{l}</Note>
         ))}
-        <Note>{reading.disclaimer}</Note>
+        {reading ? <Note>{reading.disclaimer}</Note> : null}
       </Section>
     </OrbitaScreen>
   );
@@ -329,6 +366,7 @@ const styles = StyleSheet.create({
   posSign: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 13, textAlign: "right", width: 108 },
   posHouse: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.mono, fontSize: 11, textAlign: "right", width: 58 },
   radarWrap: { alignItems: "center", marginVertical: orbita.spacing.lg },
+  readingPending: { alignItems: "center", paddingVertical: orbita.spacing.xl },
 
   // Bloque de explicación por sector (visible, sin colapsar).
   sector: { marginTop: orbita.spacing.xl },

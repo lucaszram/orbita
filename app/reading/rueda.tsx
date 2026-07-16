@@ -5,9 +5,10 @@ import { useQuery } from "convex/react";
 import { DetailScreen } from "@/components/home/DetailScreen";
 import { Body, H2, Note } from "@/components/orbita/kit";
 import { NatalWheel } from "@/components/orbita/NatalWheel";
-import { EmptyState, ErrorState, LoadingState } from "@/components/orbita/states";
+import { EmptyState, ErrorState, LoadingState, MinimalLoading } from "@/components/orbita/states";
 import { mapNatalChart } from "@/components/web/orbita-chart";
 import { chartMock } from "@/content/chartMock";
+import { sessionPhase } from "@/domain/screenPhase";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { appApi, type NatalChartPayload } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
@@ -18,8 +19,24 @@ import { orbita } from "@/theme/orbita";
  * data real si hay sesión y mock para invitados. No re-dibuja nada propio.
  */
 export default function RuedaScreen() {
-  const { isLive } = useLiveApp();
-  if (!isLive) return <RuedaView payload={chartMock} />;
+  const live = useLiveApp();
+  const phase = sessionPhase(live);
+  // Demo (mock) SOLO invitado confirmado; sesión resolviendo → carga mínima.
+  if (phase === "cargando") {
+    return (
+      <DetailScreen eyebrow="Carta · Rueda completa">
+        <MinimalLoading />
+      </DetailScreen>
+    );
+  }
+  if (phase === "error") {
+    return (
+      <DetailScreen eyebrow="Carta · Rueda completa">
+        <ErrorState onRetry={live.retryUser} />
+      </DetailScreen>
+    );
+  }
+  if (phase === "invitado") return <RuedaView payload={chartMock} />;
   return <RuedaLive />;
 }
 

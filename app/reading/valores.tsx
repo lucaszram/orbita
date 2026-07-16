@@ -3,9 +3,10 @@ import { router } from "expo-router";
 import { useQuery } from "convex/react";
 import { DetailScreen } from "@/components/home/DetailScreen";
 import { H2, Note } from "@/components/orbita/kit";
-import { EmptyState, LoadingState } from "@/components/orbita/states";
+import { EmptyState, ErrorState, LoadingState, MinimalLoading } from "@/components/orbita/states";
 import { Radar } from "@/components/web/orbita-values";
 import { valuesMock } from "@/content/valuesMock";
+import { sessionPhase } from "@/domain/screenPhase";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { appApi, type ValuesMapPayload } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
@@ -16,8 +17,24 @@ import { orbita } from "@/theme/orbita";
  * una sola implementación del radar para web y nativo.
  */
 export default function ValoresScreen() {
-  const { isLive } = useLiveApp();
-  if (!isLive) return <ValoresView payload={valuesMock} />;
+  const live = useLiveApp();
+  const phase = sessionPhase(live);
+  // Demo (mock) SOLO invitado confirmado; sesión resolviendo → carga mínima.
+  if (phase === "cargando") {
+    return (
+      <DetailScreen eyebrow="Mapa de valores">
+        <MinimalLoading />
+      </DetailScreen>
+    );
+  }
+  if (phase === "error") {
+    return (
+      <DetailScreen eyebrow="Mapa de valores">
+        <ErrorState onRetry={live.retryUser} />
+      </DetailScreen>
+    );
+  }
+  if (phase === "invitado") return <ValoresView payload={valuesMock} />;
   return <ValoresLive />;
 }
 
