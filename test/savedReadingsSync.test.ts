@@ -9,6 +9,7 @@ import {
 } from "../src/domain/accountLocalData";
 import {
   addTombstoneKeys,
+  commitSavedReadingRemoval,
   isDailyReadingPayload,
   MAX_TOMBSTONE_KEYS,
   mergeRemoteSavedReadings,
@@ -158,6 +159,23 @@ describe("mergeRemoteSavedReadings — lo local primero, el remoto solo aporta",
     assert.equal(changed, false);
   });
 
+  it("carrera de login: el remoto entra ANTES que las lápidas de la cuenta → al llegar la lápida la lectura se retira igual", () => {
+    // 1. la sesión activa: listSaved resuelve antes de restoreAccountData
+    const paso1 = mergeRemoteSavedReadings([], [remote("r1")], []);
+    assert.equal(paso1.changed, true);
+    assert.equal(paso1.merged.length, 1);
+    // 2. el snapshot restaura la lápida DESPUÉS: la reconciliación la retira
+    // de la lista ya mergeada (no solo bloquea adiciones nuevas)
+    const tombstones = addTombstoneKeys([], readingMatchKeys(reading("r1")));
+    const paso2 = mergeRemoteSavedReadings(paso1.merged, [remote("r1")], tombstones);
+    assert.equal(paso2.changed, true);
+    assert.deepEqual(paso2.merged, []);
+    // 3. y el borrado remoto sigue pendiente hasta confirmarse
+    const pendientes = remoteRowsToUnsave([remote("r1")], tombstones);
+    assert.equal(pendientes.length, 1);
+    assert.equal(pendientes[0].savedReadingId, "saved_r1");
+  });
+
   it("respeta el límite activo de guardadas", () => {
     const remotes = Array.from({ length: MAX_SAVED_READINGS + 10 }, (_, i) =>
       remote(`r${i}`, `2026-06-${String((i % 28) + 1).padStart(2, "0")}`, `carta-${i}`)
@@ -181,6 +199,82 @@ describe("lápidas — el unsave remoto se confirma antes de levantarlas", () =>
     const tombstones = addTombstoneKeys([], readingMatchKeys(reading("local-id", "2026-07-15", "la-luna")));
     const pending = remoteRowsToUnsave([remote("remoto-id", "2026-07-15", "la-luna")], tombstones);
     assert.equal(pending.length, 1);
+  });
+
+  it("borrado coordinado con storage demorado: nunca existe 'sin lectura y sin lápida'", async () => {
+    const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    const borrada = reading("r1");
+    const keys = readingMatchKeys(borrada);
+
+    // "disco" observable en todo momento durante el commit
+    const disk = { readings: [borrada] as DailyReading[], tombstones: [] as string[] };
+    const eventos: string[] = [];
+    const estados: Array<{ tieneLectura: boolean; tieneLapida: boolean }> = [];
+    const sampleDisk = () =>
+      estados.push({
+        tieneLectura: disk.readings.some((r) => r.id === borrada.id),
+        tieneLapida: keys.some((key) => disk.tombstones.includes(key))
+      });
+
+    const commit = commitSavedReadingRemoval({
+      persistTombstones: async () => {
+        await delay(15);
+        disk.tombstones = addTombstoneKeys([], keys);
+        eventos.push("lapida");
+      },
+      publishState: () => eventos.push("publicar"),
+      persistReadings: async () => {
+        await delay(15);
+        disk.readings = [];
+        eventos.push("lista");
+      }
+    });
+
+    // un "logout inmediato" muestrea el disco mientras las escrituras corren
+    const sampler = (async () => {
+      for (let i = 0; i < 8; i++) {
+        sampleDisk();
+        await delay(5);
+      }
+    })();
+    await Promise.all([commit, sampler]);
+    sampleDisk();
+
+    // la intención toca disco antes que la lista, y se publica en el medio
+    assert.deepEqual(eventos, ["lapida", "publicar", "lista"]);
+    // invariante: en NINGÚN momento el disco quedó sin lectura y sin lápida
+    for (const s of estados) {
+      assert.ok(s.tieneLectura || s.tieneLapida, "estado intermedio inválido: sin lectura y sin lápida");
+    }
+    // estado final: sin lectura, con lápida pendiente de unsave
+    assert.deepEqual(disk.readings, []);
+    assert.ok(keys.every((key) => disk.tombstones.includes(key)));
+  });
+
+  it("crash entre la lápida y la lista: la reconciliación del arranque retira la lectura", async () => {
+    const borrada = reading("r1");
+    const keys = readingMatchKeys(borrada);
+    const disk = { readings: [borrada] as DailyReading[], tombstones: [] as string[] };
+
+    // la app muere antes de persistir la lista: solo quedó la intención
+    await assert.rejects(
+      commitSavedReadingRemoval({
+        persistTombstones: async () => {
+          disk.tombstones = addTombstoneKeys([], keys);
+        },
+        publishState: () => undefined,
+        persistReadings: async () => {
+          throw new Error("proceso muerto");
+        }
+      })
+    );
+
+    // disco = lista-vieja + lápida → el arranque (o el próximo merge) reconcilia
+    const { merged, changed } = mergeRemoteSavedReadings(disk.readings, [], disk.tombstones);
+    assert.equal(changed, true);
+    assert.deepEqual(merged, []);
+    // y el unsave remoto sigue pendiente si el servidor aún tiene la fila
+    assert.equal(remoteRowsToUnsave([remote("r1")], disk.tombstones).length, 1);
   });
 
   it("borrar → logout → login con unsave pendiente: la lápida viaja con la cuenta y no hay resurrección", () => {

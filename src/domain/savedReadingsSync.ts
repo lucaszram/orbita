@@ -85,9 +85,13 @@ export function readingMatchKeys(
 }
 
 /**
- * Merge remoto→local: local primero, después lo remoto que no esté repetido
- * ni tenga lápida. Orden final por fecha descendente (estable: ante empate
- * gana lo local). `changed=false` cuando no hay nada nuevo que persistir.
+ * Merge remoto→local: primero RECONCILIA lo local contra las lápidas (una
+ * fila remota pudo entrar antes de que las lápidas de la cuenta se
+ * restauraran, o el proceso pudo morir con lista-vieja + lápida: acá se
+ * retira), después suma lo remoto que no esté repetido ni tenga lápida.
+ * Un remoto vacío nunca borra nada que no tenga lápida. Orden final por
+ * fecha descendente (estable: ante empate gana lo local). `changed=false`
+ * cuando no hay nada que persistir.
  */
 export function mergeRemoteSavedReadings(
   local: DailyReading[],
@@ -95,7 +99,8 @@ export function mergeRemoteSavedReadings(
   tombstoneKeys: Iterable<string>
 ): { merged: DailyReading[]; changed: boolean } {
   const tombs = new Set(tombstoneKeys);
-  const seen = new Set(local.flatMap((reading) => readingMatchKeys(reading)));
+  const kept = local.filter((reading) => !readingMatchKeys(reading).some((key) => tombs.has(key)));
+  const seen = new Set(kept.flatMap((reading) => readingMatchKeys(reading)));
 
   const additions: DailyReading[] = [];
   for (const { reading } of remote) {
@@ -105,14 +110,35 @@ export function mergeRemoteSavedReadings(
     additions.push(reading);
   }
 
-  if (additions.length === 0) {
+  if (kept.length === local.length && additions.length === 0) {
     return { merged: local, changed: false };
   }
 
-  const merged = [...local, ...additions]
+  const merged = [...kept, ...additions]
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
     .slice(0, MAX_SAVED_READINGS);
   return { merged, changed: true };
+}
+
+/**
+ * Borrado coordinado (mismo patrón que `commitProfileCreation`): la intención
+ * de borrado (lápida) se persiste ANTES de publicar y persistir la lista sin
+ * la lectura. Si el proceso muere o hay logout en el medio, el peor estado
+ * posible en disco es lista-vieja + lápida — que la reconciliación de
+ * `mergeRemoteSavedReadings` retira — y NUNCA "sin lectura y sin lápida",
+ * que dejaría al remoto resucitarla con el `unsave` todavía pendiente.
+ */
+export async function commitSavedReadingRemoval(ops: {
+  /** Escribe las lápidas nuevas (la intención) en disco. */
+  persistTombstones: () => Promise<void>;
+  /** Publica lista + lápidas juntas en el estado (batch de React). */
+  publishState: () => void;
+  /** Escribe la lista sin la lectura en disco. */
+  persistReadings: () => Promise<void>;
+}): Promise<void> {
+  await ops.persistTombstones();
+  ops.publishState();
+  await ops.persistReadings();
 }
 
 /** Filas remotas que una lápida marca para `unsave` (borrado pendiente). */

@@ -30,6 +30,7 @@ import {
 } from "@/domain/accountLocalData";
 import {
   addTombstoneKeys,
+  commitSavedReadingRemoval,
   mergeRemoteSavedReadings,
   parseRemoteSavedReadings,
   readingMatchKeys,
@@ -154,7 +155,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       if (normalizedProfile && normalizedProfile !== storedProfile) {
         await storeProfile(normalizedProfile);
       }
-      setSavedReadings(storedReadings);
+      // Reconciliar al arrancar: si el proceso murió entre la lápida y la
+      // lista (borrado coordinado), acá se retira la lectura pendiente.
+      const reconciled = mergeRemoteSavedReadings(storedReadings, [], storedTombstones);
+      setSavedReadings(reconciled.merged);
+      if (reconciled.changed) {
+        await storeSavedReadings(reconciled.merged);
+      }
       setSavedTombstones(storedTombstones);
       setJournalEntries(storedJournal);
       setIsReady(true);
@@ -342,15 +349,23 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const removeSavedReading = useCallback(
     async (readingId: string) => {
       const target = savedReadings.find((reading) => reading.id === readingId);
-      const nextReadings = savedReadings.filter((reading) => reading.id !== readingId);
-      setSavedReadings(nextReadings);
-      await storeSavedReadings(nextReadings);
       if (!target) return;
+      const nextReadings = savedReadings.filter((reading) => reading.id !== readingId);
       // La lápida persiste hasta que el `unsave` remoto se confirme (lo hace
       // el efecto de sync); sin sesión o sin red queda pendiente y no vuelve.
       const nextTombstones = addTombstoneKeys(savedTombstones, readingMatchKeys(target));
-      setSavedTombstones(nextTombstones);
-      await storeSavedReadingTombstones(nextTombstones);
+      // Coordinado: la intención (lápida) toca disco ANTES de publicar la
+      // eliminación; un logout/crash en el medio nunca deja "sin lectura y
+      // sin lápida". Lista + lápidas se publican juntas para que un archive
+      // concurrente vea un estado consistente.
+      await commitSavedReadingRemoval({
+        persistTombstones: () => storeSavedReadingTombstones(nextTombstones),
+        publishState: () => {
+          setSavedTombstones(nextTombstones);
+          setSavedReadings(nextReadings);
+        },
+        persistReadings: () => storeSavedReadings(nextReadings)
+      });
     },
     [savedReadings, savedTombstones]
   );
