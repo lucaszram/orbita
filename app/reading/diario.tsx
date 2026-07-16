@@ -4,7 +4,7 @@ import { useAction, useQuery } from "convex/react";
 import { DetailScreen } from "@/components/home/DetailScreen";
 import { Body, Divider, Eyebrow, H2 } from "@/components/orbita/kit";
 import { TarotStrip, type DiaCelda } from "@/components/diario/TarotStrip";
-import { CARD_BACK, guestCardOfTheDay, majorById } from "@/content/tarotDeck";
+import { CARD_BACK, guestCardOfTheDay, cardById } from "@/content/tarotDeck";
 import { dayLabel, lastNDays, monthLabel, toLocalDate } from "@/domain/dateStrip";
 import { guestRitual } from "@/domain/guestRitual";
 import { useLiveApp } from "@/hooks/useLiveApp";
@@ -60,9 +60,9 @@ export default function DiarioScreen() {
           wd: WEEKDAYS[date.getDay()],
           n: String(date.getDate()),
           image: isGuestToday
-            ? majorById(guestToday.id)?.image ?? null
+            ? cardById(guestToday.id)?.image ?? null
             : entry?.cartaId != null
-              ? majorById(entry.cartaId)?.image ?? null
+              ? cardById(entry.cartaId)?.image ?? null
               : null,
           revealed: isGuestToday || Boolean(entry?.revealed)
         };
@@ -105,9 +105,9 @@ export default function DiarioScreen() {
   // La identidad de la carta NO depende de getGuide: ya está en la fila de la tira
   // (cartaId). Así la carta nunca "desaparece" mientras la lectura carga o si la
   // action falla — solo el texto espera.
-  const entryCard = entry?.cartaId != null ? majorById(entry.cartaId) : undefined;
+  const entryCard = entry?.cartaId != null ? cardById(entry.cartaId) : undefined;
   const carta = guide?.carta;
-  const image = carta ? majorById(carta.id)?.image : entryCard?.image;
+  const image = carta ? cardById(carta.id)?.image : entryCard?.image;
   const cardName = carta?.nombre ?? entryCard?.nombre;
   const isFuture = selectedDate > today;
 
@@ -137,7 +137,7 @@ export default function DiarioScreen() {
           <>
             <View style={styles.center}>
               <View style={styles.bigCard}>
-                <Image source={majorById(guestToday.id)?.image ?? CARD_BACK} style={styles.bigImg} resizeMode="cover" />
+                <Image source={cardById(guestToday.id)?.image ?? CARD_BACK} style={styles.bigImg} resizeMode="cover" />
               </View>
             </View>
             <H2>Te salió {guestToday.nombre}.</H2>
@@ -151,7 +151,8 @@ export default function DiarioScreen() {
         <>
           <View style={styles.center}>
             <View style={styles.bigCard}>
-              {image ? <Image source={image} style={styles.bigImg} resizeMode="cover" /> : null}
+              {/* id fuera del mazo local → dorso, nunca el marco vacío */}
+              <Image source={image ?? CARD_BACK} style={styles.bigImg} resizeMode="cover" />
             </View>
           </View>
           <H2>Te salió {cardName}.</H2>

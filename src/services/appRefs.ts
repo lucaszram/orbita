@@ -222,8 +222,9 @@ export type VoidAnswerPayload = {
 
 /** La carta del día, ya sorteada por el backend (determinística por usuario+fecha).
  *
- *  `id` (0–21) viaja como número y el front resuelve la ilustración con `majorById(id)`
- *  de `src/content/tarotDeck.ts`: Metro no puede hacer `require()` con string dinámico,
+ *  `id` (0–77, contrato PR #15: mayores 0–21 históricos + menores 22–77) viaja como
+ *  número y el front resuelve la ilustración con `cardById(id)` de
+ *  `src/content/tarotDeck.ts`: Metro no puede hacer `require()` con string dinámico,
  *  así que el mapeo id→imagen tiene que vivir en el bundle, no en el payload. */
 export type DailyCarta = {
   id: number;

@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { useQuery } from "convex/react";
 import { TarotStrip, type DiaCelda } from "@/components/diario/TarotStrip";
-import { majorById } from "@/content/tarotDeck";
+import { cardById } from "@/content/tarotDeck";
 import { lastNDays, monthLabel, toLocalDate } from "@/domain/dateStrip";
 import { proposedApi } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
@@ -28,10 +28,10 @@ export function DiarioStrip({ isLive, guestCardId }: { isLive: boolean; guestCar
     const byDate = new Map((strip ?? []).map((d) => [d.localDate, d]));
     return days.map((iso, i) => {
       const entry = byDate.get(iso);
-      let image = entry?.cartaId != null ? majorById(entry.cartaId)?.image ?? null : null;
+      let image = entry?.cartaId != null ? cardById(entry.cartaId)?.image ?? null : null;
       let revealed = Boolean(entry?.revealed);
       if (!isLive && guestCardId != null && i === days.length - 1) {
-        image = majorById(guestCardId)?.image ?? null;
+        image = cardById(guestCardId)?.image ?? null;
         revealed = true;
       }
       const date = new Date(`${iso}T12:00:00`);

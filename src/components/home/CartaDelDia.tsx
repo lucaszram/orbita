@@ -12,7 +12,7 @@ import Animated, {
   withTiming
 } from "react-native-reanimated";
 import { Eyebrow, Section } from "@/components/orbita/kit";
-import { CARD_BACK, majorById } from "@/content/tarotDeck";
+import { CARD_BACK, cardById } from "@/content/tarotDeck";
 import type { DailyCarta } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
 
@@ -141,7 +141,9 @@ export function CartaDelDia({
     transform: [{ scale: interpolate(breath.value, [0, 1], [1, 1.08]) }]
   }));
 
-  const image = carta ? majorById(carta.id)?.image : undefined;
+  // Carta con id fuera del mazo local (payload futuro/dañado): la cara cae
+  // al dorso, nunca queda sin imagen.
+  const image = carta ? cardById(carta.id)?.image ?? CARD_BACK : undefined;
 
   return (
     <Section style={styles.section}>
