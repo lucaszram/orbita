@@ -184,7 +184,7 @@ test("daily tarot draw is stable per user and date", () => {
   const repeated = drawCard({ userId: "user_123", localDate: "2026-07-15" });
 
   assert.deepEqual(repeated, first);
-  assert.ok(first.id >= 0 && first.id <= 21);
+  assert.ok(first.id >= 0 && first.id <= 77);
   assert.ok(first.nombre.length > 0);
   assert.ok(first.correspondencia.length > 0);
 });

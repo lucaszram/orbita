@@ -50,9 +50,9 @@ type DailyTopic = {
   question: string;
 };
 
-/** La carta del día ya sorteada, con su lectura. `id` viaja como número: el front
- *  resuelve la ilustración con `majorById(id)` (Metro no puede requerir imágenes por
- *  string dinámico, así que el mapeo id→imagen vive en el bundle). */
+/** La carta del día ya sorteada, con su lectura. `id` viaja como número 0–77: el
+ *  front resuelve la ilustración con un mapa estático (Metro no puede requerir
+ *  imágenes por string dinámico, así que el mapeo id→imagen vive en el bundle). */
 type DailyCarta = {
   id: number;
   nombre: string;
@@ -132,6 +132,32 @@ export function localDateForTimezone(timezone?: string, now: Date = new Date()):
   } catch {
     return now.toISOString().slice(0, 10);
   }
+}
+
+/** Aritmética de fecha civil, siempre en UTC para no saltar días por DST. */
+export function shiftLocalDate(localDate: string, deltaDays: number): string | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(localDate);
+  if (!match || !Number.isInteger(deltaDays)) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
+  date.setUTCDate(date.getUTCDate() + deltaDays);
+  return date.toISOString().slice(0, 10);
+}
+
+/** Extrae solo ids válidos del contrato nuevo; tolera guías históricas o dañadas. */
+export function recentCardIdsFromPayloads(payloads: unknown[]): number[] {
+  const ids = payloads
+    .map((payload) => {
+      if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+      const carta = (payload as Record<string, unknown>).carta;
+      if (!carta || typeof carta !== "object" || Array.isArray(carta)) return null;
+      return (carta as Record<string, unknown>).id;
+    })
+    .filter((id): id is number => typeof id === "number" && Number.isInteger(id) && id >= 0 && id <= 77);
+  return [...new Set(ids)];
 }
 
 // --- Aspecto tránsito→natal en texto legible -------------------------------
@@ -652,7 +678,20 @@ export const getGuideState = internalQuery({
       .withIndex("by_user_date", (q: any) => q.eq("userId", user._id).eq("localDate", args.localDate))
       .first();
 
-    return { userId: user._id, birthData, natalChart, existing };
+    // Ventana móvil de siete días: hoy excluye lo que salió en los seis días
+    // calendario anteriores. Los días que la persona no abrió no inventan carta.
+    const recentWindowStart = shiftLocalDate(args.localDate, -6);
+    const recentGuides = recentWindowStart
+      ? await ctx.db
+          .query("dailyGuides")
+          .withIndex("by_user_date", (q: any) =>
+            q.eq("userId", user._id).gte("localDate", recentWindowStart).lt("localDate", args.localDate)
+          )
+          .collect()
+      : [];
+    const recentCardIds = recentCardIdsFromPayloads(recentGuides.map((doc: any) => doc.payload));
+
+    return { userId: user._id, birthData, natalChart, existing, recentCardIds };
   }
 });
 
@@ -728,7 +767,11 @@ export const getGuide = action({
 
     // La carta se sortea ANTES del LLM (es determinística, no depende de él) y se le pasa
     // en el prompt, para que los beats y la tesis del día hablen de la misma carta.
-    const carta = drawCard({ userId: String(state.userId), localDate });
+    const carta = drawCard({
+      userId: String(state.userId),
+      localDate,
+      excludedIds: state.recentCardIds ?? []
+    });
 
     const generated = await generateDaily({
       natal,

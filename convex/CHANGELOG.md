@@ -1,5 +1,12 @@
 # Contrato — CHANGELOG
 
+## 2026-07-16 — Mazo completo de 78 cartas y ventana móvil sin repetición
+- **Qué cambió:** el dominio de `carta.id` en `daily.getGuide()` y `cartaId` en `daily.getStrip()` se amplía de `0–21` a `0–77`. Los ids históricos `0–21` conservan exactamente las mismas cartas; los arcanos menores ocupan ids estables `22–77` en orden Bastos, Copas, Espadas y Oros (As, 2–10, Paje, Caballero, Reina, Rey).
+- **Regla de producto:** al generar una carta nueva se excluyen las cartas persistidas en los seis días calendario anteriores. La ventana es móvil: no hay un reinicio semanal abrupto y una carta puede volver a salir recién al octavo día. Un documento ya generado nunca se vuelve a sortear.
+- **Compatibilidad:** no cambian argumentos ni forma del payload. El frontend debe ampliar su mapa estático `id→imagen/contenido` a las 78 cartas antes de desplegar este backend; los 78 assets ya existen en `assets/orbita/optimized/tarot/`.
+- **Quién lo pidió:** producto.
+- **Estado:** implementado en rama coordinada; no desplegar hasta que el frontend de 78 cartas esté listo.
+
 ## 2026-07-16 — Recuperación remota de lecturas guardadas
 - **Qué cambió:** nueva query autenticada `readings.listSaved({ limit? })`. Devuelve, de más nueva a más vieja, `{ savedReadingId, readingId, readingDate, readingPayload, note, createdAt }` para las lecturas que sí llegaron a `savedReadings` en Convex. Límite por defecto 60, máximo 120.
 - **Por qué:** un simulador o teléfono nuevo no tiene el `AsyncStorage` anterior. La app necesita mergear el archivo remoto con el local sin confundir “remoto vacío” con “borrar lo local”.
