@@ -209,7 +209,48 @@ export type VoidAnswerPayload = {
   locked?: boolean;
 };
 
-/** Guía diaria personalizada (análisis del cielo de hoy sobre la carta natal). */
+/** La carta del día, ya sorteada por el backend (determinística por usuario+fecha).
+ *
+ *  `id` (0–21) viaja como número y el front resuelve la ilustración con `majorById(id)`
+ *  de `src/content/tarotDeck.ts`: Metro no puede hacer `require()` con string dinámico,
+ *  así que el mapeo id→imagen tiene que vivir en el bundle, no en el payload. */
+export type DailyCarta = {
+  id: number;
+  nombre: string;
+  correspondencia: string;
+  /** QUÉ ES · CÓMO INFLUYE HOY · CÓMO SE CONECTA CON TU CIELO */
+  beats: Array<{ label: string; body: string }>;
+};
+
+/** Una celda de la tira del Diario. `cartaId` null = ese día no se generó guía (no abriste
+ *  la app); el front lo pinta boca abajo igual. */
+export type DailyStripDay = {
+  localDate: string;
+  cartaId: number | null;
+  revealed: boolean;
+};
+
+/** Un área de la Home (Amor/Trabajo/Familia/Vínculos) escrita por el LLM. */
+export type DailyTopic = {
+  topic: "amor" | "trabajo" | "familia" | "vinculos";
+  label: string;
+  title: string;
+  oneLine: string;
+  detail: string;
+  hace: string;
+  evita: string;
+  question: string;
+};
+
+/** Guía diaria personalizada (análisis del cielo de hoy sobre la carta natal).
+ *
+ *  Desde `orbita-daily-home-v2`, una sola generación cubre TODA la Home: hero + guía +
+ *  las 4 áreas + lectura larga, todo derivado de los mismos tránsitos y atado a una
+ *  única `tesis`. Antes solo el hero era real y el resto salía de plantillas, así que
+ *  la Home se contradecía consigo misma a mitad del scroll.
+ *
+ *  Los bloques nuevos son OPCIONALES: si el LLM está apagado o devuelve un JSON
+ *  incompleto, llegan `undefined` y cada sección cae al engine local (`homeReading`). */
 export type DailyGuidePayload = {
   headline: string;
   body: string;
@@ -218,6 +259,23 @@ export type DailyGuidePayload = {
   secundarios: Array<{ aspecto: string; lectura: string }>;
   basadoEn: string[];
   disclaimer: string;
+  /** Carta del día + su lectura. El sorteo no depende del LLM, así que siempre viene;
+   *  si el LLM falló, los beats son los de fallback. */
+  carta?: DailyCarta;
+  /** Idea única del día. Todos los bloques la retoman; no se renderiza sola. */
+  tesis?: string;
+  guia?: {
+    eyebrow: string;
+    headline: string;
+    intro: string;
+    hace: string;
+    evita: string;
+    energia: string;
+    accion: string;
+  };
+  topics?: DailyTopic[];
+  lecturaLarga?: { eyebrow: string; title: string; body: string };
+  cierre?: string;
 };
 
 /** Cupo del día de El Vacío (contador). */
@@ -376,6 +434,11 @@ export const proposedApi = {
   voidSuggested: anyApi.void.suggestedQuestions as FunctionReference<"action", "public", Empty, VoidSuggestedPayload>,
   // daily.getGuide(): guía diaria personalizada (action: genera+cachea 1/día/usuario).
   dailyGuide: anyApi.daily.getGuide as FunctionReference<"action", "public", { localDate?: string; timezone?: string }, DailyGuidePayload>,
+  // daily.revealCard(): da vuelta la carta de ese día. Idempotente, irreversible.
+  revealCard: anyApi.daily.revealCard as FunctionReference<"mutation", "public", { localDate: string }, number>,
+  // daily.getStrip(): la tira del Diario (qué carta salió cada día, si ya la diste vuelta).
+  // Query reactiva: después de revealCard, la Home y la tira se actualizan solas.
+  dailyStrip: anyApi.daily.getStrip as FunctionReference<"query", "public", { from: string; to: string }, DailyStripDay[]>,
   // Dev/testeo interno: marca al usuario como Pro (gateado por ALLOW_DEV_STUB en Convex).
   setStubPro: anyApi.subscriptions.setStubPlusForDev as FunctionReference<"mutation", "public", Empty, unknown>,
   // Telemetría: aviso de instalación al bot de Telegram (1 vez por install, sin sesión).

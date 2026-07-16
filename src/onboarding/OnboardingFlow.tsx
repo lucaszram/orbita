@@ -241,10 +241,17 @@ export function OnboardingFlow() {
         timezone: birthPlace?.timezone,
       });
     }
-    // Al salir del onboarding se entra a la Home "primera impresión" (fresh=1):
-    // arranca con la carta natal arriba. La Home normal (sin la carta) es la de
-    // uso diario. La carta queda accesible siempre desde el Perfil.
-    router.replace({ pathname: "/(tabs)", params: { fresh: "1" } });
+    // Al salir del onboarding, la primera entrega: la ceremonia de recepción de la
+    // carta natal (/recepcion, full-screen, una sola vez). La tríada calculada viaja
+    // por params para no depender de que Convex ya haya persistido la carta.
+    router.replace({
+      pathname: "/recepcion",
+      params: {
+        ...(computed?.sun ? { sol: computed.sun } : {}),
+        ...(computed?.moon ? { luna: computed.moon } : {}),
+        ...(computed?.ascendant ? { asc: computed.ascendant } : {}),
+      },
+    });
   };
 
   // Sin paywall: al llegar al paso de pago (step 14) se entra directo a la app.

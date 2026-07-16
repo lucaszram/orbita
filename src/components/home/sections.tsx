@@ -2,6 +2,7 @@ import { ReactNode } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { HomeReading, HomeTopic, Topic } from "@/domain/types";
+import type { DailyGuidePayload, DailyTopic } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
 import { EditorialThumb } from "@/components/orbita/HeroImage";
 
@@ -68,7 +69,8 @@ export function SignalTop({
   onProfundizar,
   triad: triadOverride,
   daily,
-  name
+  name,
+  onVerCarta
 }: {
   reading: HomeReading;
   onProfundizar: () => void;
@@ -78,6 +80,8 @@ export function SignalTop({
   daily?: { headline: string; body: string; clima: string };
   /** Nombre de la persona para la bajada "HOY · PARA {nombre}" (no el signo). */
   name?: string;
+  /** Figma "Home unificada": botón "VER MI CARTA →" bajo la tríada. */
+  onVerCarta?: () => void;
 }) {
   const triad = triadOverride ?? reading.triad;
   const headline = daily?.headline ?? reading.headline;
@@ -94,10 +98,20 @@ export function SignalTop({
           style={styles.heroFade}
         />
         <View style={styles.heroContent}>
+          <Text style={styles.triadEyebrow}>TU CARTA NATAL</Text>
           <Text style={[styles.triad, styles.triadCentered]}>
             {`${triad.sun.glyph} ${triad.sun.label}   ${triad.moon.glyph} ${triad.moon.label}   ${triad.ascendant.glyph} ${triad.ascendant.label}`}
           </Text>
           {triad.accuracyNote ? <Text style={[styles.triadNote, styles.triadCentered]}>{triad.accuracyNote}</Text> : null}
+          {onVerCarta ? (
+            <Pressable
+              onPress={onVerCarta}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.cartaCta, pressed && styles.pressed]}
+            >
+              <Text style={styles.cartaCtaText}>VER MI CARTA  →</Text>
+            </Pressable>
+          ) : null}
           <View style={styles.heroTextGap} />
           <Eyebrow>{`HOY · PARA ${(name?.trim().split(" ")[0] || triad.sun.label).toUpperCase()}`}</Eyebrow>
           <Text style={styles.headline}>{headline}</Text>
@@ -121,8 +135,17 @@ function GuideRow({ label, copy }: { label: string; copy: string }) {
   );
 }
 
-/** Tramo 02 — Guía diaria: Hacé / Evitá / Energía + banda Acción. */
-export function DailyGuide({ reading }: { reading: HomeReading }) {
+/** Tramo 02 — Guía diaria: Hacé / Evitá / Energía + banda Acción.
+ *  `guia` (LLM, misma generación que el hero) pisa al engine local si viene. */
+export function DailyGuide({ reading, guia }: { reading: HomeReading; guia?: DailyGuidePayload["guia"] }) {
+  const eyebrow = guia?.eyebrow ?? reading.guideEyebrow;
+  const headline = guia?.headline ?? reading.guideHeadline;
+  const intro = guia?.intro ?? reading.guideIntro;
+  const hace = guia?.hace ?? reading.hace;
+  const evita = guia?.evita ?? reading.evita;
+  const energia = guia?.energia ?? reading.energia;
+  const accion = guia?.accion ?? reading.accion;
+
   return (
     <View style={styles.section}>
       {/* Nebulosa dorada detrás de la guía (como el Figma "Guía de hoy"), sin el radar. */}
@@ -133,18 +156,18 @@ export function DailyGuide({ reading }: { reading: HomeReading }) {
         style={styles.guiaNebula}
         pointerEvents="none"
       />
-      <Eyebrow>{reading.guideEyebrow}</Eyebrow>
-      <Text style={styles.headlineMd}>{reading.guideHeadline}</Text>
-      <Text style={styles.body}>{reading.guideIntro}</Text>
+      <Eyebrow>{eyebrow}</Eyebrow>
+      <Text style={styles.headlineMd}>{headline}</Text>
+      <Text style={styles.body}>{intro}</Text>
 
       <View style={{ height: orbita.spacing.xl }} />
-      <GuideRow label="HACÉ" copy={reading.hace} />
-      <GuideRow label="EVITÁ" copy={reading.evita} />
-      <GuideRow label="ENERGÍA" copy={reading.energia} />
+      <GuideRow label="HACÉ" copy={hace} />
+      <GuideRow label="EVITÁ" copy={evita} />
+      <GuideRow label="ENERGÍA" copy={energia} />
 
       <View style={styles.actionBand}>
         <Text style={styles.rowLabel}>ACCIÓN</Text>
-        <Text style={styles.actionCopy}>{reading.accion}</Text>
+        <Text style={styles.actionCopy}>{accion}</Text>
       </View>
     </View>
   );
@@ -154,16 +177,21 @@ export function DailyGuide({ reading }: { reading: HomeReading }) {
 export function TopicsSection({
   reading,
   activeTopic,
-  onSelectTab
+  onSelectTab,
+  topics: topicsOverride
 }: {
   reading: HomeReading;
   activeTopic: Topic | null;
   onSelectTab: (topic: Topic) => void;
+  /** Áreas escritas por el LLM en la misma pasada que el hero (todas retoman la tesis
+   *  del día). Si no vienen, caemos a las del engine local. */
+  topics?: DailyTopic[];
 }) {
+  const topics: HomeTopic[] = topicsOverride?.length ? (topicsOverride as HomeTopic[]) : reading.topics;
   return (
     <View style={styles.section}>
       <View style={[styles.tabs, styles.tabsTop]}>
-        {reading.topics.map((t) => {
+        {topics.map((t) => {
           const active = t.topic === activeTopic;
           return (
             <Pressable key={t.topic} onPress={() => onSelectTab(t.topic)} style={styles.tab} accessibilityRole="tab">
@@ -176,7 +204,7 @@ export function TopicsSection({
       <View style={styles.divider} />
       <Eyebrow>TU DÍA POR ÁREA</Eyebrow>
 
-      {reading.topics.map((t) => {
+      {topics.map((t) => {
         const open = t.topic === activeTopic;
         return (
           <View key={t.topic} style={styles.insightRow}>
@@ -230,23 +258,33 @@ export function LongReadEnd({
   reading,
   onLeerAnalisis,
   onGuardar,
-  onHistorial
+  onHistorial,
+  lecturaLarga,
+  cierre
 }: {
   reading: HomeReading;
   onLeerAnalisis: () => void;
   onGuardar: () => void;
   onHistorial: () => void;
+  /** Desarrollo largo de la tesis del día (LLM). Cae al engine local si no viene. */
+  lecturaLarga?: DailyGuidePayload["lecturaLarga"];
+  cierre?: string;
 }) {
+  const eyebrow = lecturaLarga?.eyebrow ?? reading.longReadEyebrow;
+  const title = lecturaLarga?.title ?? reading.longReadTitle;
+  const body = lecturaLarga?.body ?? reading.longReadBody;
+  const endLine = cierre ?? reading.endLine;
+
   return (
     <View style={styles.section}>
-      <Eyebrow>{reading.longReadEyebrow}</Eyebrow>
-      <Text style={styles.headlineMd}>{reading.longReadTitle}</Text>
+      <Eyebrow>{eyebrow}</Eyebrow>
+      <Text style={styles.headlineMd}>{title}</Text>
 
       <View style={{ marginTop: orbita.spacing.lg }}>
         <EditorialThumb height={160} />
       </View>
 
-      <Text style={styles.body}>{reading.longReadBody}</Text>
+      <Text style={styles.body}>{body}</Text>
       <View style={{ height: orbita.spacing.xl }} />
       <PillButton label="LEER AHORA" onPress={onLeerAnalisis} />
 
@@ -255,7 +293,7 @@ export function LongReadEnd({
       <Text style={styles.headlineSm}>{reading.educationalTitle}</Text>
 
       <View style={styles.divider} />
-      <Text style={styles.endLine}>{reading.endLine}</Text>
+      <Text style={styles.endLine}>{endLine}</Text>
       <View style={styles.linksRow}>
         <Pressable onPress={onGuardar} accessibilityRole="button">
           <Text style={styles.link}>Guardar lectura</Text>
@@ -326,6 +364,24 @@ const styles = StyleSheet.create({
 
   triad: { color: orbita.colors.muted, fontFamily: orbita.fonts.mono, fontSize: 13, lineHeight: 18 },
   triadCentered: { textAlign: "center" },
+  triadEyebrow: {
+    color: orbita.colors.copper,
+    fontFamily: orbita.fonts.monoMedium,
+    fontSize: 10,
+    letterSpacing: 1.5,
+    marginBottom: orbita.spacing.sm,
+    textAlign: "center"
+  },
+  cartaCta: {
+    alignSelf: "center",
+    borderColor: "rgba(244,238,228,0.35)",
+    borderRadius: orbita.radius.lg,
+    borderWidth: 1,
+    marginTop: orbita.spacing.lg,
+    paddingHorizontal: orbita.spacing.xl,
+    paddingVertical: orbita.spacing.md
+  },
+  cartaCtaText: { color: orbita.colors.bone, fontFamily: orbita.fonts.monoMedium, fontSize: 12, letterSpacing: 1 },
   triadNote: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.body, fontSize: 12, lineHeight: 16, marginTop: orbita.spacing.sm },
   heroWrap: { alignItems: "center", marginVertical: orbita.spacing.xl },
   hero: {

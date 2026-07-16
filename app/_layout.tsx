@@ -26,6 +26,7 @@ export default function RootLayout() {
             <Stack screenOptions={{ headerShown: false }}>
               <Stack.Screen name="index" />
               <Stack.Screen name="onboarding" />
+              <Stack.Screen name="recepcion" />
               <Stack.Screen name="iniciar-sesion" />
               <Stack.Screen name="editar-datos" />
               <Stack.Screen name="lab" />
