@@ -25,7 +25,8 @@ Cada punto entra en una rama y un PR independiente. El checkpoint `wip/first-day
 
 - Backend Convex de producción y dominios Clerk quedaron recuperados y verificados.
 - `main` puede recibir PRs chicos y revisados, pero **mergear no equivale a publicar**.
-- Antes del próximo TestFlight hay que verificar las variables EAS de producción y corregir la versión/build de `app.json` (hoy no refleja el último binario distribuido).
+- El 2026-07-16 se restauraron y verificaron las variables públicas de EAS `production`: Clerk live de Órbita y Convex production `exciting-bat-311` (`cloud` + `site`). Development y preview no se modificaron.
+- El PR de preparación del build 11 restaura la configuración del último binario distribuido: versión `1.0.0`, build base `10`, ícono real y app solo iPhone. Con `autoIncrement`, el próximo build debe salir como `1.0.0 (11)`.
 - No hay todavía un Release Candidate nuevo aprobado para TestFlight o App Store.
 
 ### Implementación del proceso
