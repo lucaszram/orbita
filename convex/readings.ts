@@ -13,6 +13,37 @@ import {
 } from "./lib/orbita";
 import { omitUndefined, requireExistingUser, requireUser } from "./lib/users";
 
+export const DEFAULT_SAVED_READINGS_LIMIT = 60;
+export const MAX_SAVED_READINGS_LIMIT = 120;
+
+/** El front restaura hasta 60 lecturas activas. Permitimos pedir menos y dejamos
+ *  margen para una futura paginación, pero nunca una lectura sin límite. */
+export function resolveSavedReadingsLimit(value?: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return DEFAULT_SAVED_READINGS_LIMIT;
+  return Math.max(1, Math.min(MAX_SAVED_READINGS_LIMIT, Math.trunc(value)));
+}
+
+export function savedReadingListItem(doc: any) {
+  return {
+    savedReadingId: doc._id,
+    readingId: doc.readingId ?? null,
+    readingDate: doc.readingDate,
+    readingPayload: doc.readingPayload,
+    note: doc.note ?? null,
+    createdAt: doc.createdAt
+  };
+}
+
+export async function listSavedReadingsForUser(ctx: any, userId: string, limit?: number) {
+  const rows = await ctx.db
+    .query("savedReadings")
+    .withIndex("by_user", (q: any) => q.eq("userId", userId))
+    .order("desc")
+    .take(resolveSavedReadingsLimit(limit));
+
+  return rows.map(savedReadingListItem);
+}
+
 async function getCurrentBirthData(ctx: any, userId: string) {
   return await ctx.db
     .query("birthData")
@@ -65,6 +96,21 @@ export const getToday = query({
       .query("dailyReadings")
       .withIndex("by_user_date", (q: any) => q.eq("userId", user._id).eq("localDate", args.localDate))
       .first();
+  }
+});
+
+/** Archivo remoto de lecturas que la persona guardó explícitamente.
+ *
+ * No reemplaza el snapshot local: una escritura offline puede existir solo en el
+ * teléfono. El front debe mergear ambas fuentes por `readingPayload.id` (o por fecha
+ * como fallback), con lo local primero, y nunca borrar lo local porque el remoto esté
+ * vacío. Esto permite recuperar en un teléfono/simulador nuevo todo lo que sí llegó a
+ * Convex en versiones anteriores. */
+export const listSaved = query({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const user = await requireExistingUser(ctx);
+    return await listSavedReadingsForUser(ctx, user._id, args.limit);
   }
 });
 
