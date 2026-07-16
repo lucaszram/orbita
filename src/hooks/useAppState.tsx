@@ -1,4 +1,4 @@
-import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   createActiveTransit,
   createDailyReading,
@@ -22,12 +22,20 @@ import {
 } from "@/domain/types";
 import { getZodiacSign } from "@/domain/zodiac";
 import { toHomeReading } from "@/domain/homeAdapter";
-import { useLiveApp, useLiveHome } from "@/hooks/useLiveApp";
+import { useLiveApp, useLiveHome, useLiveSavedReadings } from "@/hooks/useLiveApp";
 import {
   buildAccountSnapshot,
   mergeAccountLists,
   planLogoutArchive
 } from "@/domain/accountLocalData";
+import {
+  addTombstoneKeys,
+  mergeRemoteSavedReadings,
+  parseRemoteSavedReadings,
+  readingMatchKeys,
+  remoteRowsToUnsave,
+  removeTombstoneKeys
+} from "@/domain/savedReadingsSync";
 import { commitProfileCreation, shouldAdoptPendingProfile } from "@/domain/sessionStart";
 import {
   clearAccountSnapshot,
@@ -35,13 +43,15 @@ import {
   getJournalEntries,
   getProfileOwner,
   getSavedReadings,
+  getSavedReadingTombstones,
   getStoredProfile,
   readAccountSnapshot,
   storeAccountSnapshot,
   storeJournalEntries,
   storeProfile,
   storeProfileOwner,
-  storeSavedReadings
+  storeSavedReadings,
+  storeSavedReadingTombstones
 } from "@/services/storage";
 import { scheduleDailyReminder } from "@/services/notifications";
 
@@ -59,6 +69,8 @@ type AppStateValue = {
   transitEvent: TransitEvent;
   relationshipReading: RelationshipReading;
   savedReadings: DailyReading[];
+  /** true mientras el archivo remoto de guardadas todavía no llegó (con sesión). */
+  savedReadingsSyncing: boolean;
   journalEntries: JournalEntry[];
   /**
    * `ownerUserId`: clerkUserId dueño del perfil (flujos con sesión); null = guest.
@@ -115,16 +127,20 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   // y lo recrea marcado — el fallback ya existente cubre la pérdida del flag.
   const [pendingOwnerAdoption, setPendingOwnerAdoption] = useState(false);
   const [savedReadings, setSavedReadings] = useState<DailyReading[]>([]);
+  // Lápidas de guardadas borradas: bloquean la resurrección por merge remoto
+  // y dejan pendiente el `unsave` en Convex hasta que se confirme.
+  const [savedTombstones, setSavedTombstones] = useState<string[]>([]);
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
 
   useEffect(() => {
     let mounted = true;
 
     async function hydrate() {
-      const [storedProfile, storedOwner, storedReadings, storedJournal] = await Promise.all([
+      const [storedProfile, storedOwner, storedReadings, storedTombstones, storedJournal] = await Promise.all([
         getStoredProfile(),
         getProfileOwner(),
         getSavedReadings(),
+        getSavedReadingTombstones(),
         getJournalEntries()
       ]);
 
@@ -139,6 +155,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         await storeProfile(normalizedProfile);
       }
       setSavedReadings(storedReadings);
+      setSavedTombstones(storedTombstones);
       setJournalEntries(storedJournal);
       setIsReady(true);
     }
@@ -164,6 +181,54 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const localDate = toISODate();
   const { isLive, isAuthLoading, auth } = useLiveApp();
   const { payload: liveHomePayload, saveLive } = useLiveHome(isLive, localDate, isAuthLoading);
+  const {
+    rows: remoteSavedRows,
+    loading: savedReadingsSyncing,
+    unsaveRemote
+  } = useLiveSavedReadings(isLive);
+  // unsaves ya despachados en esta sesión (evita repetir mientras están en vuelo)
+  const unsavesInFlight = useRef<Set<string>>(new Set());
+
+  // Sync del archivo remoto (readings.listSaved, PR #12): lo local va primero
+  // y un remoto vacío nunca borra nada. Después del merge, ejecuta los
+  // borrados pendientes (lápidas) contra Convex y recién ahí las levanta.
+  useEffect(() => {
+    if (!isReady || !remoteSavedRows) return;
+    const remote = parseRemoteSavedReadings(remoteSavedRows);
+
+    const { merged, changed } = mergeRemoteSavedReadings(savedReadings, remote, savedTombstones);
+    if (changed) {
+      setSavedReadings(merged);
+      void storeSavedReadings(merged);
+      return; // el efecto vuelve a correr con la lista ya mergeada
+    }
+
+    if (!unsaveRemote || savedTombstones.length === 0) return;
+    const pendingRows = remoteRowsToUnsave(remote, savedTombstones).filter(
+      (row) => !unsavesInFlight.current.has(row.savedReadingId)
+    );
+    if (pendingRows.length === 0) return;
+    pendingRows.forEach((row) => unsavesInFlight.current.add(row.savedReadingId));
+    void (async () => {
+      const confirmedKeys: string[] = [];
+      for (const row of pendingRows) {
+        const removed = await unsaveRemote(row.savedReadingId);
+        if (removed) {
+          confirmedKeys.push(...readingMatchKeys(row.reading));
+        } else {
+          // reintentable en la próxima resolución de la query / sesión
+          unsavesInFlight.current.delete(row.savedReadingId);
+        }
+      }
+      if (confirmedKeys.length > 0) {
+        setSavedTombstones((current) => {
+          const next = removeTombstoneKeys(current, confirmedKeys);
+          void storeSavedReadingTombstones(next);
+          return next;
+        });
+      }
+    })();
+  }, [isReady, remoteSavedRows, savedReadings, savedTombstones, unsaveRemote]);
 
   const engineHomeReading = useMemo(
     () => createHomeReading(profile ?? createFallbackProfile(), toISODate()),
@@ -262,18 +327,32 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     const nextReadings = [{ ...todayReading, saved: true }, ...savedReadings].slice(0, 60);
     setSavedReadings(nextReadings);
     await storeSavedReadings(nextReadings);
+    // Re-guardar levanta la lápida de un borrado anterior de la misma lectura.
+    const keys = readingMatchKeys(todayReading);
+    if (savedTombstones.some((key) => keys.includes(key))) {
+      const nextTombstones = removeTombstoneKeys(savedTombstones, keys);
+      setSavedTombstones(nextTombstones);
+      await storeSavedReadingTombstones(nextTombstones);
+    }
     if (saveLive) {
       await saveLive(todayReading);
     }
-  }, [savedReadings, todayReading, saveLive]);
+  }, [savedReadings, savedTombstones, todayReading, saveLive]);
 
   const removeSavedReading = useCallback(
     async (readingId: string) => {
+      const target = savedReadings.find((reading) => reading.id === readingId);
       const nextReadings = savedReadings.filter((reading) => reading.id !== readingId);
       setSavedReadings(nextReadings);
       await storeSavedReadings(nextReadings);
+      if (!target) return;
+      // La lápida persiste hasta que el `unsave` remoto se confirme (lo hace
+      // el efecto de sync); sin sesión o sin red queda pendiente y no vuelve.
+      const nextTombstones = addTombstoneKeys(savedTombstones, readingMatchKeys(target));
+      setSavedTombstones(nextTombstones);
+      await storeSavedReadingTombstones(nextTombstones);
     },
-    [savedReadings]
+    [savedReadings, savedTombstones]
   );
 
   const addJournalNote = useCallback(
@@ -305,7 +384,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setProfileOwner(null);
     setPendingOwnerAdoption(false);
     setSavedReadings([]);
+    setSavedTombstones([]);
     setJournalEntries([]);
+    unsavesInFlight.current.clear();
     await clearLocalData();
   }, []);
 
@@ -388,6 +469,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       transitEvent,
       relationshipReading,
       savedReadings,
+      savedReadingsSyncing,
       journalEntries,
       createProfile,
       updateProfile,
@@ -417,6 +499,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       restoreAccountData,
       saveTodayReading,
       savedReadings,
+      savedReadingsSyncing,
       todayReading,
       transitEvent,
       updateProfile,
