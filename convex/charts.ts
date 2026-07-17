@@ -15,7 +15,6 @@ import { runAstrologyApiNatalChart } from "./lib/astrologyApi";
 import { buildBirthDataHash, buildNatalChartCacheKey } from "./lib/birthDataConsistency";
 import {
   ASTROLOGY_API_CHART_CALCULATION_VERSION,
-  buildWebB0PersonalityReadingPayload,
   buildWebB0ValuesMapPayload,
   CHART_CALCULATION_VERSION
 } from "./lib/orbita";
@@ -83,6 +82,30 @@ async function getCachedPersonalityReading(ctx: any, natalChartId: string) {
     .first();
 }
 
+type PersonalityReadingCache = {
+  status?: string;
+  payload?: unknown;
+} | null | undefined;
+
+/** Solo una lectura LLM completa y persistida se considera lista para mostrar. */
+export function resolveReadyPersonalityReading(cached: PersonalityReadingCache) {
+  return cached?.status === "ready" && cached.payload ? cached.payload : null;
+}
+
+type NatalGenerationResult = {
+  status: string;
+  payload?: unknown;
+  [key: string]: unknown;
+};
+
+/** Convierte cualquier fallo del generador en un rechazo recuperable para el cliente. */
+export function requireSuccessfulNatalReading(result: NatalGenerationResult) {
+  if (result.status !== "success" || !result.payload) {
+    throw new Error("NATAL_READING_GENERATION_FAILED");
+  }
+  return result.payload;
+}
+
 export const personalityReading = query({
   handler: async (ctx) => {
     const user = await requireExistingUser(ctx);
@@ -90,9 +113,7 @@ export const personalityReading = query({
     if (!chart) return null;
 
     const cached = await getCachedPersonalityReading(ctx, chart._id);
-    if (cached?.status === "ready" && cached.payload) return cached.payload;
-
-    return buildWebB0PersonalityReadingPayload(chart.payload);
+    return resolveReadyPersonalityReading(cached);
   }
 });
 
@@ -173,9 +194,7 @@ export const generatePersonalityReading = action({
     if (state.cachedStatus === "ready") return { status: "cached" };
 
     const result = await generateNatalReadingWithGateway({ chartPayload: state.chartPayload });
-    if (result.status !== "success" || !result.payload) {
-      return { status: result.status, gaps: result.gaps };
-    }
+    const payload = requireSuccessfulNatalReading(result);
 
     await ctx.runMutation(internalApi.charts.persistNatalReading, {
       userId: state.userId,
@@ -185,7 +204,7 @@ export const generatePersonalityReading = action({
       cacheVersion: getAiGatewayNatalCacheVersion(),
       model: result.model,
       status: "ready",
-      payload: result.payload,
+      payload,
       usage: result.usage
     });
     return { status: "generated" };

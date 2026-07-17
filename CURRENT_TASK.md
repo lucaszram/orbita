@@ -1,5 +1,9 @@
 # Current Task
 
+## Lectura natal larga — estado de generación honesto (2026-07-17, Codex)
+
+La pasada manual del hotfix de autenticación mostró la plantilla breve (`Núcleo`, `Clima interno`, etc.) como si fuera la lectura natal final. El motor largo de siete capítulos sí está mergeado y Convex dev tiene LLM/modelo/clave configurados; el problema es de estado: `charts.personalityReading()` devolvía el fallback breve mientras la action generaba. Rama aislada `codex/natal-reading-state`: la query devuelve `null` hasta cache `ready` y la action rechaza cualquier fallo para que el frontend existente muestre carga o reintento. Pendiente: tests/typecheck, deploy solo a dev y pasada manual carga → lectura larga; producción no se toca.
+
 ## Estado vigente — 2026-07-16
 
 Esta sección es la fuente de verdad actual. El contenido posterior queda como historial y contexto técnico.

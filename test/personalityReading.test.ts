@@ -6,6 +6,7 @@ import {
   NATAL_SECTION_KEYS,
   parseNatalReadingText
 } from "../convex/lib/aiGateway";
+import { requireSuccessfulNatalReading, resolveReadyPersonalityReading } from "../convex/charts";
 
 const section = (key: string) => ({
   key,
@@ -23,6 +24,30 @@ const validPayload = {
 };
 
 describe("lectura natal completa", () => {
+  it("no presenta la plantilla corta ni estados incompletos como lectura terminada", () => {
+    assert.equal(resolveReadyPersonalityReading(null), null);
+    assert.equal(resolveReadyPersonalityReading({ status: "pending", payload: validPayload }), null);
+    assert.equal(resolveReadyPersonalityReading({ status: "fallback", payload: validPayload }), null);
+    assert.equal(resolveReadyPersonalityReading({ status: "error", payload: validPayload }), null);
+    assert.equal(resolveReadyPersonalityReading({ status: "ready" }), null);
+    assert.deepEqual(resolveReadyPersonalityReading({ status: "ready", payload: validPayload }), validPayload);
+  });
+
+  it("propaga el fallo del generador para que el cliente pueda ofrecer reintento", () => {
+    assert.throws(
+      () => requireSuccessfulNatalReading({ status: "disabled", gaps: ["llm_gateway_disabled"], warnings: [] }),
+      /NATAL_READING_GENERATION_FAILED/
+    );
+    assert.throws(
+      () => requireSuccessfulNatalReading({ status: "error", gaps: ["gateway_error"], warnings: [] }),
+      /NATAL_READING_GENERATION_FAILED/
+    );
+    assert.deepEqual(
+      requireSuccessfulNatalReading({ status: "success", payload: validPayload, gaps: [], warnings: [] }),
+      validPayload
+    );
+  });
+
   it("usa la taxonomía canónica e incluye Júpiter, casas y aspectos en el prompt", () => {
     const prompt = buildNatalReadingGatewayPrompt({
       placements: [
