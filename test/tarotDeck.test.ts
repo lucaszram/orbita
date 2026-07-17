@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
 import { recentCardIdsFromPayloads, shiftLocalDate } from "../convex/daily";
-import { cardById, drawCard, TAROT_DECK } from "../convex/lib/tarot";
+import { cardById, drawCard, REVERSED_PCT, TAROT_DECK } from "../convex/lib/tarot";
 
 const HISTORIC_MAJOR_NAMES = [
   "El Loco",
@@ -84,6 +84,19 @@ test("el sorteo es estable y nunca devuelve una carta excluida", () => {
     assert.deepEqual(repeated, first);
     assert.equal(excludedIds.includes(first.id), false);
   }
+});
+
+test("la orientación es estable, independiente y usa las dos variantes", () => {
+  const orientations = new Set<string>();
+  for (let day = 1; day <= 60; day += 1) {
+    const localDate = `2026-${String(Math.ceil(day / 28)).padStart(2, "0")}-${String(((day - 1) % 28) + 1).padStart(2, "0")}`;
+    const first = drawCard({ userId: "user_orientation", localDate });
+    const repeated = drawCard({ userId: "user_orientation", localDate });
+    assert.equal(repeated.orientacion, first.orientacion);
+    orientations.add(first.orientacion);
+  }
+  assert.equal(REVERSED_PCT, 50);
+  assert.deepEqual([...orientations].sort(), ["derecho", "invertida"]);
 });
 
 test("una secuencia diaria nunca repite dentro de una ventana móvil de siete días", () => {

@@ -1,5 +1,11 @@
 # Current Task
 
+## Backend — carta diaria ritual + orientación (2026-07-17, Codex)
+
+**Estado:** implementado y validado en la rama `codex/daily-card-ritual`, todavía sin desplegar ni integrar con el frontend. `daily.getGuide()` migra a `orbita-daily-guide-v3`: `carta.beats` desaparece y se reemplaza por `carta.orientacion` (`derecho|invertida`) + `carta.ritual` (esencia, 2-4 facetas, enTuDia, consejo y cierre/Umbral). Se conserva el mazo completo de 78 y la exclusión de los seis días anteriores; la orientación usa una segunda semilla determinística al 50% y `daily.getStrip()` la devuelve para el historial. La generación diaria produce el ritual sin cruzarlo con carta natal/tránsitos y, si falla, usa un fallback intrínseco que tampoco inventa ese cruce. Payloads v2 se regeneran preservando `revealedAt`. Validación local: typecheck verde, 266/266 tests y `git diff --check` limpio.
+
+**Orden de integración:** primero debe quedar listo el frontend de `feature/carta-ritual` para ids `0–77` y el contrato v3; recién después desplegar este backend a Convex dev y hacer la pasada conjunta. No desplegar este backend solo contra el TestFlight actual porque ese cliente todavía espera `carta.beats`.
+
 ## Lectura natal larga — estado de generación honesto (2026-07-17, Codex)
 
 La pasada manual del hotfix de autenticación mostró la plantilla breve (`Núcleo`, `Clima interno`, etc.) como si fuera la lectura natal final. El motor largo de siete capítulos sí está mergeado y Convex dev tiene LLM/modelo/clave configurados; el problema es de estado: `charts.personalityReading()` devolvía el fallback breve mientras la action generaba. Rama aislada `codex/natal-reading-state`: la query devuelve `null` hasta cache `ready` y la action rechaza cualquier fallo para que el frontend existente muestre carga o reintento. Pendiente: tests/typecheck, deploy solo a dev y pasada manual carga → lectura larga; producción no se toca.
