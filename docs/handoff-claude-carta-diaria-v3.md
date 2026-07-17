@@ -11,7 +11,7 @@ Cambiar la lectura de la carta diaria para que, después de `Te salió {carta}.`
 
 La carta puede salir **al derecho** o **invertida**. La orientación es parte del sorteo diario, queda estable para esa persona y ese día, y debe conservarse en la tira y el Diario.
 
-La captura aprobada del 2026-07-17 muestra correctamente:
+La captura del 2026-07-17 muestra correctamente:
 
 - imagen y nombre de la carta;
 - `Te salió La Sacerdotisa.`;
@@ -19,7 +19,9 @@ La captura aprobada del 2026-07-17 muestra correctamente:
 - una esencia breve;
 - `EL CONSEJO`.
 
-Pero esa captura es una **versión parcial**. La pantalla final también debe mostrar `SIGNIFICADO GENERAL`, `EN TU DÍA` y el cierre hacia Umbral. La fuente visual sigue siendo Figma, sección 14, frame `727:127`.
+Pero esa captura **no es una versión final aprobable**: es el mock parcial de `guestCardOfTheDay`, que manda las facetas, `enTuDia` y el cierre vacíos. Por eso se saltea el cuerpo central y la lectura queda rara. La pantalla live debe mostrarse completa o no mostrarse todavía; nunca debe degradar a esencia + consejo.
+
+La fuente visual y editorial es Figma, sección 14, frame `727:127`.
 
 ## Corrección importante respecto del handoff anterior
 
@@ -44,7 +46,7 @@ export type DailyRitualFaceta = {
 
 export type DailyRitual = {
   esencia: string;
-  significadoGeneral: DailyRitualFaceta[]; // siempre 2–4
+  significadoGeneral: DailyRitualFaceta[]; // siempre 3
   enTuDia: string;
   consejo: string;
   cierre: {
@@ -83,6 +85,56 @@ El backend garantiza:
 - fallback completo si falla el LLM;
 - regeneración de caches v2 preservando `revealedAt`.
 
+## Formato canónico exacto de Figma
+
+No alcanza con conservar los labels: también hay que respetar el ritmo del texto. Este es el ejemplo literal aprobado en el frame `727:127`:
+
+```text
+Te salió La Luna.
+
+SALIÓ AL DERECHO
+
+Que te salga La Luna —Arcano Mayor XVIII— es una invitación a explorar
+tu intuición: simboliza el mundo de los sueños, lo inconsciente y las
+verdades ocultas.
+
+SIGNIFICADO GENERAL
+
+Confusión y misterio — no ves todo con claridad, como caminar de noche;
+hay incertidumbre.
+
+Intuición — no te guíes solo por la lógica: seguí lo que sentís y tus
+corazonadas.
+
+Miedos y sombras — un llamado a mirar de frente los temores o lo que te
+genera ansiedad.
+
+EN TU DÍA
+
+En los vínculos, mirá lo que se dice a medias; en el trabajo, no cierres
+ni firmes sin tener toda la información; en lo creativo, tu sensibilidad
+está afinada como pocas veces.
+
+EL CONSEJO
+
+Confiá en tu intuición por encima del miedo. Hoy no es día de decisiones
+apuradas: observá y dejá que esa luz interior te oriente.
+
+¿Querés leerla para algo puntual —el amor, una decisión, el trabajo?
+
+PREGUNTARLE AL UMBRAL ›
+```
+
+Reglas editoriales derivadas de este ejemplo:
+
+- La esencia es un párrafo explicativo de 1–2 frases; no una sucesión telegráfica de frases cortadas.
+- `SIGNIFICADO GENERAL` tiene **exactamente tres facetas**, cada una en su propia línea/párrafo: `título — explicación`.
+- `EN TU DÍA` teje vínculos, trabajo y creatividad/decisiones en un solo párrafo. No usa tres cards ni tres labels internos.
+- `EL CONSEJO` tiene 1–2 frases completas en voseo.
+- La pregunta final es serif y funciona como cierre editorial; el CTA cobre va debajo.
+- No usar frases defensivas como `no predice`, `no define el día` o `no es una orden` en el texto visible.
+- No usar el copy del screenshot parcial (`Lo que se sabe sin decirse todavía. Pide leer antes de actuar…`) como plantilla de estructura: puede servir como materia editorial, pero debe entrar dentro de los cinco bloques completos.
+
 ## Orden visual y de contenido
 
 Renderizar el bloque en este orden:
@@ -99,9 +151,9 @@ SALIÓ AL DERECHO | SALIÓ INVERTIDA
 {ritual.esencia}
 
 SIGNIFICADO GENERAL
-{faceta.titulo} — {faceta.texto}
-{faceta.titulo} — {faceta.texto}
-[hasta 4]
+{faceta 1.titulo} — {faceta 1.texto}
+{faceta 2.titulo} — {faceta 2.texto}
+{faceta 3.titulo} — {faceta 3.texto}
 
 EN TU DÍA
 {ritual.enTuDia}
@@ -142,6 +194,7 @@ Reglas:
 
 - Componente compartido por Home y Diario.
 - Mantener el orden de secciones definido arriba.
+- **Eliminar la regla actual de “cada sección se oculta si viene vacía” para la superficie live.** Esa regla es la que produjo la captura parcial de La Sacerdotisa. Validar el ritual completo antes de renderizarlo.
 - El backend v3 siempre manda un ritual completo. Si falta durante una transición de contrato, no completar con mocks ni con copy viejo: mostrar carga/error honesto hasta recibir v3.
 - El cierre a Umbral es parte del componente.
 
@@ -169,6 +222,7 @@ Reglas:
 - Preservar el catálogo de 78 que ya está en `main`.
 - No volver a introducir `majorById` en consumidores.
 - El mock guest ya no debe aparecer en una Home autenticada ni durante carga. Si queda exportado por compatibilidad, no usarlo como fallback live.
+- El objeto actual con `significadoGeneral: []`, `enTuDia: ""` y `cierre.pregunta: ""` **no es válido para `RitualReading`** y no puede usarse para aprobar la pantalla.
 
 ## Estados de pantalla
 
@@ -186,7 +240,7 @@ No mostrar primero La Luna, La Sacerdotisa u otra carta mock y luego reemplazarl
 
 Probar frontend + PR #22 en Convex **dev**, en este orden:
 
-1. Carta al derecho: imagen normal, tag correcto y todas las secciones visibles.
+1. Carta al derecho: imagen normal, tag correcto y las cinco partes visibles (esencia, tres facetas, en tu día, consejo y cierre/Umbral).
 2. Carta invertida: ilustración a 180°, marco/textos derechos y ritual correspondiente a invertida.
 3. Arcano menor (por ejemplo Ocho de Oros): imagen correcta en Home, tira y detalle de Diario.
 4. Estabilidad: cerrar y abrir la app el mismo día conserva carta y orientación.
@@ -213,4 +267,3 @@ Probar frontend + PR #22 en Convex **dev**, en este orden:
 - No modificar autenticación, onboarding ni lectura natal.
 - No cambiar el resto de la Home o Tránsitos.
 - No generar TestFlight ni desplegar a producción hasta completar la integración conjunta.
-

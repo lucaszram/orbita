@@ -375,8 +375,23 @@ La orientación cambia el sentido de verdad:
 - AL DERECHO: potencia disponible, movimiento visible, aprendizaje que puede encarnarse.
 - INVERTIDA: bloqueo, exceso, repliegue o sombra del mismo arquetipo. No es castigo ni mal augurio.
 
-Escribí la carta como un ritual de autoconocimiento: significado, posibles manifestaciones del día
-y un consejo concreto. Este bloque no personaliza con astrología; su honestidad está en no fingirla.
+Escribí la carta como un ritual de autoconocimiento con el ritmo editorial del frame aprobado:
+- una esencia explicativa de 1 o 2 frases completas, nunca telegráfica ni defensiva;
+- EXACTAMENTE 3 facetas separadas: titulo breve + explicación concreta;
+- un párrafo EN TU DÍA que teja vínculos, trabajo y creatividad/decisiones;
+- un consejo de 1 o 2 frases completas en voseo;
+- una pregunta abierta de cierre para llevar al Umbral.
+Este bloque no personaliza con astrología; su honestidad está en no fingirla.
+
+MODELO DE RITMO (no copies el contenido; copiá la estructura y la cadencia):
+"Que te salga La Luna —Arcano Mayor XVIII— es una invitación a explorar tu intuición: simboliza
+el mundo de los sueños, lo inconsciente y las verdades ocultas."
+SIGNIFICADO GENERAL: tres párrafos "Faceta — explicación".
+EN TU DÍA: "En los vínculos, ...; en el trabajo, ...; en lo creativo, ...".
+EL CONSEJO: dos frases completas, concretas y sin autoayuda genérica.
+
+PROHIBIDO dentro del texto visible de la carta: "no predice", "no define el día", "no es una orden"
+o cualquier aclaración defensiva que corte la experiencia editorial.
 
 DÓNDE ESTÁ EL LÍMITE (leelo bien: el filo mal calibrado es crueldad, y eso no lo publicamos).
 
@@ -410,9 +425,10 @@ Devolvé SOLO JSON válido con esta forma exacta:
     "esencia": "string — 1 o 2 frases: qué invita a mirar ${args.carta.nombre} ${args.carta.orientacion === "invertida" ? "invertida" : "al derecho"}",
     "significadoGeneral": [
       { "titulo": "string — faceta breve", "texto": "string — 1 frase, sin repetir el título" },
+      { "titulo": "string — faceta breve", "texto": "string — 1 frase, sin repetir el título" },
       { "titulo": "string — faceta breve", "texto": "string — 1 frase, sin repetir el título" }
     ],
-    "enTuDia": "string — 2 o 3 frases que tejan vínculos, trabajo y decisiones en prosa. Sin astrología personalizada",
+    "enTuDia": "string — un párrafo que teja vínculos, trabajo y creatividad/decisiones en prosa. Sin astrología personalizada",
     "consejo": "string — 1 o 2 frases, accionable y humano, en voseo",
     "cierre": {
       "pregunta": "string — pregunta abierta con ¿ y ?",
@@ -523,7 +539,7 @@ export function parseRitual(value: unknown): DailyRitual | undefined {
     .filter((item): item is Record<string, unknown> => item !== null)
     .map((item) => ({ titulo: readString(item.titulo), texto: readString(item.texto) }))
     .filter((item) => item.titulo && item.texto);
-  if (significadoGeneral.length < 2 || significadoGeneral.length > 4) return undefined;
+  if (significadoGeneral.length !== 3) return undefined;
 
   const cierreRaw = asRecord(r.cierre);
   if (!cierreRaw) return undefined;
@@ -677,11 +693,11 @@ export function fallbackRitual(carta: TarotDraw): DailyRitual {
   const orientationTitle = inverted ? "Bloqueo o exceso" : "Potencia disponible";
   const orientationText = inverted
     ? "La energía de la carta aparece trabada, replegada o llevada de más. Mirá dónde insistís y dónde evitás."
-    : "La energía de la carta está disponible, pero necesita una decisión consciente para no quedar en intención.";
+    : "La energía de la carta está disponible y pide una decisión consciente para volverse concreta.";
   const advice = suit?.gesto ?? "Elegí una situación concreta del día y observá qué parte de esta carta ya está en juego.";
 
   return {
-    esencia: `${carta.nombre} ${inverted ? "invertida" : "al derecho"} pone el foco en ${baseTheme}. No define el día: abre una forma de mirarlo.`,
+    esencia: `Que te salga ${carta.nombre} ${inverted ? "invertida" : "al derecho"} es una invitación a mirar ${baseTheme}: ${movement}.`,
     significadoGeneral: [
       {
         titulo: suit?.titulo ?? "Arquetipo central",
@@ -694,8 +710,8 @@ export function fallbackRitual(carta: TarotDraw): DailyRitual {
       { titulo: orientationTitle, texto: orientationText }
     ],
     enTuDia: inverted
-      ? "En un vínculo, una tarea o una decisión, fijate dónde la energía se estanca o se vuelve excesiva. No hace falta resolver todo: alcanza con reconocer el patrón antes de repetirlo."
-      : "En un vínculo, una tarea o una decisión, buscá dónde esta energía ya tiene una salida posible. Usala en una escena concreta, sin convertir la carta en una orden.",
+      ? "En los vínculos, fijate qué se repliega o se lleva de más; en el trabajo, reconocé dónde insistís sin avanzar; ante una decisión creativa, nombrá el bloqueo antes de repetirlo."
+      : "En los vínculos, observá dónde esta energía ya está disponible; en el trabajo, elegí una forma concreta de ponerla en movimiento; ante una decisión creativa, usala sin esperar una certeza total.",
     consejo: advice.charAt(0).toUpperCase() + advice.slice(1) + ".",
     cierre: {
       pregunta: inverted

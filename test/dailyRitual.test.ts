@@ -7,7 +7,8 @@ const COMPLETE_RITUAL = {
   esencia: "La Luna invertida pide distinguir intuición de suposición.",
   significadoGeneral: [
     { titulo: "Niebla", texto: "No todo lo que inquieta trae información útil." },
-    { titulo: "Intuición", texto: "La percepción necesita tiempo antes de volverse certeza." }
+    { titulo: "Intuición", texto: "La percepción necesita tiempo antes de volverse certeza." },
+    { titulo: "Sombra", texto: "El miedo completa con historias aquello que todavía no sabe." }
   ],
   enTuDia: "En vínculos y decisiones, frená la conclusión rápida. Observá primero qué dato falta.",
   consejo: "Anotá lo que sabés y separalo de lo que imaginás.",
@@ -21,8 +22,15 @@ test("parseRitual acepta el contrato completo y conserva el seed opcional", () =
   assert.deepEqual(parseRitual(COMPLETE_RITUAL), COMPLETE_RITUAL);
 });
 
-test("parseRitual rechaza lecturas parciales o con menos de dos facetas", () => {
-  assert.equal(parseRitual({ ...COMPLETE_RITUAL, significadoGeneral: COMPLETE_RITUAL.significadoGeneral.slice(0, 1) }), undefined);
+test("parseRitual exige las tres facetas del formato aprobado en Figma", () => {
+  assert.equal(parseRitual({ ...COMPLETE_RITUAL, significadoGeneral: COMPLETE_RITUAL.significadoGeneral.slice(0, 2) }), undefined);
+  assert.equal(
+    parseRitual({
+      ...COMPLETE_RITUAL,
+      significadoGeneral: [...COMPLETE_RITUAL.significadoGeneral, { titulo: "Cuarta", texto: "No entra en este formato." }]
+    }),
+    undefined
+  );
   assert.equal(parseRitual({ ...COMPLETE_RITUAL, consejo: "" }), undefined);
   assert.equal(parseRitual({ ...COMPLETE_RITUAL, cierre: {} }), undefined);
 });
@@ -52,7 +60,7 @@ test("fallbackRitual cubre mayores y menores en ambas orientaciones sin inventar
   for (const source of draws) {
     for (const orientacion of ["derecho", "invertida"] as const) {
       const ritual = fallbackRitual({ ...source, orientacion });
-      assert.equal(ritual.significadoGeneral.length >= 2, true);
+      assert.equal(ritual.significadoGeneral.length, 3);
       assert.equal(ritual.cierre.pregunta.startsWith("¿"), true);
       const visible = JSON.stringify(ritual).toLowerCase();
       assert.equal(visible.includes("tránsito"), false);
@@ -78,6 +86,8 @@ test("el prompt pide ritual intrínseco y elimina el contrato viejo de beats/cru
   assert.equal(prompt.includes('"cartaBeats"'), false);
   assert.equal(prompt.includes("CÓMO SE CONECTA CON TU CIELO"), false);
   assert.equal(prompt.includes("no personaliza con astrología"), true);
+  assert.equal(prompt.includes("EXACTAMENTE 3 facetas"), true);
+  assert.equal(prompt.includes('"no define el día"'), true);
 });
 
 test("composePayload publica orientación + ritual y nunca beats", () => {

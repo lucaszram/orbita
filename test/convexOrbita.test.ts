@@ -181,7 +181,8 @@ test("rejects stale daily guide caches that predate the card contract", () => {
           esencia: "Una estructura pide revisión.",
           significadoGeneral: [
             { titulo: "Ruptura", texto: "Algo deja de sostenerse como antes." },
-            { titulo: "Verdad", texto: "La escena obliga a mirar lo que ya estaba." }
+            { titulo: "Verdad", texto: "La escena obliga a mirar lo que ya estaba." },
+            { titulo: "Reordenamiento", texto: "Lo que queda necesita otra forma de sostén." }
           ],
           enTuDia: "Mirá dónde insistís por costumbre.",
           consejo: "Soltá una defensa concreta.",
