@@ -10,6 +10,11 @@ import {
   type SignInPhase
 } from "@/domain/sessionStart";
 import { planResend, type ResendResult } from "@/onboarding/resend";
+import {
+  interpretSignInAttempt,
+  interpretSignUpAttempt,
+  makeReentrancyGuard
+} from "@/onboarding/signup";
 import { deviceTimezone } from "@/hooks/useLiveApp";
 import { useOrbitaAuth } from "@/hooks/useOrbitaAuth";
 import { appApi, type BirthDataDoc } from "@/services/appRefs";
@@ -39,7 +44,8 @@ export type AccountFlow = {
   error: string | null;
   isSignedIn: boolean;
   oauthBusy: OAuthProvider | null;
-  start: (email: string) => Promise<void>;
+  /** Crea el intento de alta con contraseña (Clerk Producción la exige). */
+  start: (email: string, password: string) => Promise<void>;
   verify: (code: string) => Promise<boolean>;
   /** Reenvía el código sin crear otra cuenta ni reiniciar el flujo. */
   resend: () => Promise<ResendResult>;
@@ -109,14 +115,21 @@ function useAccountFlowInner(): AccountFlow {
   // emailAddressId del intento de sign-in (rama email ya existente): lo guarda
   // `start` para que el reenvío pueda repetir prepareFirstFactor sin perderlo.
   const emailAddressIdRef = useRef<string | null>(null);
+  // Un código completo dispara auto-submit (CodeInput.onFilled) Y el tap del
+  // botón: el guard evita que `verify` corra dos veces en paralelo.
+  const verifyGuardRef = useRef<ReturnType<typeof makeReentrancyGuard>>(undefined);
+  if (!verifyGuardRef.current) verifyGuardRef.current = makeReentrancyGuard();
 
   const start = useCallback(
-    async (emailAddress: string) => {
+    async (emailAddress: string, password: string) => {
       if (!signUp || !signIn) return;
       setBusy(true);
       setError(null);
       try {
-        await signUp.create({ emailAddress });
+        // Con contraseña desde la creación: Clerk Producción tiene
+        // `password: required`, así que sin esto el alta queda en
+        // `missing_requirements` después de verificar el email.
+        await signUp.create({ emailAddress, password });
         await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
         flowRef.current = "signUp";
         emailAddressIdRef.current = null;
@@ -168,33 +181,38 @@ function useAccountFlowInner(): AccountFlow {
   }, [signIn, signUp]);
 
   const verify = useCallback(
-    async (code: string): Promise<boolean> => {
-      if (!signUp || !signIn) return false;
-      setBusy(true);
-      setError(null);
-      try {
-        if (flowRef.current === "signUp") {
-          const result = await signUp.attemptEmailAddressVerification({ code });
-          if (result.status === "complete" && setActiveSignUp) {
-            await setActiveSignUp({ session: result.createdSessionId });
+    (code: string): Promise<boolean> =>
+      verifyGuardRef.current!.run(async () => {
+        if (!signUp || !signIn) return false;
+        setBusy(true);
+        setError(null);
+        try {
+          if (flowRef.current === "signUp") {
+            // Un código MALO lanza (→ catch). Si no lanza pero el alta no está
+            // `complete`, el email quedó verificado y faltan requisitos (p. ej.
+            // contraseña): se dice QUÉ falta, nunca "el código no coincide".
+            const outcome = interpretSignUpAttempt(await signUp.attemptEmailAddressVerification({ code }));
+            if (outcome.kind === "complete" && setActiveSignUp) {
+              await setActiveSignUp({ session: outcome.sessionId });
+              return true;
+            }
+            setError(outcome.kind === "missing" ? outcome.message : "No pudimos crear tu cuenta. Probá de nuevo.");
+            return false;
+          }
+          const outcome = interpretSignInAttempt(await signIn.attemptFirstFactor({ strategy: "email_code", code }));
+          if (outcome.kind === "complete" && setActiveSignIn) {
+            await setActiveSignIn({ session: outcome.sessionId });
             return true;
           }
-        } else {
-          const result = await signIn.attemptFirstFactor({ strategy: "email_code", code });
-          if (result.status === "complete" && setActiveSignIn) {
-            await setActiveSignIn({ session: result.createdSessionId });
-            return true;
-          }
+          setError("El código no coincide. Fijate en tu mail.");
+          return false;
+        } catch (e) {
+          setError(clerkErrorMessage(e));
+          return false;
+        } finally {
+          setBusy(false);
         }
-        setError("El código no coincide. Fijate en tu mail.");
-        return false;
-      } catch (e) {
-        setError(clerkErrorMessage(e));
-        return false;
-      } finally {
-        setBusy(false);
-      }
-    },
+      }, false),
     [setActiveSignIn, setActiveSignUp, signIn, signUp]
   );
 
@@ -263,6 +281,9 @@ function useSignInFlowInner(): SignInFlow {
   // emailAddressId del intento vigente: lo guarda `prepareEmailCode` para que el
   // reenvío repita prepareFirstFactor con el MISMO id (no reinicia el flujo).
   const emailAddressIdRef = useRef<string | null>(null);
+  // Evita doble verificación (auto-submit del CodeInput + tap del botón).
+  const verifyGuardRef = useRef<ReturnType<typeof makeReentrancyGuard>>(undefined);
+  if (!verifyGuardRef.current) verifyGuardRef.current = makeReentrancyGuard();
 
   /** Pide el código por email y pasa a la fase código. */
   const prepareEmailCode = useCallback(
@@ -304,26 +325,30 @@ function useSignInFlowInner(): SignInFlow {
   );
 
   const verifyPassword = useCallback(
-    async (password: string): Promise<boolean> => {
-      if (!signIn) return false;
-      setBusy(true);
-      setError(null);
-      try {
-        const result = await signIn.attemptFirstFactor({ strategy: "password", password });
-        if (result.status === "complete" && setActiveSignIn) {
-          await setActiveSignIn({ session: result.createdSessionId });
-          return true;
+    (password: string): Promise<boolean> =>
+      verifyGuardRef.current!.run(async () => {
+        if (!signIn) return false;
+        setBusy(true);
+        setError(null);
+        try {
+          // Password y código terminan igual: interpret → complete → setActive.
+          const outcome = interpretSignInAttempt(
+            await signIn.attemptFirstFactor({ strategy: "password", password })
+          );
+          if (outcome.kind === "complete" && setActiveSignIn) {
+            await setActiveSignIn({ session: outcome.sessionId });
+            return true;
+          }
+          // status "needs_second_factor" u otro: no se inventa una sesión.
+          setError(outcome.kind === "incomplete" ? outcome.message : "No pudimos completar el ingreso.");
+          return false;
+        } catch (e) {
+          setError(clerkErrorMessage(e));
+          return false;
+        } finally {
+          setBusy(false);
         }
-        // status "needs_second_factor" u otro: no se inventa una sesión.
-        setError("No pudimos completar el ingreso. Probá con un código por email.");
-        return false;
-      } catch (e) {
-        setError(clerkErrorMessage(e));
-        return false;
-      } finally {
-        setBusy(false);
-      }
-    },
+      }, false),
     [setActiveSignIn, signIn]
   );
 
@@ -359,25 +384,28 @@ function useSignInFlowInner(): SignInFlow {
   }, [signIn]);
 
   const verify = useCallback(
-    async (code: string): Promise<boolean> => {
-      if (!signIn) return false;
-      setBusy(true);
-      setError(null);
-      try {
-        const result = await signIn.attemptFirstFactor({ strategy: "email_code", code });
-        if (result.status === "complete" && setActiveSignIn) {
-          await setActiveSignIn({ session: result.createdSessionId });
-          return true;
+    (code: string): Promise<boolean> =>
+      verifyGuardRef.current!.run(async () => {
+        if (!signIn) return false;
+        setBusy(true);
+        setError(null);
+        try {
+          const outcome = interpretSignInAttempt(
+            await signIn.attemptFirstFactor({ strategy: "email_code", code })
+          );
+          if (outcome.kind === "complete" && setActiveSignIn) {
+            await setActiveSignIn({ session: outcome.sessionId });
+            return true;
+          }
+          setError("El código no coincide. Fijate en tu mail.");
+          return false;
+        } catch (e) {
+          setError(clerkErrorMessage(e));
+          return false;
+        } finally {
+          setBusy(false);
         }
-        setError("El código no coincide. Fijate en tu mail.");
-        return false;
-      } catch (e) {
-        setError(clerkErrorMessage(e));
-        return false;
-      } finally {
-        setBusy(false);
-      }
-    },
+      }, false),
     [setActiveSignIn, signIn]
   );
 
