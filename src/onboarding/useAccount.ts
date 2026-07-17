@@ -3,7 +3,12 @@ import * as WebBrowser from "expo-web-browser";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAction, useConvex, useMutation, useQuery } from "convex/react";
 
-import { runSessionAttempts } from "@/domain/sessionStart";
+import {
+  mapSignInStartError,
+  resolveFirstFactor,
+  runSessionAttempts,
+  type SignInPhase
+} from "@/domain/sessionStart";
 import { deviceTimezone } from "@/hooks/useLiveApp";
 import { useOrbitaAuth } from "@/hooks/useOrbitaAuth";
 import { appApi, type BirthDataDoc } from "@/services/appRefs";
@@ -189,20 +194,56 @@ function useAccountFlowInner(): AccountFlow {
 // si el email no tiene cuenta, se avisa en vez de crear una cuenta silenciosa.
 // ---------------------------------------------------------------------------
 
-export function useSignInFlow(): AccountFlow | null {
+/**
+ * Login: email → (contraseña | código). Tipo propio, distinto de `AccountFlow`
+ * (el alta sigue siendo solo por código): acá la cuenta puede tener contraseña.
+ */
+export type SignInFlow = {
+  phase: SignInPhase;
+  busy: boolean;
+  error: string | null;
+  isSignedIn: boolean;
+  oauthBusy: OAuthProvider | null;
+  /** Identifica el email y enruta al factor que ESA cuenta soporta. */
+  start: (email: string) => Promise<void>;
+  /** Contraseña (cuentas con password, p. ej. la de revisión de Apple). */
+  verifyPassword: (password: string) => Promise<boolean>;
+  /** Cambiar a código por email desde la pantalla de contraseña. */
+  sendEmailCode: () => Promise<void>;
+  verify: (code: string) => Promise<boolean>;
+  oauth: (provider: OAuthProvider) => Promise<boolean>;
+  resetToEmail: () => void;
+};
+
+export function useSignInFlow(): SignInFlow | null {
   if (!HAS_BACKEND) return null;
   return useSignInFlowInner();
 }
 
-function useSignInFlowInner(): AccountFlow {
+function useSignInFlowInner(): SignInFlow {
   const { useAuth } = require("@clerk/expo") as typeof import("@clerk/expo");
   const { useSignIn } = require("@clerk/expo/legacy") as typeof import("@clerk/expo/legacy");
   const { signIn, setActive: setActiveSignIn } = useSignIn();
   const { isSignedIn } = useAuth();
-  const [phase, setPhase] = useState<"email" | "code">("email");
+  const [phase, setPhase] = useState<SignInPhase>("email");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [oauthBusy, setOauthBusy] = useState<OAuthProvider | null>(null);
+
+  /** Pide el código por email y pasa a la fase código. */
+  const prepareEmailCode = useCallback(
+    async (factors: Array<{ strategy?: string }> | undefined) => {
+      const factor = factors?.find((f) => f.strategy === "email_code") as
+        | { emailAddressId?: string }
+        | undefined;
+      await signIn!.prepareFirstFactor({
+        strategy: "email_code",
+        emailAddressId: factor?.emailAddressId ?? ""
+      });
+      setPhase("code");
+    },
+    [signIn]
+  );
 
   const start = useCallback(
     async (emailAddress: string) => {
@@ -211,24 +252,60 @@ function useSignInFlowInner(): AccountFlow {
       setError(null);
       try {
         const attempt = await signIn.create({ identifier: emailAddress });
-        const factor = attempt.supportedFirstFactors?.find((f) => f.strategy === "email_code") as
-          | { emailAddressId?: string }
-          | undefined;
-        await signIn.prepareFirstFactor({ strategy: "email_code", emailAddressId: factor?.emailAddressId ?? "" });
-        setPhase("code");
+        const factors = attempt.supportedFirstFactors ?? undefined;
+        // Con contraseña, se pide contraseña (sin mandar un código que nadie
+        // pidió); si no, código por email. `resolveFirstFactor` tiene tests.
+        if (resolveFirstFactor(factors) === "password") setPhase("password");
+        else await prepareEmailCode(factors);
       } catch (e) {
-        const code = (e as { errors?: Array<{ code?: string }> })?.errors?.[0]?.code;
-        if (code === "form_identifier_not_found") {
-          setError("No encontramos una cuenta con ese email. Si sos nuevo, empezá creando tu carta.");
-        } else {
-          setError(clerkErrorMessage(e));
-        }
+        // El email inexistente NO avanza de fase: el usuario se queda en el
+        // campo de email, con el error visible y con "Crear una cuenta" a mano
+        // (antes el mensaje lo mandaba a "empezar creando tu carta" sin darle
+        // ninguna forma de hacerlo desde esta pantalla).
+        setError(mapSignInStartError(e).message);
       } finally {
         setBusy(false);
       }
     },
-    [signIn]
+    [prepareEmailCode, signIn]
   );
+
+  const verifyPassword = useCallback(
+    async (password: string): Promise<boolean> => {
+      if (!signIn) return false;
+      setBusy(true);
+      setError(null);
+      try {
+        const result = await signIn.attemptFirstFactor({ strategy: "password", password });
+        if (result.status === "complete" && setActiveSignIn) {
+          await setActiveSignIn({ session: result.createdSessionId });
+          return true;
+        }
+        // status "needs_second_factor" u otro: no se inventa una sesión.
+        setError("No pudimos completar el ingreso. Probá con un código por email.");
+        return false;
+      } catch (e) {
+        setError(clerkErrorMessage(e));
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [setActiveSignIn, signIn]
+  );
+
+  const sendEmailCode = useCallback(async () => {
+    if (!signIn) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await prepareEmailCode(signIn.supportedFirstFactors ?? undefined);
+    } catch (e) {
+      setError(clerkErrorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [prepareEmailCode, signIn]);
 
   const verify = useCallback(
     async (code: string): Promise<boolean> => {
@@ -262,6 +339,8 @@ function useSignInFlowInner(): AccountFlow {
     isSignedIn: !!isSignedIn,
     oauthBusy,
     start,
+    verifyPassword,
+    sendEmailCode,
     verify,
     oauth,
     resetToEmail: () => {

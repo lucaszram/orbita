@@ -43,9 +43,10 @@ export default function PerfilScreen() {
       await resetApp();
     } catch {
       // El snapshot ya se escribió y el perfil quedó marcado con su dueño en
-      // disco (archiveAccountData): aunque esta limpieza falle, el arranque
-      // detecta "perfil ajeno sin sesión" y lo purga — los datos de la cuenta
-      // no pueden reaparecer al reiniciar.
+      // disco (archiveAccountData): aunque esta limpieza falle, el arranque ve
+      // "perfil con dueño y sin sesión" y pide login en vez de mostrarlo (ya
+      // no existe la purga automática). Si entra OTRA cuenta, el login archiva
+      // lo del dueño anterior y limpia antes de restaurar: nadie ve datos ajenos.
     }
     router.replace("/onboarding");
   }

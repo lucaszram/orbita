@@ -85,6 +85,12 @@ type AppStateValue = {
   ) => Promise<void>;
   /** Dueño del perfil local (clerkUserId) o null si es guest/legado. */
   profileOwner: string | null;
+  /**
+   * El perfil se creó con la sesión activa pero sin userId todavía: hay una
+   * adopción pendiente. Los gates lo usan para NO leer ese perfil como guest
+   * durante la ventana (ver sessionStart.profileAdoptionPending).
+   */
+  profileAdoptionPending: boolean;
   /** Sign-in de guest-upgrade: adopta el perfil local existente para la cuenta. */
   adoptLocalProfile: (userId: string) => Promise<void>;
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
@@ -425,8 +431,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       // AsyncStorage puede fallar: se propaga y el logout se aborta.
       await storeAccountSnapshot(userId as string, snapshot);
       // Marcar el dueño en disco ANTES del signOut: si la limpieza posterior
-      // falla, el arranque ve un perfil ajeno sin sesión y lo purga en vez de
-      // mostrárselo al próximo usuario.
+      // falla, el arranque ve un perfil con dueño y sin sesión y pide login en
+      // vez de mostrárselo al próximo usuario.
       await storeProfileOwner(userId as string);
     },
     [profile, savedReadings, savedTombstones, journalEntries]
@@ -436,7 +442,21 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     async (userId: string): Promise<{ restored: boolean; profileRestored: boolean }> => {
       const snapshot = await readAccountSnapshot(userId);
       if (!snapshot) return { restored: false, profileRestored: false };
-      const merged = mergeAccountLists(snapshot, { savedReadings, journalEntries });
+      // Lo "actual" se lee del DISCO, no del closure: en un cambio de cuenta
+      // el caller acaba de archivar y limpiar lo del usuario anterior, y el
+      // estado de React todavía no lo refleja en esta misma vuelta. Con el
+      // closure viejo, el merge le devolvía a ESTA cuenta las guardadas y el
+      // diario del usuario anterior.
+      const [currentSaved, currentJournal, currentProfile, currentTombstones] = await Promise.all([
+        getSavedReadings(),
+        getJournalEntries(),
+        getStoredProfile(),
+        getSavedReadingTombstones()
+      ]);
+      const merged = mergeAccountLists(snapshot, {
+        savedReadings: currentSaved,
+        journalEntries: currentJournal
+      });
       setSavedReadings(merged.savedReadings);
       setJournalEntries(merged.journalEntries);
       await Promise.all([
@@ -446,14 +466,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       // Restaurar las lápidas archivadas: el efecto de sync retoma los
       // `unsave` pendientes y el merge remoto no resucita lo borrado.
       if (snapshot.savedReadingTombstones.length > 0) {
-        const nextTombstones = addTombstoneKeys(savedTombstones, snapshot.savedReadingTombstones);
+        const nextTombstones = addTombstoneKeys(currentTombstones, snapshot.savedReadingTombstones);
         setSavedTombstones(nextTombstones);
         await storeSavedReadingTombstones(nextTombstones);
       }
       // El perfil archivado vuelve solo si no hay uno activo; si Convex tiene
       // birthData, el caller lo pisa después con el remoto (el remoto gana).
       let profileRestored = false;
-      if (snapshot.profile && !profile) {
+      if (snapshot.profile && !currentProfile) {
         const normalized = normalizeProfile(snapshot.profile);
         if (normalized) {
           setProfile(normalized);
@@ -466,7 +486,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       await clearAccountSnapshot(userId);
       return { restored: true, profileRestored };
     },
-    [profile, savedReadings, savedTombstones, journalEntries]
+    []
   );
 
   // Adopción diferida: el perfil se creó con la sesión recién activada pero
@@ -511,6 +531,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       archiveAccountData,
       restoreAccountData,
       profileOwner,
+      profileAdoptionPending: pendingOwnerAdoption,
       adoptLocalProfile
     }),
     [
@@ -522,6 +543,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       homeSource,
       isReady,
       journalEntries,
+      pendingOwnerAdoption,
       profile,
       profileOwner,
       relationshipReading,

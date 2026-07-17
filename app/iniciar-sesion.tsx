@@ -2,7 +2,11 @@ import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { Redirect, useRouter } from "expo-router";
 
-import { onboardingInputFromBirthData } from "@/domain/sessionStart";
+import {
+  isAccountSwitch,
+  onboardingInputFromBirthData,
+  resolveSignInDestination
+} from "@/domain/sessionStart";
 import { useAppState } from "@/hooks/useAppState";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
 import { CTA } from "@/onboarding/components/CTA";
@@ -22,7 +26,15 @@ import { useSignInFlow, useSignInHydrate } from "@/onboarding/useAccount";
 export default function IniciarSesionRoute() {
   const router = useRouter();
   const fontsLoaded = useOrbitaFonts();
-  const { profile, createProfile, adoptLocalProfile, restoreAccountData } = useAppState();
+  const {
+    profile,
+    profileOwner,
+    createProfile,
+    adoptLocalProfile,
+    restoreAccountData,
+    archiveAccountData,
+    resetApp
+  } = useAppState();
   const flow = useSignInFlow();
   const hydrate = useSignInHydrate();
   const [hydrateFailed, setHydrateFailed] = useState(false);
@@ -39,6 +51,31 @@ export default function IniciarSesionRoute() {
       setHydrateFailed(true);
       return;
     }
+    // CAMBIO DE CUENTA en el mismo teléfono. Lo local pertenece a OTRO usuario
+    // (su sesión se perdió sin logout explícito, así que nada se archivó): sin
+    // esto, su diario y sus guardadas quedarían mezclados en la sesión de quien
+    // entra ahora (mergeAccountLists conserva lo "actual"). Se archiva bajo su
+    // dueño — no se destruye: si vuelve a entrar, lo recupera intacto — y
+    // recién ahí se limpia lo local.
+    const switchingAccount = isAccountSwitch({
+      localProfileOwner: profileOwner,
+      incomingUserId: result.clerkUserId
+    });
+    if (switchingAccount) {
+      try {
+        await archiveAccountData(profileOwner);
+        await resetApp();
+      } catch {
+        // Falla cerrado: si no se pudo archivar, NO se entra — antes que
+        // arriesgar mezclar los datos de dos cuentas, se ofrece reintentar.
+        setHydrateFailed(true);
+        return;
+      }
+    }
+    // Tras el reset, el `profile` de este closure es el del usuario anterior:
+    // para decidir no existe más.
+    const localProfile = switchingAccount ? null : profile;
+
     // Si esta cuenta ya usó este teléfono, volver su diario y sus lecturas
     // guardadas (archivados al cerrar sesión; no viven en Convex). El id sale
     // del backend (hydrate), no de useAuth: React puede no haber re-renderizado
@@ -46,23 +83,51 @@ export default function IniciarSesionRoute() {
     const { profileRestored } = result.clerkUserId
       ? await restoreAccountData(result.clerkUserId)
       : { profileRestored: false };
-    if (result.birthData) {
-      // El perfil/carta remotos ganan; el snapshot solo aporta diario/lecturas.
-      // Queda marcado con su dueño para que el arranque confíe en él.
-      await createProfile(onboardingInputFromBirthData(result.birthData), result.clerkUserId);
-      router.replace("/(tabs)");
-    } else if (profile || profileRestored) {
-      // La cuenta no tiene datos en Convex pero este teléfono sí: entrar con
-      // lo local (se persiste al backend la próxima vez que se editen datos).
-      // Guest-upgrade: la cuenta ADOPTA explícitamente el perfil local acá
-      // (el arranque nunca confía en un perfil sin dueño con sesión activa).
-      if (profile && !profileRestored && result.clerkUserId) {
-        await adoptLocalProfile(result.clerkUserId);
-      }
-      router.replace("/(tabs)");
-    } else {
-      router.replace({ pathname: "/onboarding", params: { resume: "datos" } });
+
+    switch (
+      resolveSignInDestination({
+        hasRemoteBirthData: !!result.birthData,
+        hasLocalProfile: !!localProfile,
+        profileRestored
+      })
+    ) {
+      case "home-remote":
+        // El perfil/carta remotos ganan; el snapshot solo aporta diario/lecturas.
+        // Queda marcado con su dueño para que el arranque confíe en él.
+        await createProfile(onboardingInputFromBirthData(result.birthData!), result.clerkUserId);
+        router.replace("/(tabs)");
+        break;
+      case "home-local":
+        // La cuenta no tiene datos en Convex pero este teléfono sí: entrar con
+        // lo local (se persiste al backend la próxima vez que se editen datos).
+        // Guest-upgrade: la cuenta ADOPTA explícitamente el perfil local acá
+        // (el arranque nunca confía en un perfil sin dueño con sesión activa).
+        if (localProfile && !profileRestored && result.clerkUserId) {
+          await adoptLocalProfile(result.clerkUserId);
+        }
+        router.replace("/(tabs)");
+        break;
+      case "resume-onboarding":
+        router.replace({ pathname: "/onboarding", params: { resume: "datos" } });
+        break;
     }
+  };
+
+  // El arranque puede REDIRIGIR acá (perfil con dueño y sin sesión): en ese
+  // caso no hay historia y `router.back()` no tendría a dónde volver. La
+  // salida siempre existente es la entrada.
+  const back = () => {
+    if (router.canGoBack()) router.back();
+    else router.replace("/onboarding");
+  };
+
+  // "Crear una cuenta": el alta, sin repetir la entrada (el usuario ya la
+  // pasó) y con el email que venía tipeando ya cargado.
+  const createAccount = (email: string) => {
+    router.replace({
+      pathname: "/onboarding",
+      params: email ? { nuevo: "1", email } : { nuevo: "1" }
+    });
   };
 
   if (hydrateFailed) {
@@ -92,7 +157,14 @@ export default function IniciarSesionRoute() {
     );
   }
 
-  return <SignInScreen flow={flow} onSignedIn={enter} onBack={() => router.back()} />;
+  return (
+    <SignInScreen
+      flow={flow}
+      onSignedIn={enter}
+      onCreateAccount={createAccount}
+      onBack={back}
+    />
+  );
 }
 
 const styles = StyleSheet.create({

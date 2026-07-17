@@ -38,6 +38,9 @@ const HAS_BACKEND = backendConfig.hasConvex && backendConfig.hasClerk;
 // Paso donde arranca la carga de datos de nacimiento (continuación del alta
 // post-login para una cuenta sin birthData: `/onboarding?resume=datos`).
 const STEP_BIRTHDATE = 4;
+// Primer paso del alta propiamente dicha (el 0 es la entrada con las puertas).
+// Destino de "Crear una cuenta" desde el login: `/onboarding?nuevo=1`.
+const STEP_ALTA = 1;
 const STEP_ACCOUNT = 13;
 
 // Paywall temporalmente DESACTIVADO (2-3 semanas, mientras refinamos el onboarding
@@ -73,18 +76,29 @@ export function OnboardingFlow() {
   const router = useRouter();
   const { createProfile } = useAppState();
   const { auth } = useLiveApp();
-  const params = useLocalSearchParams<{ debugStep?: string; resume?: string }>();
+  const params = useLocalSearchParams<{
+    debugStep?: string;
+    resume?: string;
+    nuevo?: string;
+    email?: string;
+  }>();
 
   // `resume=datos`: sesión activa sin datos de nacimiento → continuar el alta
   // desde la fecha, sin repetir splash/pitch ni crear una segunda cuenta.
-  const [step, setStep] = useState(() => (params.resume === "datos" ? STEP_BIRTHDATE : 0));
+  // `nuevo=1`: viene de "Crear una cuenta" en el login → arranca el alta en su
+  // primer paso; la entrada (paso 0) ya la pasó.
+  const [step, setStep] = useState(() =>
+    params.resume === "datos" ? STEP_BIRTHDATE : params.nuevo === "1" ? STEP_ALTA : 0
+  );
   const [identity, setIdentity] = useState<Identity>("ella");
   const [birthDate, setBirthDate] = useState<BirthDateParts>({ day: 15, month: 1, year: 1996 });
   const [placeQuery, setPlaceQuery] = useState("");
   const [birthPlace, setBirthPlace] = useState<PlaceOption | undefined>();
   const [birthTime, setBirthTime] = useState<BirthTime>({ hour: 12, minute: 0 });
   const [timeUnknown, setTimeUnknown] = useState(false);
-  const [email, setEmail] = useState("");
+  // Email tipeado en el login y traído por "Crear una cuenta" (`?email=`): el
+  // usuario no lo vuelve a escribir; llega ya cargado al paso de cuenta.
+  const [email, setEmail] = useState(() => (typeof params.email === "string" ? params.email : ""));
   const [accountCode, setAccountCode] = useState("");
   const [plan, setPlan] = useState<PlanId>("annual");
   const account = useAccountFlow();
@@ -110,6 +124,15 @@ export function OnboardingFlow() {
   useEffect(() => {
     if (params.resume === "datos") setStep((s) => (s === 0 ? STEP_BIRTHDATE : s));
   }, [params.resume]);
+
+  // Mismo respaldo para `nuevo=1` (y su email) llegando un render tarde.
+  useEffect(() => {
+    if (params.nuevo === "1") setStep((s) => (s === 0 ? STEP_ALTA : s));
+  }, [params.nuevo]);
+
+  useEffect(() => {
+    if (typeof params.email === "string" && params.email) setEmail((e) => e || params.email!);
+  }, [params.email]);
 
   const next = () => setStep((s) => Math.min(TOTAL - 1, s + 1));
   const back = () => setStep((s) => Math.max(0, s - 1));
@@ -376,7 +399,6 @@ export function OnboardingFlow() {
           account={account}
           onNext={accountNext}
           onOAuth={accountOAuth}
-          onSkip={next}
           onBack={back}
         />
       );

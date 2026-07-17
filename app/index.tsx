@@ -27,7 +27,9 @@ const CLERK_LOAD_TIMEOUT_MS = 8000;
  * onboarding como si fuera nueva y el Perfil la mostraba como invitado.
  */
 export default function IndexRoute() {
-  const { isReady, profile, profileOwner, createProfile, resetApp } = useAppState();
+  // Sin `resetApp`: el arranque ya no borra nada. La única limpieza local es
+  // el logout explícito del Perfil.
+  const { isReady, profile, profileOwner, profileAdoptionPending, createProfile } = useAppState();
   const { auth } = useLiveApp();
   const hydrate = useSignInHydrate();
   const [recovery, setRecovery] = useState<RecoveryState>("idle");
@@ -60,6 +62,7 @@ export default function IndexRoute() {
     clerkLoaded: auth ? auth.isLoaded : true,
     clerkTimedOut,
     isSignedIn: !!auth?.isSignedIn,
+    profileAdoptionPending,
     recovery,
     hasRemoteBirthData
   });
@@ -108,14 +111,6 @@ export default function IndexRoute() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [decision, hydrate, createProfile, recoveryTick]);
 
-  // Restos de un logout que no terminó de limpiar (perfil con dueño y sin
-  // sesión): purgar antes de mostrar nada. Los datos ya fueron archivados
-  // bajo su cuenta al cerrar sesión.
-  useEffect(() => {
-    if (IS_WEB || decision !== "purge-local") return;
-    void resetApp();
-  }, [decision, resetApp]);
-
   if (IS_WEB) {
     return <OrbitaLanding />;
   }
@@ -130,6 +125,12 @@ export default function IndexRoute() {
     case "entry":
       // Entrada estable: Empezar / Ya tengo cuenta (paso 0 del onboarding).
       return <Redirect href="/onboarding" />;
+    case "sign-in":
+      // Esta instalación es de una cuenta y Clerk confirmó que no hay sesión
+      // (logout a medio terminar o sesión perdida en un upgrade): volver a
+      // entrar. Nada local se toca — el perfil, las guardadas y el diario
+      // siguen en disco esperando a su dueño.
+      return <Redirect href="/iniciar-sesion" />;
     case "recover-error":
       return (
         <RecoveryError
@@ -151,7 +152,6 @@ export default function IndexRoute() {
       );
     case "loading":
     case "recover":
-    case "purge-local":
     default:
       return (
         <View style={styles.loading}>
