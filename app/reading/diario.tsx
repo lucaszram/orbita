@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { useAction, useQuery } from "convex/react";
 import { DetailScreen } from "@/components/home/DetailScreen";
-import { RitualReading, isRitualComplete } from "@/components/home/RitualReading";
-import { Body, Divider, Eyebrow, H2 } from "@/components/orbita/kit";
+import { RitualReading } from "@/components/home/RitualReading";
+import { isRitualComplete } from "@/domain/ritual";
+import { Body, Eyebrow, H2 } from "@/components/orbita/kit";
 import { TarotStrip, type DiaCelda } from "@/components/diario/TarotStrip";
 import { CARD_BACK, cardById } from "@/content/tarotDeck";
 import { dayLabel, lastNDays, monthLabel, toLocalDate } from "@/domain/dateStrip";
@@ -149,24 +150,15 @@ export default function DiarioScreen() {
             </Text>
           ) : null}
 
-          <View style={{ height: orbita.spacing.md }} />
-          <Eyebrow>{selectedDate === today ? "EL CIELO DE HOY" : "EL CIELO DE ESE DÍA"}</Eyebrow>
+          {/* Mismo bloque canónico que la Home: orientación → esencia → significado
+              general → en tu día → consejo → cierre. Sin el bloque de cielo/cruce astro
+              (no vuelve a la lectura de la carta — handoff v3). Completo o carga/error. */}
           {loading ? (
             <View style={styles.center}>
               <ActivityIndicator color={orbita.colors.copper} />
             </View>
-          ) : guide ? (
-            <>
-              <H2>{guide.headline}</H2>
-              <Body>{guide.body}</Body>
-
-              {isRitualComplete(ritual) ? (
-                <>
-                  <Divider />
-                  <RitualReading ritual={ritual} />
-                </>
-              ) : null}
-            </>
+          ) : isRitualComplete(ritual) ? (
+            <RitualReading ritual={ritual} />
           ) : (
             <Body>No pudimos traer la lectura de ese día. Volvé a entrar para reintentar.</Body>
           )}

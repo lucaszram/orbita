@@ -3,23 +3,6 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { DailyRitual } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
 
-/** ¿El ritual está completo y aprobable? El backend v3 SIEMPRE manda las cinco partes;
- *  esta guarda existe para la transición de contrato (payload v2/incompleto): en ese
- *  caso el caller muestra carga/error honesto, nunca una lectura parcial. Regla del
- *  handoff v3: la pantalla live se muestra completa o no se muestra. */
-export function isRitualComplete(ritual?: DailyRitual): ritual is DailyRitual {
-  return Boolean(
-    ritual &&
-      ritual.esencia?.trim() &&
-      Array.isArray(ritual.significadoGeneral) &&
-      ritual.significadoGeneral.length === 3 &&
-      ritual.significadoGeneral.every((f) => f?.titulo?.trim() && f?.texto?.trim()) &&
-      ritual.enTuDia?.trim() &&
-      ritual.consejo?.trim() &&
-      ritual.cierre?.pregunta?.trim()
-  );
-}
-
 /** La lectura de la carta, después de "Te salió {carta}." y el tag de orientación.
  *  Orden canónico del Figma (sección 14, `727:127`), SIN ocultar secciones vacías:
  *

@@ -12,7 +12,8 @@ import Animated, {
   withTiming
 } from "react-native-reanimated";
 import { Eyebrow, Section } from "@/components/orbita/kit";
-import { RitualReading, isRitualComplete } from "@/components/home/RitualReading";
+import { RitualReading } from "@/components/home/RitualReading";
+import { isRitualComplete } from "@/domain/ritual";
 import { LoadingState } from "@/components/orbita/states";
 import { CARD_BACK, cardById } from "@/content/tarotDeck";
 import type { DailyCarta } from "@/services/appRefs";
