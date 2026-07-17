@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import { Text } from "@/components/ui/text";
 
 import { A } from "../assets";
+import { CodeHelp } from "../components/CodeHelp";
 import { CodeInput } from "../components/CodeInput";
 import { CTA } from "../components/CTA";
 import { Header } from "../components/Header";
@@ -49,8 +50,11 @@ export function AccountScreen({ step, email, onEmail, code, onCode, account, onN
         <Body style={styles.sub}>{subtitle}</Body>
 
         <Label style={styles.fieldLabel}>{codePhase ? "Código" : "Email"}</Label>
-        {codePhase ? (
-          <CodeInput value={code} onChange={onCode} onFilled={(filled) => onNext(filled)} />
+        {codePhase && account ? (
+          <>
+            <CodeInput value={code} onChange={onCode} onFilled={(filled) => onNext(filled)} />
+            <CodeHelp onResend={account.resend} />
+          </>
         ) : (
           <>
             <TextInput

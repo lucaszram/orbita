@@ -5,6 +5,7 @@ import { Text } from "@/components/ui/text";
 import { shouldOfferSignup } from "@/domain/sessionStart";
 
 import { A } from "../assets";
+import { CodeHelp } from "../components/CodeHelp";
 import { CodeInput } from "../components/CodeInput";
 import { CTA } from "../components/CTA";
 import { Screen } from "../components/Screen";
@@ -110,11 +111,14 @@ export function SignInScreen({ flow, onSignedIn, onCreateAccount, onBack }: Prop
               {codePhase ? "Código" : passwordPhase ? "Contraseña" : "Email"}
             </Label>
             {codePhase ? (
-              <CodeInput
-                value={code}
-                onChange={setCode}
-                onFilled={(filled) => void submit(filled)}
-              />
+              <>
+                <CodeInput
+                  value={code}
+                  onChange={setCode}
+                  onFilled={(filled) => void submit(filled)}
+                />
+                <CodeHelp onResend={flow.resend} />
+              </>
             ) : passwordPhase ? (
               <>
                 <TextInput

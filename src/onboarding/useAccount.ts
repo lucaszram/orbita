@@ -9,6 +9,7 @@ import {
   runSessionAttempts,
   type SignInPhase
 } from "@/domain/sessionStart";
+import { planResend, type ResendResult } from "@/onboarding/resend";
 import { deviceTimezone } from "@/hooks/useLiveApp";
 import { useOrbitaAuth } from "@/hooks/useOrbitaAuth";
 import { appApi, type BirthDataDoc } from "@/services/appRefs";
@@ -40,6 +41,8 @@ export type AccountFlow = {
   oauthBusy: OAuthProvider | null;
   start: (email: string) => Promise<void>;
   verify: (code: string) => Promise<boolean>;
+  /** Reenvía el código sin crear otra cuenta ni reiniciar el flujo. */
+  resend: () => Promise<ResendResult>;
   oauth: (provider: OAuthProvider) => Promise<boolean>;
   resetToEmail: () => void;
 };
@@ -103,6 +106,9 @@ function useAccountFlowInner(): AccountFlow {
   const [error, setError] = useState<string | null>(null);
   const [oauthBusy, setOauthBusy] = useState<OAuthProvider | null>(null);
   const flowRef = useRef<"signUp" | "signIn">("signUp");
+  // emailAddressId del intento de sign-in (rama email ya existente): lo guarda
+  // `start` para que el reenvío pueda repetir prepareFirstFactor sin perderlo.
+  const emailAddressIdRef = useRef<string | null>(null);
 
   const start = useCallback(
     async (emailAddress: string) => {
@@ -113,6 +119,7 @@ function useAccountFlowInner(): AccountFlow {
         await signUp.create({ emailAddress });
         await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
         flowRef.current = "signUp";
+        emailAddressIdRef.current = null;
         setPhase("code");
       } catch (e) {
         const code = (e as { errors?: Array<{ code?: string }> })?.errors?.[0]?.code;
@@ -123,8 +130,10 @@ function useAccountFlowInner(): AccountFlow {
             const factor = attempt.supportedFirstFactors?.find((f) => f.strategy === "email_code") as
               | { emailAddressId?: string }
               | undefined;
-            await signIn.prepareFirstFactor({ strategy: "email_code", emailAddressId: factor?.emailAddressId ?? "" });
+            const emailAddressId = factor?.emailAddressId ?? "";
+            await signIn.prepareFirstFactor({ strategy: "email_code", emailAddressId });
             flowRef.current = "signIn";
+            emailAddressIdRef.current = emailAddressId;
             setPhase("code");
           } catch (e2) {
             setError(clerkErrorMessage(e2));
@@ -138,6 +147,25 @@ function useAccountFlowInner(): AccountFlow {
     },
     [signIn, signUp]
   );
+
+  const resend = useCallback(async (): Promise<ResendResult> => {
+    if (!signUp || !signIn) return { ok: false, error: "No pudimos reenviar el código. Probá de nuevo." };
+    setBusy(true);
+    setError(null); // limpiar un error de verify previo antes de reenviar
+    try {
+      const plan = planResend({ flow: flowRef.current, emailAddressId: emailAddressIdRef.current });
+      if (plan.method === "prepareEmailAddressVerification") {
+        await signUp.prepareEmailAddressVerification({ strategy: plan.strategy });
+      } else {
+        await signIn.prepareFirstFactor({ strategy: plan.strategy, emailAddressId: plan.emailAddressId });
+      }
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: clerkErrorMessage(e) };
+    } finally {
+      setBusy(false);
+    }
+  }, [signIn, signUp]);
 
   const verify = useCallback(
     async (code: string): Promise<boolean> => {
@@ -180,6 +208,7 @@ function useAccountFlowInner(): AccountFlow {
     oauthBusy,
     start,
     verify,
+    resend,
     oauth,
     resetToEmail: () => {
       setError(null);
@@ -211,6 +240,8 @@ export type SignInFlow = {
   /** Cambiar a código por email desde la pantalla de contraseña. */
   sendEmailCode: () => Promise<void>;
   verify: (code: string) => Promise<boolean>;
+  /** Reenvía el código conservando el emailAddressId (mismo intento). */
+  resend: () => Promise<ResendResult>;
   oauth: (provider: OAuthProvider) => Promise<boolean>;
   resetToEmail: () => void;
 };
@@ -229,6 +260,9 @@ function useSignInFlowInner(): SignInFlow {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [oauthBusy, setOauthBusy] = useState<OAuthProvider | null>(null);
+  // emailAddressId del intento vigente: lo guarda `prepareEmailCode` para que el
+  // reenvío repita prepareFirstFactor con el MISMO id (no reinicia el flujo).
+  const emailAddressIdRef = useRef<string | null>(null);
 
   /** Pide el código por email y pasa a la fase código. */
   const prepareEmailCode = useCallback(
@@ -236,10 +270,9 @@ function useSignInFlowInner(): SignInFlow {
       const factor = factors?.find((f) => f.strategy === "email_code") as
         | { emailAddressId?: string }
         | undefined;
-      await signIn!.prepareFirstFactor({
-        strategy: "email_code",
-        emailAddressId: factor?.emailAddressId ?? ""
-      });
+      const emailAddressId = factor?.emailAddressId ?? "";
+      emailAddressIdRef.current = emailAddressId;
+      await signIn!.prepareFirstFactor({ strategy: "email_code", emailAddressId });
       setPhase("code");
     },
     [signIn]
@@ -307,6 +340,24 @@ function useSignInFlowInner(): SignInFlow {
     }
   }, [prepareEmailCode, signIn]);
 
+  const resend = useCallback(async (): Promise<ResendResult> => {
+    if (!signIn) return { ok: false, error: "No pudimos reenviar el código. Probá de nuevo." };
+    setBusy(true);
+    setError(null); // limpiar un error de verify previo antes de reenviar
+    try {
+      // Login siempre es signIn: repetir prepareFirstFactor con el mismo id.
+      const plan = planResend({ flow: "signIn", emailAddressId: emailAddressIdRef.current });
+      if (plan.method === "prepareFirstFactor") {
+        await signIn.prepareFirstFactor({ strategy: plan.strategy, emailAddressId: plan.emailAddressId });
+      }
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: clerkErrorMessage(e) };
+    } finally {
+      setBusy(false);
+    }
+  }, [signIn]);
+
   const verify = useCallback(
     async (code: string): Promise<boolean> => {
       if (!signIn) return false;
@@ -342,6 +393,7 @@ function useSignInFlowInner(): SignInFlow {
     verifyPassword,
     sendEmailCode,
     verify,
+    resend,
     oauth,
     resetToEmail: () => {
       setError(null);
