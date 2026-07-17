@@ -1,5 +1,12 @@
 # Contrato — CHANGELOG
 
+## 2026-07-17 — Carta diaria: ritual intrínseco + orientación estable
+- **Qué cambió:** `daily.getGuide()` migra `carta` de `{ id, nombre, correspondencia, beats }` a `{ id, nombre, correspondencia, orientacion: "derecho" | "invertida", ritual: { esencia, significadoGeneral, enTuDia, consejo, cierre } }`. `daily.getStrip()` suma `orientacion` para reproducir fielmente el historial. Los payloads nuevos usan `orbita-daily-guide-v3`; un cache v2 se regenera sin borrar `revealedAt`.
+- **Por qué:** la carta diaria deja de fingir un cruce con la carta natal o los tránsitos. La nueva apertura muestra una lectura completa de la carta misma, diferenciada por orientación.
+- **Decisiones cerradas:** mazo completo de 78; sin repetición durante los seis días anteriores; 50% invertidas mediante una segunda semilla determinística; orientación persistida; ritual generado dentro de la guía diaria con fallback intrínseco y sin cruce astro.
+- **Quién lo pidió:** Lucas (handoff frontend/Claude, sección 14 de Figma).
+- **Estado:** implementado en backend; pendiente integración del frontend contra el contrato real y prueba en Convex dev.
+
 ## 2026-07-17 — La lectura natal corta deja de presentarse como resultado final
 - **Qué cambió:** `charts.personalityReading()` conserva su firma `PersonalityReadingPayload | null`, pero ahora devuelve `null` hasta que exista una interpretación LLM completa y cacheada con estado `ready`. Ya no entrega la plantilla breve determinística durante la generación. `charts.generatePersonalityReading()` rechaza la llamada si el generador está deshabilitado, incompleto o falla, para que el cliente pueda salir de la carga y ofrecer reintento.
 - **Por qué:** la plantilla breve (`Núcleo`, `Clima interno`, etc.) aparecía como si fuera la carta natal terminada y ocultaba que los siete capítulos largos todavía se estaban generando o habían fallado.
