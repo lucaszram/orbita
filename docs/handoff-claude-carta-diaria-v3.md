@@ -1,8 +1,8 @@
 # Handoff a Claude — Home con carta ritual v3
 
-**Fecha:** 2026-07-17  
-**Backend:** PR #22, rama `codex/daily-card-ritual`  
-**Frontend de trabajo:** `feature/carta-ritual`  
+**Fecha:** 2026-07-17
+**Backend:** PR #22, rama `codex/daily-card-ritual`
+**Frontend de trabajo:** `feature/carta-ritual`
 **Estado:** contrato backend implementado y validado; todavía no desplegado.
 
 ## Objetivo
