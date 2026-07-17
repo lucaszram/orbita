@@ -6,6 +6,8 @@
 
 **Orden de integración:** primero debe quedar listo el frontend de `feature/carta-ritual` para ids `0–77` y el contrato v3; recién después desplegar este backend a Convex dev y hacer la pasada conjunta. No desplegar este backend solo contra el TestFlight actual porque ese cliente todavía espera `carta.beats`.
 
+**Handoff frontend:** `docs/handoff-claude-carta-diaria-v3.md` fija el contrato exacto, corrige el handoff viejo que todavía hablaba de 22 cartas/`majorById`, documenta la estructura completa de la lectura y deja el checklist conjunto para Claude y Lucas.
+
 ## Lectura natal larga — estado de generación honesto (2026-07-17, Codex)
 
 La pasada manual del hotfix de autenticación mostró la plantilla breve (`Núcleo`, `Clima interno`, etc.) como si fuera la lectura natal final. El motor largo de siete capítulos sí está mergeado y Convex dev tiene LLM/modelo/clave configurados; el problema es de estado: `charts.personalityReading()` devolvía el fallback breve mientras la action generaba. Rama aislada `codex/natal-reading-state`: la query devuelve `null` hasta cache `ready` y la action rechaza cualquier fallo para que el frontend existente muestre carga o reintento. Pendiente: tests/typecheck, deploy solo a dev y pasada manual carga → lectura larga; producción no se toca.
