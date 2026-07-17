@@ -16,6 +16,12 @@ type Props = {
   step: number;
   email: string;
   onEmail: (v: string) => void;
+  password: string;
+  onPassword: (v: string) => void;
+  confirmPassword: string;
+  onConfirmPassword: (v: string) => void;
+  /** Error de validación del formulario (contraseñas), aparte del de Clerk. */
+  formError: string | null;
   code: string;
   onCode: (v: string) => void;
   account: AccountFlow | null;
@@ -33,7 +39,22 @@ type Props = {
  * perfil sin dueño que, sin sesión, el gate de `(tabs)` rebota — el usuario
  * quedaba dando vueltas entre el onboarding y la entrada, sin poder entrar.
  */
-export function AccountScreen({ step, email, onEmail, code, onCode, account, onNext, onOAuth, onBack }: Props) {
+export function AccountScreen({
+  step,
+  email,
+  onEmail,
+  password,
+  onPassword,
+  confirmPassword,
+  onConfirmPassword,
+  formError,
+  code,
+  onCode,
+  account,
+  onNext,
+  onOAuth,
+  onBack
+}: Props) {
   const codePhase = account?.phase === "code" && !account.isSignedIn;
   const subtitle = account?.isSignedIn
     ? "Tu cuenta ya está activa. Tus lecturas quedan guardadas."
@@ -41,6 +62,9 @@ export function AccountScreen({ step, email, onEmail, code, onCode, account, onN
       ? `Te mandamos un código a ${email.trim()}.`
       : "Tu historial, tus lecturas y tus tránsitos quedan en tu cuenta.";
   const ctaLabel = account?.busy ? "Un momento…" : codePhase ? "Verificar código" : "Guardar mi carta";
+  // En la fase email mostramos primero el error de validación local (contraseñas)
+  // y, si no hay, el de Clerk; en la fase código, el de Clerk (código/faltantes).
+  const shownError = codePhase ? account?.error ?? null : formError ?? account?.error ?? null;
 
   return (
     <Screen bg={A.accountBg} bgOpacity={0.9} wash={0.55}>
@@ -49,14 +73,15 @@ export function AccountScreen({ step, email, onEmail, code, onCode, account, onN
         <Title>Guardá tu carta.</Title>
         <Body style={styles.sub}>{subtitle}</Body>
 
-        <Label style={styles.fieldLabel}>{codePhase ? "Código" : "Email"}</Label>
         {codePhase && account ? (
           <>
+            <Label style={styles.fieldLabel}>Código</Label>
             <CodeInput value={code} onChange={onCode} onFilled={(filled) => onNext(filled)} />
             <CodeHelp onResend={account.resend} />
           </>
         ) : (
           <>
+            <Label style={styles.fieldLabel}>Email</Label>
             <TextInput
               value={email}
               onChangeText={onEmail}
@@ -65,12 +90,42 @@ export function AccountScreen({ step, email, onEmail, code, onCode, account, onN
               autoCapitalize="none"
               autoCorrect={false}
               keyboardType="email-address"
+              textContentType="emailAddress"
+              style={styles.input}
+            />
+            <View style={styles.inputLine} />
+
+            <Label style={styles.fieldLabelStacked}>Contraseña</Label>
+            <TextInput
+              value={password}
+              onChangeText={onPassword}
+              placeholder="Al menos 8 caracteres"
+              placeholderTextColor={orbita.faint}
+              autoCapitalize="none"
+              autoCorrect={false}
+              secureTextEntry
+              textContentType="newPassword"
+              style={styles.input}
+            />
+            <View style={styles.inputLine} />
+
+            <Label style={styles.fieldLabelStacked}>Repetir contraseña</Label>
+            <TextInput
+              value={confirmPassword}
+              onChangeText={onConfirmPassword}
+              placeholder="Repetí la contraseña"
+              placeholderTextColor={orbita.faint}
+              autoCapitalize="none"
+              autoCorrect={false}
+              secureTextEntry
+              textContentType="newPassword"
+              onSubmitEditing={() => onNext()}
               style={styles.input}
             />
             <View style={styles.inputLine} />
           </>
         )}
-        {account?.error ? <Text style={styles.error}>{account.error}</Text> : null}
+        {shownError ? <Text style={styles.error}>{shownError}</Text> : null}
 
         <View style={styles.primary}>
           <CTA label={ctaLabel} onPress={account?.busy ? () => undefined : () => onNext()} />
@@ -135,6 +190,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   fieldLabel: { marginTop: 44 },
+  fieldLabelStacked: { marginTop: 20 },
   gap: { height: 12 },
   input: {
     color: orbita.bone,

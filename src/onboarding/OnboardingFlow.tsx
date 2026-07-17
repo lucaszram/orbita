@@ -27,6 +27,7 @@ import { PaywallScreen, type PlanId } from "./screens/PaywallScreen";
 import { PersonalizingScreen } from "./screens/PersonalizingScreen";
 import { SplashScreen } from "./screens/SplashScreen";
 import { orbita } from "./theme";
+import { validateSignupPassword } from "./signup";
 import { useAccountFlow, useBackendPersist, useOnboardingChart, useOnboardingComputeTriad } from "./useAccount";
 import type { OnboardingChart } from "./useAccount";
 
@@ -99,6 +100,10 @@ export function OnboardingFlow() {
   // Email tipeado en el login y traído por "Crear una cuenta" (`?email=`): el
   // usuario no lo vuelve a escribir; llega ya cargado al paso de cuenta.
   const [email, setEmail] = useState(() => (typeof params.email === "string" ? params.email : ""));
+  // Clerk Producción exige contraseña en el alta: se pide + confirmación.
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [accountFormError, setAccountFormError] = useState<string | null>(null);
   const [accountCode, setAccountCode] = useState("");
   const [plan, setPlan] = useState<PlanId>("annual");
   const account = useAccountFlow();
@@ -205,8 +210,17 @@ export function OnboardingFlow() {
     }
     const trimmed = email.trim().toLowerCase();
     if (account.phase === "email") {
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(trimmed)) return;
-      await account.start(trimmed);
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(trimmed)) {
+        setAccountFormError("Revisá el email.");
+        return;
+      }
+      const pwError = validateSignupPassword(password, confirmPassword);
+      if (pwError) {
+        setAccountFormError(pwError);
+        return;
+      }
+      setAccountFormError(null);
+      await account.start(trimmed, password);
       return;
     }
     const ok = await account.verify((codeOverride ?? accountCode).trim());
@@ -394,6 +408,11 @@ export function OnboardingFlow() {
           step={step}
           email={email}
           onEmail={setEmail}
+          password={password}
+          onPassword={setPassword}
+          confirmPassword={confirmPassword}
+          onConfirmPassword={setConfirmPassword}
+          formError={accountFormError}
           code={accountCode}
           onCode={setAccountCode}
           account={account}
