@@ -75,6 +75,9 @@ type DailyCarta = {
   correspondencia: string;
   orientacion: "derecho" | "invertida";
   ritual: DailyRitual;
+  /** Puente temporal para clientes <= build 13. Se deriva del ritual v3 y no
+   *  introduce otra generación ni un cruce astrológico inventado. */
+  beats: Array<{ label: string; body: string }>;
 };
 
 type DailyGuidePayload = {
@@ -724,6 +727,17 @@ export function fallbackRitual(carta: TarotDraw): DailyRitual {
   };
 }
 
+/** Compatibilidad aditiva durante el rollout de TestFlight. El cliente nuevo
+ *  ignora este campo; el build 13 todavía lo necesita para no dejar la carta
+ *  vacía mientras las personas actualizan. */
+export function legacyBeatsFromRitual(ritual: DailyRitual): Array<{ label: string; body: string }> {
+  return [
+    { label: "QUÉ ES", body: ritual.esencia },
+    { label: "EN TU DÍA", body: ritual.enTuDia },
+    { label: "EL CONSEJO", body: ritual.consejo }
+  ];
+}
+
 /** Sin LLM (o si falla) devolvemos SOLO el hero, con los bloques ricos en `undefined`:
  *  el front cae al engine local para guía/áreas/lectura larga, igual que antes de este
  *  cambio. Preferimos degradar a lo conocido antes que inventar una Home a medias. */
@@ -766,6 +780,7 @@ export function composePayload(args: {
 }): DailyGuidePayload {
   const [top, ...rest] = args.transits;
   const g = args.generated;
+  const ritual = g.cartaRitual ?? fallbackRitual(args.carta);
   return {
     payloadVersion: DAILY_GUIDE_PAYLOAD_VERSION,
     carta: {
@@ -773,7 +788,8 @@ export function composePayload(args: {
       nombre: args.carta.nombre,
       correspondencia: args.carta.correspondencia,
       orientacion: args.carta.orientacion,
-      ritual: g.cartaRitual ?? fallbackRitual(args.carta)
+      ritual,
+      beats: legacyBeatsFromRitual(ritual)
     },
     headline: g.headline,
     body: g.body,

@@ -90,7 +90,7 @@ test("el prompt pide ritual intrínseco y elimina el contrato viejo de beats/cru
   assert.equal(prompt.includes('"no define el día"'), true);
 });
 
-test("composePayload publica orientación + ritual y nunca beats", () => {
+test("composePayload publica ritual v3 y el puente legacy derivado para build 13", () => {
   const carta: TarotDraw = {
     id: 71,
     key: "pentacles_08",
@@ -116,5 +116,10 @@ test("composePayload publica orientación + ritual y nunca beats", () => {
   assert.equal(payload.payloadVersion, "orbita-daily-guide-v3");
   assert.equal(payload.carta?.orientacion, "derecho");
   assert.deepEqual(payload.carta?.ritual, COMPLETE_RITUAL);
-  assert.equal(Object.hasOwn(payload.carta ?? {}, "beats"), false);
+  assert.deepEqual(payload.carta?.beats, [
+    { label: "QUÉ ES", body: COMPLETE_RITUAL.esencia },
+    { label: "EN TU DÍA", body: COMPLETE_RITUAL.enTuDia },
+    { label: "EL CONSEJO", body: COMPLETE_RITUAL.consejo }
+  ]);
+  assert.equal(JSON.stringify(payload.carta?.beats).includes("cielo"), false);
 });

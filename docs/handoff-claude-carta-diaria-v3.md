@@ -34,7 +34,7 @@ No volver a limitar el dominio a `0–21`: los ids válidos son `0–77`.
 
 ## Contrato exacto del backend
 
-`daily.getGuide()` pasa a `orbita-daily-guide-v3`. Dentro de `carta`, desaparece `beats` y entran `orientacion` + `ritual`:
+`daily.getGuide()` pasa a `orbita-daily-guide-v3`. Dentro de `carta`, entran `orientacion` + `ritual`. Durante el rollout de TestFlight, el backend conserva además `beats` como puente temporal para el build 13; el frontend nuevo debe ignorarlo:
 
 ```ts
 export type DailyOrientacion = "derecho" | "invertida";
@@ -179,7 +179,7 @@ Reglas:
 
 - Copiar el contrato anterior exactamente.
 - Cambiar los comentarios `0–21` por `0–77`.
-- Eliminar `beats` de `DailyCarta`.
+- Eliminar `beats` del tipo frontend `DailyCarta`; el campo legacy que el backend entrega durante el rollout se ignora.
 - Sumar `orientacion` a la forma tipada de la tira.
 
 ### `src/components/home/CartaDelDia.tsx`
@@ -259,7 +259,7 @@ Probar frontend + PR #22 en Convex **dev**, en este orden:
 4. Lucas hace la pasada manual del checklist.
 5. Recién con la pasada aprobada se mergean ambos lados y se prepara TestFlight.
 
-**No desplegar PR #22 solo contra el TestFlight actual:** ese cliente espera `carta.beats` y no entiende el contrato v3.
+**Rollout seguro:** desplegar únicamente la versión de PR #22 que conserva el puente `carta.beats` derivado del ritual. Así el build 13 sigue funcionando mientras el cliente v3 llega por TestFlight.
 
 ## Fuera de alcance
 

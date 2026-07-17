@@ -2,6 +2,7 @@
 
 ## 2026-07-17 — Carta diaria: ritual intrínseco + orientación estable
 - **Qué cambió:** `daily.getGuide()` migra `carta` de `{ id, nombre, correspondencia, beats }` a `{ id, nombre, correspondencia, orientacion: "derecho" | "invertida", ritual: { esencia, significadoGeneral, enTuDia, consejo, cierre } }`. `significadoGeneral` exige exactamente tres facetas, siguiendo el formato aprobado en Figma. `daily.getStrip()` suma `orientacion` para reproducir fielmente el historial. Los payloads nuevos usan `orbita-daily-guide-v3`; un cache v2 se regenera sin borrar `revealedAt`.
+- **Compatibilidad de rollout:** durante la convivencia con el build 13, `carta` conserva además un `beats` legacy derivado de `ritual` (`QUÉ ES`, `EN TU DÍA`, `EL CONSEJO`). No dispara otra generación ni inventa cruces con el cielo. El frontend v3 lo ignora; se retira en un PR posterior cuando el cliente viejo deje de circular.
 - **Por qué:** la carta diaria deja de fingir un cruce con la carta natal o los tránsitos. La nueva apertura muestra una lectura completa de la carta misma, diferenciada por orientación.
 - **Decisiones cerradas:** mazo completo de 78; sin repetición durante los seis días anteriores; 50% invertidas mediante una segunda semilla determinística; orientación persistida; ritual generado dentro de la guía diaria con fallback intrínseco y sin cruce astro.
 - **Quién lo pidió:** Lucas (handoff frontend/Claude, sección 14 de Figma).
