@@ -1,4 +1,12 @@
-import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import {
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View
+} from "react-native";
 
 import { Text } from "@/components/ui/text";
 
@@ -68,10 +76,25 @@ export function AccountScreen({
 
   return (
     <Screen bg={A.accountBg} bgOpacity={0.9} wash={0.55}>
+      {/* Header FIJO fuera del scroll. El formulario (email + contraseña +
+          confirmación) crece más que una pantalla chica con el teclado abierto,
+          así que va en KeyboardAvoidingView + ScrollView para poder llegar al
+          error y a "Guardar mi carta". keyboardShouldPersistTaps="handled" deja
+          tocar el CTA sin que el primer tap solo cierre el teclado. */}
       <Header step={step} total={15} onBack={codePhase ? () => account?.resetToEmail() : onBack} />
-      <View style={styles.body}>
-        <Title>Guardá tu carta.</Title>
-        <Body style={styles.sub}>{subtitle}</Body>
+      <KeyboardAvoidingView
+        style={styles.kav}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          showsVerticalScrollIndicator={false}
+        >
+          <Title>Guardá tu carta.</Title>
+          <Body style={styles.sub}>{subtitle}</Body>
 
         {codePhase && account ? (
           <>
@@ -166,15 +189,13 @@ export function AccountScreen({
             </View>
           </>
         ) : null}
-
-        <View style={styles.spacer} />
-      </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  body: { flex: 1, paddingHorizontal: GUTTER, paddingTop: 26 },
   divider: {
     color: orbita.faint,
     fontFamily: font.sans,
@@ -192,6 +213,7 @@ const styles = StyleSheet.create({
   fieldLabel: { marginTop: 44 },
   fieldLabelStacked: { marginTop: 20 },
   gap: { height: 12 },
+  kav: { flex: 1 },
   input: {
     color: orbita.bone,
     fontFamily: font.serifReg,
@@ -207,7 +229,10 @@ const styles = StyleSheet.create({
     fontFamily: font.sans,
     fontSize: 13,
   },
+  scroll: { flex: 1 },
+  // paddingBottom generoso: en iPhone chico, con el teclado abierto, el error y
+  // "Guardar mi carta" deben quedar alcanzables scrolleando por encima del teclado.
+  scrollContent: { paddingBottom: 56, paddingHorizontal: GUTTER, paddingTop: 26 },
   socials: { marginTop: 22 },
-  spacer: { flex: 1 },
   sub: { marginTop: 10 },
 });
