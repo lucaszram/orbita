@@ -39,7 +39,8 @@ export function DiarioStrip({ isLive, guestCardId }: { isLive: boolean; guestCar
         wd: WEEKDAYS[date.getDay()],
         n: String(date.getDate()),
         image,
-        revealed
+        revealed,
+        inverted: entry?.orientacion === "invertida"
       };
     });
   }, [days, strip, isLive, guestCardId]);

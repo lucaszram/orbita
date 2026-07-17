@@ -8,6 +8,8 @@ export type DiaCelda = {
   n: string;
   image: ImageSourcePropType | null; // null = día futuro (dorso)
   revealed: boolean;
+  /** La carta salió invertida ese día: la miniatura se rota 180° para ser fiel al archivo. */
+  inverted?: boolean;
 };
 
 const CW = 54;
@@ -46,7 +48,7 @@ export function TarotStrip({
         <View style={[styles.card, fit && styles.cardFit, on && styles.cardOn]}>
           <Image
             source={d.revealed && d.image ? d.image : CARD_BACK}
-            style={fit ? styles.imgFit : styles.img}
+            style={[fit ? styles.imgFit : styles.img, d.revealed && d.image && d.inverted ? styles.flipped : null]}
             resizeMode="cover"
           />
           {!d.revealed ? <View style={styles.lock} /> : null}
@@ -92,6 +94,7 @@ const styles = StyleSheet.create({
   },
   cardOn: { borderColor: orbita.colors.copper, borderWidth: 1.5 },
   img: { height: CH, width: CW },
+  flipped: { transform: [{ rotate: "180deg" }] },
   lock: { backgroundColor: "rgba(7,8,10,0.45)", bottom: 0, left: 0, position: "absolute", right: 0, top: 0 },
   n: { color: orbita.colors.bone, fontFamily: orbita.fonts.mono, fontSize: 13, marginTop: 8 },
   nOn: { color: orbita.colors.copper, fontFamily: orbita.fonts.monoMedium },
