@@ -21,12 +21,18 @@ type Props = {
   /** `codeOverride`: la auto-verificación del CodeInput pasa el código directo. */
   onNext: (codeOverride?: string) => void;
   onOAuth: (provider: OAuthProvider) => void;
-  onSkip: () => void;
   onBack: () => void;
 };
 
-/** 14 — Create account (save your chart). Con Clerk: email → código → sesión. */
-export function AccountScreen({ step, email, onEmail, code, onCode, account, onNext, onOAuth, onSkip, onBack }: Props) {
+/**
+ * 14 — Create account (save your chart). Con Clerk: email → código → sesión.
+ *
+ * La cuenta es OBLIGATORIA (decisión de producto 2026-07-16: Órbita no tiene
+ * Home invitada). Acá vivía "Seguir sin cuenta": terminaba el alta con un
+ * perfil sin dueño que, sin sesión, el gate de `(tabs)` rebota — el usuario
+ * quedaba dando vueltas entre el onboarding y la entrada, sin poder entrar.
+ */
+export function AccountScreen({ step, email, onEmail, code, onCode, account, onNext, onOAuth, onBack }: Props) {
   const codePhase = account?.phase === "code" && !account.isSignedIn;
   const subtitle = account?.isSignedIn
     ? "Tu cuenta ya está activa. Tus lecturas quedan guardadas."
@@ -85,18 +91,13 @@ export function AccountScreen({ step, email, onEmail, code, onCode, account, onN
           </>
         ) : null}
 
-        {account ? (
+        {account && codePhase ? (
           <View style={styles.linksZone}>
-            {codePhase ? (
-              <Pressable onPress={() => account.resetToEmail()} accessibilityRole="button" hitSlop={8}>
-                <Text style={styles.quietLink}>Usar otro email</Text>
-              </Pressable>
-            ) : null}
-            <Pressable onPress={onSkip} accessibilityRole="button" hitSlop={8}>
-              <Text style={styles.quietLink}>Seguir sin cuenta</Text>
+            <Pressable onPress={() => account.resetToEmail()} accessibilityRole="button" hitSlop={8}>
+              <Text style={styles.quietLink}>Usar otro email</Text>
             </Pressable>
           </View>
-        ) : SOCIAL_LOGIN_ENABLED ? (
+        ) : !account && SOCIAL_LOGIN_ENABLED ? (
           <>
             <Text style={styles.divider}>O seguir con</Text>
             <View style={styles.socials}>

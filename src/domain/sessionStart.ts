@@ -5,12 +5,27 @@ import type { OnboardingProfile } from "./types";
  * el estado real (storage local, Clerk, recuperación Convex) y esta función
  * decide UNA cosa: qué mostrar. Reglas (docs/handoff-build11-session-navigation.md):
  *
+ * DECISIÓN DE PRODUCTO (2026-07-16, Lucas): **Órbita no tiene Home invitada.**
+ * Sin sesión confirmada no se renderiza Home, Tránsitos, Umbral ni Perfil.
+ *
  *  - Clerk cargando → loading; NUNCA afirmar "invitado" mientras carga.
  *  - Sesión válida + datos (locales o en Convex) → Home.
  *  - Sesión válida sin datos de nacimiento → continuar el alta (sin 2da cuenta).
- *  - Sin sesión + perfil guest local → Home como invitado.
- *  - Sin sesión + sin perfil → entrada estable (Empezar / Ya tengo cuenta).
+ *  - Sin sesión + perfil CON dueño → login, conservando TODO lo local.
+ *  - Sin sesión + sin perfil (instalación nueva) → entrada del onboarding.
+ *  - Sin sesión + perfil SIN dueño (guest de una versión vieja) → entrada: no
+ *    hay cuenta a la cual iniciar sesión y la entrada ofrece las dos puertas.
+ *    Su perfil, guardadas y diario quedan intactos en disco.
  *  - Error real recuperando la cuenta → reintento; nunca fingir que está listo.
+ *
+ * El arranque NO tiene ninguna decisión destructiva. Antes existía
+ * `purge-local`: con Clerk confirmando signed-out y un perfil con dueño, el
+ * arranque borraba todo lo local dando por hecho que eran restos de un logout.
+ * Una sesión PERDIDA (upgrade de build, token invalidado, storage de Clerk
+ * reseteado) da exactamente ese mismo estado, y ahí la purga borraba el perfil,
+ * las guardadas y el diario de un usuario que solo tenía que volver a entrar.
+ * La sesión ahora se recupera pidiendo login; lo local se conserva siempre y
+ * solo se limpia desde un logout explícito del Perfil (`resetApp`).
  */
 
 export type RecoveryState = "idle" | "loading" | "done" | "error";
@@ -34,6 +49,13 @@ export type StartSnapshot = {
   /** Clerk tardó demasiado (red caída, etc.). NO equivale a signed-out. */
   clerkTimedOut: boolean;
   isSignedIn: boolean;
+  /**
+   * El alta acaba de crear el perfil con la sesión ya activa pero `useAuth`
+   * todavía stale: el dueño se adopta apenas Clerk publique el userId
+   * (`shouldAdoptPendingProfile`). En esa ventana el perfil se ve "sin dueño"
+   * y signed-out sin serlo — no se decide nada, se espera.
+   */
+  profileAdoptionPending: boolean;
   /** Estado de la recuperación remota (sesión sin perfil local PROPIO). */
   recovery: RecoveryState;
   /** La recuperación encontró birthData en Convex. */
@@ -47,22 +69,28 @@ export type StartDecision =
   | "recover"
   | "recover-error"
   | "resume-onboarding"
-  | "purge-local"
+  | "sign-in"
   | "auth-timeout";
 
 export function resolveStart(s: StartSnapshot): StartDecision {
   if (!s.localReady) return "loading";
+  // Sin envs no existe Clerk: no hay sesión que confirmar y la app corre 100%
+  // local (builds de desarrollo). Es la ÚNICA rama que entra sin sesión.
   if (!s.backendConfigured) return s.hasLocalProfile ? "home" : "entry";
-  // Timeout de Clerk ≠ signed-out: sin isLoaded REAL no se puede decidir nada
-  // destructivo (un perfil con dueño de una sesión VÁLIDA caería en purga).
-  // Pantalla no destructiva con reintento; jamás purge-local ni limpieza.
+  // Timeout de Clerk ≠ signed-out: sin isLoaded REAL no se afirma "invitado".
+  // Pantalla no destructiva con reintento.
   if (!s.clerkLoaded) return s.clerkTimedOut ? "auth-timeout" : "loading";
+  // Alta recién terminada: la sesión ESTÁ activa aunque useAuth no la publicó.
+  // Decidir acá mandaría a la entrada a alguien que acaba de crear su cuenta.
+  if (!s.isSignedIn && s.profileAdoptionPending) return "loading";
   if (!s.isSignedIn) {
-    if (!s.hasLocalProfile) return "entry";
-    // Clerk YA confirmó (isLoaded) que no hay sesión: un perfil CON dueño son
-    // restos de un logout que no terminó de limpiar (ya archivado bajo su
-    // cuenta): purgar, nunca mostrarlo.
-    return s.localProfileOwner === "none" ? "home" : "purge-local";
+    // Clerk confirmó que no hay sesión. Con un perfil CON dueño esta
+    // instalación pertenece a una cuenta: puede ser un logout que no terminó
+    // de limpiar O una sesión perdida en un upgrade — indistinguibles desde
+    // acá, así que se trata como el caso recuperable: pedir login y NO tocar
+    // nada local. Sin perfil (o con un guest legado, que no tiene cuenta a la
+    // cual volver) → la entrada. Nunca Home: no hay modo invitado.
+    return s.hasLocalProfile && s.localProfileOwner !== "none" ? "sign-in" : "entry";
   }
   // Sesión activa: solo se confía en un perfil local PROPIO. Un perfil guest,
   // legado o de otra cuenta se reconcilia SIEMPRE contra Convex (el remoto
@@ -76,6 +104,131 @@ export function resolveStart(s: StartSnapshot): StartDecision {
     default:
       return "recover";
   }
+}
+
+/**
+ * Guard de `(tabs)` — la MISMA regla, aplicada donde el arranque no pasa.
+ *
+ * `app/index.tsx` solo decide cuando la app entra por "/". Expo Router
+ * RESTAURA el estado de navegación: después de actualizar, iOS puede montar
+ * una pestaña DIRECTO, sin pasar nunca por el arranque. Ese es el agujero por
+ * el que un usuario con cuenta veía la Home invitada ("Modo invitado") con
+ * Clerk ya cargado y sin sesión. Por eso el gate vive ARRIBA de `(tabs)`:
+ * ninguna pestaña (Home, Tránsitos, Umbral, Perfil) se renderiza sin sesión.
+ *
+ * Con sesión activa devuelve "allow" siempre: reconciliar acá contra el
+ * arranque podría rebotar `(tabs)` → "/" → `(tabs)` en bucle si el userId de
+ * Clerk llega stale.
+ */
+export type TabsGuard = "allow" | "loading" | "sign-in" | "entry" | "start";
+
+export function resolveTabsGuard(s: StartSnapshot): TabsGuard {
+  if (!s.localReady) return "loading";
+  // Sin envs no hay Clerk: nada que confirmar (builds locales).
+  if (!s.backendConfigured) return s.hasLocalProfile ? "allow" : "entry";
+  // Clerk sin resolver: carga mínima, nunca un redirect prematuro. Si venció
+  // el timeout, la pantalla de reintento vive en "/" (no se duplica acá).
+  if (!s.clerkLoaded) return s.clerkTimedOut ? "start" : "loading";
+  if (s.isSignedIn) {
+    // Sesión sin perfil local (reinstalación con la sesión en el llavero, o
+    // justo el caso de iOS restaurando una pestaña): NO se entra. La Home
+    // monta `useRequireProfile`, que ante "sin perfil" manda al onboarding y
+    // el alta terminaría PISANDO en Convex la carta real de esta cuenta. El
+    // arranque ("/") sabe recuperarla contra Convex; acá se delega y punto.
+    // No hay bucle: index solo manda a `(tabs)` cuando el perfil ya existe.
+    return s.hasLocalProfile ? "allow" : "start";
+  }
+  // Alta recién terminada (perfil creado, Clerk todavía no publicó la sesión):
+  // esperar. Sin esto, quien acaba de crear su cuenta vuelve al paso 0.
+  if (s.profileAdoptionPending) return "loading";
+  // Sin sesión no se entra a ninguna pestaña.
+  return s.hasLocalProfile && s.localProfileOwner !== "none" ? "sign-in" : "entry";
+}
+
+/**
+ * Destino después de un login exitoso. Con datos de nacimiento en Convex se
+ * entra derecho a la Home hidratada; si la cuenta no tiene datos pero este
+ * teléfono sí, se entra con lo local; sin nada, se continúa el alta desde los
+ * datos (con la sesión activa: no se crea una segunda cuenta).
+ */
+export type SignInDestination = "home-remote" | "home-local" | "resume-onboarding";
+
+export function resolveSignInDestination(s: {
+  hasRemoteBirthData: boolean;
+  hasLocalProfile: boolean;
+  profileRestored: boolean;
+}): SignInDestination {
+  if (s.hasRemoteBirthData) return "home-remote";
+  return s.hasLocalProfile || s.profileRestored ? "home-local" : "resume-onboarding";
+}
+
+/**
+ * ¿Se ofrece "Crear una cuenta" en el login? Sí siempre que el usuario esté
+ * escribiendo su email y todavía no tenga sesión — incluido el caso en que el
+ * email NO existe: ese error dejaba al usuario encerrado (sin cuenta que
+ * recuperar y sin salida hacia el alta desde esta pantalla).
+ */
+/**
+ * ¿El que entra es OTRO usuario que el dueño de lo que hay en este teléfono?
+ *
+ * Importa porque el arranque ya no purga: con la sesión perdida sin logout, el
+ * diario y las guardadas del usuario anterior siguen vivos en disco. Si entra
+ * otro, hay que archivarlos bajo SU dueño y limpiar antes de traer los de esta
+ * cuenta — el merge de login conserva lo "actual" y se los daría al que entra.
+ * Sin dueño (guest legado) no hay nada que separar: es un upgrade a cuenta.
+ */
+export function isAccountSwitch(s: {
+  localProfileOwner: string | null;
+  incomingUserId: string | null | undefined;
+}): boolean {
+  return !!(s.localProfileOwner && s.incomingUserId && s.localProfileOwner !== s.incomingUserId);
+}
+
+export type SignInPhase = "email" | "password" | "code";
+
+export function shouldOfferSignup(s: { phase: SignInPhase; isSignedIn: boolean }): boolean {
+  return !s.isSignedIn && s.phase !== "code";
+}
+
+/**
+ * Primer factor a usar después de identificar el email. Clerk devuelve los
+ * factores soportados por ESA cuenta: si tiene contraseña se pide contraseña
+ * (la cuenta de revisión de Apple entra por acá, sin MFA), y si no, código por
+ * email. La pantalla siempre deja cambiar al otro camino a mano.
+ */
+export type SignInFirstFactor = "password" | "email_code";
+
+export function resolveFirstFactor(
+  supported: Array<{ strategy?: string }> | undefined
+): SignInFirstFactor {
+  return supported?.some((f) => f.strategy === "password") ? "password" : "email_code";
+}
+
+/** Forma (parcial) de un error de Clerk. */
+type ClerkErrorLike = {
+  errors?: Array<{ code?: string; longMessage?: string; message?: string }>;
+  message?: string;
+};
+
+/**
+ * Error de `signIn.create` → mensaje + si el email no tiene cuenta. El flujo
+ * se queda en la fase email en ambos casos: el usuario puede corregir el email
+ * o salir a crear la cuenta (`shouldOfferSignup`).
+ */
+export function mapSignInStartError(e: unknown): { message: string; identifierNotFound: boolean } {
+  const err = e as ClerkErrorLike;
+  const first = err?.errors?.[0];
+  if (first?.code === "form_identifier_not_found") {
+    return {
+      message: "No encontramos una cuenta con ese email. Si sos nuevo, creá tu cuenta.",
+      identifierNotFound: true
+    };
+  }
+  return {
+    message:
+      first?.longMessage ?? first?.message ?? err?.message ?? "No pudimos conectar. Probá de nuevo.",
+    identifierNotFound: false
+  };
 }
 
 /**
