@@ -113,22 +113,48 @@ export default function IniciarSesionRoute() {
     }
   };
 
+  /**
+   * Salir del login SIN iniciar sesión (crear cuenta u volver a la entrada).
+   *
+   * Si este teléfono tiene un perfil con dueño, quien se va NO probó ser ese
+   * dueño: se archiva lo suyo bajo su cuenta (recuperable al volver a entrar,
+   * no se destruye) y se limpia antes de soltar el teléfono. Sin esto, el alta
+   * de una cuenta nueva heredaba las guardadas y el diario del anterior:
+   * `createProfile` solo reemplaza perfil + dueño. Es el camino MÁS probable
+   * — justamente el que no puede loguearse toca "Crear una cuenta".
+   */
+  const leaveWithoutSignIn = async (go: () => void) => {
+    if (profileOwner) {
+      try {
+        await archiveAccountData(profileOwner);
+        await resetApp();
+      } catch {
+        // Falla cerrado: antes que dejar datos ajenos a la vista, no se sale.
+        setHydrateFailed(true);
+        return;
+      }
+    }
+    go();
+  };
+
   // El arranque puede REDIRIGIR acá (perfil con dueño y sin sesión): en ese
   // caso no hay historia y `router.back()` no tendría a dónde volver. La
   // salida siempre existente es la entrada.
-  const back = () => {
-    if (router.canGoBack()) router.back();
-    else router.replace("/onboarding");
-  };
+  const back = () =>
+    void leaveWithoutSignIn(() => {
+      if (router.canGoBack()) router.back();
+      else router.replace("/onboarding");
+    });
 
   // "Crear una cuenta": el alta, sin repetir la entrada (el usuario ya la
   // pasó) y con el email que venía tipeando ya cargado.
-  const createAccount = (email: string) => {
-    router.replace({
-      pathname: "/onboarding",
-      params: email ? { nuevo: "1", email } : { nuevo: "1" }
-    });
-  };
+  const createAccount = (email: string) =>
+    void leaveWithoutSignIn(() =>
+      router.replace({
+        pathname: "/onboarding",
+        params: email ? { nuevo: "1", email } : { nuevo: "1" }
+      })
+    );
 
   if (hydrateFailed) {
     return (

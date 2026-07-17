@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 import { Redirect } from "expo-router";
 import { OrbitaLanding } from "@/components/web/orbita-landing";
 import {
+  isAccountSwitch,
   onboardingInputFromBirthData,
   resolveStart,
   type LocalProfileOwner,
@@ -27,9 +28,18 @@ const CLERK_LOAD_TIMEOUT_MS = 8000;
  * onboarding como si fuera nueva y el Perfil la mostraba como invitado.
  */
 export default function IndexRoute() {
-  // Sin `resetApp`: el arranque ya no borra nada. La única limpieza local es
-  // el logout explícito del Perfil.
-  const { isReady, profile, profileOwner, profileAdoptionPending, createProfile } = useAppState();
+  // El arranque ya no purga nada por sí solo. `archiveAccountData`/`resetApp`
+  // se usan SOLO cuando entra otra cuenta: se archiva lo del dueño anterior
+  // bajo su cuenta (recuperable) antes de darle el teléfono al nuevo.
+  const {
+    isReady,
+    profile,
+    profileOwner,
+    profileAdoptionPending,
+    createProfile,
+    archiveAccountData,
+    resetApp
+  } = useAppState();
   const { auth } = useLiveApp();
   const hydrate = useSignInHydrate();
   const [recovery, setRecovery] = useState<RecoveryState>("idle");
@@ -83,6 +93,17 @@ export default function IndexRoute() {
           return;
         }
         try {
+          // Entra OTRA cuenta en este teléfono (la sesión anterior se perdió
+          // sin logout, así que nada quedó archivado): lo del dueño viejo se
+          // archiva BAJO SU CUENTA y se limpia antes de tocar nada. Sin esto,
+          // `createProfile` solo reemplaza perfil + dueño y las guardadas y el
+          // diario del anterior le quedaban al que entra — también cuando la
+          // cuenta nueva no tiene birthData y sigue el alta. Si el archivo
+          // falla, se corta acá (pantalla de reintento): nunca se mezcla.
+          if (isAccountSwitch({ localProfileOwner: profileOwner, incomingUserId: result.clerkUserId })) {
+            await archiveAccountData(profileOwner);
+            await resetApp();
+          }
           if (result.birthData) {
             // Hidratar el perfil local con los datos reales de la cuenta,
             // marcado con su dueño (clerkUserId confirmado por el backend).
