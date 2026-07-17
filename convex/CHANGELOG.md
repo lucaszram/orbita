@@ -1,5 +1,11 @@
 # Contrato — CHANGELOG
 
+## 2026-07-17 — La lectura natal corta deja de presentarse como resultado final
+- **Qué cambió:** `charts.personalityReading()` conserva su firma `PersonalityReadingPayload | null`, pero ahora devuelve `null` hasta que exista una interpretación LLM completa y cacheada con estado `ready`. Ya no entrega la plantilla breve determinística durante la generación. `charts.generatePersonalityReading()` rechaza la llamada si el generador está deshabilitado, incompleto o falla, para que el cliente pueda salir de la carga y ofrecer reintento.
+- **Por qué:** la plantilla breve (`Núcleo`, `Clima interno`, etc.) aparecía como si fuera la carta natal terminada y ocultaba que los siete capítulos largos todavía se estaban generando o habían fallado.
+- **Compatibilidad:** no cambian argumentos ni tipos públicos. El frontend actual ya interpreta `null` como carga y una action rechazada como error recuperable.
+- **Estado:** implementado en rama backend; desplegar primero en Convex dev y verificar carga → lectura larga antes de producción.
+
 ## 2026-07-16 — Mazo completo de 78 cartas y ventana móvil sin repetición
 - **Qué cambió:** el dominio de `carta.id` en `daily.getGuide()` y `cartaId` en `daily.getStrip()` se amplía de `0–21` a `0–77`. Los ids históricos `0–21` conservan exactamente las mismas cartas; los arcanos menores ocupan ids estables `22–77` en orden Bastos, Copas, Espadas y Oros (As, 2–10, Paje, Caballero, Reina, Rey).
 - **Regla de producto:** al generar una carta nueva se excluyen las cartas persistidas en los seis días calendario anteriores. La ventana es móvil: no hay un reinicio semanal abrupto y una carta puede volver a salir recién al octavo día. Un documento ya generado nunca se vuelve a sortear.
