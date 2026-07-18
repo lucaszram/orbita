@@ -225,7 +225,12 @@ function buildBirthRequest(input: BirthChartInput, houseSystem: string) {
   };
 }
 
-async function postAstrologyApi(config: AstrologyApiConfig, endpoint: string, body: unknown) {
+async function postAstrologyApi(
+  config: AstrologyApiConfig,
+  endpoint: string,
+  body: unknown,
+  options?: { signal?: AbortSignal }
+) {
   if (!config.userId || !config.apiKey) {
     throw new Error("AstrologyAPI credentials are missing.");
   }
@@ -239,7 +244,8 @@ async function postAstrologyApi(config: AstrologyApiConfig, endpoint: string, bo
       Authorization: `Basic ${encodeBasicAuth(config.userId, config.apiKey)}`,
       "Content-Type": "application/json"
     },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
+    signal: options?.signal
   });
 
   const text = await response.text();
@@ -598,6 +604,7 @@ export async function runAstrologyApiNatalChart(args: {
 export async function runAstrologyApiDailyTransits(args: {
   input: BirthChartInput;
   localDate: string;
+  signal?: AbortSignal;
 }): Promise<DailyTransitProviderResult> {
   const config = getAstrologyApiConfig();
   const prepared = buildBirthRequest(args.input, config.houseSystem);
@@ -627,7 +634,9 @@ export async function runAstrologyApiDailyTransits(args: {
   }
 
   try {
-    const natalTransitsDaily = await postAstrologyApi(config, "natal_transits/daily", prepared.request);
+    const natalTransitsDaily = await postAstrologyApi(config, "natal_transits/daily", prepared.request, {
+      signal: args.signal
+    });
     const transits = normalizeAstrologyApiTransits(natalTransitsDaily);
 
     return toSerializable({

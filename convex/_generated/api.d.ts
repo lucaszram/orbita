@@ -11,6 +11,7 @@
 import type * as backoffice from "../backoffice.js";
 import type * as birthData from "../birthData.js";
 import type * as charts from "../charts.js";
+import type * as content_tarotEditorial from "../content/tarotEditorial.js";
 import type * as contentModules from "../contentModules.js";
 import type * as daily from "../daily.js";
 import type * as devices from "../devices.js";
@@ -57,6 +58,7 @@ declare const fullApi: ApiFromModules<{
   backoffice: typeof backoffice;
   birthData: typeof birthData;
   charts: typeof charts;
+  "content/tarotEditorial": typeof content_tarotEditorial;
   contentModules: typeof contentModules;
   daily: typeof daily;
   devices: typeof devices;
