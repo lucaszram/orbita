@@ -79,6 +79,21 @@ Information → Sign-in required.
 - Privacy Policy URL: https://orbitaastrologia.xyz/privacy
 - Release: manual; sin phased release en la primera publicación.
 
+### Auditoría real de App Store Connect (2026-07-18)
+
+- [x] Versión `1.0` en estado `PREPARE_FOR_SUBMISSION` y liberación `MANUAL`.
+- [x] Copyright `2026 Lucas Ramos`.
+- [x] Categoría primaria `Lifestyle` y secundaria `Entertainment`.
+- [x] Rating general `4+`.
+- [x] Seis screenshots de iPhone 6.5 pulgadas cargados.
+- [x] Contacto de review cargado.
+- [x] URLs corregidas a `https://orbitaastrologia.xyz/support` y
+  `https://orbitaastrologia.xyz/privacy`.
+- [ ] Revisar visualmente que los seis screenshots correspondan al build 17.
+- [ ] Reemplazar/probar la cuenta demo existente y marcar que el login es requerido.
+- [ ] Seleccionar el build 17 después de la pasada física.
+- [ ] Confirmar App Privacy en la interfaz de App Store Connect.
+
 ### Descripción
 
 Órbita es una app de astrología para leer tu carta natal y mirar cada día con
