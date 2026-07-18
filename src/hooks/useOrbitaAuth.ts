@@ -15,6 +15,12 @@ export type OrbitaAuth = {
   name?: string;
   imageUrl?: string;
   signOut: () => Promise<void>;
+  /**
+   * Borra la identidad de Clerk del usuario actual. Llamar SOLO después de que
+   * Convex `users.deleteAccount()` respondió ok (ese orden preserva el token
+   * que prueba qué grafo se puede borrar). Tira si no hay usuario cargado.
+   */
+  deleteUser: () => Promise<void>;
 };
 
 /**
@@ -40,6 +46,10 @@ export function useOrbitaAuth(): OrbitaAuth {
     email,
     name: user?.firstName ?? user?.username ?? undefined,
     imageUrl: user?.hasImage ? user?.imageUrl : undefined,
-    signOut: () => auth.signOut()
+    signOut: () => auth.signOut(),
+    deleteUser: async () => {
+      if (!user) throw new Error("Clerk user no disponible");
+      await user.delete();
+    }
   };
 }

@@ -12,6 +12,8 @@ export const orbita = {
     copper: "#C46A3A",
     copperSoft: "#D69A6A",
     line: "rgba(244, 238, 228, 0.14)",
+    // Acciones destructivas (eliminar cuenta): rojo ladrillo, pariente del copper.
+    danger: "#C4574A",
     onLight: "#0B0C0F",
     // Aspectos de la carta natal.
     harmony: "#8CA6C4",
