@@ -1,5 +1,15 @@
 # Current Task
 
+## Release Candidate — TestFlight 1.0.0 (17) (2026-07-18, Codex)
+
+**Objetivo:** generar un binario iPhone reproducible para la pasada final de App Review, incorporando el backend de eliminación seguro y el frontend de cumplimiento ya validados.
+
+**Criterios de aceptación:** `main` contiene los PR #30 y #29; `1.0.0 (17)` usa Clerk live y Convex production `exciting-bat-311`; typecheck, suite completa y export iOS en verde; el binario se sube únicamente a TestFlight interno; no se agrega a App Review ni se publica automáticamente.
+
+**Ficha:** owner Codex; territorio de release `app.json` y documentación; rama `codex/release-build17` sobre `origin/main` `9bf198a`; riesgo medio por configuración/distribución; rollout PR puntual → merge → build exacto → TestFlight físico → aprobación de Lucas → recién después App Review; rollback mantener build 16 disponible y no promover build 17; fuera de alcance metadata, capturas, cuenta demo y envío a revisión.
+
+**Preflight:** EAS production verificado con `EXPO_PUBLIC_APP_ENV=production`, Clerk `pk_live` y Convex `exciting-bat-311` (`cloud` + `site`); versión `1.0.0`; iPhone-only; cifrado no exento declarado `false`; publicación manual.
+
 ## Hotfix — carrera de lecturas al eliminar cuenta (2026-07-18, Codex)
 
 **Objetivo:** evitar el crash nativo observado al borrar una cuenta mientras Clerk todavía mantiene la sesión y las queries reactivas vuelven a ejecutarse después de eliminar la fila `users`.
