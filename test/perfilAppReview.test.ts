@@ -9,6 +9,7 @@ import { describe, it } from "node:test";
 const PERFIL = readFileSync(path.join(process.cwd(), "app/(tabs)/perfil.tsx"), "utf8");
 const PLUS = readFileSync(path.join(process.cwd(), "app/reading/plus.tsx"), "utf8");
 const VOID_SRC = readFileSync(path.join(process.cwd(), "src/components/void/VoidExperience.tsx"), "utf8");
+const APP_STATE = readFileSync(path.join(process.cwd(), "src/hooks/useAppState.tsx"), "utf8");
 
 describe("Perfil — eliminar cuenta (App Review)", () => {
   it("ofrece 'Eliminar mi cuenta' con el flujo de doble confirmación del dominio", () => {
@@ -33,9 +34,39 @@ describe("Perfil — eliminar cuenta (App Review)", () => {
     assert.match(PERFIL, /goToEntry:\s*\(\)\s*=>\s*router\.replace\("\/onboarding"\)/);
   });
 
+  it("escribe el marcador de limpieza pendiente entre Convex y Clerk, y lo retira al final", () => {
+    assert.match(PERFIL, /markPendingCleanup:\s*\(\)\s*=>\s*storePendingAccountDeletion\(userId\)/);
+    assert.match(PERFIL, /clearPendingCleanup:\s*\(\)\s*=>\s*clearPendingAccountDeletion\(\)/);
+  });
+
+  it("bloquea la reentrada con un lock SINCRÓNICO desde la primera línea del handler", () => {
+    // useRef, no estado React: dos taps rápidos no deben abrir dos flujos.
+    assert.match(PERFIL, /const deletionInFlight = useRef\(false\)/);
+    assert.match(
+      PERFIL,
+      /if \(deletionInFlight\.current \|\| loggingOut\) return;\s*\n\s*deletionInFlight\.current = true;/
+    );
+    // El logout también respeta el lock (no corre en paralelo con la eliminación).
+    assert.match(PERFIL, /if \(loggingOut \|\| deleting \|\| deletionInFlight\.current\) return;/);
+    // Se libera al cancelar o fallar (el éxito navega y no vuelve).
+    assert.match(PERFIL, /deletionInFlight\.current = false;/);
+  });
+
   it("muestra error con reintento sin fingir éxito", () => {
     assert.match(PERFIL, /Reintentar eliminación/);
     assert.match(PERFIL, /No pudimos eliminar tu cuenta/);
+  });
+});
+
+describe("Arranque — la purga pendiente corre antes de publicar estado local", () => {
+  it("useAppState consulta el marcador al hidratar y arranca vacío si hay eliminación pendiente", () => {
+    const purge = APP_STATE.indexOf("completePendingAccountDeletion({");
+    const ready = APP_STATE.indexOf("setIsReady(true)");
+    assert.ok(purge >= 0, "falta completePendingAccountDeletion en la hidratación");
+    assert.ok(ready >= 0 && purge < ready, "la purga debe decidirse ANTES de publicar isReady");
+    // Con marcador ("completed" o "pending") el estado local se publica vacío:
+    // nunca el perfil de una cuenta eliminada, nunca login a esa cuenta.
+    assert.match(APP_STATE, /if \(pendingDeletion !== "none"\)/);
   });
 });
 

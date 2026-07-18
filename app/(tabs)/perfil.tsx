@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Alert, Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { useMutation } from "convex/react";
@@ -12,7 +12,11 @@ import { useLiveApp } from "@/hooks/useLiveApp";
 import type { OrbitaAuth } from "@/hooks/useOrbitaAuth";
 import { appApi } from "@/services/appRefs";
 import { backendConfig } from "@/services/backendProviders";
-import { clearAccountSnapshot } from "@/services/storage";
+import {
+  clearAccountSnapshot,
+  clearPendingAccountDeletion,
+  storePendingAccountDeletion
+} from "@/services/storage";
 import { orbita } from "@/theme/orbita";
 
 const PRIVACY_URL = "https://orbitaastrologia.xyz/privacy";
@@ -126,10 +130,16 @@ function AccountSignedIn({
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<"convex" | "clerk" | null>(null);
+  const [deleteError, setDeleteError] = useState<"convex" | "marker" | "clerk" | null>(null);
+  // Lock SINCRÓNICO de reentrada: `deleting` (estado React) recién se refleja
+  // en el próximo render, así que dos taps rápidos abrirían dos flujos
+  // destructivos en paralelo (dos cadenas de alerts, dos user.delete()). El
+  // ref se toma en la PRIMERA línea del handler, se libera al cancelar o
+  // fallar, y en el éxito queda tomado (ya navegamos fuera del Perfil).
+  const deletionInFlight = useRef(false);
 
   async function handleLogout() {
-    if (loggingOut || deleting) return;
+    if (loggingOut || deleting || deletionInFlight.current) return;
     setLoggingOut(true);
     setLogoutError(false);
     try {
@@ -163,7 +173,8 @@ function AccountSignedIn({
   }
 
   async function handleDeleteAccount() {
-    if (deleting || loggingOut) return;
+    if (deletionInFlight.current || loggingOut) return;
+    deletionInFlight.current = true;
     const userId = auth.userId ?? null;
     setDeleteError(null);
     const result = await requestAccountDeletion(
@@ -184,11 +195,14 @@ function AccountSignedIn({
           })
       },
       {
-        // Orden estricto Convex → Clerk → limpieza local (ver domain/accountDeletion).
+        // Orden estricto Convex → marcador → Clerk → limpieza local → retirar
+        // marcador (ver domain/accountDeletion). El marcador es lo único que
+        // autoriza al arranque a completar la purga si la limpieza falla acá.
         deleteConvexAccount: async () => {
           setDeleting(true);
           return await deleteConvexAccount({});
         },
+        markPendingCleanup: () => storePendingAccountDeletion(userId),
         deleteClerkUser: () => auth.deleteUser(),
         clearLocalData: async () => {
           await resetApp();
@@ -196,11 +210,15 @@ function AccountSignedIn({
           // cuenta: la cuenta ya no existe y no hay nada que restaurar.
           if (userId) await clearAccountSnapshot(userId);
         },
+        clearPendingCleanup: () => clearPendingAccountDeletion(),
         goToEntry: () => router.replace("/onboarding")
       }
     );
     if (result.status === "error") setDeleteError(result.step);
-    if (result.status !== "success") setDeleting(false);
+    if (result.status !== "success") {
+      setDeleting(false);
+      deletionInFlight.current = false;
+    }
   }
 
   return (
@@ -233,6 +251,8 @@ function AccountSignedIn({
           {deleteError === "convex"
             ? "No pudimos eliminar tu cuenta. Todo sigue como estaba; probá de nuevo."
             : "La eliminación quedó incompleta. Tu sesión sigue acá; probá de nuevo para terminarla."}
+          {/* "marker" y "clerk" comparten copy: en ambos la sesión sigue viva
+              y el reintento re-corre el flujo completo (Convex es idempotente). */}
         </Note>
       ) : null}
       <Pressable

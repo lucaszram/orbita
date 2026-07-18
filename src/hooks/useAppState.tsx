@@ -37,10 +37,13 @@ import {
   remoteRowsToUnsave,
   removeTombstoneKeys
 } from "@/domain/savedReadingsSync";
+import { completePendingAccountDeletion } from "@/domain/accountDeletion";
 import { commitProfileCreation, shouldAdoptPendingProfile } from "@/domain/sessionStart";
 import {
   clearAccountSnapshot,
   clearLocalData,
+  clearPendingAccountDeletion,
+  readPendingAccountDeletion,
   getJournalEntries,
   getProfileOwner,
   getSavedReadings,
@@ -143,6 +146,29 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     let mounted = true;
 
     async function hydrate() {
+      // Cuenta eliminada con limpieza local pendiente (la app murió o el
+      // storage falló después de borrar Convex+Clerk): SOLO el marcador
+      // autoriza purgar acá. "pending" = volvió a fallar; el marcador queda
+      // para el próximo arranque y este proceso arranca vacío igual — nunca
+      // se publica el perfil de una cuenta que ya no existe ni se ofrece
+      // login a esa cuenta.
+      const pendingDeletion = await completePendingAccountDeletion({
+        readMarker: readPendingAccountDeletion,
+        clearLocalData,
+        clearAccountSnapshot,
+        clearMarker: clearPendingAccountDeletion
+      });
+      if (pendingDeletion !== "none") {
+        if (!mounted) return;
+        setProfile(null);
+        setProfileOwner(null);
+        setSavedReadings([]);
+        setSavedTombstones([]);
+        setJournalEntries([]);
+        setIsReady(true);
+        return;
+      }
+
       const [storedProfile, storedOwner, storedReadings, storedTombstones, storedJournal] = await Promise.all([
         getStoredProfile(),
         getProfileOwner(),

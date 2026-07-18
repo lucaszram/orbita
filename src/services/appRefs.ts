@@ -344,7 +344,7 @@ export const appApi = {
     >,
     // Eliminación completa de cuenta (App Review). Idempotente: borra todos los
     // datos propios en Convex; el cliente borra Clerk DESPUÉS de que responda ok.
-    // Backend en PR #27 (codex/account-deletion-v2), desplegado en Convex dev.
+    // Backend mergeado (PR #27); por ahora desplegado solo en Convex dev.
     deleteAccount: anyApi.users.deleteAccount as FunctionReference<
       "mutation",
       "public",

@@ -91,6 +91,37 @@ export async function clearLocalData(): Promise<void> {
   ]);
 }
 
+// --- Eliminación de cuenta pendiente de limpieza local (ver domain/accountDeletion) ---
+// El marcador se escribe DESPUÉS de que Convex confirma el borrado y ANTES de
+// borrar Clerk. Es la ÚNICA autorización para que el arranque complete la
+// purga local: sin marcador rige la regla de preservar datos ante una sesión
+// perdida (resolveStart no purga nada por sí solo).
+
+const pendingAccountDeletionKey = "orbita:pending-account-deletion";
+
+export type PendingAccountDeletion = { userId: string | null };
+
+export async function storePendingAccountDeletion(userId: string | null): Promise<void> {
+  await AsyncStorage.setItem(pendingAccountDeletionKey, JSON.stringify({ userId }));
+}
+
+export async function readPendingAccountDeletion(): Promise<PendingAccountDeletion | null> {
+  const raw = await AsyncStorage.getItem(pendingAccountDeletionKey);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as { userId?: unknown };
+    return { userId: typeof parsed?.userId === "string" ? parsed.userId : null };
+  } catch {
+    // Marcador ilegible pero presente: la eliminación ya fue confirmada por
+    // Convex; se purga igual (sin snapshot por cuenta, que exige userId).
+    return { userId: null };
+  }
+}
+
+export async function clearPendingAccountDeletion(): Promise<void> {
+  await AsyncStorage.removeItem(pendingAccountDeletionKey);
+}
+
 // --- Snapshot local por cuenta (logout sin pérdida; ver domain/accountLocalData) ---
 
 export async function storeAccountSnapshot(userId: string, snapshot: AccountSnapshot): Promise<void> {
