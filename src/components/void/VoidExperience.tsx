@@ -4,7 +4,7 @@ import { StatusBar } from "expo-status-bar";
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { GuestState } from "@/components/orbita/GuestState";
@@ -30,7 +30,6 @@ type VoidViewProps = {
   ask: AskVoid;
   today: VoidTodayPayload | null;
   categories: VoidPromptCategory[];
-  onUnlock: () => void;
   /** false cuando es raíz de tab (sin botón "volver"). */
   showBack: boolean;
 };
@@ -89,7 +88,6 @@ function VoidLive({ showBack }: { showBack: boolean }) {
   const ask = useAction(proposedApi.voidAsk);
   const today = useQuery(proposedApi.voidToday, {});
   const suggested = useAction(proposedApi.voidSuggested);
-  const setPro = useMutation(proposedApi.setStubPro);
   // null = las sugeridas personalizadas todavía no llegaron. Carga hasta la
   // data real: nunca las categorías genéricas que después se pisan.
   const [categories, setCategories] = useState<VoidPromptCategory[] | null>(null);
@@ -114,10 +112,6 @@ function VoidLive({ showBack }: { showBack: boolean }) {
     };
   }, [suggested, attempt]);
 
-  const onUnlock = () => {
-    setPro({}).catch(() => {});
-  };
-
   if (suggestedError) {
     return (
       <VoidStateFrame>
@@ -135,10 +129,10 @@ function VoidLive({ showBack }: { showBack: boolean }) {
     );
   }
 
-  return <VoidView ask={ask} today={today} categories={categories} onUnlock={onUnlock} showBack={showBack} />;
+  return <VoidView ask={ask} today={today} categories={categories} showBack={showBack} />;
 }
 
-function VoidView({ ask, today, categories, onUnlock, showBack }: VoidViewProps) {
+function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
   const insets = useSafeAreaInsets();
   const fontsLoaded = useOrbitaFonts();
   const [phase, setPhase] = useState<Phase>("entrada");
@@ -325,24 +319,6 @@ function VoidView({ ask, today, categories, onUnlock, showBack }: VoidViewProps)
           <Text style={styles.answer}>Por hoy{"\n"}alcanzó.</Text>
           <View style={{ height: orbita.spacing.xl }} />
           <Text style={styles.microMono}>Una pregunta bien pensada rinde más{"\n"}que diez apuradas. Volvé mañana.</Text>
-          {onUnlock ? (
-            <>
-              <View style={{ height: orbita.spacing.xxl }} />
-              <Pressable
-                onPress={() => {
-                  onUnlock();
-                  setLocked(false);
-                  setPhase("entrada");
-                }}
-                style={({ pressed }) => [pressed && styles.pressed]}
-                accessibilityRole="button"
-              >
-                <View style={styles.ghostCta}>
-                  <Text style={styles.ghostCtaText}>DESBLOQUEAR 5 CON EL SEMANAL</Text>
-                </View>
-              </Pressable>
-            </>
-          ) : null}
           <View style={styles.footer}>
             <Text style={styles.footnote}>El Umbral no contesta sí o no.</Text>
           </View>

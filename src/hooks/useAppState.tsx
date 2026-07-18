@@ -37,10 +37,18 @@ import {
   remoteRowsToUnsave,
   removeTombstoneKeys
 } from "@/domain/savedReadingsSync";
+import {
+  completePendingAccountDeletion,
+  finalizePendingDeletionPurge,
+  type PendingDeletionMarker
+} from "@/domain/accountDeletion";
 import { commitProfileCreation, shouldAdoptPendingProfile } from "@/domain/sessionStart";
 import {
   clearAccountSnapshot,
   clearLocalData,
+  clearPendingAccountDeletion,
+  readPendingAccountDeletion,
+  storePendingAccountDeletion,
   getJournalEntries,
   getProfileOwner,
   getSavedReadings,
@@ -108,6 +116,19 @@ type AppStateValue = {
   archiveAccountData: (userId: string | null) => Promise<void>;
   /** Re-login en este teléfono: restaura y mergea lo archivado de esa cuenta. */
   restoreAccountData: (userId: string) => Promise<{ restored: boolean; profileRestored: boolean }>;
+  /**
+   * Eliminación de cuenta en fase `backend_deleted` (Convex borrado, Clerk
+   * quizás vivo): el gate de arranque debe resolverla con Clerk cargado antes
+   * de dejar pasar (resolvePendingDeletionBoot). null = nada pendiente.
+   */
+  pendingAccountDeletion: PendingDeletionMarker | null;
+  /**
+   * Purga final una vez confirmado que la identidad ya no existe: promueve el
+   * marcador a `identity_deleted`, limpia todo lo local (incluido el snapshot
+   * por cuenta) y retira el marcador ÚLTIMO. Lanza si falla (el caller
+   * muestra reintento; el marcador sigue protegiendo).
+   */
+  completePendingDeletionPurge: () => Promise<void>;
 };
 
 const AppStateContext = createContext<AppStateValue | null>(null);
@@ -127,6 +148,7 @@ function normalizeProfile(profile: UserProfile | null): UserProfile | null {
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const [isReady, setIsReady] = useState(false);
+  const [pendingDeletion, setPendingDeletion] = useState<PendingDeletionMarker | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [profileOwner, setProfileOwner] = useState<string | null>(null);
   // Adopción diferida (carrera post-verify): solo en memoria. Si la app muere
@@ -143,6 +165,36 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     let mounted = true;
 
     async function hydrate() {
+      // Cuenta eliminada con limpieza local pendiente (la app murió o el
+      // storage falló durante la eliminación): SOLO el marcador autoriza
+      // purgar, y SOLO en fase `identity_deleted` se purga acá. En
+      // `backend_deleted` ("awaiting-identity") la identidad de Clerk puede
+      // seguir viva: no se toca nada y el gate de arranque resuelve con Clerk
+      // cargado. En todos los casos con marcador este proceso arranca vacío —
+      // nunca se publica el perfil de una cuenta eliminada ni se ofrece login
+      // a esa cuenta.
+      const pendingDeletion = await completePendingAccountDeletion({
+        readMarker: readPendingAccountDeletion,
+        clearLocalData,
+        clearAccountSnapshot,
+        clearMarker: clearPendingAccountDeletion
+      });
+      if (pendingDeletion.status !== "none") {
+        if (!mounted) return;
+        setProfile(null);
+        setProfileOwner(null);
+        setSavedReadings([]);
+        setSavedTombstones([]);
+        setJournalEntries([]);
+        // Todo estado con marcador vivo ("awaiting-identity" Y "pending") se
+        // expone al gate: una purga fallida acá NO puede dejar pasar al
+        // arranque normal con el marcador en disco — otra cuenta creada en
+        // este proceso sería purgada por el marcador viejo al próximo reinicio.
+        setPendingDeletion(pendingDeletion.status === "completed" ? null : pendingDeletion.marker);
+        setIsReady(true);
+        return;
+      }
+
       const [storedProfile, storedOwner, storedReadings, storedTombstones, storedJournal] = await Promise.all([
         getStoredProfile(),
         getProfileOwner(),
@@ -411,6 +463,20 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     await clearLocalData();
   }, []);
 
+  const completePendingDeletionPurge = useCallback(async () => {
+    if (!pendingDeletion) return;
+    // Promueve a `identity_deleted` ANTES de limpiar (persistir el hecho: si
+    // la purga muere a mitad, el próximo arranque la completa solo) y retira
+    // el marcador ÚLTIMO. Lanza si algo falla: el gate muestra reintento.
+    await finalizePendingDeletionPurge(pendingDeletion, {
+      promoteMarker: (marker) => storePendingAccountDeletion(marker.userId, marker.phase),
+      clearLocalData,
+      clearAccountSnapshot,
+      clearMarker: clearPendingAccountDeletion
+    });
+    setPendingDeletion(null);
+  }, [pendingDeletion]);
+
   const archiveAccountData = useCallback(
     async (userId: string | null) => {
       // Las lápidas pendientes viajan con la cuenta: si el `unsave` remoto no
@@ -530,6 +596,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       resetApp,
       archiveAccountData,
       restoreAccountData,
+      pendingAccountDeletion: pendingDeletion,
+      completePendingDeletionPurge,
       profileOwner,
       profileAdoptionPending: pendingOwnerAdoption,
       adoptLocalProfile
@@ -538,7 +606,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       addJournalNote,
       adoptLocalProfile,
       archiveAccountData,
+      completePendingDeletionPurge,
       createProfile,
+      pendingDeletion,
       homeReading,
       homeSource,
       isReady,

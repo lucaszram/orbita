@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { Redirect } from "expo-router";
 import { OrbitaLanding } from "@/components/web/orbita-landing";
+import { attemptPendingDeletionFinalize, resolvePendingDeletionBoot } from "@/domain/accountDeletion";
 import {
   isAccountSwitch,
   onboardingInputFromBirthData,
@@ -38,7 +39,9 @@ export default function IndexRoute() {
     profileAdoptionPending,
     createProfile,
     archiveAccountData,
-    resetApp
+    resetApp,
+    pendingAccountDeletion,
+    completePendingDeletionPurge
   } = useAppState();
   const { auth } = useLiveApp();
   const hydrate = useSignInHydrate();
@@ -54,6 +57,53 @@ export default function IndexRoute() {
     const t = setTimeout(() => setClerkTimedOut(true), CLERK_LOAD_TIMEOUT_MS);
     return () => clearTimeout(t);
   }, [auth?.isLoaded, authTick]);
+
+  // Eliminación de cuenta a medio terminar (fase `backend_deleted`): Convex ya
+  // borró los datos pero la identidad de Clerk puede seguir viva. Este gate
+  // bloquea el arranque hasta resolverla — NUNCA se purga a ciegas ni se deja
+  // pasar a un flujo que ofrecería login/onboarding a una cuenta eliminada.
+  const pendingDeletionDecision = resolvePendingDeletionBoot({
+    marker: pendingAccountDeletion,
+    clerkLoaded: auth ? auth.isLoaded : true,
+    isSignedIn: !!auth?.isSignedIn
+  });
+  const [finalizeError, setFinalizeError] = useState(false);
+  const [finalizeTick, setFinalizeTick] = useState(0);
+  const finalizeInFlight = useRef(false);
+  // Solo el UNMOUNT real invalida publicar el resultado. Un cambio de decisión
+  // durante los await (Clerk publica signed-out después de deleteUser →
+  // finalize-identity pasa a purge) re-dispara el efecto, NO desmonta: usarlo
+  // como cancelación silenciaba el fallo de la purga y dejaba el spinner
+  // infinito (review r3).
+  const mountedRef = useRef(true);
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (IS_WEB || finalizeError) return;
+    if (pendingDeletionDecision !== "purge" && pendingDeletionDecision !== "finalize-identity") return;
+    // El lock evita operaciones dobles; la corrida que lo tiene es la dueña
+    // del resultado y SIEMPRE lo publica mientras el componente siga montado.
+    if (finalizeInFlight.current) return;
+    finalizeInFlight.current = true;
+    void attemptPendingDeletionFinalize({
+      decision: pendingDeletionDecision,
+      deleteIdentity: async () => {
+        await auth?.deleteUser();
+      },
+      purge: completePendingDeletionPurge
+      // En éxito, pendingAccountDeletion queda null → el gate desaparece y el
+      // arranque sigue normal hacia la entrada limpia.
+    }).then((result) => {
+      finalizeInFlight.current = false;
+      if (result === "error" && mountedRef.current) setFinalizeError(true);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingDeletionDecision, finalizeTick, finalizeError]);
 
   // Dueño del perfil local: "current" solo si coincide con la sesión activa.
   // Sin dueño = guest/legado; con dueño distinto (o sin sesión) = "other".
@@ -136,6 +186,18 @@ export default function IndexRoute() {
     return <OrbitaLanding />;
   }
 
+  if (pendingAccountDeletion) {
+    return (
+      <FinalizingDeletion
+        error={finalizeError}
+        onRetry={() => {
+          setFinalizeError(false);
+          setFinalizeTick((t) => t + 1);
+        }}
+      />
+    );
+  }
+
   switch (decision) {
     case "home":
       return <Redirect href="/(tabs)" />;
@@ -180,6 +242,27 @@ export default function IndexRoute() {
         </View>
       );
   }
+}
+
+function FinalizingDeletion({ error, onRetry }: { error: boolean; onRetry: () => void }) {
+  return (
+    <View style={styles.loading}>
+      {error ? (
+        <>
+          <Text style={styles.errorTitle}>No pudimos terminar de borrar tu cuenta.</Text>
+          <Text style={styles.errorBody}>Tus datos ya fueron eliminados; falta el último paso.</Text>
+          <Pressable onPress={onRetry} accessibilityRole="button" style={styles.retryBtn} hitSlop={8}>
+            <Text style={styles.retryText}>REINTENTAR</Text>
+          </Pressable>
+        </>
+      ) : (
+        <>
+          <Text style={styles.errorTitle}>Finalizando la eliminación…</Text>
+          <ActivityIndicator color={theme.colors.plum} style={{ marginTop: 16 }} />
+        </>
+      )}
+    </View>
+  );
 }
 
 function RecoveryError({ onRetry }: { onRetry: () => void }) {
