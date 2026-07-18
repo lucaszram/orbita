@@ -18,7 +18,7 @@ enrichment?: {
 };
 ```
 
-`carta` sigue llegando completa en la primera respuesta: `id`, `nombre`, `correspondencia`, `orientacion`, `ritual` y `beats` de compatibilidad. Una actualización posterior jamás cambia esa carta, su orientación, su ritual o el estado de revelado.
+`carta` sigue llegando completa en la primera respuesta: `id`, `nombre`, `correspondencia`, `orientacion`, `ritual` y `beats` de compatibilidad. `ritual` ya es la pieza editorial canónica del catálogo de 156 lecturas, no un placeholder ni una plantilla de palo/rango. Una actualización posterior jamás cambia esa carta, su orientación, su ritual o el estado de revelado.
 
 Para build 17 usar la nueva action `daily.getCard({ localDate?, timezone? })`:
 
@@ -56,4 +56,4 @@ Para build 17 usar la nueva action `daily.getCard({ localDate?, timezone? })`:
 
 - No desplegar el frontend desacoplado en este PR.
 - No retirar `beats` mientras circule un build que lo consuma.
-- No publicar producción hasta aprobar las métricas reales en Convex dev y resolver el catálogo editorial definitivo de 156 rituales.
+- No publicar producción hasta aprobar las métricas reales en Convex dev y una muestra representativa del catálogo editorial de 156 rituales.

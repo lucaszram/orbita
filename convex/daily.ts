@@ -8,6 +8,7 @@ import {
 } from "convex/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
+import { editorialRitualFor } from "./content/tarotEditorial";
 import { runAstrologyApiDailyTransits } from "./lib/astrologyApi";
 import {
   extractNormalizedChartFromPayload,
@@ -21,7 +22,7 @@ import { findUserByTokenIdentifier, requireExistingUser, requireIdentity, requir
 /**
  * Guía diaria personalizada: análisis del día para CADA usuario, calculado sobre los
  * aspectos tránsito→carta natal (los trae el proveedor) e interpretado con LLM en voz
- * Órbita. Cache 1 por (userId, localDate). Fallback determinístico sin LLM/proveedor.
+ * Órbita. Cache 1 por (userId, localDate). Ritual editorial versionado sin LLM/proveedor.
  * Ver `docs/guia-diaria-personalizada.md`.
  */
 
@@ -95,8 +96,8 @@ type DailyGuidePayload = {
   secundarios: Array<{ aspecto: string; lectura: string }>;
   basadoEn: string[];
   disclaimer: string;
-  /** Carta del día. Siempre presente (el sorteo no depende del LLM); si el LLM falla,
-   *  viene con un ritual intrínseco de fallback, nunca con un cruce astro inventado. */
+  /** Carta del día. Siempre presente (el sorteo no depende del LLM); usa una de
+   *  las 156 lecturas editoriales canónicas, nunca un cruce astro inventado. */
   carta?: DailyCarta;
   /* --- La Home completa, misma generación. Opcionales: si el LLM está apagado o
      falla, quedan `undefined` y el front cae al engine local (comportamiento previo). --- */
@@ -808,86 +809,10 @@ type DailyInput = {
   carta: TarotDraw;
 };
 
-const SUIT_RITUAL: Record<string, { titulo: string; tema: string; gesto: string }> = {
-  wands: {
-    titulo: "Deseo y movimiento",
-    tema: "las ganas, la iniciativa y la forma en que encendés una acción",
-    gesto: "elegí una acción concreta y hacela antes de seguir imaginándola"
-  },
-  cups: {
-    titulo: "Emoción y vínculo",
-    tema: "lo que sentís, lo que compartís y la manera en que cuidás un vínculo",
-    gesto: "nombrá lo que sentís sin convertirlo en una conclusión sobre el otro"
-  },
-  swords: {
-    titulo: "Ideas y palabras",
-    tema: "la conversación interna, las decisiones y el filo de lo que decís",
-    gesto: "separá el dato de la historia que tu cabeza armó alrededor"
-  },
-  pentacles: {
-    titulo: "Recursos y realidad",
-    tema: "el tiempo, la rutina y aquello que necesita sostén concreto",
-    gesto: "ordená una parte pequeña de lo cotidiano y mirá qué cambia"
-  }
-};
-
-const RANK_RITUAL: Record<string, string> = {
-  ace: "un comienzo todavía abierto",
-  "02": "una tensión entre dos posibilidades",
-  "03": "algo que empieza a tomar forma con otros",
-  "04": "una estructura que protege y también puede endurecerse",
-  "05": "una fricción que obliga a revisar la posición propia",
-  "06": "un ajuste después del movimiento",
-  "07": "una prueba de criterio y constancia",
-  "08": "un proceso que pide práctica y continuidad",
-  "09": "una instancia de maduración antes del cierre",
-  "10": "la culminación y el peso de lo acumulado",
-  page: "una curiosidad que todavía está aprendiendo su lenguaje",
-  knight: "un impulso que avanza antes de medir todo el terreno",
-  queen: "una forma madura de alojar y conducir esa energía",
-  king: "la responsabilidad de dirigir esa energía sin imponerla"
-};
-
-/** Fallback sin LLM. Es deliberadamente intrínseco a carta + orientación: nunca
- *  menciona el cielo, una casa natal ni un tránsito que no haya interpretado. */
+/** Nombre conservado para no romper imports de tests/herramientas. Desde esta
+ *  versión no construye copy genérico: lee una de las 156 piezas editoriales. */
 export function fallbackRitual(carta: TarotDraw): DailyRitual {
-  const inverted = carta.orientacion === "invertida";
-  const suit = carta.suit ? SUIT_RITUAL[carta.suit] : undefined;
-  const rank = carta.rank ? RANK_RITUAL[carta.rank] : undefined;
-  const baseTheme = suit?.tema ?? "un arquetipo que concentra una pregunta importante";
-  const movement = rank ?? "un movimiento que merece ser mirado sin apuro";
-  const orientationTitle = inverted ? "Bloqueo o exceso" : "Potencia disponible";
-  const orientationText = inverted
-    ? "La energía de la carta aparece trabada, replegada o llevada de más. Mirá dónde insistís y dónde evitás."
-    : "La energía de la carta está disponible y pide una decisión consciente para volverse concreta.";
-  const advice = suit?.gesto ?? "Elegí una situación concreta del día y observá qué parte de esta carta ya está en juego.";
-
-  return {
-    esencia: `Que te salga ${carta.nombre} ${inverted ? "invertida" : "al derecho"} es una invitación a mirar ${baseTheme}: ${movement}.`,
-    significadoGeneral: [
-      {
-        titulo: suit?.titulo ?? "Arquetipo central",
-        texto: `${carta.nombre} trabaja sobre ${baseTheme}.`
-      },
-      {
-        titulo: "Movimiento",
-        texto: `Habla de ${movement}.`
-      },
-      { titulo: orientationTitle, texto: orientationText }
-    ],
-    enTuDia: inverted
-      ? "En los vínculos, fijate qué se repliega o se lleva de más; en el trabajo, reconocé dónde insistís sin avanzar; ante una decisión creativa, nombrá el bloqueo antes de repetirlo."
-      : "En los vínculos, observá dónde esta energía ya está disponible; en el trabajo, elegí una forma concreta de ponerla en movimiento; ante una decisión creativa, usala sin esperar una certeza total.",
-    consejo: advice.charAt(0).toUpperCase() + advice.slice(1) + ".",
-    cierre: {
-      pregunta: inverted
-        ? `¿Dónde aparece hoy la sombra de ${carta.nombre}?`
-        : `¿Dónde podés poner en práctica la potencia de ${carta.nombre}?`,
-      umbralSeed: inverted
-        ? `¿Qué estoy bloqueando o llevando al exceso bajo la energía de ${carta.nombre}?`
-        : `¿Cómo puedo encarnar hoy la energía de ${carta.nombre}?`
-    }
-  };
+  return editorialRitualFor(carta.id, carta.orientacion);
 }
 
 /** Compatibilidad aditiva durante el rollout de TestFlight. El cliente nuevo
