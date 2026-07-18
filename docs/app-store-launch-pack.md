@@ -1,5 +1,8 @@
 # App Store Launch Pack - Órbita
 
+> Documento histórico iniciado el 2026-07-10. Para el estado vigente usar
+> `docs/app-review-readiness.md`.
+
 Estado inicial: 2026-07-10.
 
 Este documento organiza lo que hay que preparar para pasar de TestFlight/App Store
