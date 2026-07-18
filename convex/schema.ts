@@ -299,7 +299,9 @@ export default defineSchema({
     clerkUserId: v.optional(v.string()),
     rawPayload: v.any(),
     processedAt: v.number()
-  }).index("by_provider_eventId", ["provider", "eventId"]),
+  })
+    .index("by_provider_eventId", ["provider", "eventId"])
+    .index("by_clerkUserId", ["clerkUserId"]),
 
   labSubjects: defineTable({
     createdByUserId: v.id("users"),
