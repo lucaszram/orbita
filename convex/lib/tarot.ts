@@ -15,7 +15,9 @@ export type TarotArcana = "major" | "minor";
 export type TarotSuit = "wands" | "cups" | "swords" | "pentacles";
 export type TarotRank = "ace" | "02" | "03" | "04" | "05" | "06" | "07" | "08" | "09" | "10" | "page" | "knight" | "queen" | "king";
 
-export type TarotDraw = {
+export type TarotOrientation = "derecho" | "invertida";
+
+export type TarotCard = {
   /** 0–77. Los ids 0–21 conservan exactamente el contrato anterior. */
   id: number;
   /** Slug estable, alineado con el nombre del asset sin extensión. */
@@ -28,7 +30,12 @@ export type TarotDraw = {
   correspondencia: string;
 };
 
-const MAJORS: TarotDraw[] = [
+export type TarotDraw = TarotCard & {
+  /** Segunda tirada deterministica e independiente de la carta. */
+  orientacion: TarotOrientation;
+};
+
+const MAJORS: TarotCard[] = [
   { id: 0, key: "major_00_el_loco", nombre: "El Loco", arcana: "major", correspondencia: "Urano ♅ (aire)" },
   { id: 1, key: "major_01_el_mago", nombre: "El Mago", arcana: "major", correspondencia: "Mercurio ☿" },
   { id: 2, key: "major_02_la_sacerdotisa", nombre: "La Sacerdotisa", arcana: "major", correspondencia: "Luna ☽" },
@@ -77,7 +84,7 @@ const SUITS: ReadonlyArray<{ key: TarotSuit; label: string; element: string }> =
   { key: "pentacles", label: "Oros", element: "Tierra" }
 ];
 
-const MINORS: TarotDraw[] = SUITS.flatMap((suit, suitIndex) =>
+const MINORS: TarotCard[] = SUITS.flatMap((suit, suitIndex) =>
   RANKS.map((rank, rankIndex) => ({
     id: 22 + suitIndex * RANKS.length + rankIndex,
     key: `${suit.key}_${rank.key}`,
@@ -90,7 +97,10 @@ const MINORS: TarotDraw[] = SUITS.flatMap((suit, suitIndex) =>
 );
 
 /** Catálogo canónico de 78 cartas. Solo lectura: no reordenar ni reciclar ids. */
-export const TAROT_DECK: ReadonlyArray<TarotDraw> = Object.freeze([...MAJORS, ...MINORS]);
+export const TAROT_DECK: ReadonlyArray<TarotCard> = Object.freeze([...MAJORS, ...MINORS]);
+
+/** Mitad del mazo sale invertido. Es una decision editorial tuneable, no azar de cliente. */
+export const REVERSED_PCT = 50;
 
 /** FNV-1a de 32 bits. Barato, sin deps y estable entre runtimes. */
 function hashSeed(value: string): number {
@@ -116,9 +126,11 @@ export function drawCard(args: {
   const allowed = TAROT_DECK.filter((card) => !excluded.has(card.id));
   const pool = allowed.length > 0 ? allowed : TAROT_DECK;
   const seed = hashSeed(`${args.userId}:${args.localDate}`);
-  return pool[seed % pool.length];
+  const orientationSeed = hashSeed(`${args.userId}:${args.localDate}:orientacion`);
+  const orientacion: TarotOrientation = orientationSeed % 100 < REVERSED_PCT ? "invertida" : "derecho";
+  return { ...pool[seed % pool.length], orientacion };
 }
 
-export function cardById(id: number): TarotDraw | null {
+export function cardById(id: number): TarotCard | null {
   return TAROT_DECK[id] ?? null;
 }

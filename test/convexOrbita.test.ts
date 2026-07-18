@@ -168,12 +168,34 @@ test("rejects stale daily guide caches that predate the card contract", () => {
       payloadVersion: "orbita-daily-guide-v2",
       carta: { id: 16, nombre: "La Torre", beats: [] }
     }),
+    false
+  );
+  assert.equal(
+    isCurrentDailyGuidePayload({
+      payloadVersion: "orbita-daily-guide-v3",
+      carta: {
+        id: 16,
+        nombre: "La Torre",
+        orientacion: "invertida",
+        ritual: {
+          esencia: "Una estructura pide revisión.",
+          significadoGeneral: [
+            { titulo: "Ruptura", texto: "Algo deja de sostenerse como antes." },
+            { titulo: "Verdad", texto: "La escena obliga a mirar lo que ya estaba." },
+            { titulo: "Reordenamiento", texto: "Lo que queda necesita otra forma de sostén." }
+          ],
+          enTuDia: "Mirá dónde insistís por costumbre.",
+          consejo: "Soltá una defensa concreta.",
+          cierre: { pregunta: "¿Qué estructura ya no te sostiene?" }
+        }
+      }
+    }),
     true
   );
   assert.equal(
     isCurrentDailyGuidePayload({
-      payloadVersion: "orbita-daily-guide-v2",
-      carta: { id: "16", nombre: "La Torre", beats: [] }
+      payloadVersion: "orbita-daily-guide-v3",
+      carta: { id: "16", nombre: "La Torre", orientacion: "derecho", ritual: {} }
     }),
     false
   );
@@ -187,6 +209,7 @@ test("daily tarot draw is stable per user and date", () => {
   assert.ok(first.id >= 0 && first.id <= 77);
   assert.ok(first.nombre.length > 0);
   assert.ok(first.correspondencia.length > 0);
+  assert.ok(first.orientacion === "derecho" || first.orientacion === "invertida");
 });
 
 test("daily date follows the user's timezone around midnight", () => {

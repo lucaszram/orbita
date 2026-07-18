@@ -27,7 +27,7 @@ import { findUserByTokenIdentifier, requireExistingUser, requireIdentity, requir
 const internalApi = internal as any;
 const AI_GATEWAY_CHAT_COMPLETIONS_URL = "https://ai-gateway.vercel.sh/v1/chat/completions";
 const DEFAULT_TIMEZONE = "America/Argentina/Buenos_Aires";
-const DAILY_GUIDE_PAYLOAD_VERSION = "orbita-daily-guide-v2";
+const DAILY_GUIDE_PAYLOAD_VERSION = "orbita-daily-guide-v3";
 
 /** Áreas de la Home. El orden es el de los tabs. */
 const TOPIC_KEYS = ["amor", "trabajo", "familia", "vinculos"] as const;
@@ -53,11 +53,30 @@ type DailyTopic = {
 /** La carta del día ya sorteada, con su lectura. `id` viaja como número 0–77: el
  *  front resuelve la ilustración con un mapa estático (Metro no puede requerir
  *  imágenes por string dinámico, así que el mapeo id→imagen vive en el bundle). */
+export type DailyRitualFaceta = {
+  titulo: string;
+  texto: string;
+};
+
+export type DailyRitual = {
+  esencia: string;
+  significadoGeneral: DailyRitualFaceta[];
+  enTuDia: string;
+  consejo: string;
+  cierre: {
+    pregunta: string;
+    umbralSeed?: string;
+  };
+};
+
 type DailyCarta = {
   id: number;
   nombre: string;
   correspondencia: string;
-  /** QUÉ ES · CÓMO INFLUYE HOY · CÓMO SE CONECTA CON TU CIELO */
+  orientacion: "derecho" | "invertida";
+  ritual: DailyRitual;
+  /** Puente temporal para clientes <= build 13. Se deriva del ritual v3 y no
+   *  introduce otra generación ni un cruce astrológico inventado. */
   beats: Array<{ label: string; body: string }>;
 };
 
@@ -73,7 +92,7 @@ type DailyGuidePayload = {
   basadoEn: string[];
   disclaimer: string;
   /** Carta del día. Siempre presente (el sorteo no depende del LLM); si el LLM falla,
-   *  viene con beats de fallback. */
+   *  viene con un ritual intrínseco de fallback, nunca con un cruce astro inventado. */
   carta?: DailyCarta;
   /* --- La Home completa, misma generación. Opcionales: si el LLM está apagado o
      falla, quedan `undefined` y el front cae al engine local (comportamiento previo). --- */
@@ -104,7 +123,16 @@ export function isCurrentDailyGuidePayload(value: unknown): value is DailyGuideP
   const carta = payload.carta;
   if (!carta || typeof carta !== "object" || Array.isArray(carta)) return false;
   const card = carta as Record<string, unknown>;
-  return typeof card.id === "number" && typeof card.nombre === "string" && Array.isArray(card.beats);
+  const orientationValid = card.orientacion === "derecho" || card.orientacion === "invertida";
+  return (
+    typeof card.id === "number" &&
+    Number.isInteger(card.id) &&
+    card.id >= 0 &&
+    card.id <= 77 &&
+    typeof card.nombre === "string" &&
+    orientationValid &&
+    parseRitual(card.ritual) !== undefined
+  );
 }
 
 type DailyGenerated = {
@@ -112,8 +140,8 @@ type DailyGenerated = {
   body: string;
   clima: string;
   destacadoLectura: string;
-  /** Los 3 beats de la carta. La carta en sí la sorteamos nosotros, no el LLM. */
-  cartaBeats?: Array<{ label: string; body: string }>;
+  /** Lectura intrínseca de la carta. No usa carta natal ni tránsitos. */
+  cartaRitual?: DailyRitual;
   tesis?: string;
   guia?: DailyGuidePayload["guia"];
   topics?: DailyTopic[];
@@ -254,7 +282,7 @@ const DAILY_SYSTEM =
   "Nunca consolás. Nunca cerrás con alivio. No sos coach, no sos terapeuta, no sos el universo. " +
   "Leés el cielo sobre su carta, ves un patrón, y se lo ponés adelante. Qué hace con eso es problema de ella.";
 
-function buildDailyPrompt(args: {
+export function buildDailyPrompt(args: {
   natal: string[];
   tension: string[];
   transits: NormalizedAstroTransit[];
@@ -282,16 +310,17 @@ ${tensionLines}
 EL CIELO DE HOY sobre su carta (el 1 es el destacado; los demás matizan):
 ${transitLines}
 
-LA CARTA QUE SACÓ HOY: ${args.carta.nombre} — correspondencia astrológica: ${args.carta.correspondencia}
-(Ese dato de correspondencia es verificado. Usalo. No inventes otro.)
+LA CARTA QUE SACÓ HOY: ${args.carta.nombre} — salió ${args.carta.orientacion === "invertida" ? "INVERTIDA" : "AL DERECHO"}.
+Correspondencia editorial: ${args.carta.correspondencia}.
 
 ---
 
 TU TAREA. Escribí la Home de hoy: un solo texto, en varios bloques.
 
-Primero decidí la TESIS DEL DÍA: UNA sola idea, específica de ESTA carta y de ESTOS tránsitos.
-Sale del cruce entre lo que la persona ES (carta + tensión) y lo que HOY la está empujando (tránsito 1).
+Primero decidí la TESIS DEL DÍA: UNA sola idea, específica de ESTA carta natal y de ESTOS tránsitos.
+Sale del cruce entre lo que la persona ES (carta natal + tensión) y lo que HOY la está empujando (tránsito 1).
 Esa tesis es la columna vertebral: la guía, las 4 áreas y la lectura larga la retoman desde su ángulo.
+"cartaRitual" queda afuera de esa tesis: es una lectura independiente de carta + orientación.
 Si los cuatro bloques de área se pueden leer sueltos y dan igual, fracasaste.
 
 CÓMO ESCRIBIR (esto es lo que separa un texto que pega de uno que se olvida):
@@ -335,28 +364,37 @@ CÓMO ESCRIBIR (esto es lo que separa un texto que pega de uno que se olvida):
 
 8. Frases cortas. Punto y aparte. Sin jerga astrológica sin traducir. Sin misterio decorativo.
 
-LA CARTA (leé esto con atención: acá es donde es fácil mentir).
+LA CARTA DEL RITUAL (un bloque independiente del cielo de hoy).
 
-La carta SALIÓ AL AZAR. No la eligió el cielo, no la eligió su carta natal, no "le tocó por algo".
-Es un ritual, no un diagnóstico. Si escribís como si el cosmos la hubiera seleccionado, estás
-mintiendo y se nota.
+La carta SALIÓ AL AZAR. No la eligió el cielo ni la carta natal. Su lectura es INTRÍNSECA:
+solo usa el nombre, el simbolismo editorial y la orientación que te di arriba.
 
-Lo que SÍ hacés: ponés la carta AL LADO del tránsito real y leés la tensión o el eco entre las dos.
-La correspondencia de la carta (que te di arriba, es un dato verificado) es lo que hace que ese cruce
-sea astrológicamente legítimo y no chamuyo poético.
+PROHIBIDO dentro de "cartaRitual":
+- nombrar planetas, signos, casas, aspectos o tránsitos de la persona;
+- decir que salió "por algo", que anuncia o predice;
+- convertir una invertida en el simple contrario de la carta al derecho.
 
-  PROHIBIDO: "No es casualidad que te haya salido La Torre."
-             "El universo te manda esta carta porque…"
-             "La Torre anuncia que…"  (la carta no predice NADA)
+La orientación cambia el sentido de verdad:
+- AL DERECHO: potencia disponible, movimiento visible, aprendizaje que puede encarnarse.
+- INVERTIDA: bloqueo, exceso, repliegue o sombra del mismo arquetipo. No es castigo ni mal augurio.
 
-  ASÍ SÍ:    Carta La Torre (Marte) + tránsito Saturno sobre tu Venus →
-             "La Torre es Marte: quiere romper. Tu cielo hoy es Saturno sobre tu Venus: quiere
-             contener. Te salió la carta que empuja justo donde el día te frena. Elegí a cuál
-             de las dos le hacés caso."
+Escribí la carta como un ritual de autoconocimiento con el ritmo editorial del frame aprobado:
+- una esencia explicativa de 1 o 2 frases completas, nunca telegráfica ni defensiva;
+- EXACTAMENTE 3 facetas separadas: titulo breve + explicación concreta;
+- un párrafo EN TU DÍA que teja vínculos, trabajo y creatividad/decisiones;
+- un consejo de 1 o 2 frases completas en voseo;
+- una pregunta abierta de cierre para llevar al Umbral.
+Este bloque no personaliza con astrología; su honestidad está en no fingirla.
 
-  Si la carta y el tránsito EMPUJAN PARA EL MISMO LADO, decilo: se refuerzan.
-  Si van en contra, decilo: ahí está la tensión del día.
-  Las dos lecturas son honestas. La deshonesta es fingir que había un plan.
+MODELO DE RITMO (no copies el contenido; copiá la estructura y la cadencia):
+"Que te salga La Luna —Arcano Mayor XVIII— es una invitación a explorar tu intuición: simboliza
+el mundo de los sueños, lo inconsciente y las verdades ocultas."
+SIGNIFICADO GENERAL: tres párrafos "Faceta — explicación".
+EN TU DÍA: "En los vínculos, ...; en el trabajo, ...; en lo creativo, ...".
+EL CONSEJO: dos frases completas, concretas y sin autoayuda genérica.
+
+PROHIBIDO dentro del texto visible de la carta: "no predice", "no define el día", "no es una orden"
+o cualquier aclaración defensiva que corte la experiencia editorial.
 
 DÓNDE ESTÁ EL LÍMITE (leelo bien: el filo mal calibrado es crueldad, y eso no lo publicamos).
 
@@ -386,11 +424,20 @@ Devolvé SOLO JSON válido con esta forma exacta:
   "body": "string — 3 a 4 frases, ESTRUCTURA DE DOS TIEMPOS: primero el mecanismo, después la cosa que incomoda. La última frase es la que tiene que doler",
   "clima": "string — una línea corta de clima del día",
   "destacadoLectura": "string — 1 frase sobre el tránsito destacado (el aspecto 1)",
-  "cartaBeats": [
-    { "label": "QUÉ ES", "body": "string — 1 o 2 frases: qué representa ${args.carta.nombre}, en criollo. Sin esoterismo de manual" },
-    { "label": "CÓMO INFLUYE HOY", "body": "string — 1 o 2 frases: qué te está diciendo hoy, a vos, con lo que está pasando en tu cielo" },
-    { "label": "CÓMO SE CONECTA CON TU CIELO", "body": "string — 2 o 3 frases: el CRUCE. Nombrá la correspondencia (${args.carta.correspondencia}) y el tránsito destacado, y leé si se refuerzan o se contradicen. NO digas que la carta fue elegida ni que predice algo" }
-  ],
+  "cartaRitual": {
+    "esencia": "string — 1 o 2 frases: qué invita a mirar ${args.carta.nombre} ${args.carta.orientacion === "invertida" ? "invertida" : "al derecho"}",
+    "significadoGeneral": [
+      { "titulo": "string — faceta breve", "texto": "string — 1 frase, sin repetir el título" },
+      { "titulo": "string — faceta breve", "texto": "string — 1 frase, sin repetir el título" },
+      { "titulo": "string — faceta breve", "texto": "string — 1 frase, sin repetir el título" }
+    ],
+    "enTuDia": "string — un párrafo que teja vínculos, trabajo y creatividad/decisiones en prosa. Sin astrología personalizada",
+    "consejo": "string — 1 o 2 frases, accionable y humano, en voseo",
+    "cierre": {
+      "pregunta": "string — pregunta abierta con ¿ y ?",
+      "umbralSeed": "string opcional — pregunta lista para llevar al Umbral"
+    }
+  },
   "guia": {
     "eyebrow": "string — 2 a 3 palabras en mayúsculas (ej. \\"GUÍA DE HOY\\")",
     "headline": "string — 4 a 8 palabras, serif, retoma la tesis",
@@ -484,15 +531,34 @@ function parseTopics(value: unknown): DailyTopic[] | undefined {
   return TOPIC_KEYS.map((k) => byKey.get(k)!);
 }
 
-/** Los 3 beats de la carta. Exige los 3 con cuerpo; si no, `undefined` → beats de fallback. */
-function parseCartaBeats(value: unknown): Array<{ label: string; body: string }> | undefined {
-  if (!Array.isArray(value)) return undefined;
-  const beats = value
+/** Ritual de la carta. Se valida completo: si el modelo corta el JSON, cae entero
+ *  al fallback honesto en vez de mezclar una lectura parcial con copy genérico. */
+export function parseRitual(value: unknown): DailyRitual | undefined {
+  const r = asRecord(value);
+  if (!r || !Array.isArray(r.significadoGeneral)) return undefined;
+
+  const significadoGeneral = r.significadoGeneral
     .map(asRecord)
-    .filter((r): r is Record<string, unknown> => r !== null)
-    .map((r) => ({ label: readString(r.label), body: readString(r.body) }))
-    .filter((b) => b.label && b.body);
-  return beats.length === 3 ? beats : undefined;
+    .filter((item): item is Record<string, unknown> => item !== null)
+    .map((item) => ({ titulo: readString(item.titulo), texto: readString(item.texto) }))
+    .filter((item) => item.titulo && item.texto);
+  if (significadoGeneral.length !== 3) return undefined;
+
+  const cierreRaw = asRecord(r.cierre);
+  if (!cierreRaw) return undefined;
+  const cierre = {
+    pregunta: readString(cierreRaw.pregunta),
+    umbralSeed: readString(cierreRaw.umbralSeed) || undefined
+  };
+  const ritual: DailyRitual = {
+    esencia: readString(r.esencia),
+    significadoGeneral,
+    enTuDia: readString(r.enTuDia),
+    consejo: readString(r.consejo),
+    cierre
+  };
+
+  return ritual.esencia && ritual.enTuDia && ritual.consejo && ritual.cierre.pregunta ? ritual : undefined;
 }
 
 function parseLecturaLarga(value: unknown): DailyGuidePayload["lecturaLarga"] | undefined {
@@ -517,7 +583,7 @@ function parseDaily(text: string): DailyGenerated | null {
       body,
       clima,
       destacadoLectura: destacadoLectura || body,
-      cartaBeats: parseCartaBeats(parsed.cartaBeats),
+      cartaRitual: parseRitual(parsed.cartaRitual),
       tesis: readString(parsed.tesis) || undefined,
       guia: parseGuia(parsed.guia),
       topics: parseTopics(parsed.topics),
@@ -579,14 +645,96 @@ type DailyInput = {
   carta: TarotDraw;
 };
 
-/** Beats sin LLM. Honestos y sobrios: describen la correspondencia real de la carta y
- *  el tránsito, sin fingir un puente que solo el LLM puede escribir bien. */
-function fallbackBeats(carta: TarotDraw, top?: NormalizedAstroTransit): Array<{ label: string; body: string }> {
-  const cielo = top ? `Hoy ${aspectLine(top)}.` : "Hoy no hay tránsitos fuertes sobre tu carta.";
+const SUIT_RITUAL: Record<string, { titulo: string; tema: string; gesto: string }> = {
+  wands: {
+    titulo: "Deseo y movimiento",
+    tema: "las ganas, la iniciativa y la forma en que encendés una acción",
+    gesto: "elegí una acción concreta y hacela antes de seguir imaginándola"
+  },
+  cups: {
+    titulo: "Emoción y vínculo",
+    tema: "lo que sentís, lo que compartís y la manera en que cuidás un vínculo",
+    gesto: "nombrá lo que sentís sin convertirlo en una conclusión sobre el otro"
+  },
+  swords: {
+    titulo: "Ideas y palabras",
+    tema: "la conversación interna, las decisiones y el filo de lo que decís",
+    gesto: "separá el dato de la historia que tu cabeza armó alrededor"
+  },
+  pentacles: {
+    titulo: "Recursos y realidad",
+    tema: "el tiempo, la rutina y aquello que necesita sostén concreto",
+    gesto: "ordená una parte pequeña de lo cotidiano y mirá qué cambia"
+  }
+};
+
+const RANK_RITUAL: Record<string, string> = {
+  ace: "un comienzo todavía abierto",
+  "02": "una tensión entre dos posibilidades",
+  "03": "algo que empieza a tomar forma con otros",
+  "04": "una estructura que protege y también puede endurecerse",
+  "05": "una fricción que obliga a revisar la posición propia",
+  "06": "un ajuste después del movimiento",
+  "07": "una prueba de criterio y constancia",
+  "08": "un proceso que pide práctica y continuidad",
+  "09": "una instancia de maduración antes del cierre",
+  "10": "la culminación y el peso de lo acumulado",
+  page: "una curiosidad que todavía está aprendiendo su lenguaje",
+  knight: "un impulso que avanza antes de medir todo el terreno",
+  queen: "una forma madura de alojar y conducir esa energía",
+  king: "la responsabilidad de dirigir esa energía sin imponerla"
+};
+
+/** Fallback sin LLM. Es deliberadamente intrínseco a carta + orientación: nunca
+ *  menciona el cielo, una casa natal ni un tránsito que no haya interpretado. */
+export function fallbackRitual(carta: TarotDraw): DailyRitual {
+  const inverted = carta.orientacion === "invertida";
+  const suit = carta.suit ? SUIT_RITUAL[carta.suit] : undefined;
+  const rank = carta.rank ? RANK_RITUAL[carta.rank] : undefined;
+  const baseTheme = suit?.tema ?? "un arquetipo que concentra una pregunta importante";
+  const movement = rank ?? "un movimiento que merece ser mirado sin apuro";
+  const orientationTitle = inverted ? "Bloqueo o exceso" : "Potencia disponible";
+  const orientationText = inverted
+    ? "La energía de la carta aparece trabada, replegada o llevada de más. Mirá dónde insistís y dónde evitás."
+    : "La energía de la carta está disponible y pide una decisión consciente para volverse concreta.";
+  const advice = suit?.gesto ?? "Elegí una situación concreta del día y observá qué parte de esta carta ya está en juego.";
+
+  return {
+    esencia: `Que te salga ${carta.nombre} ${inverted ? "invertida" : "al derecho"} es una invitación a mirar ${baseTheme}: ${movement}.`,
+    significadoGeneral: [
+      {
+        titulo: suit?.titulo ?? "Arquetipo central",
+        texto: `${carta.nombre} trabaja sobre ${baseTheme}.`
+      },
+      {
+        titulo: "Movimiento",
+        texto: `Habla de ${movement}.`
+      },
+      { titulo: orientationTitle, texto: orientationText }
+    ],
+    enTuDia: inverted
+      ? "En los vínculos, fijate qué se repliega o se lleva de más; en el trabajo, reconocé dónde insistís sin avanzar; ante una decisión creativa, nombrá el bloqueo antes de repetirlo."
+      : "En los vínculos, observá dónde esta energía ya está disponible; en el trabajo, elegí una forma concreta de ponerla en movimiento; ante una decisión creativa, usala sin esperar una certeza total.",
+    consejo: advice.charAt(0).toUpperCase() + advice.slice(1) + ".",
+    cierre: {
+      pregunta: inverted
+        ? `¿Dónde aparece hoy la sombra de ${carta.nombre}?`
+        : `¿Dónde podés poner en práctica la potencia de ${carta.nombre}?`,
+      umbralSeed: inverted
+        ? `¿Qué estoy bloqueando o llevando al exceso bajo la energía de ${carta.nombre}?`
+        : `¿Cómo puedo encarnar hoy la energía de ${carta.nombre}?`
+    }
+  };
+}
+
+/** Compatibilidad aditiva durante el rollout de TestFlight. El cliente nuevo
+ *  ignora este campo; el build 13 todavía lo necesita para no dejar la carta
+ *  vacía mientras las personas actualizan. */
+export function legacyBeatsFromRitual(ritual: DailyRitual): Array<{ label: string; body: string }> {
   return [
-    { label: "QUÉ ES", body: `${carta.nombre}. Su correspondencia astrológica es ${carta.correspondencia}.` },
-    { label: "CÓMO INFLUYE HOY", body: "Tomala como un espejo del día, no como un pronóstico." },
-    { label: "CÓMO SE CONECTA CON TU CIELO", body: `${cielo} Leé la carta al lado de eso.` }
+    { label: "QUÉ ES", body: ritual.esencia },
+    { label: "EN TU DÍA", body: ritual.enTuDia },
+    { label: "EL CONSEJO", body: ritual.consejo }
   ];
 }
 
@@ -625,20 +773,23 @@ async function generateDaily(args: DailyInput): Promise<DailyGenerated> {
   }
 }
 
-function composePayload(args: {
+export function composePayload(args: {
   generated: DailyGenerated;
   transits: NormalizedAstroTransit[];
   carta: TarotDraw;
 }): DailyGuidePayload {
   const [top, ...rest] = args.transits;
   const g = args.generated;
+  const ritual = g.cartaRitual ?? fallbackRitual(args.carta);
   return {
     payloadVersion: DAILY_GUIDE_PAYLOAD_VERSION,
     carta: {
       id: args.carta.id,
       nombre: args.carta.nombre,
       correspondencia: args.carta.correspondencia,
-      beats: g.cartaBeats ?? fallbackBeats(args.carta, top)
+      orientacion: args.carta.orientacion,
+      ritual,
+      beats: legacyBeatsFromRitual(ritual)
     },
     headline: g.headline,
     body: g.body,
@@ -765,8 +916,8 @@ export const getGuide = action({
       }
     }
 
-    // La carta se sortea ANTES del LLM (es determinística, no depende de él) y se le pasa
-    // en el prompt, para que los beats y la tesis del día hablen de la misma carta.
+    // La carta y su orientación se sortean ANTES del LLM. El prompt escribe su ritual
+    // intrínseco en un bloque independiente; no cruza la carta con los tránsitos.
     const carta = drawCard({
       userId: String(state.userId),
       localDate,
@@ -854,6 +1005,7 @@ export const getStrip = query({
     return docs.map((doc: any) => ({
       localDate: doc.localDate as string,
       cartaId: (doc.payload?.carta?.id ?? null) as number | null,
+      orientacion: (doc.payload?.carta?.orientacion ?? null) as "derecho" | "invertida" | null,
       revealed: Boolean(doc.revealedAt)
     }));
   }

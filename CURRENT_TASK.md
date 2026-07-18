@@ -1,5 +1,13 @@
 # Current Task
 
+## Backend — carta diaria ritual + orientación (2026-07-17, Codex)
+
+**Estado:** implementado y validado en la rama `codex/daily-card-ritual`. `daily.getGuide()` migra a `orbita-daily-guide-v3`: suma `carta.orientacion` (`derecho|invertida`) + `carta.ritual` (esencia, exactamente 3 facetas, enTuDia, consejo y cierre/Umbral). Durante el rollout conserva un `carta.beats` legacy derivado del ritual para que el build 13 siga funcionando; no genera otro contenido ni inventa cruces astrológicos. Se conserva el mazo completo de 78 y la exclusión de los seis días anteriores; la orientación usa una segunda semilla determinística al 50% y `daily.getStrip()` la devuelve para el historial. Payloads v2 se regeneran preservando `revealedAt`. El frontend PR #23 corrigió el Diario para usar el mismo bloque canónico que Home y agregó regresiones de ritual completo. Integración final previa al puente `#22 + #23`: typecheck verde, 276/276 tests y `git diff --check` limpio. Backend desplegado únicamente a Convex dev `dutiful-viper-815`; producción no fue tocada. Release local con JS embebido instalado en `orbita-main-b11` para la pasada manual de Lucas. El puente nuevo está validado localmente con typecheck y 266/266 tests backend; falta repetir la integración conjunta y la aprobación manual antes de mergear o publicar.
+
+**Orden de integración:** repetir la integración `#22 + #23` con el puente legacy, probarla en dev y en el simulador, mergear ambos PR y recién entonces desplegar el backend compatible a producción antes de generar el nuevo TestFlight. El build 13 puede convivir porque seguirá recibiendo `carta.beats`.
+
+**Handoff frontend:** `docs/handoff-claude-carta-diaria-v3.md` fija el contrato exacto, corrige el handoff viejo que todavía hablaba de 22 cartas/`majorById`, documenta la estructura completa de la lectura y deja el checklist conjunto para Claude y Lucas.
+
 ## Lectura natal larga — estado de generación honesto (2026-07-17, Codex)
 
 La pasada manual del hotfix de autenticación mostró la plantilla breve (`Núcleo`, `Clima interno`, etc.) como si fuera la lectura natal final. El motor largo de siete capítulos sí está mergeado y Convex dev tiene LLM/modelo/clave configurados; el problema es de estado: `charts.personalityReading()` devolvía el fallback breve mientras la action generaba. Rama aislada `codex/natal-reading-state`: la query devuelve `null` hasta cache `ready` y la action rechaza cualquier fallo para que el frontend existente muestre carga o reintento. Pendiente: tests/typecheck, deploy solo a dev y pasada manual carga → lectura larga; producción no se toca.
