@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, {
   Easing,
@@ -12,6 +12,9 @@ import Animated, {
   withTiming
 } from "react-native-reanimated";
 import { Eyebrow, Section } from "@/components/orbita/kit";
+import { RitualReading } from "@/components/home/RitualReading";
+import { cartaRevealView, isRitualComplete } from "@/domain/ritual";
+import { LoadingState } from "@/components/orbita/states";
 import { CARD_BACK, cardById } from "@/content/tarotDeck";
 import type { DailyCarta } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
@@ -33,7 +36,6 @@ export function CartaDelDia({
   revealed,
   onReveal,
   disabled,
-  cielo,
   ctaLabel,
   ctaSub
 }: {
@@ -47,10 +49,6 @@ export function CartaDelDia({
   onReveal: () => boolean | Promise<boolean>;
   /** No se puede sacar todavía (sin sesión, o la guía del día aún no llegó). */
   disabled?: boolean;
-  /** El tránsito destacado del día (payload.destacado). Si viene, el bloque post-carta
-   *  sigue el Figma "Home unificada": EL CIELO DE HOY + EL CRUCE DE HOY. Sin él
-   *  (invitado / fallback), caemos a la cascada de 3 beats. */
-  cielo?: { aspecto: string; lectura: string };
   /** Eyebrow de la carta boca abajo. Default "TOCÁ PARA SACARLA"; del día 2 en
    *  adelante la Home pasa "HAY UNA CARTA NUEVA" (reconocimiento del regreso). */
   ctaLabel?: string;
@@ -61,21 +59,26 @@ export function CartaDelDia({
   const flip = useSharedValue(revealed && carta ? 1 : 0);
   // Loop de respiración de la carta boca abajo.
   const breath = useSharedValue(0);
-  // Tirón en curso (optimista, esperando confirmación del backend).
-  const pulling = useRef(false);
+  // Tirón en vuelo (flip animándose, mutation pendiente).
+  const [pulling, setPulling] = useState(false);
+  // La mutation `revealCard` YA confirmó (true). Es la transición ATÓMICA al estado
+  // revelado: no esperamos a que `getStrip` (reactivo) actualice el prop `revealed`,
+  // porque en ese intervalo la cara optimista convivía con el CTA de carta cerrada.
+  const [confirmed, setConfirmed] = useState(false);
 
-  // Sincronizar el flip con el estado persistido — SOLO si hay carta que mostrar.
-  // Defensa en profundidad contra la carrera del incidente: aunque llegara
-  // `revealed=true` con carta ausente, jamás giramos hacia una cara vacía. Y si
-  // `revealed` vuelve a false (dato transitorio), la carta se tapa de nuevo.
+  const { isRevealed, showCta, showRitual } = cartaRevealView({ revealed, confirmed, pulling });
+
+  // Sincronizar el flip con el estado revelado — SOLO si hay carta que mostrar y el
+  // gesto no está en vuelo (el tirón es dueño de su propia animación). Defensa contra
+  // la carrera del incidente: jamás giramos hacia una cara vacía.
   useEffect(() => {
-    if (pulling.current) return; // el gesto en vuelo es dueño de la animación
-    if (revealed && carta && flip.value === 0) flip.value = 1;
-    if (!revealed && flip.value === 1) flip.value = 0;
-  }, [revealed, carta, flip]);
+    if (pulling) return;
+    if (isRevealed && carta && flip.value === 0) flip.value = 1;
+    if (!isRevealed && flip.value === 1) flip.value = 0;
+  }, [isRevealed, carta, flip, pulling]);
 
   useEffect(() => {
-    if (revealed || disabled) {
+    if (isRevealed || disabled || pulling) {
       cancelAnimation(breath);
       breath.value = 0;
       return;
@@ -89,12 +92,12 @@ export function CartaDelDia({
       false
     );
     return () => cancelAnimation(breath);
-  }, [revealed, disabled, breath]);
+  }, [isRevealed, disabled, pulling, breath]);
 
   async function pull() {
     // Sin carta no hay tirón: girar hacia una cara vacía era el bug del marco cobre.
-    if (revealed || disabled || pulling.current || !carta) return;
-    pulling.current = true;
+    if (isRevealed || disabled || pulling || !carta) return;
+    setPulling(true);
     // Sin háptico: `expo-haptics` rompe el build de iOS. Sumarlo cambia el conjunto de pods,
     // eso corre la asignación de uuids determinísticos de CocoaPods, y un paquete SPM de Clerk
     // termina pisando el uuid del PBXProject → `Pods.xcodeproj` sale sin objeto raíz y el build
@@ -107,12 +110,16 @@ export function CartaDelDia({
     } catch {
       ok = false;
     }
-    if (!ok) {
-      // El backend no lo persistió: la carta se vuelve a tapar en vez de quedar en un
-      // estado optimista falso (mañana amanecería boca abajo igual).
+    if (ok) {
+      // Confirmado: transición atómica a revelado (cara + "Te salió…" + orientación +
+      // ritual), sin esperar a getStrip. `confirmed` + `pulling=false` se aplican juntos.
+      setConfirmed(true);
+    } else {
+      // El backend no lo persistió: la carta vuelve al dorso y el CTA reaparece, en vez
+      // de quedar en un estado optimista falso (mañana amanecería boca abajo igual).
       flip.value = withTiming(0, { duration: 420, easing: Easing.inOut(Easing.cubic) });
     }
-    pulling.current = false;
+    setPulling(false);
   }
 
   // Las dos caras comparten el mismo eje. Cada una se esconde en su mitad del giro.
@@ -156,21 +163,27 @@ export function CartaDelDia({
           <AnimatedPressable
             onPress={pull}
             accessibilityRole="button"
-            accessibilityLabel={revealed && carta ? `Tu carta de hoy: ${carta.nombre}` : "Tocá para sacar tu carta de hoy"}
-            accessibilityState={{ disabled: Boolean(disabled) || revealed }}
+            accessibilityLabel={isRevealed && carta ? `Tu carta de hoy: ${carta.nombre}` : "Tocá para sacar tu carta de hoy"}
+            accessibilityState={{ disabled: Boolean(disabled) || isRevealed }}
             style={[styles.cardBack, backStyle]}
           >
             <Image source={CARD_BACK} style={styles.cardImg} resizeMode="cover" />
           </AnimatedPressable>
 
           <Animated.View style={[styles.cardFace, faceStyle]} pointerEvents="none">
-            {image ? <Image source={image} style={styles.cardImg} resizeMode="cover" /> : null}
+            {image ? (
+              <Image
+                source={image}
+                style={[styles.cardImg, carta?.orientacion === "invertida" ? styles.cardImgFlipped : null]}
+                resizeMode="cover"
+              />
+            ) : null}
             <View style={styles.faceScrim} />
             <Text style={styles.faceLabel}>{carta?.nombre ?? ""}</Text>
           </Animated.View>
         </View>
 
-        {!revealed ? (
+        {showCta ? (
           <>
             <Text style={styles.revealCta}>{disabled ? "PREPARANDO TU CARTA…" : ctaLabel ?? "TOCÁ PARA SACARLA"}</Text>
             {!disabled && ctaSub ? <Text style={styles.revealSub}>{ctaSub}</Text> : null}
@@ -178,48 +191,25 @@ export function CartaDelDia({
         ) : null}
       </View>
 
-      {/* La cascada: el texto entra DESPUÉS del giro (620ms), escalonado. Que la carta
-          termine de darse vuelta antes de que aparezca lo que dice. */}
-      {revealed && carta ? (
-        <View>
-          <Animated.Text entering={FadeInDown.delay(520).duration(420)} style={styles.leadIn}>
-            Te salió {carta.nombre}.
-          </Animated.Text>
-
-          {cielo ? (
-            /* Figma "Home unificada" (sección 12): el cielo del día y el cruce con la
-               carta, en dos bloques. El puente es el beat "CÓMO SE CONECTA CON TU CIELO". */
+      {/* La lectura entra DESPUÉS del giro (620ms). Ya NO cruza con el cielo: es el
+          análisis intrínseco de la carta. Regla del handoff v3: completa o carga —
+          nunca una lectura parcial (esa fue la captura de La Sacerdotisa). */}
+      {showRitual && carta ? (
+        <Animated.View entering={FadeInDown.delay(520).duration(420)}>
+          <Text style={styles.leadIn}>Te salió {carta.nombre}.</Text>
+          {isRitualComplete(carta.ritual) ? (
             <>
-              <Animated.View entering={FadeInDown.delay(700).duration(420)} style={styles.beat}>
-                <Text style={styles.beatLabel}>EL CIELO DE HOY</Text>
-                <Text style={styles.cieloHeadline}>{cielo.aspecto}</Text>
-                <Text style={styles.beatBody}>{cielo.lectura}</Text>
-              </Animated.View>
-              {(() => {
-                const puente =
-                  carta.beats.find((b) => b.label.includes("CONECTA"))?.body ??
-                  carta.beats[carta.beats.length - 1]?.body;
-                return puente ? (
-                  <Animated.View entering={FadeInDown.delay(830).duration(420)} style={styles.beat}>
-                    <Text style={styles.beatLabel}>EL CRUCE DE HOY</Text>
-                    <Text style={styles.beatBody}>{puente}</Text>
-                  </Animated.View>
-                ) : null;
-              })()}
+              <Text style={styles.orient}>
+                {carta.orientacion === "invertida" ? "SALIÓ INVERTIDA" : "SALIÓ AL DERECHO"}
+              </Text>
+              <RitualReading ritual={carta.ritual} />
             </>
           ) : (
-            carta.beats.map((beat, i) => (
-              <Animated.View
-                key={beat.label}
-                entering={FadeInDown.delay(700 + i * 130).duration(420)}
-                style={styles.beat}
-              >
-                <Text style={styles.beatLabel}>{beat.label}</Text>
-                <Text style={styles.beatBody}>{beat.body}</Text>
-              </Animated.View>
-            ))
+            <View style={styles.loading}>
+              <LoadingState />
+            </View>
           )}
-        </View>
+        </Animated.View>
       ) : null}
     </Section>
   );
@@ -262,6 +252,7 @@ const styles = StyleSheet.create({
     width: CARD_W
   },
   cardImg: { height: CARD_H, width: CARD_W, ...StyleSheet.absoluteFillObject },
+  cardImgFlipped: { transform: [{ rotate: "180deg" }] },
 
   faceScrim: { backgroundColor: "rgba(7,8,10,0.55)", bottom: 0, height: 68, left: 0, position: "absolute", right: 0 },
   faceLabel: {
@@ -296,14 +287,12 @@ const styles = StyleSheet.create({
   },
 
   leadIn: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 24, lineHeight: 29, marginTop: orbita.spacing.xl },
-  cieloHeadline: {
-    color: orbita.colors.bone,
-    fontFamily: orbita.fonts.serif,
-    fontSize: 22,
-    lineHeight: 28,
-    marginTop: orbita.spacing.xs
+  orient: {
+    color: orbita.colors.copper,
+    fontFamily: orbita.fonts.monoMedium,
+    fontSize: 11,
+    letterSpacing: 1,
+    marginTop: orbita.spacing.sm
   },
-  beat: { marginTop: orbita.spacing.lg },
-  beatLabel: { color: orbita.colors.copper, fontFamily: orbita.fonts.monoMedium, fontSize: 11, letterSpacing: 0.5 },
-  beatBody: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 15, lineHeight: 21, marginTop: orbita.spacing.xs }
+  loading: { marginTop: orbita.spacing.xl }
 });

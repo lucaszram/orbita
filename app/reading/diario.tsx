@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { useAction, useQuery } from "convex/react";
 import { DetailScreen } from "@/components/home/DetailScreen";
-import { Body, Divider, Eyebrow, H2 } from "@/components/orbita/kit";
+import { RitualReading } from "@/components/home/RitualReading";
+import { isRitualComplete } from "@/domain/ritual";
+import { Body, Eyebrow, H2 } from "@/components/orbita/kit";
 import { TarotStrip, type DiaCelda } from "@/components/diario/TarotStrip";
 import { CARD_BACK, cardById } from "@/content/tarotDeck";
 import { dayLabel, lastNDays, monthLabel, toLocalDate } from "@/domain/dateStrip";
@@ -53,7 +55,8 @@ export default function DiarioScreen() {
           wd: WEEKDAYS[date.getDay()],
           n: String(date.getDate()),
           image: entry?.cartaId != null ? cardById(entry.cartaId)?.image ?? null : null,
-          revealed: Boolean(entry?.revealed)
+          revealed: Boolean(entry?.revealed),
+          inverted: entry?.orientacion === "invertida"
         };
       }),
     [byDate, days]
@@ -98,6 +101,9 @@ export default function DiarioScreen() {
   const carta = guide?.carta;
   const image = carta ? cardById(carta.id)?.image : entryCard?.image;
   const cardName = carta?.nombre ?? entryCard?.nombre;
+  // La orientación acompaña a la carta: del payload si ya llegó, o de la fila de la tira.
+  const orientacion = carta?.orientacion ?? entry?.orientacion ?? null;
+  const ritual = carta?.ritual;
   const isFuture = selectedDate > today;
 
   return (
@@ -130,30 +136,29 @@ export default function DiarioScreen() {
           <View style={styles.center}>
             <View style={styles.bigCard}>
               {/* id fuera del mazo local → dorso, nunca el marco vacío */}
-              <Image source={image ?? CARD_BACK} style={styles.bigImg} resizeMode="cover" />
+              <Image
+                source={image ?? CARD_BACK}
+                style={[styles.bigImg, orientacion === "invertida" ? styles.bigImgFlipped : null]}
+                resizeMode="cover"
+              />
             </View>
           </View>
           <H2>Te salió {cardName}.</H2>
+          {orientacion ? (
+            <Text style={styles.orient}>
+              {orientacion === "invertida" ? "SALIÓ INVERTIDA" : "SALIÓ AL DERECHO"}
+            </Text>
+          ) : null}
 
-          <View style={{ height: orbita.spacing.md }} />
-          <Eyebrow>{selectedDate === today ? "EL CIELO DE HOY" : "EL CIELO DE ESE DÍA"}</Eyebrow>
+          {/* Mismo bloque canónico que la Home: orientación → esencia → significado
+              general → en tu día → consejo → cierre. Sin el bloque de cielo/cruce astro
+              (no vuelve a la lectura de la carta — handoff v3). Completo o carga/error. */}
           {loading ? (
             <View style={styles.center}>
               <ActivityIndicator color={orbita.colors.copper} />
             </View>
-          ) : guide ? (
-            <>
-              <H2>{guide.headline}</H2>
-              <Body>{guide.body}</Body>
-
-              <Divider />
-              {(carta?.beats ?? []).map((beat) => (
-                <View key={beat.label} style={styles.beat}>
-                  <Eyebrow>{beat.label}</Eyebrow>
-                  <Body>{beat.body}</Body>
-                </View>
-              ))}
-            </>
+          ) : isRitualComplete(ritual) ? (
+            <RitualReading ritual={ritual} />
           ) : (
             <Body>No pudimos traer la lectura de ese día. Volvé a entrar para reintentar.</Body>
           )}
@@ -203,7 +208,14 @@ const styles = StyleSheet.create({
     width: 156
   },
   bigImg: { height: 234, width: 156 },
-  beat: { marginTop: orbita.spacing.lg },
+  bigImgFlipped: { transform: [{ rotate: "180deg" }] },
+  orient: {
+    color: orbita.colors.copper,
+    fontFamily: orbita.fonts.monoMedium,
+    fontSize: 11,
+    letterSpacing: 1,
+    marginTop: orbita.spacing.sm
+  },
   locked: {
     color: orbita.colors.mutedDim,
     fontFamily: orbita.fonts.body,

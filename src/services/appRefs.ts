@@ -226,19 +226,39 @@ export type VoidAnswerPayload = {
  *  número y el front resuelve la ilustración con `cardById(id)` de
  *  `src/content/tarotDeck.ts`: Metro no puede hacer `require()` con string dinámico,
  *  así que el mapeo id→imagen tiene que vivir en el bundle, no en el payload. */
+/** Orientación con la que salió la carta (parte del sorteo diario, estable por
+ *  usuario+fecha). El front rota SOLO la ilustración 180° cuando es `invertida`. */
+export type DailyOrientacion = "derecho" | "invertida";
+
+/** Una faceta del SIGNIFICADO GENERAL de la carta (título + una frase). */
+export type DailyRitualFaceta = { titulo: string; texto: string };
+
+/** El análisis de la carta del día — intrínseco a la carta (ya NO cruza con el cielo
+ *  ni la carta natal). Estructura canónica (Figma sección 14, frame `727:127`):
+ *  esencia → SIGNIFICADO GENERAL (siempre 3 facetas) → EN TU DÍA → EL CONSEJO →
+ *  cierre (pregunta → Umbral). El backend v3 lo entrega SIEMPRE completo. */
+export type DailyRitual = {
+  esencia: string;
+  significadoGeneral: DailyRitualFaceta[]; // siempre 3
+  enTuDia: string;
+  consejo: string;
+  cierre: { pregunta: string; umbralSeed?: string };
+};
+
 export type DailyCarta = {
   id: number;
   nombre: string;
   correspondencia: string;
-  /** QUÉ ES · CÓMO INFLUYE HOY · CÓMO SE CONECTA CON TU CIELO */
-  beats: Array<{ label: string; body: string }>;
+  orientacion: DailyOrientacion;
+  ritual: DailyRitual;
 };
 
 /** Una celda de la tira del Diario. `cartaId` null = ese día no se generó guía (no abriste
- *  la app); el front lo pinta boca abajo igual. */
+ *  la app); el front lo pinta boca abajo igual. `orientacion` acompaña a la carta. */
 export type DailyStripDay = {
   localDate: string;
   cartaId: number | null;
+  orientacion: DailyOrientacion | null;
   revealed: boolean;
 };
 

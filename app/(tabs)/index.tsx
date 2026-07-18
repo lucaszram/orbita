@@ -239,8 +239,8 @@ export default function HomeScreen() {
           <View style={styles.introTarot}>
             <Text style={styles.introEyebrow}>TU TAROT DIARIO</Text>
             <Text style={styles.introBody}>
-              Tu carta de hoy ya está en el mazo. Sacala y Órbita te la explica: qué es, qué significa que te haya
-              salido, y cómo se cruza con tu carta natal y el cielo del día.
+              Tu carta de hoy ya está en el mazo. Sacala y Órbita te la explica: qué significa que te haya salido y
+              cómo se juega en tu día.
             </Text>
           </View>
         ) : null}
@@ -250,23 +250,22 @@ export default function HomeScreen() {
           revealed={revealed}
           onReveal={pullCard}
           disabled={dailyState.status !== "ready"}
-          cielo={daily?.destacado}
           ctaLabel={cartaCtaLabel}
           ctaSub={cartaCtaSub}
         />
 
-        {/* EL RITUAL (B1): una vez en la vida, después del primer reveal — nombra el
-            método que el usuario acaba de leer en los beats. */}
+        {/* Nota de cadencia (B1): una vez en la vida, después del primer reveal. Ya no
+            re-explica el método (la lectura de la carta ahora habla sola) — solo el ritmo. */}
         {revealed && primerRitualHoy ? (
           <Animated.View entering={FadeInDown.delay(1150).duration(420)} style={styles.ritualBlock}>
-            <Text style={styles.introEyebrow}>EL RITUAL</Text>
-            <Text style={styles.ritualTitle}>Qué significa que te haya salido esta carta.</Text>
+            <Text style={styles.introEyebrow}>CÓMO FUNCIONA</Text>
+            <Text style={styles.ritualTitle}>Una carta por día.</Text>
             <Text style={styles.introBody}>
-              Cada día sale una para vos, y la leemos en tres pasos: qué es la carta, qué te muestra que te haya
-              salido justo hoy, y cómo se cruza con tu carta natal y el cielo del día.
+              Sacás una sola carta cada día y Órbita te la explica: qué significa, cómo se juega en tu día y un
+              consejo para hoy.
             </Text>
             <Text style={styles.ritualCadencia}>
-              Una por día. Queda en tu tira; la de mañana se abre a medianoche.
+              Queda en tu tira; la de mañana se abre a medianoche.
             </Text>
           </Animated.View>
         ) : null}
