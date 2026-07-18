@@ -1,5 +1,15 @@
 # Current Task
 
+## App Review — eliminación completa de cuenta (2026-07-18, Codex)
+
+**Objetivo:** cumplir el requisito de App Store para apps con creación de cuenta mediante una eliminación real, autenticada e irreversible de la cuenta y sus datos.
+
+**Criterios de aceptación:** `users.deleteAccount()` elimina la fila del usuario y todas sus filas propias en Convex, incluidos eventos de pago asociados por Clerk; nunca toca otra cuenta ni caches/editorial global; es idempotente; no registra PII; el cliente puede borrar después la identidad de Clerk sin perder antes la prueba de autenticación.
+
+**Ficha:** owner Codex; territorio `convex/**`, pruebas y documentación; rama `codex/account-deletion-v2` sobre `origin/main` `da930df`; riesgo alto y destructivo únicamente al invocar explícitamente la mutación; tests unitarios + suite completa + typecheck + codegen; rollout backend a Convex dev → frontend Claude en PR separado → prueba con cuenta descartable → aprobación explícita de Lucas → producción; rollback por revert mientras ningún cliente invoque la función; fuera de alcance UI nativa, Clerk client, Plus/IAP, metadata de App Store y producción.
+
+**Estado:** backend listo en `codex/account-deletion-v2`. Contrato aislado en `c896cd3` e implementación en `aaac19b`; la mutación borra 20 tablas propias, `paymentEvents` por `clerkUserId` y la fila `users` al final. Las tablas globales se preservan. Validación: typecheck verde, test destructivo 4/4 y suite completa 296/296; bindings Convex regenerados. Desplegado únicamente a Convex dev `dutiful-viper-815` y verificado en el function spec como `users.js:deleteAccount`; producción no fue tocada. Pendiente: PR borrador y frontend separado. Frontend debe confirmar dos veces, ejecutar Convex → Clerk → limpieza local, fallar cerrado y ocultar la superficie Plus para la primera versión gratuita.
+
 ## Backend — fast path de carta diaria (2026-07-18, Codex)
 
 **Objetivo:** desacoplar la carta diaria de AstrologyAPI/IA para que el build 16 pueda revelar en menos de 2 s en frío y responder en menos de 500 ms con caché.

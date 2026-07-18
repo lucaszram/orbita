@@ -18,6 +18,7 @@ import type * as devices from "../devices.js";
 import type * as home from "../home.js";
 import type * as http from "../http.js";
 import type * as journal from "../journal.js";
+import type * as lib_accountDeletion from "../lib/accountDeletion.js";
 import type * as lib_aiGateway from "../lib/aiGateway.js";
 import type * as lib_astrologyApi from "../lib/astrologyApi.js";
 import type * as lib_backoffice from "../lib/backoffice.js";
@@ -65,6 +66,7 @@ declare const fullApi: ApiFromModules<{
   home: typeof home;
   http: typeof http;
   journal: typeof journal;
+  "lib/accountDeletion": typeof lib_accountDeletion;
   "lib/aiGateway": typeof lib_aiGateway;
   "lib/astrologyApi": typeof lib_astrologyApi;
   "lib/backoffice": typeof lib_backoffice;
