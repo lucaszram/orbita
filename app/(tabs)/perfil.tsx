@@ -195,15 +195,25 @@ function AccountSignedIn({
           })
       },
       {
-        // Orden estricto Convex → marcador → Clerk → limpieza local → retirar
-        // marcador (ver domain/accountDeletion). El marcador es lo único que
-        // autoriza al arranque a completar la purga si la limpieza falla acá.
+        // Orden estricto Convex → marcador backend_deleted → Clerk → marcador
+        // identity_deleted → limpieza local → retirar marcador (ver
+        // domain/accountDeletion). El marcador con FASE es lo único que
+        // autoriza al arranque a completar lo que falte si algo muere acá.
         deleteConvexAccount: async () => {
           setDeleting(true);
           return await deleteConvexAccount({});
         },
-        markPendingCleanup: () => storePendingAccountDeletion(userId),
+        markPendingCleanup: async () => {
+          // Fallar cerrado: sin userId el marcador no tendría dueño (no se
+          // podría retirar el snapshot por cuenta) — y sin marcador válido no
+          // se borra Clerk.
+          if (!userId) throw new Error("userId requerido para el marcador de eliminación");
+          await storePendingAccountDeletion(userId, "backend_deleted");
+        },
         deleteClerkUser: () => auth.deleteUser(),
+        markIdentityDeleted: async () => {
+          if (userId) await storePendingAccountDeletion(userId, "identity_deleted");
+        },
         clearLocalData: async () => {
           await resetApp();
           // A diferencia del logout, acá también se borra el snapshot por

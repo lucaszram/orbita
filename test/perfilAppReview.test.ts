@@ -10,6 +10,7 @@ const PERFIL = readFileSync(path.join(process.cwd(), "app/(tabs)/perfil.tsx"), "
 const PLUS = readFileSync(path.join(process.cwd(), "app/reading/plus.tsx"), "utf8");
 const VOID_SRC = readFileSync(path.join(process.cwd(), "src/components/void/VoidExperience.tsx"), "utf8");
 const APP_STATE = readFileSync(path.join(process.cwd(), "src/hooks/useAppState.tsx"), "utf8");
+const INDEX = readFileSync(path.join(process.cwd(), "app/index.tsx"), "utf8");
 
 describe("Perfil — eliminar cuenta (App Review)", () => {
   it("ofrece 'Eliminar mi cuenta' con el flujo de doble confirmación del dominio", () => {
@@ -34,9 +35,16 @@ describe("Perfil — eliminar cuenta (App Review)", () => {
     assert.match(PERFIL, /goToEntry:\s*\(\)\s*=>\s*router\.replace\("\/onboarding"\)/);
   });
 
-  it("escribe el marcador de limpieza pendiente entre Convex y Clerk, y lo retira al final", () => {
-    assert.match(PERFIL, /markPendingCleanup:\s*\(\)\s*=>\s*storePendingAccountDeletion\(userId\)/);
+  it("escribe el marcador por FASES: backend_deleted antes de Clerk, identity_deleted después", () => {
+    const backend = PERFIL.indexOf('storePendingAccountDeletion(userId, "backend_deleted")');
+    const identity = PERFIL.indexOf('storePendingAccountDeletion(userId, "identity_deleted")');
+    assert.ok(backend >= 0, "falta la fase backend_deleted antes de borrar Clerk");
+    assert.ok(identity >= 0 && backend < identity, "falta la promoción a identity_deleted tras Clerk");
     assert.match(PERFIL, /clearPendingCleanup:\s*\(\)\s*=>\s*clearPendingAccountDeletion\(\)/);
+  });
+
+  it("falla cerrado sin userId: no se crea un marcador sin dueño ni se borra Clerk", () => {
+    assert.match(PERFIL, /if \(!userId\) throw new Error/);
   });
 
   it("bloquea la reentrada con un lock SINCRÓNICO desde la primera línea del handler", () => {
@@ -64,9 +72,26 @@ describe("Arranque — la purga pendiente corre antes de publicar estado local",
     const ready = APP_STATE.indexOf("setIsReady(true)");
     assert.ok(purge >= 0, "falta completePendingAccountDeletion en la hidratación");
     assert.ok(ready >= 0 && purge < ready, "la purga debe decidirse ANTES de publicar isReady");
-    // Con marcador ("completed" o "pending") el estado local se publica vacío:
-    // nunca el perfil de una cuenta eliminada, nunca login a esa cuenta.
-    assert.match(APP_STATE, /if \(pendingDeletion !== "none"\)/);
+    // Con marcador (cualquier fase) el estado local se publica vacío: nunca el
+    // perfil de una cuenta eliminada, nunca login a esa cuenta.
+    assert.match(APP_STATE, /if \(pendingDeletion\.status !== "none"\)/);
+    // backend_deleted queda expuesto para que el gate lo resuelva con Clerk.
+    assert.match(APP_STATE, /"awaiting-identity" \? pendingDeletion\.marker : null/);
+  });
+
+  it("el gate de index bloquea el arranque con backend_deleted y decide con Clerk cargado", () => {
+    assert.match(INDEX, /resolvePendingDeletionBoot\(/);
+    // La pantalla de bloqueo se renderiza ANTES del switch de decisión normal.
+    const gate = INDEX.indexOf("if (pendingAccountDeletion)");
+    const decisionSwitch = INDEX.indexOf("switch (decision)");
+    assert.ok(gate >= 0 && decisionSwitch >= 0 && gate < decisionSwitch, "el gate debe cortar antes de resolveStart");
+    // Con identidad activa se reintenta user.delete() y recién después se purga.
+    assert.match(INDEX, /pendingDeletionDecision === "finalize-identity"/);
+    assert.match(INDEX, /auth\?\.deleteUser\(\)/);
+    assert.match(INDEX, /completePendingDeletionPurge\(\)/);
+    // Estado bloqueante visible + reintento.
+    assert.match(INDEX, /Finalizando la eliminación/);
+    assert.match(INDEX, /REINTENTAR/);
   });
 });
 
