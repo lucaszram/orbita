@@ -21,3 +21,25 @@ export function isRitualComplete(ritual?: DailyRitual): ritual is DailyRitual {
       ritual.cierre?.pregunta?.trim()
   );
 }
+
+/** Visibilidad del reveal de la carta del día — resuelve el intervalo entre que la
+ *  mutation confirma y `getStrip` actualiza el prop `revealed` (reactivo, llega después).
+ *
+ *  - `revealed`: estado del server (getStrip + carta válida).
+ *  - `confirmed`: la mutation `revealCard` YA devolvió true (confirmación optimista).
+ *  - `pulling`: el tirón está en vuelo (flip animándose, mutation pendiente).
+ *
+ *  Reglas (regresión del bug cara+CTA, 2026-07-18):
+ *  - Apenas `onReveal()` devuelve true (`confirmed`), la pantalla pasa atómicamente a
+ *    revelada: cara + "Te salió…" + orientación + ritual. No espera a `getStrip`.
+ *  - El CTA de carta cerrada se oculta apenas empieza el tirón (`pulling`), así la cara
+ *    NUNCA convive con el CTA.
+ *  - Si el tirón falla (`!confirmed && !pulling`), vuelve al dorso y reaparece el CTA. */
+export function cartaRevealView(s: { revealed: boolean; confirmed: boolean; pulling: boolean }): {
+  isRevealed: boolean;
+  showCta: boolean;
+  showRitual: boolean;
+} {
+  const isRevealed = s.revealed || s.confirmed;
+  return { isRevealed, showCta: !isRevealed && !s.pulling, showRitual: isRevealed };
+}

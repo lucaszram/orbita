@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, {
   Easing,
@@ -13,7 +13,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { Eyebrow, Section } from "@/components/orbita/kit";
 import { RitualReading } from "@/components/home/RitualReading";
-import { isRitualComplete } from "@/domain/ritual";
+import { cartaRevealView, isRitualComplete } from "@/domain/ritual";
 import { LoadingState } from "@/components/orbita/states";
 import { CARD_BACK, cardById } from "@/content/tarotDeck";
 import type { DailyCarta } from "@/services/appRefs";
@@ -59,21 +59,26 @@ export function CartaDelDia({
   const flip = useSharedValue(revealed && carta ? 1 : 0);
   // Loop de respiración de la carta boca abajo.
   const breath = useSharedValue(0);
-  // Tirón en curso (optimista, esperando confirmación del backend).
-  const pulling = useRef(false);
+  // Tirón en vuelo (flip animándose, mutation pendiente).
+  const [pulling, setPulling] = useState(false);
+  // La mutation `revealCard` YA confirmó (true). Es la transición ATÓMICA al estado
+  // revelado: no esperamos a que `getStrip` (reactivo) actualice el prop `revealed`,
+  // porque en ese intervalo la cara optimista convivía con el CTA de carta cerrada.
+  const [confirmed, setConfirmed] = useState(false);
 
-  // Sincronizar el flip con el estado persistido — SOLO si hay carta que mostrar.
-  // Defensa en profundidad contra la carrera del incidente: aunque llegara
-  // `revealed=true` con carta ausente, jamás giramos hacia una cara vacía. Y si
-  // `revealed` vuelve a false (dato transitorio), la carta se tapa de nuevo.
+  const { isRevealed, showCta, showRitual } = cartaRevealView({ revealed, confirmed, pulling });
+
+  // Sincronizar el flip con el estado revelado — SOLO si hay carta que mostrar y el
+  // gesto no está en vuelo (el tirón es dueño de su propia animación). Defensa contra
+  // la carrera del incidente: jamás giramos hacia una cara vacía.
   useEffect(() => {
-    if (pulling.current) return; // el gesto en vuelo es dueño de la animación
-    if (revealed && carta && flip.value === 0) flip.value = 1;
-    if (!revealed && flip.value === 1) flip.value = 0;
-  }, [revealed, carta, flip]);
+    if (pulling) return;
+    if (isRevealed && carta && flip.value === 0) flip.value = 1;
+    if (!isRevealed && flip.value === 1) flip.value = 0;
+  }, [isRevealed, carta, flip, pulling]);
 
   useEffect(() => {
-    if (revealed || disabled) {
+    if (isRevealed || disabled || pulling) {
       cancelAnimation(breath);
       breath.value = 0;
       return;
@@ -87,12 +92,12 @@ export function CartaDelDia({
       false
     );
     return () => cancelAnimation(breath);
-  }, [revealed, disabled, breath]);
+  }, [isRevealed, disabled, pulling, breath]);
 
   async function pull() {
     // Sin carta no hay tirón: girar hacia una cara vacía era el bug del marco cobre.
-    if (revealed || disabled || pulling.current || !carta) return;
-    pulling.current = true;
+    if (isRevealed || disabled || pulling || !carta) return;
+    setPulling(true);
     // Sin háptico: `expo-haptics` rompe el build de iOS. Sumarlo cambia el conjunto de pods,
     // eso corre la asignación de uuids determinísticos de CocoaPods, y un paquete SPM de Clerk
     // termina pisando el uuid del PBXProject → `Pods.xcodeproj` sale sin objeto raíz y el build
@@ -105,12 +110,16 @@ export function CartaDelDia({
     } catch {
       ok = false;
     }
-    if (!ok) {
-      // El backend no lo persistió: la carta se vuelve a tapar en vez de quedar en un
-      // estado optimista falso (mañana amanecería boca abajo igual).
+    if (ok) {
+      // Confirmado: transición atómica a revelado (cara + "Te salió…" + orientación +
+      // ritual), sin esperar a getStrip. `confirmed` + `pulling=false` se aplican juntos.
+      setConfirmed(true);
+    } else {
+      // El backend no lo persistió: la carta vuelve al dorso y el CTA reaparece, en vez
+      // de quedar en un estado optimista falso (mañana amanecería boca abajo igual).
       flip.value = withTiming(0, { duration: 420, easing: Easing.inOut(Easing.cubic) });
     }
-    pulling.current = false;
+    setPulling(false);
   }
 
   // Las dos caras comparten el mismo eje. Cada una se esconde en su mitad del giro.
@@ -154,8 +163,8 @@ export function CartaDelDia({
           <AnimatedPressable
             onPress={pull}
             accessibilityRole="button"
-            accessibilityLabel={revealed && carta ? `Tu carta de hoy: ${carta.nombre}` : "Tocá para sacar tu carta de hoy"}
-            accessibilityState={{ disabled: Boolean(disabled) || revealed }}
+            accessibilityLabel={isRevealed && carta ? `Tu carta de hoy: ${carta.nombre}` : "Tocá para sacar tu carta de hoy"}
+            accessibilityState={{ disabled: Boolean(disabled) || isRevealed }}
             style={[styles.cardBack, backStyle]}
           >
             <Image source={CARD_BACK} style={styles.cardImg} resizeMode="cover" />
@@ -174,7 +183,7 @@ export function CartaDelDia({
           </Animated.View>
         </View>
 
-        {!revealed ? (
+        {showCta ? (
           <>
             <Text style={styles.revealCta}>{disabled ? "PREPARANDO TU CARTA…" : ctaLabel ?? "TOCÁ PARA SACARLA"}</Text>
             {!disabled && ctaSub ? <Text style={styles.revealSub}>{ctaSub}</Text> : null}
@@ -185,7 +194,7 @@ export function CartaDelDia({
       {/* La lectura entra DESPUÉS del giro (620ms). Ya NO cruza con el cielo: es el
           análisis intrínseco de la carta. Regla del handoff v3: completa o carga —
           nunca una lectura parcial (esa fue la captura de La Sacerdotisa). */}
-      {revealed && carta ? (
+      {showRitual && carta ? (
         <Animated.View entering={FadeInDown.delay(520).duration(420)}>
           <Text style={styles.leadIn}>Te salió {carta.nombre}.</Text>
           {isRitualComplete(carta.ritual) ? (

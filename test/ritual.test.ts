@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, it } from "node:test";
-import { isRitualComplete } from "../src/domain/ritual";
+import { cartaRevealView, isRitualComplete } from "../src/domain/ritual";
 import type { DailyRitual } from "../src/services/appRefs";
 
 const complete: DailyRitual = {
@@ -59,6 +59,67 @@ describe("isRitualComplete — la lectura live es completa o no se muestra", () 
       isRitualComplete({ esencia: "algo", significadoGeneral: [], enTuDia: "", consejo: "algo", cierre: { pregunta: "" } }),
       false
     );
+  });
+});
+
+describe("cartaRevealView — la cara nunca convive con el CTA de carta cerrada", () => {
+  it("cerrada (nada en vuelo) → CTA visible, sin ritual", () => {
+    assert.deepEqual(cartaRevealView({ revealed: false, confirmed: false, pulling: false }), {
+      isRevealed: false,
+      showCta: true,
+      showRitual: false
+    });
+  });
+
+  it("tirón en vuelo → CTA oculto y sin ritual (la cara flipea sola)", () => {
+    assert.deepEqual(cartaRevealView({ revealed: false, confirmed: false, pulling: true }), {
+      isRevealed: false,
+      showCta: false,
+      showRitual: false
+    });
+  });
+
+  it("INTERVALO: mutation confirmada pero getStrip todavía no actualizó → revelado atómico, sin CTA", () => {
+    // Este es el bug de la captura (cara de El Hierofante + "Tocá para abrir el día").
+    assert.deepEqual(cartaRevealView({ revealed: false, confirmed: true, pulling: false }), {
+      isRevealed: true,
+      showCta: false,
+      showRitual: true
+    });
+  });
+
+  it("getStrip ya actualizó (con o sin confirm local) → revelado, sin CTA", () => {
+    for (const confirmed of [true, false]) {
+      assert.deepEqual(cartaRevealView({ revealed: true, confirmed, pulling: false }), {
+        isRevealed: true,
+        showCta: false,
+        showRitual: true
+      });
+    }
+  });
+
+  it("tirón fallido (vuelve al dorso) → igual que cerrada, CTA de nuevo", () => {
+    assert.deepEqual(cartaRevealView({ revealed: false, confirmed: false, pulling: false }), {
+      isRevealed: false,
+      showCta: true,
+      showRitual: false
+    });
+  });
+
+  it("INVARIANTE en las 8 combinaciones: si la cara puede verse (revelado o en vuelo), el CTA está oculto", () => {
+    for (const revealed of [false, true]) {
+      for (const confirmed of [false, true]) {
+        for (const pulling of [false, true]) {
+          const v = cartaRevealView({ revealed, confirmed, pulling });
+          const caraPosible = v.isRevealed || pulling; // el flip va hacia la cara
+          if (caraPosible) {
+            assert.equal(v.showCta, false, `cara+CTA en {revealed:${revealed}, confirmed:${confirmed}, pulling:${pulling}}`);
+          }
+          // El ritual solo aparece en estado revelado, nunca durante el tirón sin confirmar.
+          assert.equal(v.showRitual, v.isRevealed);
+        }
+      }
+    }
   });
 });
 
