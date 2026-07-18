@@ -8,7 +8,7 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { extractNormalizedChartFromPayload } from "./lib/orbita";
 import { resolveEntitlement, type SubscriptionRow } from "./lib/entitlements";
-import { findUserByTokenIdentifier, requireExistingUser, requireIdentity } from "./lib/users";
+import { findCurrentUser, findUserByTokenIdentifier, requireIdentity } from "./lib/users";
 
 /**
  * El Vacío (`void.ask`): responde la pregunta del usuario según su carta natal,
@@ -557,7 +557,10 @@ export const today = query({
     isPro: v.boolean()
   }),
   handler: async (ctx) => {
-    const user = await requireExistingUser(ctx);
+    const user = await findCurrentUser(ctx);
+    if (!user) {
+      return { limit: LIMIT_FREE, used: 0, remaining: LIMIT_FREE, isPro: false };
+    }
     const birthData = await ctx.db
       .query("birthData")
       .withIndex("by_user", (q: any) => q.eq("userId", user._id))

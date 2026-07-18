@@ -1,5 +1,15 @@
 # Current Task
 
+## Hotfix — carrera de lecturas al eliminar cuenta (2026-07-18, Codex)
+
+**Objetivo:** evitar el crash nativo observado al borrar una cuenta mientras Clerk todavía mantiene la sesión y las queries reactivas vuelven a ejecutarse después de eliminar la fila `users`.
+
+**Criterios de aceptación:** toda query pública de datos de cuenta devuelve su estado vacío contractual (`null`, `[]` o entitlement/cupo gratuito) si la identidad ya no tiene fila `users`; ninguna query lanza `User record not found` durante la ventana Convex → Clerk; mutations/actions continúan exigiendo identidad/usuario; la eliminación y los datos de otras cuentas no cambian.
+
+**Ficha:** owner Codex; territorio `convex/**`, tests y documentación; rama `codex/account-deletion-read-race` sobre `origin/main` `ba9456e`; riesgo medio por ampliar estados vacíos de lectura; tests unitarios + estructurales + suite completa + typecheck; rollout PR backend → Convex dev → repetir eliminación con cuenta descartable y frontend PR #29 → recién después decidir merges/producción; rollback por revert; fuera de alcance UI, Clerk client, Figma, TestFlight y producción.
+
+**Evidencia:** crash `rbita-2026-07-18-194801.ips`: `EXC_BAD_ACCESS/SIGSEGV` mientras React Native convertía una excepción de TurboModule. El log inmediatamente anterior muestra `readings:getToday` sin manejar: `User record not found`, después de que `users.deleteAccount()` eliminó el grafo y antes de que Clerk terminara de cerrar la identidad.
+
 ## App Review — eliminación completa de cuenta (2026-07-18, Codex)
 
 **Objetivo:** cumplir el requisito de App Store para apps con creación de cuenta mediante una eliminación real, autenticada e irreversible de la cuenta y sus datos.

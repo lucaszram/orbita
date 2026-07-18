@@ -17,7 +17,7 @@ import {
   type NormalizedAstroTransit
 } from "./lib/orbita";
 import { cardById, drawCard, type TarotDraw } from "./lib/tarot";
-import { findUserByTokenIdentifier, requireExistingUser, requireIdentity, requireUser } from "./lib/users";
+import { findCurrentUser, findUserByTokenIdentifier, requireIdentity, requireUser } from "./lib/users";
 
 /**
  * Guía diaria personalizada: análisis del día para CADA usuario, calculado sobre los
@@ -1316,7 +1316,8 @@ export const revealCard = mutation({
 export const getStrip = query({
   args: { from: v.string(), to: v.string() },
   handler: async (ctx, args) => {
-    const user = await requireExistingUser(ctx);
+    const user = await findCurrentUser(ctx);
+    if (!user) return [];
 
     const docs = await ctx.db
       .query("dailyGuides")

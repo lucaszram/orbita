@@ -1,10 +1,11 @@
 import { mutationGeneric as mutation, queryGeneric as query } from "convex/server";
 import { v } from "convex/values";
-import { omitUndefined, requireExistingUser, requireUser } from "./lib/users";
+import { findCurrentUser, omitUndefined, requireUser } from "./lib/users";
 
 export const getActive = query({
   handler: async (ctx) => {
-    const user = await requireExistingUser(ctx);
+    const user = await findCurrentUser(ctx);
+    if (!user) return null;
     return await ctx.db
       .query("relationshipProfiles")
       .withIndex("by_user_active", (q: any) => q.eq("userId", user._id).eq("isActive", true))

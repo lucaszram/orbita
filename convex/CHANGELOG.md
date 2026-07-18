@@ -1,5 +1,11 @@
 # Contrato — CHANGELOG
 
+## 2026-07-18 — Queries seguras durante la eliminación de cuenta
+- **Qué cambia:** las queries públicas que leen datos de cuenta tratan una identidad Clerk válida sin fila `users` como estado vacío contractual (`null`, `[]`, entitlement gratuito o cupo gratuito), en vez de lanzar `User record not found`. Las mutations/actions conservan sus validaciones estrictas.
+- **Por qué:** `users.deleteAccount()` elimina Convex antes de borrar la identidad Clerk. En esa ventana breve las suscripciones reactivas vuelven a ejecutarse; el build nativo cerró con `SIGSEGV` después de que `readings.getToday()` propagara una excepción sin manejar.
+- **Compatibilidad:** no cambian argumentos, firmas ni schema. Una cuenta normal obtiene exactamente los mismos datos; solo cambia la transición de una cuenta ya eliminada. No se recrean filas ni se exponen datos de otra cuenta.
+- **Rollout:** desplegar primero en Convex dev y repetir el borrado con una cuenta descartable usando el frontend PR #29. Producción queda fuera hasta aprobación explícita.
+
 ## 2026-07-18 — Eliminación completa de cuenta para App Review
 - **Qué cambia:** se define la mutación autenticada `users.deleteAccount()` con retorno `{ deleted: true }`. El borrado comprende la fila `users` y todos los documentos propios vinculados por `userId`/`createdByUserId`; `paymentEvents` suma el índice `by_clerkUserId` para retirar también la auditoría asociada sin escanear la tabla global.
 - **Compatibilidad:** cambio aditivo. Ningún flujo existente llama esta mutación; las cuentas actuales permanecen intactas. El frontend debe invocarla solo después de una confirmación destructiva y, si responde correctamente, eliminar la identidad de Clerk y limpiar el estado local.

@@ -1,6 +1,6 @@
 import { mutationGeneric as mutation, queryGeneric as query } from "convex/server";
 import { v } from "convex/values";
-import { omitUndefined, requireExistingUser, requireUser } from "./lib/users";
+import { findCurrentUser, omitUndefined, requireUser } from "./lib/users";
 
 const contentKindValidator = v.union(
   v.literal("headline"),
@@ -21,7 +21,8 @@ export const listPublished = query({
     kind: v.optional(contentKindValidator)
   },
   handler: async (ctx, args) => {
-    await requireExistingUser(ctx);
+    const user = await findCurrentUser(ctx);
+    if (!user) return [];
 
     if (args.kind) {
       return await ctx.db

@@ -1,6 +1,6 @@
 import { mutationGeneric as mutation, queryGeneric as query } from "convex/server";
 import { v } from "convex/values";
-import { omitUndefined, requireExistingUser, requireUser } from "./lib/users";
+import { findCurrentUser, omitUndefined, requireUser } from "./lib/users";
 import { resolveEntitlement, type SubscriptionRow } from "./lib/entitlements";
 
 const subscriptionStatusValidator = v.union(
@@ -32,7 +32,8 @@ export const getCurrent = query({
     canManageInStripePortal: v.boolean()
   }),
   handler: async (ctx) => {
-    const user = await requireExistingUser(ctx);
+    const user = await findCurrentUser(ctx);
+    if (!user) return resolveEntitlement([], Date.now());
     const rows = (await ctx.db
       .query("subscriptions")
       .withIndex("by_user", (q: any) => q.eq("userId", user._id))

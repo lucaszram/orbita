@@ -1,13 +1,14 @@
 import { mutationGeneric as mutation, queryGeneric as query } from "convex/server";
 import { v } from "convex/values";
 import { normalizeBirthTime } from "./lib/orbita";
-import { omitUndefined, requireExistingUser, requireUser } from "./lib/users";
+import { findCurrentUser, omitUndefined, requireUser } from "./lib/users";
 
 const birthTimePrecisionValidator = v.union(v.literal("known"), v.literal("approximate"), v.literal("unknown"));
 
 export const getCurrent = query({
   handler: async (ctx) => {
-    const user = await requireExistingUser(ctx);
+    const user = await findCurrentUser(ctx);
+    if (!user) return null;
     return await ctx.db
       .query("birthData")
       .withIndex("by_user", (q: any) => q.eq("userId", user._id))
