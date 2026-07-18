@@ -10,6 +10,8 @@
 
 **Preflight:** EAS production verificado con `EXPO_PUBLIC_APP_ENV=production`, Clerk `pk_live` y Convex `exciting-bat-311` (`cloud` + `site`); versión `1.0.0`; iPhone-only; cifrado no exento declarado `false`; publicación manual.
 
+**Estado final del RC:** PR #31 mergeado en `main` como `d6a2b021077536a358e9908d886c5dec41701caf`. Build local App Store firmado generado como `1.0.0 (17)`, verificado con Convex producción y Clerk live, y recibido por Apple. App Store Connect lo informa `VALID` (build ID `43482860-b3d4-4a8f-b574-cef833631de5`). Pendiente únicamente la pasada física en TestFlight; todavía no fue agregado a App Review.
+
 ## Hotfix — carrera de lecturas al eliminar cuenta (2026-07-18, Codex)
 
 **Objetivo:** evitar el crash nativo observado al borrar una cuenta mientras Clerk todavía mantiene la sesión y las queries reactivas vuelven a ejecutarse después de eliminar la fila `users`.
@@ -19,6 +21,16 @@
 **Ficha:** owner Codex; territorio `convex/**`, tests y documentación; rama `codex/account-deletion-read-race` sobre `origin/main` `ba9456e`; riesgo medio por ampliar estados vacíos de lectura; tests unitarios + estructurales + suite completa + typecheck; rollout PR backend → Convex dev → repetir eliminación con cuenta descartable y frontend PR #29 → recién después decidir merges/producción; rollback por revert; fuera de alcance UI, Clerk client, Figma, TestFlight y producción.
 
 **Evidencia:** crash `rbita-2026-07-18-194801.ips`: `EXC_BAD_ACCESS/SIGSEGV` mientras React Native convertía una excepción de TurboModule. El log inmediatamente anterior muestra `readings:getToday` sin manejar: `User record not found`, después de que `users.deleteAccount()` eliminó el grafo y antes de que Clerk terminara de cerrar la identidad.
+
+## App Review — paquete canónico de lanzamiento (2026-07-18, Codex)
+
+**Objetivo:** reemplazar la documentación vieja y contradictoria por una única fuente de verdad para llevar el próximo Release Candidate desde TestFlight hasta App Review con liberación manual.
+
+**Criterios de aceptación:** reflejar la configuración real (iPhone-only, ícono, cuenta obligatoria, versión gratuita), los gates de eliminación/legal/Plus, la cuenta demo con contraseña, la pasada TestFlight, metadata, privacidad, screenshots y definición exacta de “Add for Review”.
+
+**Ficha:** owner Codex; territorio `docs/**` y `CURRENT_TASK.md`; rama `codex/app-review-pack-v2`; riesgo bajo, solo documentación; validación por contraste con `app.json`/`eas.json` y URLs públicas; rollout por PR docs; rollback por revert; fuera de alcance código nativo, producción, App Store Connect y credenciales reales.
+
+**Estado:** `docs/app-review-readiness.md` creado como fuente canónica. Los dos documentos del 2026-07-10 quedan marcados como históricos. El backend y frontend de cumplimiento ya están en `main`; el build `1.0.0 (17)` está válido en TestFlight. Pendiente: pasada física, cuenta demo y metadata/capturas en App Store Connect.
 
 ## App Review — eliminación completa de cuenta (2026-07-18, Codex)
 

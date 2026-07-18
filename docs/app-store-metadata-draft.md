@@ -1,5 +1,8 @@
 # App Store Metadata Draft - Órbita
 
+> Borrador histórico iniciado el 2026-07-10. Para la metadata y los gates
+> vigentes usar `docs/app-review-readiness.md`.
+
 Estado: 2026-07-10.
 
 Este documento junta benchmark, decisiones de posicionamiento y un primer borrador
