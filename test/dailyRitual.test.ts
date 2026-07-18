@@ -1,6 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildDailyPrompt, composePayload, fallbackRitual, parseRitual } from "../convex/daily";
+import {
+  buildDailyPrompt,
+  composeFastPayload,
+  composePayload,
+  fallbackRitual,
+  mergeEnrichedGuide,
+  parseRitual,
+  planFastGuide,
+  splitDailyState,
+  withAbortTimeout
+} from "../convex/daily";
 import type { TarotDraw } from "../convex/lib/tarot";
 
 const COMPLETE_RITUAL = {
@@ -122,4 +132,136 @@ test("composePayload publica ritual v3 y el puente legacy derivado para build 13
     { label: "EL CONSEJO", body: COMPLETE_RITUAL.consejo }
   ]);
   assert.equal(JSON.stringify(payload.carta?.beats).includes("cielo"), false);
+});
+
+test("fast path entrega una carta completa sin IA y agenda una sola mejora", () => {
+  const carta: TarotDraw = {
+    id: 5,
+    key: "major_05_el_hierofante",
+    nombre: "El Hierofante",
+    arcana: "major",
+    correspondencia: "Tauro ♉",
+    orientacion: "invertida"
+  };
+  const candidate = composeFastPayload({ carta, now: 1_000 });
+  assert.equal(candidate.carta?.id, 5);
+  assert.equal(candidate.carta?.orientacion, "invertida");
+  assert.equal(candidate.carta?.ritual.significadoGeneral.length, 3);
+  assert.equal(candidate.enrichment?.status, "pending");
+
+  const first = planFastGuide({ existing: null, candidate, now: 1_000 });
+  const concurrent = planFastGuide({ existing: first.payload, candidate, now: 1_001 });
+  assert.equal(first.shouldSchedule, true);
+  assert.equal(first.cacheHit, false);
+  assert.equal(concurrent.shouldSchedule, false);
+  assert.equal(concurrent.reason, "in_flight");
+});
+
+test("un payload v3 previo se conserva como listo y no se regenera", () => {
+  const carta: TarotDraw = {
+    id: 18,
+    key: "major_18_la_luna",
+    nombre: "La Luna",
+    arcana: "major",
+    correspondencia: "Piscis ♓",
+    orientacion: "derecho"
+  };
+  const legacyReady = composePayload({
+    carta,
+    transits: [],
+    generated: {
+      headline: "Ya generada",
+      body: "Este texto ya fue visto.",
+      clima: "Estable.",
+      destacadoLectura: "Sin tránsito.",
+      cartaRitual: COMPLETE_RITUAL
+    }
+  });
+  const candidate = composeFastPayload({ carta: { ...carta, orientacion: "invertida" }, now: 2_000 });
+  const plan = planFastGuide({ existing: legacyReady, candidate, now: 2_000 });
+  assert.equal(plan.shouldSchedule, false);
+  assert.equal(plan.reason, "legacy_ready");
+  assert.deepEqual(plan.payload.carta, legacyReady.carta);
+});
+
+test("el enriquecimiento nunca reemplaza carta, orientación ni ritual", () => {
+  const carta: TarotDraw = {
+    id: 5,
+    key: "major_05_el_hierofante",
+    nombre: "El Hierofante",
+    arcana: "major",
+    correspondencia: "Tauro ♉",
+    orientacion: "invertida"
+  };
+  const existing = composeFastPayload({ carta, now: 1_000 });
+  const otherCard: TarotDraw = {
+    id: 19,
+    key: "major_19_el_sol",
+    nombre: "El Sol",
+    arcana: "major",
+    correspondencia: "Sol ☉",
+    orientacion: "derecho"
+  };
+  const enriched = composePayload({
+    carta: otherCard,
+    transits: [],
+    generated: {
+      headline: "Contenido personalizado",
+      body: "Llegó después.",
+      clima: "Activo.",
+      destacadoLectura: "Lectura.",
+      cartaRitual: COMPLETE_RITUAL
+    }
+  });
+  const merged = mergeEnrichedGuide({ existing, enriched, status: "ready", now: 8_000 });
+  assert.deepEqual(merged.carta, existing.carta);
+  assert.equal(merged.headline, "Contenido personalizado");
+  assert.equal(merged.enrichment?.status, "ready");
+});
+
+test("el contrato build 17 separa carta estable, estado y módulos personalizados", () => {
+  const carta: TarotDraw = {
+    id: 71,
+    key: "pentacles_08",
+    nombre: "Ocho de Oros",
+    arcana: "minor",
+    suit: "pentacles",
+    rank: "08",
+    correspondencia: "Oros · Tierra",
+    orientacion: "derecho"
+  };
+  const payload = composeFastPayload({ carta, now: 1_000 });
+  const state = splitDailyState(payload, 7_777);
+
+  assert.equal(state.card.id, 71);
+  assert.equal(state.card.revealed, true);
+  assert.equal(state.card.revealedAt, 7_777);
+  assert.equal(state.card.ritual.significadoGeneral.length, 3);
+  assert.equal(state.enrichment.status, "pending");
+  assert.equal(state.personalized.headline, payload.headline);
+  assert.equal("carta" in state.personalized, false);
+  assert.equal("enrichment" in state.personalized, false);
+});
+
+test("un job pendiente solo se reprograma cuando vence el lease", () => {
+  const carta: TarotDraw = {
+    id: 0,
+    key: "major_00_el_loco",
+    nombre: "El Loco",
+    arcana: "major",
+    correspondencia: "Urano ♅ (aire)",
+    orientacion: "derecho"
+  };
+  const candidate = composeFastPayload({ carta, now: 1_000 });
+  assert.equal(planFastGuide({ existing: candidate, candidate, now: 120_999 }).shouldSchedule, false);
+  const retry = planFastGuide({ existing: candidate, candidate, now: 121_000 });
+  assert.equal(retry.shouldSchedule, true);
+  assert.equal(retry.reason, "retry");
+  assert.equal(retry.payload.enrichment?.attempt, 2);
+});
+
+test("el timebox corta una etapa colgada dentro del presupuesto", async () => {
+  const startedAt = Date.now();
+  await assert.rejects(withAbortTimeout(40, async () => await new Promise<never>(() => undefined)), /stage_timeout_40ms/);
+  assert.ok(Date.now() - startedAt < 150);
 });

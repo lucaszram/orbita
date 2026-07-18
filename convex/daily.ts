@@ -1,5 +1,6 @@
 import {
   actionGeneric as action,
+  internalActionGeneric as internalAction,
   internalMutationGeneric as internalMutation,
   internalQueryGeneric as internalQuery,
   mutationGeneric as mutation,
@@ -14,7 +15,7 @@ import {
   selectRelevantTransits,
   type NormalizedAstroTransit
 } from "./lib/orbita";
-import { drawCard, type TarotDraw } from "./lib/tarot";
+import { cardById, drawCard, type TarotDraw } from "./lib/tarot";
 import { findUserByTokenIdentifier, requireExistingUser, requireIdentity, requireUser } from "./lib/users";
 
 /**
@@ -28,6 +29,9 @@ const internalApi = internal as any;
 const AI_GATEWAY_CHAT_COMPLETIONS_URL = "https://ai-gateway.vercel.sh/v1/chat/completions";
 const DEFAULT_TIMEZONE = "America/Argentina/Buenos_Aires";
 const DAILY_GUIDE_PAYLOAD_VERSION = "orbita-daily-guide-v3";
+const EXTERNAL_STAGE_TIMEOUT_MS = 5_000;
+const ENRICHMENT_LEASE_MS = 2 * 60_000;
+const ENRICHMENT_RETRY_MS = 5 * 60_000;
 
 /** Áreas de la Home. El orden es el de los tabs. */
 const TOPIC_KEYS = ["amor", "trabajo", "familia", "vinculos"] as const;
@@ -111,6 +115,37 @@ type DailyGuidePayload = {
   topics?: DailyTopic[];
   lecturaLarga?: { eyebrow: string; title: string; body: string };
   cierre?: string;
+  /** Estado aditivo del enriquecimiento. Clientes anteriores lo ignoran y siguen
+   *  consumiendo el mismo payload v3; el ritual de `carta` nunca se reemplaza. */
+  enrichment?: DailyEnrichment;
+};
+
+type DailyEnrichmentStatus = "pending" | "ready" | "fallback" | "error";
+
+type DailyEnrichment = {
+  status: DailyEnrichmentStatus;
+  requestedAt: number;
+  completedAt?: number;
+  retryAfter?: number;
+  attempt: number;
+};
+
+type DailyPersonalized = Omit<
+  DailyGuidePayload,
+  "payloadVersion" | "carta" | "enrichment"
+>;
+
+export type DailyCardState = {
+  card: DailyCarta & { revealed: boolean; revealedAt?: number };
+  enrichment: DailyEnrichment;
+  personalized: DailyPersonalized;
+};
+
+type EnrichmentPlan = {
+  payload: DailyGuidePayload;
+  shouldSchedule: boolean;
+  cacheHit: boolean;
+  reason: "created" | "legacy_ready" | "ready" | "in_flight" | "retry";
 };
 
 /** Un documento diario puede sobrevivir a varias versiones de la app. Solo lo
@@ -133,6 +168,128 @@ export function isCurrentDailyGuidePayload(value: unknown): value is DailyGuideP
     orientationValid &&
     parseRitual(card.ritual) !== undefined
   );
+}
+
+function readEnrichment(value: unknown): DailyEnrichment | undefined {
+  const raw = asRecord(value);
+  if (!raw) return undefined;
+  const status = raw.status;
+  if (status !== "pending" && status !== "ready" && status !== "fallback" && status !== "error") return undefined;
+  const requestedAt = typeof raw.requestedAt === "number" ? raw.requestedAt : 0;
+  const attempt = typeof raw.attempt === "number" && Number.isInteger(raw.attempt) ? raw.attempt : 0;
+  return {
+    status,
+    requestedAt,
+    attempt,
+    completedAt: typeof raw.completedAt === "number" ? raw.completedAt : undefined,
+    retryAfter: typeof raw.retryAfter === "number" ? raw.retryAfter : undefined
+  };
+}
+
+/** Decisión pura que usa la mutation transaccional. El primer writer agenda una
+ *  sola mejora; los demás reutilizan el mismo documento. Un lease vencido permite
+ *  recuperar jobs perdidos sin volver a bloquear el request del usuario. */
+export function planFastGuide(args: {
+  existing: unknown;
+  candidate: DailyGuidePayload;
+  now: number;
+}): EnrichmentPlan {
+  if (!isCurrentDailyGuidePayload(args.existing)) {
+    return { payload: args.candidate, shouldSchedule: true, cacheHit: false, reason: "created" };
+  }
+
+  const existing = args.existing;
+  const enrichment = readEnrichment(existing.enrichment);
+  // Payloads v3 anteriores al fast path ya fueron generados de forma completa.
+  if (!enrichment) {
+    return { payload: existing, shouldSchedule: false, cacheHit: true, reason: "legacy_ready" };
+  }
+  if (enrichment.status === "ready") {
+    return { payload: existing, shouldSchedule: false, cacheHit: true, reason: "ready" };
+  }
+
+  const retryAt =
+    enrichment.status === "pending"
+      ? enrichment.requestedAt + ENRICHMENT_LEASE_MS
+      : enrichment.retryAfter ?? enrichment.requestedAt + ENRICHMENT_RETRY_MS;
+  if (args.now < retryAt) {
+    return { payload: existing, shouldSchedule: false, cacheHit: true, reason: "in_flight" };
+  }
+
+  const payload: DailyGuidePayload = {
+    ...existing,
+    enrichment: {
+      status: "pending",
+      requestedAt: args.now,
+      attempt: Math.max(1, enrichment.attempt + 1)
+    }
+  };
+  return { payload, shouldSchedule: true, cacheHit: true, reason: "retry" };
+}
+
+/** El enriquecimiento puede reemplazar módulos personalizados, pero jamás la carta,
+ *  su orientación ni su ritual: la lectura que la persona empezó a leer es estable. */
+export function mergeEnrichedGuide(args: {
+  existing: DailyGuidePayload;
+  enriched: DailyGuidePayload;
+  status: "ready" | "fallback" | "error";
+  now: number;
+}): DailyGuidePayload {
+  const previous = readEnrichment(args.existing.enrichment);
+  return {
+    ...args.enriched,
+    carta: args.existing.carta,
+    enrichment: {
+      status: args.status,
+      requestedAt: previous?.requestedAt ?? args.now,
+      completedAt: args.now,
+      retryAfter: args.status === "ready" ? undefined : args.now + ENRICHMENT_RETRY_MS,
+      attempt: Math.max(1, previous?.attempt ?? 1)
+    }
+  };
+}
+
+/** Contrato aditivo para el frontend desacoplado. Mantiene la carta separada de
+ *  los módulos que llegan después y normaliza payloads v3 previos como ready. */
+export function splitDailyState(payload: DailyGuidePayload, revealedAt?: number | null): DailyCardState {
+  if (!payload.carta) throw new Error("Daily card is missing");
+  const { payloadVersion: _version, carta, enrichment: rawEnrichment, ...personalized } = payload;
+  const enrichment = readEnrichment(rawEnrichment) ?? {
+    status: "ready" as const,
+    requestedAt: 0,
+    completedAt: 0,
+    attempt: 1
+  };
+  return {
+    card: {
+      ...carta,
+      revealed: typeof revealedAt === "number",
+      revealedAt: typeof revealedAt === "number" ? revealedAt : undefined
+    },
+    enrichment,
+    personalized
+  };
+}
+
+/** Timebox real: aborta fetch cuando lo soporta y, aunque el proveedor ignore la
+ *  señal, la etapa deja de bloquear al cumplirse el presupuesto. */
+export async function withAbortTimeout<T>(
+  timeoutMs: number,
+  operation: (signal: AbortSignal) => Promise<T>
+): Promise<T> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error(`stage_timeout_${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([operation(controller.signal), timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 type DailyGenerated = {
@@ -595,7 +752,12 @@ function parseDaily(text: string): DailyGenerated | null {
   }
 }
 
-async function gatewayGenerateText(args: { apiKey: string; model: string; prompt: string }): Promise<string> {
+async function gatewayGenerateText(args: {
+  apiKey: string;
+  model: string;
+  prompt: string;
+  signal?: AbortSignal;
+}): Promise<string> {
   const response = await fetch(AI_GATEWAY_CHAT_COMPLETIONS_URL, {
     method: "POST",
     headers: {
@@ -603,6 +765,7 @@ async function gatewayGenerateText(args: { apiKey: string; model: string; prompt
       "Content-Type": "application/json",
       "X-Vercel-AI-App-Name": "Orbita Daily"
     },
+    signal: args.signal,
     body: JSON.stringify({
       model: args.model,
       messages: [
@@ -760,16 +923,30 @@ function fallbackDaily(args: DailyInput): DailyGenerated {
   };
 }
 
-async function generateDaily(args: DailyInput): Promise<DailyGenerated> {
+type DailyGenerationResult = {
+  generated: DailyGenerated;
+  source: "llm" | "fallback";
+  reason?: "disabled" | "timeout" | "invalid" | "error";
+};
+
+async function generateDaily(args: DailyInput): Promise<DailyGenerationResult> {
   const enabled = process.env.ORBITA_LLM_ENABLED === "true";
   const apiKey = process.env.AI_GATEWAY_API_KEY?.trim();
   const model = process.env.ORBITA_LLM_MODEL?.trim();
-  if (!enabled || !apiKey || !model) return fallbackDaily(args);
+  if (!enabled || !apiKey || !model) {
+    return { generated: fallbackDaily(args), source: "fallback", reason: "disabled" };
+  }
   try {
-    const text = await gatewayGenerateText({ apiKey, model, prompt: buildDailyPrompt(args) });
-    return parseDaily(text) ?? fallbackDaily(args);
-  } catch {
-    return fallbackDaily(args);
+    const text = await withAbortTimeout(EXTERNAL_STAGE_TIMEOUT_MS, (signal) =>
+      gatewayGenerateText({ apiKey, model, prompt: buildDailyPrompt(args), signal })
+    );
+    const parsed = parseDaily(text);
+    return parsed
+      ? { generated: parsed, source: "llm" }
+      : { generated: fallbackDaily(args), source: "fallback", reason: "invalid" };
+  } catch (error) {
+    const reason = error instanceof Error && error.message.startsWith("stage_timeout_") ? "timeout" : "error";
+    return { generated: fallbackDaily(args), source: "fallback", reason };
   }
 }
 
@@ -777,10 +954,12 @@ export function composePayload(args: {
   generated: DailyGenerated;
   transits: NormalizedAstroTransit[];
   carta: TarotDraw;
+  ritual?: DailyRitual;
+  enrichment?: DailyEnrichment;
 }): DailyGuidePayload {
   const [top, ...rest] = args.transits;
   const g = args.generated;
-  const ritual = g.cartaRitual ?? fallbackRitual(args.carta);
+  const ritual = args.ritual ?? g.cartaRitual ?? fallbackRitual(args.carta);
   return {
     payloadVersion: DAILY_GUIDE_PAYLOAD_VERSION,
     carta: {
@@ -802,8 +981,27 @@ export function composePayload(args: {
     guia: g.guia,
     topics: g.topics,
     lecturaLarga: g.lecturaLarga,
-    cierre: g.cierre
+    cierre: g.cierre,
+    enrichment: args.enrichment
   };
+}
+
+/** Payload completo y barato para el primer render. No llama proveedores ni IA. */
+export function composeFastPayload(args: { carta: TarotDraw; now: number }): DailyGuidePayload {
+  const generated = fallbackDaily({
+    natal: [],
+    tension: [],
+    transits: [],
+    localDate: "",
+    carta: args.carta
+  });
+  return composePayload({
+    generated,
+    transits: [],
+    carta: args.carta,
+    ritual: fallbackRitual(args.carta),
+    enrichment: { status: "pending", requestedAt: args.now, attempt: 1 }
+  });
 }
 
 // --- Data layer ------------------------------------------------------------
@@ -842,11 +1040,60 @@ export const getGuideState = internalQuery({
       : [];
     const recentCardIds = recentCardIdsFromPayloads(recentGuides.map((doc: any) => doc.payload));
 
-    return { userId: user._id, birthData, natalChart, existing, recentCardIds };
+    return { userId: user._id, name: user.name, birthData, natalChart, existing, recentCardIds };
   }
 });
 
-export const persistGuide = internalMutation({
+/** Contexto mínimo del fast path. En cache hit no carga carta natal ni datos de
+ *  nacimiento completos: el build solo necesita devolver la carta ya persistida. */
+export const getFastGuideState = internalQuery({
+  args: { tokenIdentifier: v.string(), localDate: v.string() },
+  handler: async (ctx, args) => {
+    const user = await findUserByTokenIdentifier(ctx, args.tokenIdentifier);
+    if (!user) throw new Error("User record not found");
+
+    const existing = await ctx.db
+      .query("dailyGuides")
+      .withIndex("by_user_date", (q: any) => q.eq("userId", user._id).eq("localDate", args.localDate))
+      .first();
+    if (isCurrentDailyGuidePayload(existing?.payload)) {
+      return { userId: user._id, existing, recentCardIds: [] as number[] };
+    }
+
+    const recentWindowStart = shiftLocalDate(args.localDate, -6);
+    const recentGuides = recentWindowStart
+      ? await ctx.db
+          .query("dailyGuides")
+          .withIndex("by_user_date", (q: any) =>
+            q.eq("userId", user._id).gte("localDate", recentWindowStart).lt("localDate", args.localDate)
+          )
+          .collect()
+      : [];
+    return {
+      userId: user._id,
+      existing,
+      recentCardIds: recentCardIdsFromPayloads(recentGuides.map((doc: any) => doc.payload))
+    };
+  }
+});
+
+/** Solo se usa cuando el cliente no manda fecha ni timezone. Mantiene esa
+ *  compatibilidad sin cargar el resto del estado de enriquecimiento. */
+export const getGuideTimezone = internalQuery({
+  args: { tokenIdentifier: v.string() },
+  handler: async (ctx, args) => {
+    const user = await findUserByTokenIdentifier(ctx, args.tokenIdentifier);
+    if (!user) throw new Error("User record not found");
+    const birthData = await ctx.db
+      .query("birthData")
+      .withIndex("by_user", (q: any) => q.eq("userId", user._id))
+      .order("desc")
+      .first();
+    return birthData?.timezone ?? DEFAULT_TIMEZONE;
+  }
+});
+
+export const ensureFastGuide = internalMutation({
   args: { tokenIdentifier: v.string(), localDate: v.string(), payload: v.any() },
   handler: async (ctx, args) => {
     const user = await findUserByTokenIdentifier(ctx, args.tokenIdentifier);
@@ -856,90 +1103,241 @@ export const persistGuide = internalMutation({
       .query("dailyGuides")
       .withIndex("by_user_date", (q: any) => q.eq("userId", user._id).eq("localDate", args.localDate))
       .first();
+    const now = Date.now();
+    const plan = planFastGuide({ existing: existing?.payload, candidate: args.payload as DailyGuidePayload, now });
+
     if (existing) {
-      if (isCurrentDailyGuidePayload(existing.payload)) return existing.payload;
-      await ctx.db.patch(existing._id, { payload: args.payload });
-      return args.payload;
+      if (plan.payload !== existing.payload) await ctx.db.patch(existing._id, { payload: plan.payload });
+    } else {
+      await ctx.db.insert("dailyGuides", {
+        userId: user._id,
+        localDate: args.localDate,
+        payload: plan.payload,
+        createdAt: now
+      });
     }
 
-    await ctx.db.insert("dailyGuides", {
-      userId: user._id,
-      localDate: args.localDate,
-      payload: args.payload,
-      createdAt: Date.now()
-    });
-    return args.payload;
+    if (plan.shouldSchedule) {
+      await ctx.scheduler.runAfter(0, internalApi.daily.enrichGuide, {
+        tokenIdentifier: args.tokenIdentifier,
+        localDate: args.localDate
+      });
+    }
+
+    return {
+      payload: plan.payload,
+      cacheHit: plan.cacheHit,
+      scheduled: plan.shouldSchedule,
+      reason: plan.reason,
+      revealedAt: existing?.revealedAt ?? null
+    };
   }
 });
 
-// --- Action pública --------------------------------------------------------
-
-export const getGuide = action({
-  args: { localDate: v.optional(v.string()), timezone: v.optional(v.string()) },
-  handler: async (ctx, args): Promise<DailyGuidePayload> => {
-    const identity = await requireIdentity(ctx as any);
-    const stateForDate: any = await ctx.runQuery(internalApi.daily.getGuideState, {
-      tokenIdentifier: identity.tokenIdentifier,
-      localDate: args.localDate ?? "" // se recomputa abajo con la tz real si hace falta
-    });
-    const timezone = args.timezone ?? stateForDate.birthData?.timezone ?? DEFAULT_TIMEZONE;
-    const localDate = args.localDate ?? localDateForTimezone(timezone);
-
-    const state: any = args.localDate
-      ? stateForDate
-      : await ctx.runQuery(internalApi.daily.getGuideState, { tokenIdentifier: identity.tokenIdentifier, localDate });
-
-    if (state.existing && isCurrentDailyGuidePayload(state.existing.payload)) {
-      return state.existing.payload;
+export const persistEnrichedGuide = internalMutation({
+  args: {
+    tokenIdentifier: v.string(),
+    localDate: v.string(),
+    payload: v.any(),
+    status: v.union(v.literal("ready"), v.literal("fallback"), v.literal("error"))
+  },
+  handler: async (ctx, args) => {
+    const user = await findUserByTokenIdentifier(ctx, args.tokenIdentifier);
+    if (!user) return { updated: false, reason: "user_missing" };
+    const existing = await ctx.db
+      .query("dailyGuides")
+      .withIndex("by_user_date", (q: any) => q.eq("userId", user._id).eq("localDate", args.localDate))
+      .first();
+    if (!existing || !isCurrentDailyGuidePayload(existing.payload) || !isCurrentDailyGuidePayload(args.payload)) {
+      return { updated: false, reason: "guide_missing" };
     }
 
+    const currentCard = existing.payload.carta;
+    const nextCard = args.payload.carta;
+    if (!currentCard || !nextCard || currentCard.id !== nextCard.id || currentCard.orientacion !== nextCard.orientacion) {
+      return { updated: false, reason: "card_changed" };
+    }
+
+    const payload = mergeEnrichedGuide({
+      existing: existing.payload,
+      enriched: args.payload,
+      status: args.status,
+      now: Date.now()
+    });
+    await ctx.db.patch(existing._id, { payload });
+    return { updated: true, reason: args.status };
+  }
+});
+
+export const enrichGuide = internalAction({
+  args: { tokenIdentifier: v.string(), localDate: v.string() },
+  handler: async (ctx, args) => {
+    const startedAt = Date.now();
+    const state: any = await ctx.runQuery(internalApi.daily.getGuideState, args);
+    if (!state.existing || !isCurrentDailyGuidePayload(state.existing.payload)) return null;
+
+    const existing = state.existing.payload as DailyGuidePayload;
+    const enrichment = readEnrichment(existing.enrichment);
+    if (!enrichment || enrichment.status !== "pending" || !existing.carta) return null;
+
+    const card = cardById(existing.carta.id);
+    if (!card) return null;
+    const carta: TarotDraw = { ...card, orientacion: existing.carta.orientacion };
     const { lines: natal, tension } = natalBrief(state.natalChart?.payload);
 
-    // Traer los tránsitos del día (mismo proveedor que transits.getToday).
     let transits: NormalizedAstroTransit[] = [];
+    let providerOutcome = state.birthData ? "fallback" : "missing_birth_data";
+    const providerStartedAt = Date.now();
     if (state.birthData) {
       const bd = state.birthData;
-      const providerResult = await runAstrologyApiDailyTransits({
-        input: {
-          birthDate: bd.birthDate,
-          birthTime: bd.birthTime,
-          birthTimePrecision: bd.birthTimePrecision,
-          birthPlaceLabel: bd.birthPlaceLabel,
-          latitude: bd.latitude,
-          longitude: bd.longitude,
-          timezone: bd.timezone
-        },
-        localDate
-      });
-      if (providerResult.status === "success" && providerResult.normalized) {
-        transits = selectRelevantTransits(providerResult.normalized.transits, 4);
+      try {
+        const providerResult = await withAbortTimeout(EXTERNAL_STAGE_TIMEOUT_MS, (signal) =>
+          runAstrologyApiDailyTransits({
+            input: {
+              birthDate: bd.birthDate,
+              birthTime: bd.birthTime,
+              birthTimePrecision: bd.birthTimePrecision,
+              birthPlaceLabel: bd.birthPlaceLabel,
+              latitude: bd.latitude,
+              longitude: bd.longitude,
+              timezone: bd.timezone
+            },
+            localDate: args.localDate,
+            signal
+          })
+        );
+        providerOutcome = providerResult.status;
+        if (providerResult.status === "success" && providerResult.normalized) {
+          transits = selectRelevantTransits(providerResult.normalized.transits, 4);
+        }
+      } catch (error) {
+        providerOutcome = error instanceof Error && error.message.startsWith("stage_timeout_") ? "timeout" : "error";
       }
     }
+    const providerMs = Date.now() - providerStartedAt;
 
-    // La carta y su orientación se sortean ANTES del LLM. El prompt escribe su ritual
-    // intrínseco en un bloque independiente; no cruza la carta con los tránsitos.
+    const llmStartedAt = Date.now();
+    const generation = await generateDaily({
+      natal,
+      tension,
+      transits,
+      localDate: args.localDate,
+      name: state.name ?? undefined,
+      carta
+    });
+    const llmMs = Date.now() - llmStartedAt;
+    const enriched = composePayload({ generated: generation.generated, transits, carta });
+    const status = providerOutcome === "success" && generation.source === "llm" ? "ready" : "fallback";
+
+    const persistStartedAt = Date.now();
+    const persisted: any = await ctx.runMutation(internalApi.daily.persistEnrichedGuide, {
+      tokenIdentifier: args.tokenIdentifier,
+      localDate: args.localDate,
+      payload: enriched,
+      status
+    });
+    const persistMs = Date.now() - persistStartedAt;
+
+    console.info(
+      "[daily.enrichment]",
+      JSON.stringify({
+        localDate: args.localDate,
+        providerMs,
+        providerOutcome,
+        llmMs,
+        llmOutcome: generation.source,
+        llmReason: generation.reason ?? null,
+        persistMs,
+        updated: Boolean(persisted?.updated),
+        outcome: status,
+        totalMs: Date.now() - startedAt
+      })
+    );
+    return persisted;
+  }
+});
+
+// --- Actions públicas ------------------------------------------------------
+
+async function runFastGuide(
+  ctx: any,
+  args: { localDate?: string; timezone?: string }
+): Promise<{ payload: DailyGuidePayload; revealedAt: number | null }> {
+    const startedAt = Date.now();
+    const identity = await requireIdentity(ctx as any);
+    const timezone =
+      args.timezone ??
+      (args.localDate
+        ? DEFAULT_TIMEZONE
+        : await ctx.runQuery(internalApi.daily.getGuideTimezone, { tokenIdentifier: identity.tokenIdentifier }));
+    const localDate = args.localDate ?? localDateForTimezone(timezone);
+    const state: any = await ctx.runQuery(internalApi.daily.getFastGuideState, {
+      tokenIdentifier: identity.tokenIdentifier,
+      localDate
+    });
+    const stateMs = Date.now() - startedAt;
+
+    const cardStartedAt = Date.now();
     const carta = drawCard({
       userId: String(state.userId),
       localDate,
       excludedIds: state.recentCardIds ?? []
     });
+    const payload = composeFastPayload({ carta, now: Date.now() });
+    const cardMs = Date.now() - cardStartedAt;
 
-    const generated = await generateDaily({
-      natal,
-      tension,
-      transits,
-      localDate,
-      name: identity.name ?? undefined,
-      carta
-    });
-    const payload = composePayload({ generated, transits, carta });
+    // Cache hit puro: evita una mutation/roundtrip. Los casos que necesitan crear
+    // o recuperar un job pasan por la mutation transaccional, que vuelve a decidir.
+    const preflight = planFastGuide({ existing: state.existing?.payload, candidate: payload, now: Date.now() });
+    let persisted: any = {
+      payload: preflight.payload,
+      cacheHit: preflight.cacheHit,
+      scheduled: false,
+      reason: preflight.reason,
+      revealedAt: state.existing?.revealedAt ?? null
+    };
+    const persistStartedAt = Date.now();
+    if (preflight.shouldSchedule) {
+      persisted = await ctx.runMutation(internalApi.daily.ensureFastGuide, {
+        tokenIdentifier: identity.tokenIdentifier,
+        localDate,
+        payload
+      });
+    }
+    const persistMs = Date.now() - persistStartedAt;
+    console.info(
+      "[daily.fast]",
+      JSON.stringify({
+        localDate,
+        cacheHit: Boolean(persisted?.cacheHit),
+        scheduled: Boolean(persisted?.scheduled),
+        reason: persisted?.reason ?? "unknown",
+        stateMs,
+        cardMs,
+        persistMs,
+        totalMs: Date.now() - startedAt
+      })
+    );
+    return {
+      payload: (persisted?.payload ?? payload) as DailyGuidePayload,
+      revealedAt: typeof persisted?.revealedAt === "number" ? persisted.revealedAt : null
+    };
+}
 
-    const stored: any = await ctx.runMutation(internalApi.daily.persistGuide, {
-      tokenIdentifier: identity.tokenIdentifier,
-      localDate,
-      payload
-    });
-    return (stored ?? payload) as DailyGuidePayload;
+/** Compatibilidad binaria: build 16 sigue consumiendo el payload v3 plano. */
+export const getGuide = action({
+  args: { localDate: v.optional(v.string()), timezone: v.optional(v.string()) },
+  handler: async (ctx, args): Promise<DailyGuidePayload> => {
+    return (await runFastGuide(ctx, args)).payload;
+  }
+});
+
+/** Contrato definitivo para build 17+: la carta no depende del enriquecimiento. */
+export const getCard = action({
+  args: { localDate: v.optional(v.string()), timezone: v.optional(v.string()) },
+  handler: async (ctx, args): Promise<DailyCardState> => {
+    const result = await runFastGuide(ctx, args);
+    return splitDailyState(result.payload, result.revealedAt);
   }
 });
 
