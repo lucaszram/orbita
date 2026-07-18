@@ -1,5 +1,15 @@
 # Current Task
 
+## Release Candidate — TestFlight 1.0.0 (16) (2026-07-18, Codex)
+
+**Objetivo:** publicar únicamente en TestFlight interno el ritual diario v3 ya aprobado en simulador: carta al derecho/invertida, giro visual al revelar, lectura completa y persistencia en Diario.
+
+**Estado:** `main` integra los PR #22 (backend compatible) y #23 (frontend). El árbol mergeado coincide exactamente con el Release Candidate probado: typecheck verde, 282/282 tests, export iOS correcto y `git diff --check` limpio. Convex production `exciting-bat-311` recibió el backend compatible, que conserva `carta.beats` para builds anteriores y agrega `orientacion` + `ritual` para este build. Esta rama fija explícitamente `1.0.0 (16)` y desactiva el auto-incremento para que el binario local sea reproducible. No se envía a App Review ni se publica en App Store hasta que Lucas apruebe la pasada en TestFlight.
+
+**Gate manual en TestFlight:** carta nueva cerrada con dorso → un tap gira y revela sin mostrar cara+CTA a la vez → orientación y ritual completo → reapertura conserva carta/orientación → Diario muestra el mismo ritual → login y carta natal continúan funcionando.
+
+**Rollback:** mantener disponible el build anterior en TestFlight y no promover el build 16. El backend es aditivo/compatible, por lo que no requiere rollback para que los builds anteriores sigan operando.
+
 ## Backend — carta diaria ritual + orientación (2026-07-17, Codex)
 
 **Estado:** implementado y validado en la rama `codex/daily-card-ritual`. `daily.getGuide()` migra a `orbita-daily-guide-v3`: suma `carta.orientacion` (`derecho|invertida`) + `carta.ritual` (esencia, exactamente 3 facetas, enTuDia, consejo y cierre/Umbral). Durante el rollout conserva un `carta.beats` legacy derivado del ritual para que el build 13 siga funcionando; no genera otro contenido ni inventa cruces astrológicos. Se conserva el mazo completo de 78 y la exclusión de los seis días anteriores; la orientación usa una segunda semilla determinística al 50% y `daily.getStrip()` la devuelve para el historial. Payloads v2 se regeneran preservando `revealedAt`. El frontend PR #23 corrigió el Diario para usar el mismo bloque canónico que Home y agregó regresiones de ritual completo. Integración final previa al puente `#22 + #23`: typecheck verde, 276/276 tests y `git diff --check` limpio. Backend desplegado únicamente a Convex dev `dutiful-viper-815`; producción no fue tocada. Release local con JS embebido instalado en `orbita-main-b11` para la pasada manual de Lucas. El puente nuevo está validado localmente con typecheck y 266/266 tests backend; falta repetir la integración conjunta y la aprobación manual antes de mergear o publicar.
