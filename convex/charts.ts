@@ -18,7 +18,7 @@ import {
   buildWebB0ValuesMapPayload,
   CHART_CALCULATION_VERSION
 } from "./lib/orbita";
-import { findUserByTokenIdentifier, requireExistingUser, requireIdentity } from "./lib/users";
+import { findCurrentUser, findUserByTokenIdentifier, requireIdentity } from "./lib/users";
 
 const internalApi = internal as any;
 
@@ -56,14 +56,16 @@ async function getCurrentChart(ctx: any, userId: string) {
 
 export const current = query({
   handler: async (ctx) => {
-    const user = await requireExistingUser(ctx);
+    const user = await findCurrentUser(ctx);
+    if (!user) return null;
     return await getCurrentChart(ctx, user._id);
   }
 });
 
 export const valuesMap = query({
   handler: async (ctx) => {
-    const user = await requireExistingUser(ctx);
+    const user = await findCurrentUser(ctx);
+    if (!user) return null;
     const chart = await getCurrentChart(ctx, user._id);
 
     return chart ? buildWebB0ValuesMapPayload(chart.payload) : null;
@@ -108,7 +110,8 @@ export function requireSuccessfulNatalReading(result: NatalGenerationResult) {
 
 export const personalityReading = query({
   handler: async (ctx) => {
-    const user = await requireExistingUser(ctx);
+    const user = await findCurrentUser(ctx);
+    if (!user) return null;
     const chart = await getCurrentChart(ctx, user._id);
     if (!chart) return null;
 

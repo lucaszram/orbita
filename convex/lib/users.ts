@@ -28,6 +28,20 @@ export async function findUserByTokenIdentifier(ctx: ConvexCtx, tokenIdentifier:
     .first();
 }
 
+/**
+ * Read-only lookup for reactive queries during auth/account transitions.
+ *
+ * Account deletion removes the Convex user before the native Clerk identity.
+ * Queries can therefore rerun briefly with a valid token but no `users` row.
+ * That is a normal empty state, not an exceptional one. Mutations/actions must
+ * continue using `requireExistingUser`/`requireUser` so writes fail closed.
+ */
+export async function findCurrentUser(ctx: ConvexCtx) {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) return null;
+  return await findUserByTokenIdentifier(ctx, identity.tokenIdentifier);
+}
+
 export async function requireExistingUser(ctx: ConvexCtx) {
   const identity = await requireIdentity(ctx);
   const user = await findUserByTokenIdentifier(ctx, identity.tokenIdentifier);

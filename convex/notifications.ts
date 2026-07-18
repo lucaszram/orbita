@@ -1,10 +1,11 @@
 import { mutationGeneric as mutation, queryGeneric as query } from "convex/server";
 import { v } from "convex/values";
-import { requireExistingUser, requireUser } from "./lib/users";
+import { findCurrentUser, requireUser } from "./lib/users";
 
 export const getPreferences = query({
   handler: async (ctx) => {
-    const user = await requireExistingUser(ctx);
+    const user = await findCurrentUser(ctx);
+    if (!user) return null;
     return await ctx.db
       .query("notificationPreferences")
       .withIndex("by_user", (q: any) => q.eq("userId", user._id))

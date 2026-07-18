@@ -11,7 +11,7 @@ import {
   CHART_CALCULATION_VERSION,
   DAILY_READING_CONTENT_VERSION
 } from "./lib/orbita";
-import { omitUndefined, requireExistingUser, requireUser } from "./lib/users";
+import { findCurrentUser, omitUndefined, requireUser } from "./lib/users";
 
 export const DEFAULT_SAVED_READINGS_LIMIT = 60;
 export const MAX_SAVED_READINGS_LIMIT = 120;
@@ -91,7 +91,8 @@ export const getToday = query({
     localDate: v.string()
   },
   handler: async (ctx, args) => {
-    const user = await requireExistingUser(ctx);
+    const user = await findCurrentUser(ctx);
+    if (!user) return null;
     return await ctx.db
       .query("dailyReadings")
       .withIndex("by_user_date", (q: any) => q.eq("userId", user._id).eq("localDate", args.localDate))
@@ -109,7 +110,8 @@ export const getToday = query({
 export const listSaved = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
-    const user = await requireExistingUser(ctx);
+    const user = await findCurrentUser(ctx);
+    if (!user) return [];
     return await listSavedReadingsForUser(ctx, user._id, args.limit);
   }
 });
