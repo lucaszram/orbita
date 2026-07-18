@@ -75,8 +75,9 @@ describe("Arranque — la purga pendiente corre antes de publicar estado local",
     // Con marcador (cualquier fase) el estado local se publica vacío: nunca el
     // perfil de una cuenta eliminada, nunca login a esa cuenta.
     assert.match(APP_STATE, /if \(pendingDeletion\.status !== "none"\)/);
-    // backend_deleted queda expuesto para que el gate lo resuelva con Clerk.
-    assert.match(APP_STATE, /"awaiting-identity" \? pendingDeletion\.marker : null/);
+    // TODO estado con marcador vivo (awaiting-identity Y pending) queda
+    // expuesto al gate: solo "completed" libera el arranque normal.
+    assert.match(APP_STATE, /pendingDeletion\.status === "completed" \? null : pendingDeletion\.marker/);
   });
 
   it("el gate de index bloquea el arranque con backend_deleted y decide con Clerk cargado", () => {
@@ -85,10 +86,18 @@ describe("Arranque — la purga pendiente corre antes de publicar estado local",
     const gate = INDEX.indexOf("if (pendingAccountDeletion)");
     const decisionSwitch = INDEX.indexOf("switch (decision)");
     assert.ok(gate >= 0 && decisionSwitch >= 0 && gate < decisionSwitch, "el gate debe cortar antes de resolveStart");
-    // Con identidad activa se reintenta user.delete() y recién después se purga.
-    assert.match(INDEX, /pendingDeletionDecision === "finalize-identity"/);
+    // El intento corre por el coordinador del dominio (resultado SIEMPRE
+    // publicable) y publica el fallo salvo unmount REAL — nunca lo silencia
+    // un cambio de decisión durante los await.
+    assert.match(INDEX, /attemptPendingDeletionFinalize\(\{/);
+    assert.match(INDEX, /decision: pendingDeletionDecision/);
     assert.match(INDEX, /auth\?\.deleteUser\(\)/);
-    assert.match(INDEX, /completePendingDeletionPurge\(\)/);
+    assert.match(INDEX, /purge: completePendingDeletionPurge/);
+    assert.match(INDEX, /result === "error" && mountedRef\.current/);
+    // El efecto del gate no usa cleanup de cancelación que trague el error.
+    const effectStart = INDEX.indexOf("attemptPendingDeletionFinalize({");
+    const effectSlice = INDEX.slice(effectStart - 800, effectStart + 800);
+    assert.equal(/let cancelled/.test(effectSlice), false, "el gate no debe cancelar por re-run de decisión");
     // Estado bloqueante visible + reintento.
     assert.match(INDEX, /Finalizando la eliminación/);
     assert.match(INDEX, /REINTENTAR/);

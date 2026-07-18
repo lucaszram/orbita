@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  attemptPendingDeletionFinalize,
   completePendingAccountDeletion,
   finalizePendingDeletionPurge,
   requestAccountDeletion,
@@ -256,6 +257,107 @@ describe("completePendingAccountDeletion — solo identity_deleted purga en la h
     const result = await completePendingAccountDeletion(s.deps);
     assert.equal(result.status, "pending");
     assert.deepEqual(s.readMarkerRaw(), { userId: "user_1", phase: "identity_deleted" });
+  });
+
+  it("regresión (review r3): 'pending' entrega el marcador — el gate DEBE montarse, nunca arranque normal", async () => {
+    const s = fakeStorage(LOCAL_DATA, { userId: "user_1", phase: "identity_deleted" });
+    s.failing.clears = true;
+    const boot = await completePendingAccountDeletion(s.deps);
+    assert.equal(boot.status, "pending");
+    // El marcador viene en el resultado: useAppState lo expone (todo estado
+    // que no sea none/completed) y app/index.tsx bloquea con él.
+    assert.deepEqual(boot.marker, { userId: "user_1", phase: "identity_deleted" });
+    assert.equal(
+      resolvePendingDeletionBoot({ marker: boot.marker, clerkLoaded: false, isSignedIn: false }),
+      "purge"
+    );
+    // REINTENTAR (storage recuperado) completa la purga; recién ahí se sigue.
+    s.failing.clears = false;
+    assert.equal(
+      await attemptPendingDeletionFinalize({
+        decision: "purge",
+        deleteIdentity: async () => {
+          throw new Error("no debe tocar Clerk en fase identity_deleted");
+        },
+        purge: () => finalizePendingDeletionPurge(boot.marker!, s.deps)
+      }),
+      "completed"
+    );
+    assert.equal(s.store.size, 0);
+  });
+});
+
+describe("attemptPendingDeletionFinalize — el resultado se publica aunque la decisión cambie (review r3)", () => {
+  it("signed-in → deleteUser OK (Clerk pasa a signed-out) → purga falla → ERROR visible → retry purga sin repetir Clerk", async () => {
+    const s = fakeStorage(LOCAL_DATA, { userId: "user_1", phase: "backend_deleted" });
+    let signedIn = true;
+    let deleteIdentityCalls = 0;
+    const deleteIdentity = async () => {
+      deleteIdentityCalls += 1;
+      signedIn = false; // Clerk publica signed-out DURANTE el intento
+    };
+    const purge = () => finalizePendingDeletionPurge(s.readMarkerRaw()!, s.deps);
+
+    // Intento 1: la decisión inicial era finalize-identity; la purga falla
+    // DESPUÉS del cambio de estado de Clerk. El resultado es "error" y el
+    // caller lo publica — el cambio de decisión no lo silencia (el gate no se
+    // desmontó; queda pantalla de error con REINTENTAR, no spinner infinito).
+    const marker = s.readMarkerRaw()!;
+    const decision1 = resolvePendingDeletionBoot({ marker, clerkLoaded: true, isSignedIn: signedIn });
+    assert.equal(decision1, "finalize-identity");
+    s.failing.clears = true;
+    assert.equal(
+      await attemptPendingDeletionFinalize({
+        decision: decision1,
+        deleteIdentity: async () => {
+          await deleteIdentity();
+          // la promoción/purga fallará recién después de borrar la identidad
+        },
+        purge
+      }),
+      "error"
+    );
+    assert.equal(deleteIdentityCalls, 1);
+    // El marcador sigue protegiendo (la promoción falló junto con la purga).
+    assert.deepEqual(s.readMarkerRaw(), { userId: "user_1", phase: "backend_deleted" });
+
+    // Retry: la decisión fresca ya es "purge" (signed-out): NO repite Clerk.
+    const decision2 = resolvePendingDeletionBoot({
+      marker: s.readMarkerRaw(),
+      clerkLoaded: true,
+      isSignedIn: signedIn
+    });
+    assert.equal(decision2, "purge");
+    s.failing.clears = false;
+    assert.equal(
+      await attemptPendingDeletionFinalize({
+        decision: decision2,
+        deleteIdentity: async () => {
+          deleteIdentityCalls += 1;
+        },
+        purge: () => finalizePendingDeletionPurge(s.readMarkerRaw()!, s.deps)
+      }),
+      "completed"
+    );
+    assert.equal(deleteIdentityCalls, 1, "el retry no debe repetir user.delete()");
+    assert.equal(s.store.size, 0);
+  });
+
+  it("decisiones que no operan devuelven 'noop' sin tocar nada", async () => {
+    for (const decision of ["proceed", "wait"] as const) {
+      assert.equal(
+        await attemptPendingDeletionFinalize({
+          decision,
+          deleteIdentity: async () => {
+            throw new Error("no debe llamarse");
+          },
+          purge: async () => {
+            throw new Error("no debe llamarse");
+          }
+        }),
+        "noop"
+      );
+    }
   });
 });
 

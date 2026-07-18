@@ -192,6 +192,35 @@ export function resolvePendingDeletionBoot(input: {
 }
 
 /**
+ * Un intento del gate de arranque, con el resultado SIEMPRE publicable: el
+ * caller decide qué hacer con "error" mientras siga montado. Un cambio de
+ * decisión durante los await (p. ej. Clerk publica signed-out después de
+ * `deleteUser`) NO es un unmount y jamás debe silenciar el fallo — de eso se
+ * encarga el caller usando este retorno en vez de flags de cancelación.
+ */
+export async function attemptPendingDeletionFinalize(args: {
+  decision: PendingDeletionBootDecision;
+  /** Borra la identidad de Clerk. Solo se llama con "finalize-identity". */
+  deleteIdentity: () => Promise<void>;
+  /** Purga final (finalizePendingDeletionPurge cableada por el caller). */
+  purge: () => Promise<void>;
+}): Promise<"completed" | "error" | "noop"> {
+  if (args.decision !== "purge" && args.decision !== "finalize-identity") return "noop";
+  try {
+    if (args.decision === "finalize-identity") {
+      // Identidad todavía activa: terminarla ANTES de purgar. Si esto pasa
+      // pero la purga falla, el reintento recae en "purge" (la sesión quedó
+      // signed-out) sin repetir user.delete().
+      await args.deleteIdentity();
+    }
+    await args.purge();
+    return "completed";
+  } catch {
+    return "error";
+  }
+}
+
+/**
  * Purga final una vez confirmado que la identidad ya no existe. Promueve el
  * marcador PRIMERO (persistir el hecho antes de limpiar: si esto muere a
  * mitad, el próximo arranque completa solo) y lo retira ÚLTIMO. Lanza si algo

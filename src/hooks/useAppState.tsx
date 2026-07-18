@@ -186,7 +186,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         setSavedReadings([]);
         setSavedTombstones([]);
         setJournalEntries([]);
-        setPendingDeletion(pendingDeletion.status === "awaiting-identity" ? pendingDeletion.marker : null);
+        // Todo estado con marcador vivo ("awaiting-identity" Y "pending") se
+        // expone al gate: una purga fallida acá NO puede dejar pasar al
+        // arranque normal con el marcador en disco — otra cuenta creada en
+        // este proceso sería purgada por el marcador viejo al próximo reinicio.
+        setPendingDeletion(pendingDeletion.status === "completed" ? null : pendingDeletion.marker);
         setIsReady(true);
         return;
       }

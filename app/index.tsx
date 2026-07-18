@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { Redirect } from "expo-router";
 import { OrbitaLanding } from "@/components/web/orbita-landing";
-import { resolvePendingDeletionBoot } from "@/domain/accountDeletion";
+import { attemptPendingDeletionFinalize, resolvePendingDeletionBoot } from "@/domain/accountDeletion";
 import {
   isAccountSwitch,
   onboardingInputFromBirthData,
@@ -70,35 +70,40 @@ export default function IndexRoute() {
   const [finalizeError, setFinalizeError] = useState(false);
   const [finalizeTick, setFinalizeTick] = useState(0);
   const finalizeInFlight = useRef(false);
+  // Solo el UNMOUNT real invalida publicar el resultado. Un cambio de decisión
+  // durante los await (Clerk publica signed-out después de deleteUser →
+  // finalize-identity pasa a purge) re-dispara el efecto, NO desmonta: usarlo
+  // como cancelación silenciaba el fallo de la purga y dejaba el spinner
+  // infinito (review r3).
+  const mountedRef = useRef(true);
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+    },
+    []
+  );
 
   useEffect(() => {
     if (IS_WEB || finalizeError) return;
     if (pendingDeletionDecision !== "purge" && pendingDeletionDecision !== "finalize-identity") return;
-    let cancelled = false;
-    (async () => {
-      if (finalizeInFlight.current) return;
-      finalizeInFlight.current = true;
-      try {
-        if (pendingDeletionDecision === "finalize-identity") {
-          // Identidad todavía activa: terminarla ANTES de purgar. Si esto
-          // pasa pero la purga muere, el reintento recae en "purge" (la
-          // sesión ya quedó signed-out) sin repetir user.delete().
-          await auth?.deleteUser();
-        }
-        await completePendingDeletionPurge();
-        // pendingAccountDeletion queda null → el gate desaparece y el
-        // arranque sigue normal hacia la entrada limpia.
-      } catch {
-        if (!cancelled) setFinalizeError(true);
-      } finally {
-        finalizeInFlight.current = false;
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    // El lock evita operaciones dobles; la corrida que lo tiene es la dueña
+    // del resultado y SIEMPRE lo publica mientras el componente siga montado.
+    if (finalizeInFlight.current) return;
+    finalizeInFlight.current = true;
+    void attemptPendingDeletionFinalize({
+      decision: pendingDeletionDecision,
+      deleteIdentity: async () => {
+        await auth?.deleteUser();
+      },
+      purge: completePendingDeletionPurge
+      // En éxito, pendingAccountDeletion queda null → el gate desaparece y el
+      // arranque sigue normal hacia la entrada limpia.
+    }).then((result) => {
+      finalizeInFlight.current = false;
+      if (result === "error" && mountedRef.current) setFinalizeError(true);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingDeletionDecision, finalizeTick]);
+  }, [pendingDeletionDecision, finalizeTick, finalizeError]);
 
   // Dueño del perfil local: "current" solo si coincide con la sesión activa.
   // Sin dueño = guest/legado; con dueño distinto (o sin sesión) = "other".
