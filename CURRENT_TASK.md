@@ -1,5 +1,17 @@
 # Current Task
 
+## Hotfix — carta natal visible mientras se genera la lectura (2026-07-18, Codex)
+
+**Objetivo:** iniciar la lectura natal larga en segundo plano apenas existe la carta y evitar generaciones LLM duplicadas, sin cambiar el texto aprobado ni el contrato público actual.
+
+**Criterios de aceptación:** una carta nueva programa la lectura rica sin esperar que la persona abra el tab; dos disparos concurrentes hacen una sola generación; una lectura `ready` no se regenera; se registran cache hit, generación y persistencia sin PII ni texto; errores quedan reintentables; las firmas públicas `charts.current`, `charts.personalityReading` y `charts.generatePersonalityReading` siguen compatibles; la query aditiva `charts.personalityReadingState` permite distinguir `pending | ready | error` sin exponer contenido.
+
+**Ficha:** owner Codex; territorio `convex/**`, tests y documentación; rama `codex/natal-reading-prewarm` sobre `origin/main` `9e52c55`; riesgo medio por scheduler/IA; tests unitarios + suite completa + typecheck + codegen; rollout Convex dev → integración con PR frontend de Claude → pasada manual → aprobación explícita → producción; rollback por revert y redeploy; fuera de alcance `app/**`, `src/**`, calidad/copy de la lectura, Figma, TestFlight y App Review.
+
+**Diagnóstico producción:** la carta astronómica tardó `0,308 s`, las queries `13 ms` o menos y `charts.generatePersonalityReading` tardó `61,418 s`. El cuello es exclusivamente la lectura larga LLM; el frontend del build 17 bloquea toda la pantalla mientras `personalityReading` es `null`.
+
+**Estado:** backend implementado y desplegado únicamente a Convex dev `dutiful-viper-815`. El function spec confirma la acción interna de precarga y el claim atómico. Validación local: typecheck verde, 343/343 tests y `git diff --check` limpio. Pendiente: PR backend, adaptación frontend separada por Claude y pasada manual conjunta; producción sigue intacta.
+
 ## Release Candidate — TestFlight 1.0.0 (17) (2026-07-18, Codex)
 
 **Objetivo:** generar un binario iPhone reproducible para la pasada final de App Review, incorporando el backend de eliminación seguro y el frontend de cumplimiento ya validados.

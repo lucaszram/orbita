@@ -1,5 +1,6 @@
 import {
   actionGeneric as action,
+  internalActionGeneric as internalAction,
   internalMutationGeneric as internalMutation,
   internalQueryGeneric as internalQuery,
   queryGeneric as query
@@ -73,6 +74,7 @@ export const valuesMap = query({
 });
 
 const NATAL_READING_FEATURE = "personality";
+const NATAL_READING_LEASE_MS = 90 * 1000;
 
 async function getCachedPersonalityReading(ctx: any, natalChartId: string) {
   const promptVersion = getAiGatewayNatalPromptVersion();
@@ -87,7 +89,49 @@ async function getCachedPersonalityReading(ctx: any, natalChartId: string) {
 type PersonalityReadingCache = {
   status?: string;
   payload?: unknown;
+  updatedAt?: number;
 } | null | undefined;
+
+export type NatalGenerationClaim = "ready" | "pending" | "claim";
+export type NatalReadingPublicStatus = "pending" | "ready" | "error";
+
+/**
+ * Una mutation serializada usa esta decisión para que el cliente y el prewarm
+ * no disparen dos lecturas largas a la vez. Un pending viejo se puede retomar.
+ */
+export function resolveNatalGenerationClaim(
+  cached: PersonalityReadingCache,
+  now: number,
+  leaseMs = NATAL_READING_LEASE_MS
+): NatalGenerationClaim {
+  if (cached?.status === "ready" && cached.payload) return "ready";
+  if (
+    cached?.status === "pending" &&
+    typeof cached.updatedAt === "number" &&
+    now - cached.updatedAt < leaseMs
+  ) {
+    return "pending";
+  }
+  return "claim";
+}
+
+/** Estado mínimo para que el bloque de lectura nunca quede cargando a ciegas. */
+export function resolveNatalReadingPublicStatus(
+  cached: PersonalityReadingCache,
+  now: number,
+  leaseMs = NATAL_READING_LEASE_MS
+): NatalReadingPublicStatus {
+  if (cached?.status === "ready" && cached.payload) return "ready";
+  if (cached?.status === "error" || cached?.status === "fallback") return "error";
+  if (
+    cached?.status === "pending" &&
+    typeof cached.updatedAt === "number" &&
+    now - cached.updatedAt >= leaseMs
+  ) {
+    return "error";
+  }
+  return "pending";
+}
 
 /** Solo una lectura LLM completa y persistida se considera lista para mostrar. */
 export function resolveReadyPersonalityReading(cached: PersonalityReadingCache) {
@@ -120,6 +164,17 @@ export const personalityReading = query({
   }
 });
 
+export const personalityReadingState = query({
+  handler: async (ctx) => {
+    const user = await findCurrentUser(ctx);
+    if (!user) return { status: "pending" as const };
+    const chart = await getCurrentChart(ctx, user._id);
+    if (!chart) return { status: "pending" as const };
+    const cached = await getCachedPersonalityReading(ctx, chart._id);
+    return { status: resolveNatalReadingPublicStatus(cached, Date.now()) };
+  }
+});
+
 export const getNatalReadingState = internalQuery({
   args: { tokenIdentifier: v.string() },
   handler: async (ctx, args) => {
@@ -138,6 +193,64 @@ export const getNatalReadingState = internalQuery({
       chartPayload: chart.payload,
       cachedStatus: cached?.status ?? null
     };
+  }
+});
+
+export const getNatalReadingStateByChart = internalQuery({
+  args: { natalChartId: v.id("natalCharts") },
+  handler: async (ctx, args) => {
+    const chart = await ctx.db.get(args.natalChartId);
+    if (!chart) return null;
+    const cached = await getCachedPersonalityReading(ctx, chart._id);
+    return {
+      userId: chart.userId,
+      chartId: chart._id,
+      chartPayload: chart.payload,
+      cachedStatus: cached?.status ?? null
+    };
+  }
+});
+
+export const claimNatalReadingGeneration = internalMutation({
+  args: {
+    userId: v.id("users"),
+    natalChartId: v.id("natalCharts"),
+    locale: v.string(),
+    promptVersion: v.string(),
+    cacheVersion: v.string()
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("natalInterpretations")
+      .withIndex("by_chart_feature_version", (q: any) =>
+        q
+          .eq("natalChartId", args.natalChartId)
+          .eq("feature", NATAL_READING_FEATURE)
+          .eq("promptVersion", args.promptVersion)
+      )
+      .first();
+    const decision = resolveNatalGenerationClaim(existing, now);
+    if (decision !== "claim") return decision;
+
+    const fields = {
+      userId: args.userId,
+      natalChartId: args.natalChartId,
+      feature: NATAL_READING_FEATURE,
+      locale: args.locale,
+      promptVersion: args.promptVersion,
+      cacheVersion: args.cacheVersion,
+      provider: "vercel-ai-gateway",
+      status: "pending" as const,
+      payload: null,
+      updatedAt: now
+    };
+    if (existing) {
+      await ctx.db.patch(existing._id, fields);
+    } else {
+      await ctx.db.insert("natalInterpretations", { ...fields, createdAt: now });
+    }
+    return "claimed";
   }
 });
 
@@ -185,6 +298,100 @@ export const persistNatalReading = internalMutation({
   }
 });
 
+type NatalReadingGenerationState = {
+  userId: string;
+  chartId: string;
+  chartPayload: unknown;
+};
+
+async function generateAndPersistNatalReading(
+  ctx: any,
+  state: NatalReadingGenerationState,
+  source: "client" | "prewarm"
+) {
+  const startedAt = Date.now();
+  const promptVersion = getAiGatewayNatalPromptVersion();
+  const cacheVersion = getAiGatewayNatalCacheVersion();
+  const claim = await ctx.runMutation(internalApi.charts.claimNatalReadingGeneration, {
+    userId: state.userId,
+    natalChartId: state.chartId,
+    locale: "es-AR",
+    promptVersion,
+    cacheVersion
+  });
+  if (claim !== "claimed") {
+    console.info(
+      "[natal.prewarm]",
+      JSON.stringify({ source, cacheHit: claim === "ready", result: claim, totalMs: Date.now() - startedAt })
+    );
+    return { status: claim };
+  }
+
+  const generationStartedAt = Date.now();
+  const result = await generateNatalReadingWithGateway({ chartPayload: state.chartPayload });
+  const generationMs = Date.now() - generationStartedAt;
+  if (result.status !== "success" || !result.payload) {
+    const persistStartedAt = Date.now();
+    await ctx.runMutation(internalApi.charts.persistNatalReading, {
+      userId: state.userId,
+      natalChartId: state.chartId,
+      locale: "es-AR",
+      promptVersion,
+      cacheVersion,
+      model: result.model,
+      status: "error",
+      payload: null,
+      usage: result.usage
+    });
+    console.error(
+      "[natal.prewarm]",
+      JSON.stringify({
+        source,
+        cacheHit: false,
+        result: "error",
+        generationMs,
+        persistMs: Date.now() - persistStartedAt,
+        totalMs: Date.now() - startedAt
+      })
+    );
+    return requireSuccessfulNatalReading(result);
+  }
+
+  const persistStartedAt = Date.now();
+  await ctx.runMutation(internalApi.charts.persistNatalReading, {
+    userId: state.userId,
+    natalChartId: state.chartId,
+    locale: "es-AR",
+    promptVersion,
+    cacheVersion,
+    model: result.model,
+    status: "ready",
+    payload: result.payload,
+    usage: result.usage
+  });
+  console.info(
+    "[natal.prewarm]",
+    JSON.stringify({
+      source,
+      cacheHit: false,
+      result: "generated",
+      generationMs,
+      persistMs: Date.now() - persistStartedAt,
+      totalMs: Date.now() - startedAt
+    })
+  );
+  return { status: "generated" };
+}
+
+export const generatePersonalityReadingForChart = internalAction({
+  args: { natalChartId: v.id("natalCharts") },
+  handler: async (ctx, args): Promise<any> => {
+    const state: any = await ctx.runQuery(internalApi.charts.getNatalReadingStateByChart, args);
+    if (!state?.chartId || !state.chartPayload) return { status: "missing_chart" };
+    return await generateAndPersistNatalReading(ctx, state, "prewarm");
+  }
+});
+
 /** Genera una vez la lectura rica desde la carta completa y la cachea. */
 export const generatePersonalityReading = action({
   args: {},
@@ -194,23 +401,7 @@ export const generatePersonalityReading = action({
       tokenIdentifier: identity.tokenIdentifier
     });
     if (!state.chartId || !state.chartPayload) return null;
-    if (state.cachedStatus === "ready") return { status: "cached" };
-
-    const result = await generateNatalReadingWithGateway({ chartPayload: state.chartPayload });
-    const payload = requireSuccessfulNatalReading(result);
-
-    await ctx.runMutation(internalApi.charts.persistNatalReading, {
-      userId: state.userId,
-      natalChartId: state.chartId,
-      locale: "es-AR",
-      promptVersion: getAiGatewayNatalPromptVersion(),
-      cacheVersion: getAiGatewayNatalCacheVersion(),
-      model: result.model,
-      status: "ready",
-      payload,
-      usage: result.usage
-    });
-    return { status: "generated" };
+    return await generateAndPersistNatalReading(ctx, state, "client");
   }
 });
 
@@ -347,6 +538,9 @@ export const calculateOrCreateNatalChart = action({
     });
 
     if (state.existingChart) {
+      await ctx.scheduler.runAfter(0, internalApi.charts.generatePersonalityReadingForChart, {
+        natalChartId: state.existingChart._id
+      });
       return state.existingChart;
     }
 
@@ -369,7 +563,7 @@ export const calculateOrCreateNatalChart = action({
       throw new Error(`Natal chart provider failed: ${detail}`);
     }
 
-    return await ctx.runMutation(internalApi.charts.persistCalculatedNatalChart, {
+    const chart = await ctx.runMutation(internalApi.charts.persistCalculatedNatalChart, {
       tokenIdentifier: identity.tokenIdentifier,
       birthDataId: birthData._id,
       birthDataHash: state.birthDataHash,
@@ -378,5 +572,11 @@ export const calculateOrCreateNatalChart = action({
       calculationVersion: ASTROLOGY_API_CHART_CALCULATION_VERSION,
       payload: providerResult.normalized.chart
     });
+    if (chart?._id) {
+      await ctx.scheduler.runAfter(0, internalApi.charts.generatePersonalityReadingForChart, {
+        natalChartId: chart._id
+      });
+    }
+    return chart;
   }
 });
