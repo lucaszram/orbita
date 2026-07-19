@@ -66,21 +66,33 @@ export default function CartaScreen() {
 function CartaLive() {
   const doc = useQuery(appApi.charts.current, {});
   const reading = useQuery(appApi.charts.personalityReading, {});
+  // Señal reactiva de la generación (pending/ready/error): si el prewarm del
+  // backend tomó el claim y FALLÓ, acá llega `error` y el bloque de lectura
+  // ofrece reintento en vez de quedar en "Preparando…" para siempre.
+  const readingState = useQuery(appApi.charts.personalityReadingState, {});
   const values = useQuery(appApi.charts.valuesMap, {});
   // Dispara la generación LLM natal (no-opea si ya está cacheada o no hay
   // carta; una resolución `{ status: "pending" }` significa que el prewarm del
   // backend ya la está generando y NO es error). Si REJECTA, el bloque de
   // lectura lo dice inline con REINTENTAR — sin esto, "reading" quedaría null
-  // para siempre y la carga sería eterna.
+  // para siempre y la carga sería eterna. El reintento limpia el fallo local y
+  // vuelve a disparar la action; `generating` cubre la ventana hasta que el
+  // backend pise el `error` remoto de la ronda anterior.
   const generate = useAction(appApi.charts.generatePersonalityReading);
   const [generateFailed, setGenerateFailed] = useState(false);
+  const [generating, setGenerating] = useState(true);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let alive = true;
     setGenerateFailed(false);
-    generate({}).catch(() => {
-      if (alive) setGenerateFailed(true);
-    });
+    setGenerating(true);
+    generate({})
+      .catch(() => {
+        if (alive) setGenerateFailed(true);
+      })
+      .finally(() => {
+        if (alive) setGenerating(false);
+      });
     return () => {
       alive = false;
     };
@@ -121,9 +133,14 @@ function CartaLive() {
     );
   }
   // La lectura larga resuelve INLINE dentro de "Tu carta, explicada":
-  // pendiente → carga inline; reject del generador → error inline con
-  // REINTENTAR; lista → los siete capítulos intactos.
-  const readingPhase = readingBlockPhase({ reading, failed: generateFailed });
+  // pendiente → carga inline; reject del generador o `error` remoto → error
+  // inline con REINTENTAR; lista → los siete capítulos intactos.
+  const readingPhase = readingBlockPhase({
+    reading,
+    failed: generateFailed,
+    generating,
+    state: readingState?.status
+  });
   return (
     <CartaView
       payload={payload}

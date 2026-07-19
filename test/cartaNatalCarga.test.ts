@@ -57,7 +57,7 @@ describe("readingBlockPhase — 'Tu carta, explicada' resuelve inline", () => {
 
   it("una resolución { status: 'pending' } NO es error: la query sigue en null y el bloque sigue cargando", () => {
     // El prewarm del backend tiene el claim; el cliente solo espera la query.
-    assert.equal(readingBlockPhase({ reading: null, failed: false }), "cargando");
+    assert.equal(readingBlockPhase({ reading: null, failed: false, state: "pending" }), "cargando");
   });
 
   it("lectura lista → 'listo' con los siete capítulos intactos", () => {
@@ -67,6 +67,34 @@ describe("readingBlockPhase — 'Tu carta, explicada' resuelve inline", () => {
 
   it("el dato manda: si el prewarm del backend terminó, un fallo viejo de la action no tapa la lectura", () => {
     assert.equal(readingBlockPhase({ reading: READING_7, failed: true }), "listo");
+    // Ni siquiera un `state` remoto stale en error la tapa.
+    assert.equal(readingBlockPhase({ reading: READING_7, failed: true, state: "error" }), "listo");
+  });
+});
+
+describe("readingBlockPhase — señal remota personalityReadingState (backend #32 24ba2ac)", () => {
+  it("REGRESIÓN pending→error sin desmontar: el prewarm falla y el bloque pasa de carga a error inline", () => {
+    // Mismo montaje: la action del cliente ya resolvió { status: "pending" }
+    // (generating=false, sin reject local) y la query de lectura sigue null.
+    const base = { reading: null, failed: false, generating: false } as const;
+    assert.equal(readingBlockPhase({ ...base, state: "pending" }), "cargando");
+    // El prewarm que tenía el claim falla → el state reactivo flipea a error.
+    // Antes de la señal esto quedaba en "Preparando…" para siempre.
+    assert.equal(readingBlockPhase({ ...base, state: "error" }), "error");
+  });
+
+  it("state 'ready' con la lectura todavía null es la ventana entre queries → sigue cargando, no error", () => {
+    assert.equal(readingBlockPhase({ reading: null, failed: false, generating: false, state: "ready" }), "cargando");
+  });
+
+  it("reintento: la action recién re-disparada (generating) tapa el error remoto de la ronda anterior", () => {
+    // Tap en REINTENTAR → failed se limpia y generate({}) vuelve a correr; el
+    // backend todavía no pisó el `error` viejo: el bloque ya muestra carga.
+    assert.equal(readingBlockPhase({ reading: null, failed: false, generating: true, state: "error" }), "cargando");
+  });
+
+  it("state en vuelo (undefined) no fabrica errores: carga", () => {
+    assert.equal(readingBlockPhase({ reading: null, failed: false, generating: false, state: undefined }), "cargando");
   });
 });
 
@@ -84,9 +112,21 @@ describe("carta.tsx — cableado anti-bloqueo", () => {
   });
 
   it("la lectura resuelve inline: carga 'Preparando tu lectura…' y error con REINTENTAR", () => {
-    assert.match(CARTA, /readingBlockPhase\(\{ reading, failed: generateFailed \}\)/);
+    assert.match(
+      CARTA,
+      /readingBlockPhase\(\{\s*reading,\s*failed: generateFailed,\s*generating,\s*state: readingState\?\.status\s*\}\)/
+    );
     assert.match(CARTA, /Preparando tu lectura…/);
     assert.match(CARTA, /label="REINTENTAR" onPress=\{onRetryReading\}/);
+  });
+
+  it("escucha la señal remota personalityReadingState (pending/ready/error) por query reactiva", () => {
+    assert.match(CARTA, /useQuery\(appApi\.charts\.personalityReadingState, \{\}\)/);
+  });
+
+  it("el reintento limpia el fallo local y re-dispara la action; generating cubre la ventana", () => {
+    assert.match(CARTA, /setGenerateFailed\(false\);\s*\n\s*setGenerating\(true\);/);
+    assert.match(CARTA, /\.finally\(\(\) => \{\s*\n\s*if \(alive\) setGenerating\(false\);/);
   });
 
   it("MinimalLoading y ErrorState de pantalla completa quedan solo para sesión/carta, nunca para la lectura", () => {
@@ -100,7 +140,7 @@ describe("carta.tsx — cableado anti-bloqueo", () => {
   });
 
   it("generatePersonalityReading({}) se sigue disparando y solo un REJECT marca fallo", () => {
-    assert.match(CARTA, /generate\(\{\}\)\.catch\(/);
+    assert.match(CARTA, /generate\(\{\}\)\s*\n?\s*\.catch\(/);
     // Ninguna rama marca fallo a partir de un resultado resuelto (p. ej. { status: "pending" }).
     assert.doesNotMatch(CARTA, /then\([^)]*setGenerateFailed/);
   });

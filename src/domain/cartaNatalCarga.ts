@@ -17,7 +17,9 @@
  * `generatePersonalityReading({})` se sigue disparando al montar. Una
  * resolución `{ status: "pending" }` significa que otro proceso (prewarm del
  * backend) ya está generando: NO es un error — solo un reject de la action lo
- * es.
+ * es. Para que un prewarm que FALLA no deje "Preparando…" eterno, el bloque
+ * también escucha `charts.personalityReadingState()` (backend #32 `24ba2ac`):
+ * `{ status: "pending" | "ready" | "error" }`, reactiva y nunca null.
  */
 
 export type CartaGate = "cargando" | "vacio" | "listo";
@@ -35,17 +37,34 @@ export function cartaGate(input: { doc: unknown; values: unknown }): CartaGate {
 
 export type ReadingBlockPhase = "cargando" | "error" | "listo";
 
+/** Señal pública del backend sobre la generación (`personalityReadingState`). */
+export type NatalReadingRemoteStatus = "pending" | "ready" | "error";
+
 /**
- * Fase del bloque "Tu carta, explicada". `reading` es la query
- * `charts.personalityReading` (`undefined` en vuelo, `null` hasta cache
- * `ready`); `failed` = la action `generatePersonalityReading` REJECTÓ (una
- * resolución con `{ status: "pending" }` no falla).
+ * Fase del bloque "Tu carta, explicada".
  *
- * El dato manda: si la lectura llegó (p. ej. el prewarm del backend terminó
- * aunque la action del cliente haya fallado), se muestra — un fallo viejo no
- * la tapa.
+ * - `reading` — query `charts.personalityReading` (`undefined` en vuelo,
+ *   `null` hasta cache `ready`). El dato manda: si la lectura llegó, se
+ *   muestra; ni un fallo local viejo ni un `state` stale la tapan.
+ * - `failed` — la action `generatePersonalityReading` REJECTÓ (una resolución
+ *   `{ status: "pending" }` no falla).
+ * - `generating` — la action del cliente sigue en vuelo (incluye el reintento
+ *    recién disparado): se muestra carga aunque el `state` remoto todavía diga
+ *    `error` de la ronda anterior.
+ * - `state` — `personalityReadingState().status` (`undefined` = query en
+ *   vuelo). `error` remoto (p. ej. el prewarm tomó el claim y falló) → error
+ *   inline: nunca "Preparando…" eterno. `ready` con `reading` aún null es la
+ *   ventana entre las dos queries → sigue cargando.
  */
-export function readingBlockPhase(input: { reading: unknown; failed: boolean }): ReadingBlockPhase {
+export function readingBlockPhase(input: {
+  reading: unknown;
+  failed: boolean;
+  generating?: boolean;
+  state?: NatalReadingRemoteStatus;
+}): ReadingBlockPhase {
   if (input.reading != null) return "listo";
-  return input.failed ? "error" : "cargando";
+  if (input.failed) return "error";
+  if (input.generating) return "cargando";
+  if (input.state === "error") return "error";
+  return "cargando";
 }

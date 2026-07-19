@@ -402,6 +402,15 @@ export const appApi = {
       Empty,
       PersonalityReadingPayload | null
     >,
+    // Señal de la generación (backend #32 `24ba2ac`): reactiva y nunca null —
+    // sin usuario/carta responde `pending`. `error` = la generación (prewarm o
+    // cliente) falló o venció el lease: el bloque de lectura debe ofrecer reintento.
+    personalityReadingState: anyApi.charts.personalityReadingState as FunctionReference<
+      "query",
+      "public",
+      Empty,
+      { status: "pending" | "ready" | "error" }
+    >,
     // Genera (LLM) + cachea la lectura rica; la query de arriba la devuelve reactiva.
     generatePersonalityReading: anyApi.charts.generatePersonalityReading as FunctionReference<
       "action",
