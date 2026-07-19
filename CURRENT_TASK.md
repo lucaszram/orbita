@@ -1,5 +1,17 @@
 # Current Task
 
+## Release Candidate — TestFlight 1.0.0 (18) (2026-07-19, Codex)
+
+**Objetivo:** publicar únicamente en TestFlight interno el `main` aprobado que desacopla la Carta Natal base de la lectura larga y precalienta esa lectura en segundo plano.
+
+**Criterios de aceptación:** el RC corresponde exactamente a `origin/main` `33608df` más este bump puntual; `1.0.0 (18)` usa Clerk live y Convex production `exciting-bat-311`; typecheck, suite completa y export iOS en verde; la carta base abre sin esperar la lectura larga; el binario se sube solo a TestFlight interno y no se agrega a App Review ni se publica en App Store.
+
+**Ficha:** owner Codex; territorio de release `app.json` y documentación; rama `codex/release-1.0.0-build18`; riesgo alto por Convex producción y distribución; pruebas typecheck + 364/364 + export iOS + pasada manual ya aprobada en Convex dev; rollout backend compatible a producción → PR puntual de release → build local firmado → TestFlight interno; rollback conservar build 17 disponible y no promover build 18; fuera de alcance App Review, metadata, publicación en App Store y cambios de producto.
+
+**Preflight:** la integración `#32 + #33` fue aprobada manualmente por Lucas: rueda, tríada, posiciones, casas y mapa de valores aparecen sin esperar; `Tu carta, explicada` carga inline y termina mostrando los siete capítulos completos. El backend no cambia schema ni firmas existentes; agrega prewarm y `charts.personalityReadingState()` de forma compatible. Gates del árbol exacto: typecheck verde, 364/364 tests, export iOS correcto y `git diff --check` limpio.
+
+**Rollback:** no promover build 18 y mantener build 17 en TestFlight. Si el prewarm productivo presentara errores, revertir el merge de #32 y redesplegar Convex; los clientes anteriores y las lecturas ya persistidas permanecen compatibles.
+
 ## Hotfix — carta natal visible mientras se genera la lectura (2026-07-18, Codex)
 
 **Objetivo:** iniciar la lectura natal larga en segundo plano apenas existe la carta y evitar generaciones LLM duplicadas, sin cambiar el texto aprobado ni el contrato público actual.
