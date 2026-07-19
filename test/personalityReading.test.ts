@@ -6,7 +6,12 @@ import {
   NATAL_SECTION_KEYS,
   parseNatalReadingText
 } from "../convex/lib/aiGateway";
-import { requireSuccessfulNatalReading, resolveReadyPersonalityReading } from "../convex/charts";
+import {
+  requireSuccessfulNatalReading,
+  resolveNatalGenerationClaim,
+  resolveNatalReadingPublicStatus,
+  resolveReadyPersonalityReading
+} from "../convex/charts";
 
 const section = (key: string) => ({
   key,
@@ -24,6 +29,50 @@ const validPayload = {
 };
 
 describe("lectura natal completa", () => {
+  it("una lectura lista nunca se regenera", () => {
+    assert.equal(
+      resolveNatalGenerationClaim({ status: "ready", payload: validPayload, updatedAt: 1 }, 1000),
+      "ready"
+    );
+  });
+
+  it("un pending reciente bloquea una segunda generación concurrente", () => {
+    assert.equal(
+      resolveNatalGenerationClaim({ status: "pending", payload: null, updatedAt: 1000 }, 2000),
+      "pending"
+    );
+  });
+
+  it("un pending vencido y los fallos se pueden retomar", () => {
+    assert.equal(
+      resolveNatalGenerationClaim({ status: "pending", payload: null, updatedAt: 1000 }, 302_001, 300_000),
+      "claim"
+    );
+    assert.equal(
+      resolveNatalGenerationClaim({ status: "error", payload: null, updatedAt: 1000 }, 2000),
+      "claim"
+    );
+    assert.equal(resolveNatalGenerationClaim(null, 2000), "claim");
+  });
+
+  it("expone pending/ready/error para que el bloque inline nunca cargue a ciegas", () => {
+    assert.equal(resolveNatalReadingPublicStatus(null, 2000), "pending");
+    assert.equal(
+      resolveNatalReadingPublicStatus({ status: "pending", payload: null, updatedAt: 1000 }, 2000),
+      "pending"
+    );
+    assert.equal(
+      resolveNatalReadingPublicStatus({ status: "pending", payload: null, updatedAt: 1000 }, 92_000, 90_000),
+      "error"
+    );
+    assert.equal(resolveNatalReadingPublicStatus({ status: "error", payload: null }, 2000), "error");
+    assert.equal(resolveNatalReadingPublicStatus({ status: "fallback", payload: null }, 2000), "error");
+    assert.equal(
+      resolveNatalReadingPublicStatus({ status: "ready", payload: validPayload, updatedAt: 1000 }, 2000),
+      "ready"
+    );
+  });
+
   it("no presenta la plantilla corta ni estados incompletos como lectura terminada", () => {
     assert.equal(resolveReadyPersonalityReading(null), null);
     assert.equal(resolveReadyPersonalityReading({ status: "pending", payload: validPayload }), null);

@@ -1,5 +1,12 @@
 # Contrato — CHANGELOG
 
+## 2026-07-18 — Prewarm de lectura natal larga
+- **Qué cambia:** no cambia ninguna firma pública ni el schema. `charts.calculateOrCreateNatalChart()` agenda internamente la lectura larga apenas encuentra o persiste la carta; `charts.generatePersonalityReading()` comparte un claim atómico con ese trabajo para que cliente y prewarm no generen dos veces.
+- **Por qué:** producción confirmó que la carta astronómica tarda ~0,3 s pero la lectura LLM rica tarda ~61 s. Iniciarla antes reduce la espera sin acortar ni reemplazar los siete capítulos aprobados.
+- **Ejecución:** un `pending` reciente funciona como lease de 90 segundos; `ready` es cache hit; `error` o lease vencido permiten reintento. La query aditiva `charts.personalityReadingState()` expone solo `pending | ready | error` para que el bloque inline pueda salir de la espera si el trabajo de fondo falla. Los logs `[natal.prewarm]` registran fuente, cache hit, resultado y duraciones, sin email, datos natales ni texto.
+- **Compatibilidad:** clientes actuales siguen leyendo `charts.current`, `charts.valuesMap` y `charts.personalityReading` sin cambios. El frontend debe dejar de bloquear la carta base mientras la lectura larga sigue pendiente.
+- **Rollout:** Convex dev primero, junto al PR frontend desacoplado; producción solo después de la pasada manual y aprobación explícita de Lucas.
+
 ## 2026-07-18 — Queries seguras durante la eliminación de cuenta
 - **Qué cambia:** las queries públicas que leen datos de cuenta tratan una identidad Clerk válida sin fila `users` como estado vacío contractual (`null`, `[]`, entitlement gratuito o cupo gratuito), en vez de lanzar `User record not found`. Las mutations/actions conservan sus validaciones estrictas.
 - **Por qué:** `users.deleteAccount()` elimina Convex antes de borrar la identidad Clerk. En esa ventana breve las suscripciones reactivas vuelven a ejecutarse; el build nativo cerró con `SIGSEGV` después de que `readings.getToday()` propagara una excepción sin manejar.
