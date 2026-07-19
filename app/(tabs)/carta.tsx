@@ -1,16 +1,17 @@
 import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { router } from "expo-router";
 import { useAction, useQuery } from "convex/react";
 
-import { Body, Divider, Eyebrow, H2, Note, OrbitaScreen, Section, TabStrip } from "@/components/orbita/kit";
+import { Body, Divider, Eyebrow, H2, Note, OrbitaScreen, Pill, Section, TabStrip } from "@/components/orbita/kit";
 import { glyphFor } from "@/components/orbita/GlyphRow";
 import { GuestState } from "@/components/orbita/GuestState";
 import { NatalWheel } from "@/components/orbita/NatalWheel";
 import { EmptyState, ErrorState, MinimalLoading } from "@/components/orbita/states";
 import { mapNatalChart } from "@/components/web/orbita-chart";
 import { Radar } from "@/components/web/orbita-values";
-import { dataPhase, sessionPhase } from "@/domain/screenPhase";
+import { cartaGate, readingBlockPhase, type ReadingBlockPhase } from "@/domain/cartaNatalCarga";
+import { sessionPhase } from "@/domain/screenPhase";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import {
   appApi,
@@ -65,32 +66,49 @@ export default function CartaScreen() {
 function CartaLive() {
   const doc = useQuery(appApi.charts.current, {});
   const reading = useQuery(appApi.charts.personalityReading, {});
+  // Señal reactiva de la generación (pending/ready/error): si el prewarm del
+  // backend tomó el claim y FALLÓ, acá llega `error` y el bloque de lectura
+  // ofrece reintento en vez de quedar en "Preparando…" para siempre.
+  const readingState = useQuery(appApi.charts.personalityReadingState, {});
   const values = useQuery(appApi.charts.valuesMap, {});
   // Dispara la generación LLM natal (no-opea si ya está cacheada o no hay
-  // carta). Si FALLA, la pantalla lo dice con REINTENTAR — sin esto, "reading"
-  // quedaría null para siempre y la carga sería eterna.
+  // carta; una resolución `{ status: "pending" }` significa que el prewarm del
+  // backend ya la está generando y NO es error). Si REJECTA, el bloque de
+  // lectura lo dice inline con REINTENTAR — sin esto, "reading" quedaría null
+  // para siempre y la carga sería eterna. El reintento limpia el fallo local y
+  // vuelve a disparar la action; `generating` cubre la ventana hasta que el
+  // backend pise el `error` remoto de la ronda anterior.
   const generate = useAction(appApi.charts.generatePersonalityReading);
   const [generateFailed, setGenerateFailed] = useState(false);
+  const [generating, setGenerating] = useState(true);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let alive = true;
     setGenerateFailed(false);
-    generate({}).catch(() => {
-      if (alive) setGenerateFailed(true);
-    });
+    setGenerating(true);
+    generate({})
+      .catch(() => {
+        if (alive) setGenerateFailed(true);
+      })
+      .finally(() => {
+        if (alive) setGenerating(false);
+      });
     return () => {
       alive = false;
     };
   }, [generate, attempt]);
 
-  if (doc === undefined) {
+  // Gate GENERAL: solo carta + mapa de valores (llegan en <1 s). La lectura
+  // larga (40–61 s) NO participa: nunca devuelve la pantalla a MinimalLoading.
+  const gate = cartaGate({ doc, values });
+  if (gate === "cargando") {
     return (
       <OrbitaScreen right="Carta">
         <MinimalLoading />
       </OrbitaScreen>
     );
   }
-  if (doc === null) {
+  if (gate === "vacio") {
     // El backend confirmó que no hay carta: vacío real.
     return (
       <OrbitaScreen right="Carta">
@@ -114,28 +132,24 @@ function CartaLive() {
       </OrbitaScreen>
     );
   }
-  // La pantalla se muestra COMPLETA o no se muestra: mientras falte la lectura
-  // (undefined = query en vuelo; null = todavía escribiéndose) o el mapa de
-  // valores, pantalla mínima. Fallo del generador → error real con reintento.
-  const readingPhase = dataPhase({
-    pending: reading == null || values == null,
-    failed: generateFailed
+  // La lectura larga resuelve INLINE dentro de "Tu carta, explicada":
+  // pendiente → carga inline; reject del generador o `error` remoto → error
+  // inline con REINTENTAR; lista → los siete capítulos intactos.
+  const readingPhase = readingBlockPhase({
+    reading,
+    failed: generateFailed,
+    generating,
+    state: readingState?.status
   });
-  if (readingPhase === "error") {
-    return (
-      <OrbitaScreen right="Carta">
-        <ErrorState onRetry={() => setAttempt((a) => a + 1)} />
-      </OrbitaScreen>
-    );
-  }
-  if (readingPhase === "cargando") {
-    return (
-      <OrbitaScreen right="Carta">
-        <MinimalLoading />
-      </OrbitaScreen>
-    );
-  }
-  return <CartaView payload={payload} reading={reading!} values={values!} />;
+  return (
+    <CartaView
+      payload={payload}
+      reading={readingPhase === "listo" ? reading! : null}
+      readingPhase={readingPhase}
+      onRetryReading={() => setAttempt((a) => a + 1)}
+      values={values ?? null}
+    />
+  );
 }
 
 // --- Vista ---------------------------------------------------------------
@@ -150,11 +164,16 @@ const deg = (n?: number) => (typeof n === "number" ? `${Math.round(n)}°` : "");
 function CartaView({
   payload,
   reading,
+  readingPhase,
+  onRetryReading,
   values
 }: {
   payload: NatalChartPayload;
-  reading: PersonalityReadingPayload;
-  values: ValuesMapPayload;
+  /** Solo no-null cuando `readingPhase === "listo"`. */
+  reading: PersonalityReadingPayload | null;
+  readingPhase: ReadingBlockPhase;
+  onRetryReading: () => void;
+  values: ValuesMapPayload | null;
 }) {
   const { width } = useWindowDimensions();
   const [view, setView] = useState<"circulo" | "tabla">("circulo");
@@ -166,7 +185,7 @@ function CartaView({
   const angular = payload.houses.filter((h) => [1, 4, 7, 10].includes(h.house)).sort((a, b) => a.house - b.house);
   // La explicación completa va VISIBLE abajo (sector por sector). El mapa de valores
   // se intercala en el medio.
-  const sections = reading.sections ?? [];
+  const sections = reading?.sections ?? [];
   const mid = Math.ceil(sections.length / 2);
   const sectionsA = sections.slice(0, mid);
   const sectionsB = sections.slice(mid);
@@ -212,8 +231,29 @@ function CartaView({
         </Section>
       )}
 
-      {/* Toda la explicación, VISIBLE (sector por sector). */}
-      {sectionsA.length > 0 ? (
+      {/* Toda la explicación, VISIBLE (sector por sector). Mientras el LLM
+          genera (40–61 s) o si falló, el bloque resuelve INLINE: la carta
+          nunca desaparece por la lectura. */}
+      {readingPhase !== "listo" ? (
+        <Section style={{ paddingTop: orbita.spacing.xxl }}>
+          <Eyebrow>Tu carta, explicada</Eyebrow>
+          {readingPhase === "cargando" ? (
+            <View style={styles.readingStatus}>
+              <ActivityIndicator color={orbita.colors.copper} />
+              <Text style={styles.readingStatusText}>Preparando tu lectura…</Text>
+            </View>
+          ) : (
+            <View style={styles.readingStatus}>
+              <Text style={styles.readingStatusText}>
+                Tu lectura no llegó. La carta sigue acá: probá de nuevo.
+              </Text>
+              <View style={{ marginTop: orbita.spacing.lg }}>
+                <Pill label="REINTENTAR" onPress={onRetryReading} />
+              </View>
+            </View>
+          )}
+        </Section>
+      ) : sectionsA.length > 0 ? (
         <Section style={{ paddingTop: orbita.spacing.xxl }}>
           <Eyebrow>Tu carta, explicada</Eyebrow>
           {sectionsA.map((s, i) => (
@@ -223,14 +263,16 @@ function CartaView({
       ) : null}
 
       {/* Mapa de valores — en el medio de la explicación. */}
-      <Section style={{ paddingTop: orbita.spacing.xl }}>
-        <Eyebrow>Mapa de valores</Eyebrow>
-        <Body>Qué te impulsa y qué te pesa, leído desde tu carta.</Body>
-        <View style={styles.radarWrap}>
-          <Radar payload={values} size={radarSize} />
-        </View>
-        <Body>{values.note}</Body>
-      </Section>
+      {values ? (
+        <Section style={{ paddingTop: orbita.spacing.xl }}>
+          <Eyebrow>Mapa de valores</Eyebrow>
+          <Body>Qué te impulsa y qué te pesa, leído desde tu carta.</Body>
+          <View style={styles.radarWrap}>
+            <Radar payload={values} size={radarSize} />
+          </View>
+          <Body>{values.note}</Body>
+        </Section>
+      ) : null}
 
       {sectionsB.length > 0 ? (
         <Section style={{ paddingTop: orbita.spacing.xl }}>
@@ -273,7 +315,7 @@ function CartaView({
         {payload.limitations.map((l) => (
           <Note key={l}>{l}</Note>
         ))}
-        <Note>{reading.disclaimer}</Note>
+        {reading ? <Note>{reading.disclaimer}</Note> : null}
       </Section>
     </OrbitaScreen>
   );
@@ -387,6 +429,10 @@ const styles = StyleSheet.create({
   posSign: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 13, textAlign: "right", width: 108 },
   posHouse: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.mono, fontSize: 11, textAlign: "right", width: 58 },
   radarWrap: { alignItems: "center", marginVertical: orbita.spacing.lg },
+
+  // Estado inline del bloque "Tu carta, explicada" (carga / error+reintento).
+  readingStatus: { alignItems: "flex-start", marginTop: orbita.spacing.xl },
+  readingStatusText: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 15, lineHeight: 23, marginTop: orbita.spacing.md },
 
   // Bloque de explicación por sector (visible, sin colapsar).
   sector: { marginTop: orbita.spacing.xl },

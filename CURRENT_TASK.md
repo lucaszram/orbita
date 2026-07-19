@@ -12,6 +12,16 @@
 
 **Estado:** backend implementado y desplegado únicamente a Convex dev `dutiful-viper-815`. El function spec confirma la acción interna de precarga y el claim atómico. Validación local: typecheck verde, 343/343 tests y `git diff --check` limpio. Pendiente: PR backend, adaptación frontend separada por Claude y pasada manual conjunta; producción sigue intacta.
 
+## Carta Natal — carga sin bloquear por la lectura larga (2026-07-18, Claude)
+
+**Objetivo:** pareja frontend del PR backend #32 (prewarm natal): mostrar la carta astronómica (rueda, tríada, posiciones, aspectos, casas y mapa de valores) apenas `charts.current` + `charts.valuesMap` resuelven (<1 s), sin esperar los 40–61 s de `charts.personalityReading`.
+
+**Ficha:** owner Claude (frontend); territorio `app/(tabs)/carta.tsx`, `src/domain/`, `test/`; rama `feature/carta-natal-carga` sobre `origin/main` `9e52c55`; riesgo bajo (solo reordena estados de carga, cero cambios de copy aprobado/contenido/backend/Figma); validación `pnpm typecheck` + suite completa; rollout: PR → revisión → prueba manual de Lucas contra Convex dev `dutiful-viper-815` (backend #32 ya desplegado); producción fuera de alcance.
+
+**Estado:** implementado. Nuevo dominio puro `src/domain/cartaNatalCarga.ts`: `cartaGate({ doc, values })` gobierna el loading general (la lectura NO es input — garantía de tipo de que nunca vuelve a `MinimalLoading`) y `readingBlockPhase({ reading, failed })` gobierna solo el bloque "Tu carta, explicada": pendiente → "Preparando tu lectura…" inline; reject del generador → error inline con REINTENTAR (re-dispara la action); lista → los siete capítulos largos intactos (mismo markup `SectorBlock`, valores intercalados, disclaimer). El dato manda: si el prewarm del backend termina aunque la action del cliente haya fallado, la query llena la lectura y se muestra. `generatePersonalityReading({})` se sigue disparando al montar; `{ status: "pending" }` resuelto no es error (solo un reject lo es). Validación: typecheck verde, 354/354 tests (14 nuevos en `test/cartaNatalCarga.test.ts`: dominio + estructurales del cableado). Pendiente: pasada manual de Lucas en simulador con el backend #32 en dev.
+
+**Ronda 2 (2026-07-19, señal remota):** el review de Lucas encontró que un prewarm fallido dejaba "Preparando…" eterno (el cliente recibía `{status:"pending"}` y la query seguía null). El backend #32 (`24ba2ac`, solo Convex dev) sumó la query aditiva `charts.personalityReadingState()` → `{ status: "pending" | "ready" | "error" }`, reactiva y nunca null. Frontend conectado: ref tipada en `appRefs.ts`; `readingBlockPhase` ahora recibe `state` + `generating` — prioridad: lectura llegada gana siempre; reject local o `state="error"` → error inline con REINTENTAR; `state="ready"` con lectura aún null = ventana entre queries → sigue cargando; el reintento limpia el fallo local, re-dispara la action y `generating` tapa el `error` remoto stale hasta que el backend lo pise. Regresión exacta pending→error sin desmontar + 5 tests más. Validación: typecheck verde, 360/360.
+
 ## Release Candidate — TestFlight 1.0.0 (17) (2026-07-18, Codex)
 
 **Objetivo:** generar un binario iPhone reproducible para la pasada final de App Review, incorporando el backend de eliminación seguro y el frontend de cumplimiento ya validados.
