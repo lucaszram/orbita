@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { Component, type ReactNode, useEffect, useRef, useState } from "react";
 import { Animated, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { router } from "expo-router";
@@ -10,9 +10,17 @@ import { useLiveApp } from "@/hooks/useLiveApp";
 import { GuestState } from "@/components/orbita/GuestState";
 import { ErrorState, MinimalLoading } from "@/components/orbita/states";
 import { sessionPhase } from "@/domain/screenPhase";
+import { toLocalDate } from "@/domain/dateStrip";
+import {
+  historyItemToAnswerPayload,
+  parseVoidHistory,
+  voidBackAction,
+  voidHistoryDateLabel
+} from "@/domain/voidHistory";
 import {
   proposedApi,
   type VoidAnswerPayload,
+  type VoidHistoryItem,
   type VoidPromptCategory,
   type VoidTodayPayload
 } from "@/services/appRefs";
@@ -30,7 +38,8 @@ type VoidViewProps = {
   ask: AskVoid;
   today: VoidTodayPayload | null;
   categories: VoidPromptCategory[];
-  /** false cuando es raíz de tab (sin botón "volver"). */
+  /** false cuando es raíz de tab: `entrada` no puede salir de la ruta
+   *  (en `respuesta` la flecha vuelve a las preguntas en ambos contextos). */
   showBack: boolean;
 };
 
@@ -143,8 +152,11 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
   // La action real falló (solo puede pasar con sesión): respuesta = error con
   // REINTENTAR, jamás el oráculo de maqueta como si fuera la respuesta.
   const [askFailed, setAskFailed] = useState(false);
+  // localDate de la respuesta guardada reabierta; null = respuesta recién generada.
+  const [openedDate, setOpenedDate] = useState<string | null>(null);
   const pulse = useRef(new Animated.Value(0.4)).current;
 
+  const todayLocalDate = toLocalDate();
   const question = typed.trim() || DEFAULT_QUESTION;
   const activeCategory = categories.find((c) => c.key === category) ?? categories[0];
   const noneLeft = !!today && today.remaining <= 0;
@@ -159,6 +171,7 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
   const askQuestion = (q: string) => {
     setTyped(q);
     setAskFailed(false);
+    setOpenedDate(null);
     if (noneLeft) {
       setLocked(true);
       setPhase("respuesta");
@@ -167,6 +180,23 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
     setLocked(false);
     setPhase("escuchando");
   };
+  // Vuelve a `entrada` sin cambiar de tab ni ruta: limpia error/límite
+  // transitorios y conserva el payload en memoria.
+  const volverAPreguntas = () => {
+    setAskFailed(false);
+    setLocked(false);
+    setPhase("entrada");
+  };
+  // Reabre una respuesta guardada en el mismo estado `respuesta`: no llama
+  // `void.ask` y no descuenta cupo (también disponible en el estado de límite).
+  const openHistoryItem = (item: VoidHistoryItem) => {
+    setAskFailed(false);
+    setLocked(false);
+    setPayload(historyItemToAnswerPayload(item));
+    setOpenedDate(item.localDate);
+    setPhase("respuesta");
+  };
+  const backAction = voidBackAction(phase, showBack);
   // Respuesta a mostrar: SIEMPRE la real del backend (un fallo cae en
   // askFailed; el invitado ni llega a esta vista).
   const shownQuestion = payload?.question ?? question;
@@ -189,6 +219,7 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
         if (cancelled) return;
         setLocked(!!res.locked);
         setPayload(res.locked ? null : res);
+        setOpenedDate(null);
         setPhase("respuesta");
       })
       .catch(() => {
@@ -216,12 +247,17 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
         style={StyleSheet.absoluteFill}
       />
 
-      {showBack && phase !== "escuchando" ? (
+      {backAction !== "oculta" ? (
         <View style={[styles.topbar, { paddingTop: insets.top + orbita.spacing.sm }]}>
           <Pressable
-            onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)"))}
+            onPress={() => {
+              if (backAction === "volver-a-preguntas") volverAPreguntas();
+              else if (router.canGoBack()) router.back();
+              else router.replace("/(tabs)");
+            }}
             hitSlop={12}
             accessibilityRole="button"
+            accessibilityLabel={backAction === "volver-a-preguntas" ? "Volver a las preguntas" : "Volver"}
           >
             <Text style={styles.back}>←</Text>
           </Pressable>
@@ -237,6 +273,10 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
             <Text style={styles.tagline}>Cruzá con una pregunta.</Text>
             <Text style={[styles.microMono, noneLeft && styles.microMonoCopper]}>{counterLabel}</Text>
           </View>
+
+          <VoidHistoryBoundary>
+            <VoidHistorySection today={todayLocalDate} onOpen={openHistoryItem} />
+          </VoidHistoryBoundary>
 
           <View style={styles.tabs}>
             {categories.map((c) => {
@@ -353,7 +393,9 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
           ]}
           showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.eyebrow}>EL UMBRAL · HOY</Text>
+          <Text style={styles.eyebrow}>
+            EL UMBRAL · {voidHistoryDateLabel(openedDate ?? todayLocalDate, todayLocalDate)}
+          </Text>
           <View style={{ height: orbita.spacing.sm }} />
           <Text style={styles.questionSmall}>“{shownQuestion}”</Text>
           <View style={{ height: orbita.spacing.xxl * 1.5 }} />
@@ -372,6 +414,53 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
           <Text style={styles.footnote}>El Umbral no contesta sí o no.</Text>
         </ScrollView>
       ) : null}
+    </View>
+  );
+}
+
+/**
+ * Un fallo de `void.history` (deployment sin la query, error de red raro) no
+ * puede tirar el Umbral entero: se reduce a "sin bloque", igual que una lista
+ * vacía — las preguntas sugeridas quedan directo, nunca datos falsos.
+ */
+class VoidHistoryBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
+
+/** "TUS PREGUNTAS": respuestas ya respondidas (`void.history`, más nueva primero). */
+function VoidHistorySection({
+  today,
+  onOpen
+}: {
+  today: string;
+  onOpen: (item: VoidHistoryItem) => void;
+}) {
+  const rows = useQuery(proposedApi.voidHistory, {});
+  // undefined (cargando) o filas malformadas → sin bloque; no hay empty state.
+  const items = parseVoidHistory(rows);
+  if (items.length === 0) return null;
+  return (
+    <View style={styles.historyBlock}>
+      <Text style={styles.historyEyebrow}>TUS PREGUNTAS</Text>
+      <ScrollView style={styles.historyList} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+        {items.map((item) => (
+          <Pressable
+            key={item.answerId}
+            onPress={() => onOpen(item)}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.historyRow, pressed && styles.pressed]}
+          >
+            <Text style={styles.historyQuestion}>{item.question}</Text>
+            <Text style={styles.historyDate}>{voidHistoryDateLabel(item.localDate, today)}</Text>
+          </Pressable>
+        ))}
+      </ScrollView>
     </View>
   );
 }
@@ -490,6 +579,37 @@ const styles = StyleSheet.create({
   tabGlyphActive: { color: orbita.colors.bone },
   tabLabel: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.monoMedium, fontSize: 10, letterSpacing: 1.5 },
   tabLabelActive: { color: orbita.colors.copper },
+
+  historyBlock: { paddingBottom: orbita.spacing.xl },
+  historyEyebrow: {
+    color: orbita.colors.copper,
+    fontFamily: orbita.fonts.monoMedium,
+    fontSize: 11,
+    letterSpacing: 2,
+    paddingBottom: orbita.spacing.sm
+  },
+  historyList: { maxHeight: 168 },
+  historyRow: {
+    alignItems: "baseline",
+    borderBottomColor: orbita.colors.line,
+    borderBottomWidth: 1,
+    flexDirection: "row",
+    gap: orbita.spacing.md,
+    paddingVertical: orbita.spacing.sm
+  },
+  historyQuestion: {
+    color: orbita.colors.bone,
+    flex: 1,
+    fontFamily: orbita.fonts.serifRegular,
+    fontSize: 15,
+    lineHeight: 21
+  },
+  historyDate: {
+    color: orbita.colors.muted,
+    fontFamily: orbita.fonts.monoMedium,
+    fontSize: 10,
+    letterSpacing: 1.5
+  },
 
   prompts: { flex: 1 },
   promptsContent: { alignItems: "center", gap: orbita.spacing.xxl, paddingVertical: orbita.spacing.xl },

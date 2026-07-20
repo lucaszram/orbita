@@ -1,5 +1,13 @@
 # Current Task
 
+## Umbral — volver a las preguntas + historial (2026-07-20, Claude)
+
+**Objetivo:** que la respuesta del Umbral siempre tenga un regreso interno a las preguntas (el tab raíz desactivaba la única flecha) y que las preguntas ya respondidas — que el backend sí persiste — se puedan reabrir sin gastar cupo. Handoff: `docs/handoff-claude-umbral-history.md` (rama backend `codex/umbral-history`, `void.history` con typecheck y 369/369 verdes).
+
+**Ficha:** owner Claude (frontend); territorio `app/**`, `src/**`, tests; rama `feature/umbral-history` sobre `origin/main` `b81f262`; consume `void.history({ limit? })` por ref tipada en `appRefs.ts` (`_generated` de main aún no la tiene; PR backend pendiente); riesgo bajo (una pantalla, aditivo); fuera de alcance borrar preguntas, cupos 3/5, mensajería con burbujas, Figma, producción, OTA y TestFlight.
+
+**Estado:** implementado. (1) Flecha en `respuesta` (éxito, límite y error) SIEMPRE visible, también en la raíz del tab, con accessibility label exacto `Volver a las preguntas`: primer tap vuelve a `entrada` sin cambiar de tab/ruta (limpia error/límite transitorios, conserva el payload); en la ruta profunda, desde `entrada` un segundo back sale con `router.back()`; durante `escuchando` se mantiene el bloqueo. Lógica pura en `src/domain/voidHistory.ts` (`voidBackAction`). (2) Bloque `TUS PREGUNTAS` en `entrada`, arriba de las categorías y solo si hay filas: pregunta completa + fecha corta (`HOY` / `DD MMM`), orden del backend (más nueva primero); tap reabre esa respuesta en el mismo estado `respuesta` mapeando la fila (`historyItemToAnswerPayload`) sin llamar `void.ask` ni tocar `used/remaining`; sin filas no hay empty state (quedan las sugeridas directo). (3) Defensa: `parseVoidHistory` descarta filas malformadas (patrón de guardadas remotas) y un error de la query cae en un boundary que reduce el bloque a nada — nunca bloquea el Umbral ni muestra datos falsos; el eyebrow de `respuesta` muestra la fecha real de la fila reabierta. Validación: typecheck verde, 375/375 tests (12 nuevos: parser, rótulo de fecha, mapeo sin cupo, flecha por fase). Pendiente: probar junto con el backend `codex/umbral-history` en Convex dev y pasada manual de Lucas (regresiones 1–6 del handoff); ninguno de los dos PRs se mergea antes de esa pasada.
+
 ## Release Candidate — TestFlight 1.0.0 (18) (2026-07-19, Codex)
 
 **Objetivo:** publicar únicamente en TestFlight interno el `main` aprobado que desacopla la Carta Natal base de la lectura larga y precalienta esa lectura en segundo plano.
