@@ -1,44 +1,76 @@
-# Handoff — Bot de Telegram (altas + instalaciones)
+# Bot de Telegram — resumen diario de producto
 
-Reemplaza analytics (Mixpanel) para el testeo interno: un bot de Telegram avisa
-cuando alguien **instala** la app o **crea una cuenta**. El código ya está
-implementado y deployado por el front; **falta solo la config** (token + chat id).
+## Resultado esperado
 
-## Ya implementado (no rehacer)
+Cada día a las 09:00 de Argentina, el bot envía las métricas completas del día
+anterior:
 
-- **`convex/notify.ts`** — `internalAction sendTelegram({ text })`: hace `fetch` a
-  `https://api.telegram.org/bot<TOKEN>/sendMessage`. Gateado por env; sin config, no-op.
-- **`convex/telemetry.ts`** — `mutation appOpened({ platform? })` (pública, sin sesión):
-  programa `sendTelegram` con "📲 Nueva instalación de Órbita (<platform>)".
-- **`convex/users.ts`** — `getOrCreateCurrentUser`: la **primera** vez que se crea el
-  user (alta), programa `sendTelegram` con "🪐 Nueva cuenta en Órbita — <email>".
-- **`src/components/InstallPing.tsx`** — el cliente llama `appOpened` **una vez por
-  instalación** (flag en AsyncStorage `orbita_install_pinged_v1`). Montado en
-  `app/_layout.tsx` bajo el ConvexProvider (corre también para invitados).
+```text
+📊 Órbita — resumen del 19/07
 
-Las mutations no pueden hacer `fetch`; por eso el envío va por
-`ctx.scheduler.runAfter(0, internal.notify.sendTelegram, …)` (patrón correcto).
+👥 Abrieron la app: 43
+├ Nuevos: 17
+└ Recurrentes: 26
+🆕 Onboarding completado: 9
 
-## Lo que falta (Lucas / Codex) — solo config
+🪐 Desbloquearon su carta: 21
+├ Nuevos: 12
+└ Recurrentes: 9
 
-1. **Crear el bot:** en Telegram, hablale a **@BotFather** → `/newbot` → seguí los
-   pasos → te da un **token** (`123456789:ABC-DEF...`).
-2. **Chat id de destino:** hablale a **@userinfobot** y te devuelve tu `id` (un número).
-   - Para un **grupo**: creá el grupo, agregá el bot, y usá el id del grupo (negativo,
-     ej. `-1001234567890`). Podés obtenerlo con @userinfobot dentro del grupo o
-     leyendo `getUpdates`.
-3. **Setear en el env de Convex** (dev y prod):
-   ```
-   npx convex env set TELEGRAM_BOT_TOKEN 123456789:ABC-DEF...
-   npx convex env set TELEGRAM_CHAT_ID 987654321
-   ```
-   (o desde el dashboard de Convex → Settings → Environment Variables)
-4. **Probar:** abrí la app (o creá una cuenta) → debería llegar el mensaje al chat.
-   Si no llega: revisar que el bot no esté bloqueado, que el chat id sea correcto, y
-   los logs de la action `notify:sendTelegram` en el dashboard de Convex.
+↩️ Retención D1: 41% (7 de 17)
+🔥 Activos de ayer que volvieron: 58% (18 de 31)
+```
 
-## Ideas para después (opcionales)
-- Sumar evento de **onboarding completado** (`onboarding.completeBirthData`) con el
-  signo/lugar, para distinguir "abrió" de "cargó sus datos".
-- Rate-limit / de-dup si el volumen molesta.
-- Formato más rico (Markdown) o botones inline.
+## Definiciones
+
+- **Abrieron la app:** personas/instalaciones únicas con al menos un `app_opened`
+  ese día. Varias sesiones no aumentan este número.
+- **Nuevos:** su primera apertura histórica ocurrió ese día.
+- **Recurrentes:** ya habían abierto Órbita antes.
+- **Onboarding completado:** primera persistencia exitosa de datos natales desde
+  `onboarding.completeBirthData`. No es una vista ni un tap del cliente.
+- **Carta desbloqueada:** primer reveal confirmado por `daily.revealCard` para esa
+  persona y fecha.
+- **Retención D1:** personas nuevas del día anterior que volvieron a abrir al día
+  siguiente / total de nuevas del día anterior.
+- **Activos de ayer que volvieron:** cualquier persona activa el día anterior que
+  también abrió el día reportado / total de activos del día anterior.
+
+## Implementación backend
+
+- `productActors`: UUID seudónimo por instalación, vinculado al `userId` interno
+  cuando existe sesión.
+- `productEvents`: eventos idempotentes por `eventId`; no acepta propiedades libres.
+- Eventos encolados conservan `occurredAt` (hasta siete días) para no mover una
+  apertura offline al día en que volvió la conexión.
+- `telemetry.track`: mutation pública únicamente para eventos originados en UI.
+- `account_created`, `onboarding_completed` y `daily_card_revealed`: se escriben en
+  las mutations autoritativas correspondientes; el frontend no los duplica.
+- `productDigests`: claim por fecha para evitar dos envíos.
+- `crons.ts`: agenda el action a las 12:00 UTC (09:00 Argentina).
+- `notify.sendTelegram`: devuelve si Telegram aceptó o no el mensaje; una falla no
+  afecta la operación del usuario.
+
+## Configuración de Telegram
+
+Variables privadas de Convex, tanto en dev como en producción:
+
+```text
+TELEGRAM_BOT_TOKEN
+TELEGRAM_CHAT_ID
+```
+
+El token se obtiene con `@BotFather`. El chat id puede ser personal o de un grupo.
+Nunca se guardan estos valores en Git.
+
+## Privacidad
+
+No se registra ni se manda a Telegram: email, nombre, fecha/hora/lugar natal,
+coordenadas, preguntas o respuestas del Vacío, notas del Diario, payloads, prompts,
+outputs personalizados, tokens o texto libre.
+
+## Límite histórico
+
+La medición completa comienza con el build que implemente `telemetry.track`. Los
+pings viejos de primera instalación no permiten reconstruir aperturas diarias ni
+retención anterior.

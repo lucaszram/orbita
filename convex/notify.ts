@@ -11,22 +11,24 @@ import { v } from "convex/values";
  */
 export const sendTelegram = internalAction({
   args: { text: v.string() },
+  returns: v.boolean(),
   handler: async (_ctx, args) => {
     const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
     const chatId = process.env.TELEGRAM_CHAT_ID?.trim();
     if (!token || !chatId) {
-      return null;
+      return false;
     }
 
     try {
-      await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ chat_id: chatId, text: args.text })
       });
+      return response.ok;
     } catch {
       // Best-effort: nunca romper el flujo del usuario por una notificación.
+      return false;
     }
-    return null;
   }
 });
