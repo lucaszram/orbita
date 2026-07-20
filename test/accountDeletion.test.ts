@@ -58,6 +58,8 @@ describe("deleteAccountData", () => {
     assert.deepEqual(
       USER_SCOPED_DELETION_STEPS.map((step) => step.table),
       [
+        "productEvents",
+        "productActors",
         "labRuns",
         "labSubjects",
         "savedReadings",
@@ -186,5 +188,36 @@ describe("deleteAccountData", () => {
     assert.equal(deleted, 2);
     assert.deepEqual(db.rows.get("users"), []);
     assert.equal(db.indexReads.filter((read) => read.table === "paymentEvents").length, 1);
+  });
+
+  it("deletes anonymous events linked through the user's installation actor", async () => {
+    const db = fakeDb({
+      users: [{ _id: "user_current", clerkUserId: "clerk_current" }],
+      productActors: [
+        { _id: "actor_current", userId: "user_current", installationId: "install_current" },
+        { _id: "actor_other", userId: "user_other", installationId: "install_other" }
+      ],
+      productEvents: [
+        { _id: "anonymous_current", actorId: "actor_current" },
+        { _id: "backend_current", userId: "user_current" },
+        { _id: "anonymous_other", actorId: "actor_other" }
+      ],
+      paymentEvents: []
+    });
+    for (const step of USER_SCOPED_DELETION_STEPS) {
+      if (!db.rows.has(step.table)) db.rows.set(step.table, []);
+    }
+
+    await deleteAccountData(
+      { db },
+      { userId: "user_current", clerkUserIds: ["clerk_current"] }
+    );
+
+    assert.deepEqual(db.rows.get("productEvents"), [
+      { _id: "anonymous_other", actorId: "actor_other" }
+    ]);
+    assert.deepEqual(db.rows.get("productActors"), [
+      { _id: "actor_other", userId: "user_other", installationId: "install_other" }
+    ]);
   });
 });

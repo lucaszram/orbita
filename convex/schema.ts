@@ -24,6 +24,20 @@ const contentStatus = v.union(v.literal("draft"), v.literal("review"), v.literal
 const labReviewStatus = v.union(v.literal("needs_review"), v.literal("approved"), v.literal("rejected"));
 const generationStatus = v.union(v.literal("pending"), v.literal("ready"), v.literal("fallback"), v.literal("error"), v.literal("stale"));
 const timelinePeriodType = v.union(v.literal("week"), v.literal("month"), v.literal("long_range"));
+const productEventName = v.union(
+  v.literal("app_opened"),
+  v.literal("onboarding_started"),
+  v.literal("onboarding_step_viewed"),
+  v.literal("account_created"),
+  v.literal("onboarding_completed"),
+  v.literal("natal_chart_viewed"),
+  v.literal("daily_guide_viewed"),
+  v.literal("daily_card_revealed"),
+  v.literal("paywall_viewed"),
+  v.literal("checkout_started")
+);
+const productEventSource = v.union(v.literal("frontend"), v.literal("backend"));
+const digestStatus = v.union(v.literal("sending"), v.literal("sent"), v.literal("error"));
 
 export default defineSchema({
   users: defineTable({
@@ -37,6 +51,60 @@ export default defineSchema({
   })
     .index("by_tokenIdentifier", ["tokenIdentifier"])
     .index("by_clerkUserId", ["clerkUserId"]),
+
+  // Identidad seudónima por instalación. Cuando hay sesión se vincula al userId,
+  // lo que permite unir la apertura previa al login con la cuenta sin guardar PII.
+  productActors: defineTable({
+    installationId: v.string(),
+    userId: v.optional(v.id("users")),
+    firstSeenAt: v.number(),
+    firstSeenDate: v.string(),
+    firstOpenedAt: v.optional(v.number()),
+    firstOpenedDate: v.optional(v.string()),
+    lastOpenedAt: v.optional(v.number()),
+    lastOpenedDate: v.optional(v.string()),
+    platform: v.optional(v.string()),
+    appVersion: v.optional(v.string()),
+    buildNumber: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number()
+  })
+    .index("by_installation", ["installationId"])
+    .index("by_user", ["userId"])
+    .index("by_first_opened_date", ["firstOpenedDate"]),
+
+  // Hechos observables, sin email, datos natales, preguntas ni contenido libre.
+  // eventId hace que los reintentos del cliente y del backend sean idempotentes.
+  productEvents: defineTable({
+    eventId: v.string(),
+    eventName: productEventName,
+    source: productEventSource,
+    actorId: v.optional(v.id("productActors")),
+    userId: v.optional(v.id("users")),
+    installationId: v.optional(v.string()),
+    sessionId: v.optional(v.string()),
+    localDate: v.string(),
+    occurredAt: v.number(),
+    platform: v.optional(v.string()),
+    appVersion: v.optional(v.string()),
+    buildNumber: v.optional(v.string()),
+    onboardingStep: v.optional(v.number()),
+    entryPoint: v.optional(v.string())
+  })
+    .index("by_event_id", ["eventId"])
+    .index("by_date_event", ["localDate", "eventName"])
+    .index("by_user_date", ["userId", "localDate"])
+    .index("by_actor_date", ["actorId", "localDate"]),
+
+  // Claim del digest para que el cron no mande dos resúmenes del mismo día.
+  productDigests: defineTable({
+    localDate: v.string(),
+    status: digestStatus,
+    requestedAt: v.number(),
+    sentAt: v.optional(v.number()),
+    failedAt: v.optional(v.number()),
+    errorCode: v.optional(v.string())
+  }).index("by_date", ["localDate"]),
 
   onboardingDrafts: defineTable({
     userId: v.optional(v.id("users")),

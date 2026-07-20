@@ -1,6 +1,7 @@
 import { mutationGeneric as mutation, queryGeneric as query } from "convex/server";
 import { v } from "convex/values";
 import { normalizeBirthTime } from "./lib/orbita";
+import { recordBackendProductEvent } from "./lib/productAnalytics";
 import { findUserByTokenIdentifier, getOrCreateUser, omitUndefined, requireUser } from "./lib/users";
 
 const identityValidator = v.union(v.literal("ella"), v.literal("el"), v.literal("prefiero_no_decirlo"));
@@ -193,6 +194,15 @@ export const completeBirthData = mutation({
           birthTime: normalizedBirthTime
         }
       );
+    }
+
+    if (!existingBirthData) {
+      await recordBackendProductEvent(ctx, {
+        eventName: "onboarding_completed",
+        userId: user._id,
+        dedupeKey: String(birthDataId),
+        occurredAt: now
+      });
     }
 
     return birthDataId;

@@ -1,5 +1,17 @@
 # Current Task
 
+## Analytics — eventos de producto + resumen diario por Telegram (2026-07-20, Codex)
+
+**Objetivo:** registrar hechos puntuales del funnel de Órbita y enviar cada mañana un resumen del día anterior con aperturas únicas, nuevos/recurrentes, onboarding completado, cartas reveladas y retención.
+
+**Criterios de aceptación:** `app_opened` es idempotente por `eventId` y vincula una instalación seudónima con la cuenta cuando existe sesión; `account_created`, `onboarding_completed` y `daily_card_revealed` salen únicamente de sus mutations autoritativas; ningún evento guarda PII, datos natales ni contenido libre; el digest calcula nuevos/recurrentes, D1 y regreso diario sin doble conteo; un cron lo agenda a las 09:00 de Argentina y un claim evita duplicados; los builds viejos siguen funcionando.
+
+**Ficha:** owner Codex; territorio `convex/**`, tests y documentación/handoff; rama `codex/telegram-product-events` sobre `origin/main` `b81f262`; contrato aislado en `0b31db2`; riesgo medio por tablas nuevas, telemetría pública y cron; pruebas unitarias de métricas/formato/idempotencia + suite completa + typecheck + codegen; rollout PR backend → Convex dev → frontend separado instrumenta eventos → prueba con cuentas descartables → aprobación explícita de Lucas → producción; rollback por revert y redeploy (las tablas aditivas pueden quedar sin consumidores); fuera de alcance `app/**`, `src/**`, PostHog, deploy productivo y publicación móvil.
+
+**Privacidad:** se guarda un UUID aleatorio por instalación, ids internos, timestamps y metadata técnica acotada. Nunca email, nombre, fecha/hora/lugar natal, pregunta/respuesta, nota, payload o copy de pantalla.
+
+**Estado:** backend implementado localmente. Contrato aislado en `0b31db2`; la implementación agrega colector cerrado e idempotente, timestamps offline acotados a siete días, resultados autoritativos, deduplicación multidispositivo, cálculo puro del digest, claim de envío, cron 09:00 AR y borrado junto con la cuenta. El texto coincide con el formato aprobado por Lucas. Validación: codegen ejecutado, typecheck verde, 371/371 tests y `git diff --check` limpio. El 2026-07-20 Lucas creó y activó `@orbita_metricas_bot`; `TELEGRAM_BOT_TOKEN` y `TELEGRAM_CHAT_ID` quedaron configuradas en Convex producción `exciting-bat-311` y el envío directo de prueba fue exitoso. No se desplegaron funciones ni schema a producción: el digest nuevo continúa pendiente de PR, gates, deploy backend explícitamente aprobado y PR frontend separado siguiendo `docs/handoff-claude-product-events.md`.
+
 ## Release Candidate — TestFlight 1.0.0 (18) (2026-07-19, Codex)
 
 **Objetivo:** publicar únicamente en TestFlight interno el `main` aprobado que desacopla la Carta Natal base de la lectura larga y precalienta esa lectura en segundo plano.

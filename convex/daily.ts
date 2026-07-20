@@ -16,6 +16,7 @@ import {
   selectRelevantTransits,
   type NormalizedAstroTransit
 } from "./lib/orbita";
+import { recordBackendProductEvent } from "./lib/productAnalytics";
 import { cardById, drawCard, type TarotDraw } from "./lib/tarot";
 import { findCurrentUser, findUserByTokenIdentifier, requireIdentity, requireUser } from "./lib/users";
 
@@ -1304,6 +1305,12 @@ export const revealCard = mutation({
 
     const revealedAt = Date.now();
     await ctx.db.patch(doc._id, { revealedAt });
+    await recordBackendProductEvent(ctx, {
+      eventName: "daily_card_revealed",
+      userId: user._id,
+      dedupeKey: String(doc._id),
+      occurredAt: revealedAt
+    });
     return revealedAt;
   }
 });

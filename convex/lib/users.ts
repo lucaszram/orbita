@@ -1,5 +1,6 @@
 import type { UserIdentity } from "convex/server";
 import { userFieldsFromIdentity } from "./orbita";
+import { recordBackendProductEvent } from "./productAnalytics";
 
 type ConvexCtx = {
   auth: {
@@ -72,6 +73,13 @@ export async function getOrCreateUser(ctx: ConvexCtx) {
       updatedAt: now
     })
   );
+
+  await recordBackendProductEvent(ctx, {
+    eventName: "account_created",
+    userId,
+    dedupeKey: String(userId),
+    occurredAt: now
+  });
 
   return await ctx.db.get(userId);
 }
