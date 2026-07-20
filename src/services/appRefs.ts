@@ -317,6 +317,19 @@ export type VoidTodayPayload = { limit: number; used: number; remaining: number;
 export type VoidPromptCategory = { key: string; label: string; glyph: string; prompts: string[] };
 export type VoidSuggestedPayload = { categories: VoidPromptCategory[] };
 
+/** Fila del historial de El Umbral (`void.history`): intercambio ya respondido. */
+export type VoidHistoryItem = {
+  answerId: string;
+  /** YYYY-MM-DD del día de la pregunta (timezone del usuario en backend). */
+  localDate: string;
+  question: string;
+  answer: string;
+  basadoEn: string[];
+  mejorPregunta: string;
+  paso: string;
+  createdAt: number;
+};
+
 export type PlaceLookup = {
   status: "success" | "not_configured" | "error";
   places: Array<{
@@ -497,6 +510,9 @@ export const proposedApi = {
   voidToday: anyApi.void.today as FunctionReference<"query", "public", Empty, VoidTodayPayload | null>,
   // void.suggestedQuestions(): preguntas sugeridas personalizadas por categoría.
   voidSuggested: anyApi.void.suggestedQuestions as FunctionReference<"action", "public", Empty, VoidSuggestedPayload>,
+  // void.history({ limit? }): intercambios ya respondidos, más nuevo primero
+  // (rama backend codex/umbral-history). Reabrir uno NO llama void.ask ni gasta cupo.
+  voidHistory: anyApi.void.history as FunctionReference<"query", "public", { limit?: number }, VoidHistoryItem[]>,
   // daily.getGuide(): guía diaria personalizada (action: genera+cachea 1/día/usuario).
   dailyGuide: anyApi.daily.getGuide as FunctionReference<"action", "public", { localDate?: string; timezone?: string }, DailyGuidePayload>,
   // daily.revealCard(): da vuelta la carta de ese día. Idempotente, irreversible.
