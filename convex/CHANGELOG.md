@@ -1,5 +1,14 @@
 # Contrato — CHANGELOG
 
+## 2026-07-20 — Eventos de producto y resumen diario por Telegram
+
+- **Qué cambió:** se agregan `productActors`, `productEvents` y `productDigests`. `productActors` mantiene una identidad seudónima por instalación y puede vincularse al `userId` autenticado; `productEvents` registra hechos idempotentes del funnel (`app_opened`, onboarding, cuenta, vistas y reveal) sin PII ni contenido libre; `productDigests` evita duplicar el resumen diario. La mutation pública de telemetría aceptará únicamente el subconjunto de eventos originados en el cliente. Los resultados sensibles para las métricas (`account_created`, `onboarding_completed`, `daily_card_revealed`) se escribirán desde sus mutations autoritativas.
+- **Por qué:** calcular aperturas únicas, usuarios nuevos/recurrentes, onboarding completado, cartas desbloqueadas y retención D1 sin inferencias ambiguas ni pings aislados.
+- **Compatibilidad:** aditivo. Los builds anteriores siguen funcionando; sus pings históricos no pueden reconstruirse como actividad diaria.
+- **Privacidad:** no se guardan email, nombre, fecha/lugar/hora natal, preguntas, notas, payloads ni texto de pantalla.
+- **Quién lo pidió:** Lucas.
+- **Estado:** contrato definido; implementación backend y handoff frontend en esta tarea.
+
 ## 2026-07-18 — Prewarm de lectura natal larga
 - **Qué cambia:** no cambia ninguna firma pública ni el schema. `charts.calculateOrCreateNatalChart()` agenda internamente la lectura larga apenas encuentra o persiste la carta; `charts.generatePersonalityReading()` comparte un claim atómico con ese trabajo para que cliente y prewarm no generen dos veces.
 - **Por qué:** producción confirmó que la carta astronómica tarda ~0,3 s pero la lectura LLM rica tarda ~61 s. Iniciarla antes reduce la espera sin acortar ni reemplazar los siete capítulos aprobados.
