@@ -1,5 +1,6 @@
 import { anyApi } from "convex/server";
 import type { FunctionReference } from "convex/server";
+import type { ProductEventPayload } from "@/domain/productEvents";
 import type { PublicDailyHome } from "./publicLabRefs";
 
 /**
@@ -506,6 +507,14 @@ export const proposedApi = {
   dailyStrip: anyApi.daily.getStrip as FunctionReference<"query", "public", { from: string; to: string }, DailyStripDay[]>,
   // Dev/testeo interno: marca al usuario como Pro (gateado por ALLOW_DEV_STUB en Convex).
   setStubPro: anyApi.subscriptions.setStubPlusForDev as FunctionReference<"mutation", "public", Empty, unknown>,
-  // Telemetría: aviso de instalación al bot de Telegram (1 vez por install, sin sesión).
-  appOpened: anyApi.telemetry.appOpened as FunctionReference<"mutation", "public", { platform?: string }, null>
+  // Telemetría legacy: aviso de instalación al bot de Telegram (1 vez por install, sin sesión).
+  appOpened: anyApi.telemetry.appOpened as FunctionReference<"mutation", "public", { platform?: string }, null>,
+  // telemetry.track: eventos de producto v1, idempotente por eventId (contrato en
+  // docs/handoff-claude-product-events.md; forma en src/domain/productEvents.ts).
+  trackEvent: anyApi.telemetry.track as FunctionReference<
+    "mutation",
+    "public",
+    ProductEventPayload,
+    { recorded: boolean }
+  >
 } as const;
