@@ -21,6 +21,7 @@ import { lastNDays, toLocalDate } from "@/domain/dateStrip";
 import { useDailyGuide } from "@/services/dailyGuideStore";
 import { markFirstRun, useFirstRun } from "@/services/firstRun";
 import { CartaDelDia } from "@/components/home/CartaDelDia";
+import { TrackScreenView } from "@/components/TrackScreenView";
 import { DiarioStrip } from "@/components/diario/DiarioStrip";
 import { useAppState } from "@/hooks/useAppState";
 import { useLiveApp } from "@/hooks/useLiveApp";
@@ -294,7 +295,11 @@ export default function HomeScreen() {
           <View style={styles.veilNote}>
             <Text style={styles.veilText}>Sacá tu carta para abrir el día</Text>
           </View>
-        ) : null}
+        ) : (
+          /* Guía del día realmente abierta (carta revelada + contenido cargado);
+             el velo previo no cuenta como vista. Dedupe por sesión en el provider. */
+          <TrackScreenView event="daily_guide_viewed" entryPoint="home" />
+        )}
 
         <View style={revealed ? undefined : styles.veiled} pointerEvents={revealed ? "auto" : "none"}>
           <SignalTop

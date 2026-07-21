@@ -10,6 +10,7 @@ import "../global.css";
 LogBox.ignoreLogs(["[expo-notifications]"]);
 import { AppStateProvider } from "@/hooks/useAppState";
 import { OrbitaSessionProvider } from "@/hooks/useLiveApp";
+import { ProductTelemetryProvider } from "@/hooks/useProductTelemetry";
 import { BackendProviders, backendConfig } from "@/services/backendProviders";
 import { InstallPing } from "@/components/InstallPing";
 
@@ -21,22 +22,26 @@ export default function RootLayout() {
         {/* Sesión central (hotfix build 11): un solo estado Clerk/Convex
             compartido; antes cada pantalla resolvía la sesión por su cuenta. */}
         <OrbitaSessionProvider>
-          <AppStateProvider>
-            <StatusBar style="dark" />
-            <Stack screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="index" />
-              <Stack.Screen name="onboarding" />
-              <Stack.Screen name="recepcion" />
-              <Stack.Screen name="iniciar-sesion" />
-              <Stack.Screen name="editar-datos" />
-              <Stack.Screen name="lab" />
-              <Stack.Screen name="backoffice" />
-              <Stack.Screen name="studio" />
-              <Stack.Screen name="reading" />
-              <Stack.Screen name="carta-full" />
-              <Stack.Screen name="(tabs)" />
-            </Stack>
-          </AppStateProvider>
+          {/* Eventos de producto (telemetry.track): debajo del provider de sesión
+              para que app_opened pueda esperar el estado autenticado de Clerk. */}
+          <ProductTelemetryProvider>
+            <AppStateProvider>
+              <StatusBar style="dark" />
+              <Stack screenOptions={{ headerShown: false }}>
+                <Stack.Screen name="index" />
+                <Stack.Screen name="onboarding" />
+                <Stack.Screen name="recepcion" />
+                <Stack.Screen name="iniciar-sesion" />
+                <Stack.Screen name="editar-datos" />
+                <Stack.Screen name="lab" />
+                <Stack.Screen name="backoffice" />
+                <Stack.Screen name="studio" />
+                <Stack.Screen name="reading" />
+                <Stack.Screen name="carta-full" />
+                <Stack.Screen name="(tabs)" />
+              </Stack>
+            </AppStateProvider>
+          </ProductTelemetryProvider>
         </OrbitaSessionProvider>
       </BackendProviders>
     </SafeAreaProvider>

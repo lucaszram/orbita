@@ -1,5 +1,13 @@
 # Current Task
 
+## Analytics frontend — instrumentar eventos de producto (2026-07-20, Claude)
+
+**Objetivo:** que la app envíe a `telemetry.track` los eventos de actividad que el backend no puede registrar solo — `app_opened`, `onboarding_started`, `onboarding_step_viewed`, `natal_chart_viewed`, `daily_guide_viewed` — para que el resumen diario de Telegram cuente aperturas, activos, recurrentes y D1. Contrato y disparos exactos: `docs/handoff-claude-product-events.md`.
+
+**Criterios de aceptación:** un solo `installationId` UUID persistido en AsyncStorage (sin IDFA/email/Clerk id); `sessionId` nuevo en frío y en cada background→active real; `eventId` único por hecho y reutilizado en reintentos (idempotencia); `occurredAt` al crear el evento; cola local pequeña que se vacía con `{ recorded: true|false }`; `app_opened` uno por sesión, espera a Clerk resuelto cuando es posible; `onboarding_started` uno por ejecución, `onboarding_step_viewed` uno por paso con `onboardingStep`; `natal_chart_viewed` y `daily_guide_viewed` uno por sesión y solo con contenido real visible (nunca al montar loading); nada de PII ni texto libre en `entryPoint`; analytics jamás bloquea navegación/onboarding/reveal ni loguea payloads completos en producción.
+
+**Ficha:** owner Claude (frontend); territorio `app/**`, `src/**`, tests; rama `feature/product-events` sobre `origin/main` `ba77880` (backend #36 mergeado y en producción); worktree `/private/tmp/orbita-product-events-front`. Riesgo bajo-medio: código nuevo best-effort, sin tocar flujo de sesión ni reveal; el peor fallo aceptable es no registrar un evento. Pruebas: dominio puro testeado (ids, cola, dedupe, sesión) + typecheck + suite completa. Rollout: PR frontend → prueba conjunta en dev con checklist del handoff → aprobación explícita de Lucas → recién después entra al próximo build; producción de Convex no se toca desde acá. Rollback: revert del PR (el backend tolera ausencia de eventos). Fuera de alcance: `paywall_viewed`/`checkout_started` (superficie Plus oculta), `convex/**`, PostHog, TestFlight y App Store.
+
 ## Analytics — eventos de producto + resumen diario por Telegram (2026-07-20, Codex)
 
 **Objetivo:** registrar hechos puntuales del funnel de Órbita y enviar cada mañana un resumen del día anterior con aperturas únicas, nuevos/recurrentes, onboarding completado, cartas reveladas y retención.

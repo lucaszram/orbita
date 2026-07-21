@@ -10,6 +10,7 @@ import { NatalWheel } from "@/components/orbita/NatalWheel";
 import { EmptyState, ErrorState, MinimalLoading } from "@/components/orbita/states";
 import { mapNatalChart } from "@/components/web/orbita-chart";
 import { Radar } from "@/components/web/orbita-values";
+import { TrackScreenView } from "@/components/TrackScreenView";
 import { cartaGate, readingBlockPhase, type ReadingBlockPhase } from "@/domain/cartaNatalCarga";
 import { sessionPhase } from "@/domain/screenPhase";
 import { useLiveApp } from "@/hooks/useLiveApp";
@@ -142,13 +143,18 @@ function CartaLive() {
     state: readingState?.status
   });
   return (
-    <CartaView
-      payload={payload}
-      reading={readingPhase === "listo" ? reading! : null}
-      readingPhase={readingPhase}
-      onRetryReading={() => setAttempt((a) => a + 1)}
-      values={values ?? null}
-    />
+    <>
+      {/* Contenido real de la carta visible (nunca en loading/vacío/error);
+          el provider deduplica a uno por sesión. */}
+      <TrackScreenView event="natal_chart_viewed" entryPoint="carta_tab" />
+      <CartaView
+        payload={payload}
+        reading={readingPhase === "listo" ? reading! : null}
+        readingPhase={readingPhase}
+        onRetryReading={() => setAttempt((a) => a + 1)}
+        values={values ?? null}
+      />
+    </>
   );
 }
 
