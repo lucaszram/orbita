@@ -13,6 +13,76 @@ Prioridad: los 22 Mayores (son los de la carta del día).
 
 ---
 
+## Reglas aprendidas regenerando el mazo (2026-07-25)
+
+La primera versión salió con nueve cartas mal contadas (el 6 de Oros tenía cinco
+oros; el 5 de Bastos, cuatro figuras). Los prompts de abajo **sí decían el
+número**. El problema era otro.
+
+### 1. Pedir un número no funciona. Describir la disposición, sí
+
+Probado en Nano Banana Pro: `exactly 5 (5) youths … count them before finishing`
+devolvió **cuatro figuras dos veces seguidas**. Los generadores de imagen no
+cuentan: no hay un paso donde enumeren objetos.
+
+Lo que sí siguen es la **composición**. Si a cada elemento se le asigna una
+posición, el modelo tiene que instanciarlo para poder colocarlo. Con este cambio
+salieron **14 de 14 cartas al primer intento**.
+
+❌ `exactly 6 (6) golden pentacles are visible, no more and no less`
+✅ `three pentacles stacked down the left side, two down the right side, and one at the top centre above the merchant's head`
+
+La disposición **se copia del Rider-Waite real**, no se inventa. Funciona mejor
+si se ancla en el detalle icónico que hace contable el número: el séptimo oro
+tirado en el suelo aparte del arbusto, el hueco en la fila de arriba del 8 de
+Copas, las cinco varas cruzándose en una maraña en el 5 de Bastos.
+
+Disposiciones ya validadas, para reusar:
+
+| Carta | Disposición que funcionó |
+|---|---|
+| 3 de Bastos | una vara al borde izquierdo, dos juntas al derecho, la mano en la más cercana |
+| 5 de Bastos | cinco jóvenes en fila al mismo nivel; las cinco varas se cruzan arriba |
+| 6 de Bastos | la del jinete con laurel + dos a su izquierda y tres a su derecha |
+| 8 de Bastos | ocho diagonales paralelas apiladas, sin figuras |
+| 10 de Bastos | el haz se abre en abanico: diez puntas separadas arriba |
+| 6 de Copas | cinco en fila al borde inferior + la sexta que ofrece el niño mayor |
+| 8 de Copas | fila de cinco abajo, tres encima, con un hueco visible |
+| 10 de Copas | arco de arcoíris: cinco copas de cada lado |
+| 7 de Espadas | cinco en los brazos, dos clavadas en el suelo |
+| 6 de Oros | tres a la izquierda, dos a la derecha, una arriba al centro |
+| 7 de Oros | seis en el arbusto, la séptima sola en el suelo |
+| 8 de Oros | seis en el poste, una bajo el cincel, una en el suelo |
+| 10 de Oros | Árbol de la Vida: tres izquierda, tres derecha, cuatro al centro |
+
+### 2. Prohibir el mockup explícitamente
+
+Cuatro cartas salieron como **foto de una carta impresa** —con sombra,
+perspectiva y superficie— en vez de la ilustración. Agregar siempre:
+
+```
+Flat full-bleed artwork only: the illustration itself, NOT a photograph of a printed card. No drop shadow, no perspective, no tilt, no table or surface underneath, no white margins, no rounded card cut-out — the artwork fills the entire frame edge to edge.
+```
+
+### 3. `--ar 2:3 --style raw` es sintaxis de Midjourney
+
+En Higgsfield con Nano Banana, o en DALL·E, esos flags se leen como **texto
+suelto** al final del prompt. Sacarlos y elegir 2:3 en la interfaz.
+
+### 4. Si un prompt se resiste, usar Reference
+
+Pasar la carta del Rider-Waite como imagen de referencia de composición, junto al
+prompt de estilo. Para conteos altos es más confiable que cualquier texto.
+
+### 5. Verificar el arte contra el nombre del archivo
+
+El mazo estuvo meses con **los 21 mayores corridos un lugar** (el archivo de El
+Loco tenía el arte de El Mago) sin que nadie lo notara: carta por carta se ven
+bien, el error solo salta comparando arte y nombre juntos.
+`test/tarotDeck.test.ts` no lo detecta — solo verifica que el archivo exista.
+
+---
+
 ## Dorso
 
 ```
