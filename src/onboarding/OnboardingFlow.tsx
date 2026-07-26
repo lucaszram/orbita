@@ -9,6 +9,7 @@ import type { Topic, ZodiacSign } from "@/domain/types";
 import { useAppState } from "@/hooks/useAppState";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
+import { useProductTelemetry } from "@/hooks/useProductTelemetry";
 import { backendConfig } from "@/services/backendProviders";
 
 import { AccountScreen } from "./screens/AccountScreen";
@@ -134,6 +135,26 @@ export function OnboardingFlow() {
   useEffect(() => {
     if (params.nuevo === "1") setStep((s) => (s === 0 ? STEP_ALTA : s));
   }, [params.nuevo]);
+
+  // Eventos de producto (best-effort, jamás afecta el flujo): el paso 0 es la
+  // entrada con las puertas, no un paso funcional — el flujo "empieza" recién
+  // en STEP_ALTA (o directo en fecha/cuenta si se retoma por deep-link).
+  // `onboarding_started` una vez por ejecución; `onboarding_step_viewed` una
+  // vez por paso por ejecución, con el índice real del paso.
+  const telemetry = useProductTelemetry();
+  const onbStarted = useRef(false);
+  const onbStepsSent = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    if (step < STEP_ALTA) return;
+    if (!onbStarted.current) {
+      onbStarted.current = true;
+      telemetry.track("onboarding_started");
+    }
+    if (!onbStepsSent.current.has(step)) {
+      onbStepsSent.current.add(step);
+      telemetry.track("onboarding_step_viewed", { onboardingStep: step });
+    }
+  }, [step, telemetry]);
 
   useEffect(() => {
     if (typeof params.email === "string" && params.email) setEmail((e) => e || params.email!);
