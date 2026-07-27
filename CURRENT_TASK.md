@@ -1,5 +1,15 @@
 # Current Task
 
+## Release Candidate — TestFlight 1.0.0 (19) (2026-07-27, Codex)
+
+**Objetivo:** publicar únicamente en TestFlight interno un nuevo binario que incluya la corrección de las 78 imágenes del mazo Rider-Waite ya mergeada en `main`.
+
+**Criterios de aceptación:** el RC corresponde exactamente a `origin/main` `ef8b048` más el bump puntual a `1.0.0 (19)`; contiene el PR #39 (`ff9b846`); typecheck, suite completa, export iOS y validación del mazo en verde; App Store Connect recibe el build 19; el binario no se agrega a App Review ni se publica en App Store.
+
+**Ficha:** owner Codex; territorio de release `app.json` y documentación; rama `codex/release-1.0.0-build19`; cambio de contrato no; riesgo alto por distribución TestFlight; pruebas `pnpm typecheck` + `pnpm test` + export iOS + controles estructurales de las 78 cartas; rollout commit identificable → build production firmado → envío a TestFlight interno → pasada física de Lucas; rollback mantener build 18 disponible y no promover build 19; fuera de alcance Convex, Clerk, metadata, App Review y publicación en producción.
+
+**Estado:** preflight completo. App Store Connect confirma que el último upload previo es `1.0.0 (18)`. La base limpia `ef8b048` incluye el merge del fix de imágenes y no requiere cambios de código ni backend. Verificación del árbol del build 19: typecheck verde; 371/371 tests; export iOS correcto; las 78 referencias del catálogo resuelven a 78 imágenes faciales distintas; `git diff --check` limpio. Pendiente: commit puntual, build firmado y recepción de Apple.
+
 ## Analytics — eventos de producto + resumen diario por Telegram (2026-07-20, Codex)
 
 **Objetivo:** registrar hechos puntuales del funnel de Órbita y enviar cada mañana un resumen del día anterior con aperturas únicas, nuevos/recurrentes, onboarding completado, cartas reveladas y retención.
