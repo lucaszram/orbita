@@ -8,7 +8,9 @@
 
 **Ficha:** owner Codex; territorio de release `app.json` y documentación; rama `codex/release-1.0.0-build19`; cambio de contrato no; riesgo alto por distribución TestFlight; pruebas `pnpm typecheck` + `pnpm test` + export iOS + controles estructurales de las 78 cartas; rollout commit identificable → build production firmado → envío a TestFlight interno → pasada física de Lucas; rollback mantener build 18 disponible y no promover build 19; fuera de alcance Convex, Clerk, metadata, App Review y publicación en producción.
 
-**Estado:** preflight completo. App Store Connect confirma que el último upload previo es `1.0.0 (18)`. La base limpia `ef8b048` incluye el merge del fix de imágenes y no requiere cambios de código ni backend. Verificación del árbol del build 19: typecheck verde; 371/371 tests; export iOS correcto; las 78 referencias del catálogo resuelven a 78 imágenes faciales distintas; `git diff --check` limpio. Pendiente: commit puntual, build firmado y recepción de Apple.
+**Estado:** completo en TestFlight interno. App Store Connect confirmó que el último upload previo era `1.0.0 (18)`. El build nuevo corresponde al commit de release `f763092` sobre la base limpia `ef8b048`, que incluye el merge del fix de imágenes. Verificación: typecheck verde; 371/371 tests; export iOS correcto; las 78 referencias del catálogo resuelven a 78 imágenes faciales distintas; `git diff --check` limpio. El IPA firmado (`SHA-256 050ffd1e722b19e216257c2ab1d414cf93b6b5e4d6f16c94398305ef2966e514`) declara `com.lucasssram.orbita`, `1.0.0 (19)`, iPhone-only y iOS 17 mínimo. Apple recibió el submission `43b34036-946e-4c04-baf8-24b6c5c4d847`; App Store Connect marcó el build `07203e50-bf27-4d73-8245-762aa3871ea3` como `VALID` e `IN_BETA_TESTING`, sin export compliance pendiente. No fue agregado a App Review ni publicado en App Store.
+
+**Observación no bloqueante:** Expo Doctor recomienda subir un patch `expo 54.0.35 → 54.0.36` y `expo-updates 29.0.18 → 29.0.19`. No se mezcló esa actualización de dependencias en este release de assets; requiere una tarea separada.
 
 ## Analytics — eventos de producto + resumen diario por Telegram (2026-07-20, Codex)
 
