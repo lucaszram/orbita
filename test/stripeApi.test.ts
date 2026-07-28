@@ -88,7 +88,7 @@ test("Stripe customer, checkout and portal forms preserve the existing contract"
 
   assert.deepEqual(buildStripePortalForm({ customerId: "cus_123", webUrl: "https://orbita.example" }), {
     customer: "cus_123",
-    return_url: "https://orbita.example/profile"
+    return_url: "https://orbita.example/perfil"
   });
 });
 
