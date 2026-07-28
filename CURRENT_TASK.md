@@ -40,6 +40,31 @@
 
 **Bloqueo móvil posterior:** `src/domain/appData.ts` todavía construye tránsitos nativos hardcodeados mediante `buildTransitos` y `chartMock`. No afecta Gate A web y queda fuera de este PR backend, pero debe eliminarse antes de cualquier nueva publicación móvil.
 
+## Órbita Web P0 — auth en español (2026-07-28, Claude)
+
+**Objetivo:** que los componentes de Clerk que montamos rindan en español. Sin rediseñar auth ni tocar la arquitectura de providers.
+
+**Ficha:** owner Claude (frontend); territorio `src/services/**` + `package.json`/`pnpm-lock.yaml`; rama `feature/web-p0-auth-es` sobre `feature/web-p0-final` `91786fe`; riesgo bajo; validación typecheck + suite + `expo export --platform web` + navegador a 320/390/1100.
+
+**Qué cambió:**
+1. `@clerk/localizations@4.13.8` agregado con pnpm (`package.json` + `pnpm-lock.yaml` commiteados).
+2. `src/services/clerkLocalization.ts` exporta `orbitaEsES` = `esES` + overrides puntuales.
+3. `ClerkProvider` recibe `localization={orbitaEsES}`. Nada más cambió: mismo `tokenCache`, mismo `ConvexProviderWithClerk`, mismas rutas.
+
+**Import por subpath — no cosmético:** importar desde la raíz (`@clerk/localizations`) mete los ~40 idiomas del paquete y el bundle web pasó de **4,9 MB a 10,1 MB**. Con `@clerk/localizations/es-ES` queda en **5,18 MB** (+~70 KB sobre la base). El bundle exportado se verificó: tiene los strings en español y **cero** francés/alemán/portugués/japonés.
+
+**Overrides aplicados:** `esES` trae dos interrogaciones sin signo de apertura. Se corrigieron sólo esas dos claves (`formFieldAction__forgotPassword` y `reverification.alternativeMethods.getHelp.title`). No quedó ningún string en inglés dentro de los componentes que montamos, así que no hizo falta ningún otro override.
+
+**Verificado en navegador contra Convex dev:** "Entrar", "para continuar a Orbita", "Correo electrónico", "Contraseña", "Continuar", "¿No tienes cuenta? Regístrese", "¿Olvidaste tu contraseña?" y el error real del servidor ("No se ha encontrado ninguna cuenta con este identificador."). Sin desborde horizontal ni strings en inglés a 320, 390 y 1100.
+
+**Validación: typecheck verde, 430/430 tests, export web correcto.**
+
+**Dos cosas que quedan y NO se resuelven con esta librería:**
+1. **"Regístrese" sale de la app.** Lleva al Account Portal alojado de Clerk (`golden-urchin-96.accounts.dev/sign-up`), que está **en inglés** y no lo alcanza el prop `localization` — ése es otro origen. Se arregla desde el Dashboard de Clerk (idioma del Account Portal) o montando un `<SignUp />` propio, que sería rediseñar auth y quedó explícitamente fuera de este PR.
+2. **Registro mezclado tú/usted.** `esES` es español peninsular: "¿No tienes cuenta?" (tú) junto a "Regístrese" / "Ingrese su dirección" (usted), mientras Órbita escribe en voseo ("Entrá", "Guardá"). No es un bug de traducción sino de voz de marca. Se puede alinear sobrescribiendo un puñado de claves visibles; no lo hice porque excede "sobrescribir sólo strings en inglés".
+
+El badge **"Development mode"** es esperable con la instancia de desarrollo y `pk_test`. No se ocultó por CSS; se verifica antes del Gate A con `pk_live` y el dominio canónico.
+
 ## Órbita Web P0 — responsive, gestión de suscripción y validación en dev (2026-07-28, Claude)
 
 **Objetivo:** cerrar el alcance P0 restante — comportamiento responsive, "Gestionar suscripción" en Perfil, y una pasada real contra Convex dev `dutiful-viper-815`. PWA queda fuera.
