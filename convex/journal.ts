@@ -1,16 +1,52 @@
 import { mutationGeneric as mutation, queryGeneric as query } from "convex/server";
 import { v } from "convex/values";
 import { findCurrentUser, omitUndefined, requireUser } from "./lib/users";
+import { isUserPro } from "./lib/subscriptionAccess";
+import {
+  localDateForTimezone,
+  resolveCanonicalDailyContext,
+  shiftLocalDate
+} from "./daily";
 
 export const list = query({
   handler: async (ctx) => {
     const user = await findCurrentUser(ctx);
     if (!user) return [];
-    return await ctx.db
+    const entries = await ctx.db
       .query("journalEntries")
       .withIndex("by_user", (q: any) => q.eq("userId", user._id))
       .order("desc")
       .take(120);
+    if (await isUserPro(ctx, user._id)) return entries;
+
+    const birthData = await ctx.db
+      .query("birthData")
+      .withIndex("by_user", (q: any) => q.eq("userId", user._id))
+      .order("desc")
+      .first();
+    const latestGuide = await ctx.db
+      .query("dailyGuides")
+      .withIndex("by_user_date", (q: any) => q.eq("userId", user._id))
+      .order("desc")
+      .first();
+    const canonical = resolveCanonicalDailyContext({
+      birthTimezone: birthData?.timezone,
+      latestGuide: latestGuide
+        ? {
+            localDate: latestGuide.localDate,
+            timezone: latestGuide.timezone
+          }
+        : null
+    });
+    const firstVisibleDate =
+      shiftLocalDate(canonical.localDate, -6) ?? canonical.localDate;
+    return entries.filter(
+      (entry: any) =>
+        localDateForTimezone(
+          canonical.timezone,
+          new Date(entry.createdAt)
+        ) >= firstVisibleDate
+    );
   }
 });
 

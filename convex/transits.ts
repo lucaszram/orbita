@@ -6,6 +6,7 @@ import {
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { runAstrologyApiDailyTransits } from "./lib/astrologyApi";
+import { resolveCanonicalDailyContext } from "./daily";
 import {
   buildDailyReadingPayloadFromAstrology,
   buildWebB0TransitDetailPayload,
@@ -13,6 +14,7 @@ import {
   extractNormalizedChartFromPayload
 } from "./lib/orbita";
 import { findUserByTokenIdentifier, omitUndefined, requireIdentity } from "./lib/users";
+import { isUserPro } from "./lib/subscriptionAccess";
 
 const internalApi = internal as any;
 const DAILY_TRANSITS_TIMELINE_VERSION = "orbita-daily-transits-v1";
@@ -65,6 +67,7 @@ export const getTodayState = internalQuery({
 
     return {
       userId: user._id,
+      isPro: await isUserPro(ctx, user._id),
       birthData: await getCurrentBirthData(ctx, user._id),
       natalChart: await getCurrentChart(ctx, user._id),
       providerTransitReading,
@@ -73,6 +76,51 @@ export const getTodayState = internalQuery({
     };
   }
 });
+
+function publicTransitDetail(detail: any, isPro: boolean) {
+  if (isPro) {
+    return {
+      ...detail,
+      access: { isPro: true, personalized: true }
+    };
+  }
+
+  const body =
+    detail?.scene?.transitingBody?.label ?? "El cielo actual";
+  const aspect = detail?.aspect?.type;
+  const aspectText =
+    typeof aspect === "string" && aspect !== "pending"
+      ? ` con un tono de ${aspect}`
+      : "";
+  const plain = `${body}${aspectText} marca el clima principal del día. El cruce con tu carta natal y la lectura por áreas están disponibles en Órbita Plus.`;
+
+  return {
+    ...detail,
+    title: `${body}: clima del día`,
+    scene: {
+      transitingBody: detail?.scene?.transitingBody ?? {
+        name: "current_sky",
+        label: body
+      },
+      natalPoint: {
+        name: "locked",
+        label: "Cruce con tu carta — Plus"
+      }
+    },
+    reading: {
+      fragments: [{ source: "cielo", text: plain }],
+      plain
+    },
+    earth: {
+      headline: "Observá el tono general sin tomarlo como una predicción.",
+      suggestions: [
+        "Registrá qué tema aparece con más fuerza.",
+        "Dejá una nota breve en tu Diario."
+      ]
+    },
+    access: { isPro: false, personalized: false }
+  };
+}
 
 export const persistTodayFromProvider = internalMutation({
   args: {
@@ -186,6 +234,17 @@ export const getToday = action({
   },
   handler: async (ctx, args) => {
     const identity = await requireIdentity(ctx as any);
+    const dayState: any = await ctx.runQuery(
+      internalApi.daily.getGuideTimezone,
+      { tokenIdentifier: identity.tokenIdentifier }
+    );
+    const canonical = resolveCanonicalDailyContext({
+      birthTimezone: dayState.birthTimezone,
+      latestGuide: dayState.latestGuide
+    });
+    if (args.localDate !== canonical.localDate) {
+      throw new Error("Los tránsitos diarios usan la fecha canónica del servidor");
+    }
     const providerVersion = "astrologyapi-western-daily-transits-v3";
     const state: any = await ctx.runQuery(internalApi.transits.getTodayState, {
       tokenIdentifier: identity.tokenIdentifier,
@@ -194,13 +253,22 @@ export const getToday = action({
     });
 
     if (state.providerTransitReading) {
-      return buildWebB0TransitDetailPayload(state.providerTransitReading.payload, args.localDate);
+      return publicTransitDetail(
+        buildWebB0TransitDetailPayload(
+          state.providerTransitReading.payload,
+          args.localDate
+        ),
+        state.isPro
+      );
     }
 
     if (!state.birthData) {
       const fallback = state.fallbackTransitReading ?? state.dailyReading;
       if (fallback) {
-        return buildWebB0TransitDetailPayload(fallback.payload, args.localDate);
+        return publicTransitDetail(
+          buildWebB0TransitDetailPayload(fallback.payload, args.localDate),
+          state.isPro
+        );
       }
       throw new Error("Birth data is required before calculating daily transits");
     }
@@ -222,7 +290,10 @@ export const getToday = action({
     if (providerResult.status !== "success" || !providerResult.normalized) {
       const fallback = state.fallbackTransitReading ?? state.dailyReading;
       if (fallback) {
-        return buildWebB0TransitDetailPayload(fallback.payload, args.localDate);
+        return publicTransitDetail(
+          buildWebB0TransitDetailPayload(fallback.payload, args.localDate),
+          state.isPro
+        );
       }
 
       const detail = providerResult.error ?? (providerResult.warnings.join(", ") || providerResult.status);
@@ -269,6 +340,9 @@ export const getToday = action({
       })
     );
 
-    return buildWebB0TransitDetailPayload(transitReading.payload, args.localDate);
+    return publicTransitDetail(
+      buildWebB0TransitDetailPayload(transitReading.payload, args.localDate),
+      state.isPro
+    );
   }
 });

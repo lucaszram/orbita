@@ -9,6 +9,7 @@ import { internal } from "./_generated/api";
 import { extractNormalizedChartFromPayload } from "./lib/orbita";
 import { resolveEntitlement, type SubscriptionRow } from "./lib/entitlements";
 import { findCurrentUser, findUserByTokenIdentifier, requireIdentity } from "./lib/users";
+import { resolveCanonicalDailyContext } from "./daily";
 
 /**
  * El Vacío (`void.ask`): responde la pregunta del usuario según su carta natal,
@@ -23,7 +24,6 @@ import { findCurrentUser, findUserByTokenIdentifier, requireIdentity } from "./l
 
 const internalApi = internal as any;
 const AI_GATEWAY_CHAT_COMPLETIONS_URL = "https://ai-gateway.vercel.sh/v1/chat/completions";
-const DEFAULT_TIMEZONE = "America/Argentina/Buenos_Aires";
 const DEFAULT_QUESTION = "¿Qué estás apurando?";
 
 // Cupo diario de preguntas por entitlement (como el "3 free" de Co-Star).
@@ -87,20 +87,6 @@ function buildBasadoEn(placements: VoidPlacement[]): string[] {
 // ---------------------------------------------------------------------------
 // localDate desde la timezone del usuario (el ref del front es solo { question })
 // ---------------------------------------------------------------------------
-
-function localDateForTimezone(timezone?: string): string {
-  const tz = timezone && timezone.trim() ? timezone.trim() : DEFAULT_TIMEZONE;
-  try {
-    return new Intl.DateTimeFormat("en-CA", {
-      timeZone: tz,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit"
-    }).format(new Date());
-  } catch {
-    return new Date().toISOString().slice(0, 10);
-  }
-}
 
 function normalizeQuestion(raw: string): string {
   const trimmed = typeof raw === "string" ? raw.trim().replace(/\s+/g, " ") : "";
@@ -401,7 +387,20 @@ export const getVoidState = internalQuery({
       .withIndex("by_user", (q: any) => q.eq("userId", user._id))
       .order("desc")
       .first();
-    const localDate = localDateForTimezone(birthData?.timezone);
+    const latestGuide = await ctx.db
+      .query("dailyGuides")
+      .withIndex("by_user_date", (q: any) => q.eq("userId", user._id))
+      .order("desc")
+      .first();
+    const localDate = resolveCanonicalDailyContext({
+      birthTimezone: birthData?.timezone,
+      latestGuide: latestGuide
+        ? {
+            localDate: latestGuide.localDate,
+            timezone: latestGuide.timezone
+          }
+        : null
+    }).localDate;
     const answersToday = await ctx.db
       .query("voidAnswers")
       .withIndex("by_user_date", (q: any) => q.eq("userId", user._id).eq("localDate", localDate))
@@ -566,7 +565,20 @@ export const today = query({
       .withIndex("by_user", (q: any) => q.eq("userId", user._id))
       .order("desc")
       .first();
-    const localDate = localDateForTimezone(birthData?.timezone);
+    const latestGuide = await ctx.db
+      .query("dailyGuides")
+      .withIndex("by_user_date", (q: any) => q.eq("userId", user._id))
+      .order("desc")
+      .first();
+    const localDate = resolveCanonicalDailyContext({
+      birthTimezone: birthData?.timezone,
+      latestGuide: latestGuide
+        ? {
+            localDate: latestGuide.localDate,
+            timezone: latestGuide.timezone
+          }
+        : null
+    }).localDate;
     const answersToday = await ctx.db
       .query("voidAnswers")
       .withIndex("by_user_date", (q: any) => q.eq("userId", user._id).eq("localDate", localDate))

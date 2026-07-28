@@ -10,6 +10,16 @@
 
 **Decision:** `git.deploymentEnabled.main = false`. Unspecified feature branches remain enabled for preview deployments. Production will later use Vercel's promote workflow, which changes traffic to the exact tested deployment without rebuilding it.
 
+## Órbita Web P0 — contrato backend seguro (2026-07-28, Codex)
+
+**Objetivo:** preparar el backend P0 de Órbita Web para una salida gratuita primero y cobros después, sin permitir que cliente, URL o modo demo habiliten Plus o Stripe.
+
+**Criterios de aceptación:** comercio apagado por defecto y resuelto en servidor; checkout sólo `weekly|yearly`; trial anual de siete días; sesión Stripe ligada al Clerk user y entitlement confirmado por webhook; sin mutación/seed pública de Plus; fecha diaria calculada con timezone natal; una carta por día sin generación histórica/futura; Free/Plus aplicado en Carta, Diario, Tránsitos y Umbral; Lab/backoffice cerrados en producción; analytics de compra sin PII.
+
+**Ficha:** owner Codex; rama `feature/api` desde `origin/main` `ef8b048`; territorio de implementación `convex/**` y documentación de handoff; riesgo alto por pagos, privacidad y cambios de contrato; pruebas typecheck + suite completa + codegen dev + checklist manual frontend; rollout contrato backend en PR → integración frontend limpia por Claude → Gate A con `COMMERCE_MODE=off` → 24 h estables → validación fiscal/comercial y aprobación explícita de Lucas → recién entonces Gate B; rollback apagar comercio y restaurar el deployment anterior; fuera de alcance `app/**`, `src/**`, deploy productivo, dominio/Clerk, Stripe live, PWA, Playwright, Vínculos, Calendario y App Store.
+
+**Estado:** implementación backend completa en el worktree canónico. `convex/CHANGELOG.md` documenta firmas y migración frontend; codegen validó y cargó únicamente Convex dev `dutiful-viper-815`; typecheck verde; suite completa 371/371; `git diff --check` limpio. Producción no fue tocada. Pendiente: revisión/PR backend, adaptación frontend (quitar `?live=1` y `setStubPlusForDev`, consumir `getTodayContext/getWebOffer/getCheckoutStatus`, estados locked y responsive), dominio + Clerk, checklist manual y Gate A.
+
 ## Analytics — eventos de producto + resumen diario por Telegram (2026-07-20, Codex)
 
 **Objetivo:** registrar hechos puntuales del funnel de Órbita y enviar cada mañana un resumen del día anterior con aperturas únicas, nuevos/recurrentes, onboarding completado, cartas reveladas y retención.

@@ -17,8 +17,10 @@ import { buildBirthDataHash, buildNatalChartCacheKey } from "./lib/birthDataCons
 import {
   ASTROLOGY_API_CHART_CALCULATION_VERSION,
   buildWebB0ValuesMapPayload,
-  CHART_CALCULATION_VERSION
+  CHART_CALCULATION_VERSION,
+  extractNormalizedChartFromPayload
 } from "./lib/orbita";
+import { isUserPro } from "./lib/subscriptionAccess";
 import { findCurrentUser, findUserByTokenIdentifier, requireIdentity } from "./lib/users";
 
 const internalApi = internal as any;
@@ -55,11 +57,68 @@ async function getCurrentChart(ctx: any, userId: string) {
   );
 }
 
+function publicChartDocument(chart: any, isPro: boolean) {
+  const normalized = extractNormalizedChartFromPayload(chart?.payload);
+  if (!normalized) {
+    return {
+      _id: chart._id,
+      calculationVersion: chart.calculationVersion,
+      providerVersion: chart.providerVersion,
+      createdAt: chart.createdAt,
+      updatedAt: chart.updatedAt,
+      payload: null
+    };
+  }
+
+  const {
+    birth: _birth,
+    timezoneOffset: _timezoneOffset,
+    ...publicNormalized
+  } = normalized;
+  const placements = normalized.placements.map((placement) => ({
+    ...placement,
+    house: isPro ? placement.house : null
+  }));
+  const byKey = new Map(placements.map((placement) => [placement.key, placement]));
+  const safeNormalized = {
+    // Datos de nacimiento y offset exacto no forman parte del contrato público.
+    ...publicNormalized,
+    placements,
+    houses: isPro ? normalized.houses : [],
+    aspects: isPro ? normalized.aspects : [],
+    summary: {
+      ...normalized.summary,
+      sun: byKey.get("sun") ?? null,
+      moon: byKey.get("moon") ?? null,
+      ascendant: byKey.get("ascendant") ?? null,
+      mainAspects: isPro ? normalized.summary.mainAspects : []
+    }
+  };
+
+  return {
+    _id: chart._id,
+    calculationVersion: chart.calculationVersion,
+    providerVersion: chart.providerVersion,
+    createdAt: chart.createdAt,
+    updatedAt: chart.updatedAt,
+    access: { isPro, houses: isPro, aspects: isPro },
+    payload: {
+      chart: {
+        version: chart.calculationVersion,
+        source: "astrologyapi",
+        normalized: safeNormalized
+      }
+    }
+  };
+}
+
 export const current = query({
   handler: async (ctx) => {
     const user = await findCurrentUser(ctx);
     if (!user) return null;
-    return await getCurrentChart(ctx, user._id);
+    const chart = await getCurrentChart(ctx, user._id);
+    if (!chart) return null;
+    return publicChartDocument(chart, await isUserPro(ctx, user._id));
   }
 });
 
@@ -67,6 +126,7 @@ export const valuesMap = query({
   handler: async (ctx) => {
     const user = await findCurrentUser(ctx);
     if (!user) return null;
+    if (!(await isUserPro(ctx, user._id))) return null;
     const chart = await getCurrentChart(ctx, user._id);
 
     return chart ? buildWebB0ValuesMapPayload(chart.payload) : null;
@@ -156,6 +216,7 @@ export const personalityReading = query({
   handler: async (ctx) => {
     const user = await findCurrentUser(ctx);
     if (!user) return null;
+    if (!(await isUserPro(ctx, user._id))) return null;
     const chart = await getCurrentChart(ctx, user._id);
     if (!chart) return null;
 
@@ -168,6 +229,9 @@ export const personalityReadingState = query({
   handler: async (ctx) => {
     const user = await findCurrentUser(ctx);
     if (!user) return { status: "pending" as const };
+    if (!(await isUserPro(ctx, user._id))) {
+      return { status: "locked" as const };
+    }
     const chart = await getCurrentChart(ctx, user._id);
     if (!chart) return { status: "pending" as const };
     const cached = await getCachedPersonalityReading(ctx, chart._id);
@@ -184,14 +248,21 @@ export const getNatalReadingState = internalQuery({
     }
     const chart = await getCurrentChart(ctx, user._id);
     if (!chart) {
-      return { userId: user._id, chartId: null, chartPayload: null, cachedStatus: null };
+      return {
+        userId: user._id,
+        chartId: null,
+        chartPayload: null,
+        cachedStatus: null,
+        isPro: await isUserPro(ctx, user._id)
+      };
     }
     const cached = await getCachedPersonalityReading(ctx, chart._id);
     return {
       userId: user._id,
       chartId: chart._id,
       chartPayload: chart.payload,
-      cachedStatus: cached?.status ?? null
+      cachedStatus: cached?.status ?? null,
+      isPro: await isUserPro(ctx, user._id)
     };
   }
 });
@@ -206,7 +277,8 @@ export const getNatalReadingStateByChart = internalQuery({
       userId: chart.userId,
       chartId: chart._id,
       chartPayload: chart.payload,
-      cachedStatus: cached?.status ?? null
+      cachedStatus: cached?.status ?? null,
+      isPro: await isUserPro(ctx, chart.userId)
     };
   }
 });
@@ -388,6 +460,7 @@ export const generatePersonalityReadingForChart = internalAction({
   handler: async (ctx, args): Promise<any> => {
     const state: any = await ctx.runQuery(internalApi.charts.getNatalReadingStateByChart, args);
     if (!state?.chartId || !state.chartPayload) return { status: "missing_chart" };
+    if (!state.isPro) return { status: "locked" };
     return await generateAndPersistNatalReading(ctx, state, "prewarm");
   }
 });
@@ -400,6 +473,7 @@ export const generatePersonalityReading = action({
     const state: any = await ctx.runQuery(internalApi.charts.getNatalReadingState, {
       tokenIdentifier: identity.tokenIdentifier
     });
+    if (!state.isPro) throw new Error("Órbita Plus es necesario para esta lectura");
     if (!state.chartId || !state.chartPayload) return null;
     return await generateAndPersistNatalReading(ctx, state, "client");
   }
