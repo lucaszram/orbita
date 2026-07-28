@@ -40,6 +40,37 @@
 
 **Bloqueo móvil posterior:** `src/domain/appData.ts` todavía construye tránsitos nativos hardcodeados mediante `buildTransitos` y `chartMock`. No afecta Gate A web y queda fuera de este PR backend, pero debe eliminarse antes de cualquier nueva publicación móvil.
 
+## Órbita Web P0 — responsive, gestión de suscripción y validación en dev (2026-07-28, Claude)
+
+**Objetivo:** cerrar el alcance P0 restante — comportamiento responsive, "Gestionar suscripción" en Perfil, y una pasada real contra Convex dev `dutiful-viper-815`. PWA queda fuera.
+
+**Ficha:** owner Claude (frontend); territorio `app/**`, `src/**`, `test/**`; rama `feature/web-p0-final` sobre `feature/web-p0-paywall`; riesgo medio; validación `pnpm typecheck` + suite completa + pasada en navegador contra Convex dev.
+
+**Qué cambió:**
+1. **Navegación móvil.** `WebNav` ocultaba los cuatro links debajo de 900px y no dejaba **ningún** modo de moverse entre secciones: la web era inusable en teléfono. Ahora baja a una barra inferior fija (`position: fixed` de RNW, con `env(safe-area-inset-bottom)`), ítems de 56px y los links de escritorio con 44px de alto mínimo.
+2. **Desborde horizontal.** `minWidth: 300` en la columna lateral de Carta y Valores forzaba 300px sobre los 272 disponibles a 320px; `deepVisual` de la Home tenía `width: 460` fijo. Corregidos a `minWidth: 0` + `sideWide` sólo en ancho, y `maxWidth` con `width: "100%"`.
+3. **`ManageSubscriptionBlock`** en Perfil, sobre la decisión pura `manageSubscription`. La autoridad es `canManageInStripePortal` (que el backend calcula como `provider === "stripe" && !isLifetime`, o sea que ya excluye Free, RevenueCat y lifetime). Se suma el estado del comercio: con `off` **no** se ofrece el portal —`createPortalSession` no puede construir el cliente de Stripe y tiraría— sino la vía de soporte. Estados de carga y error con reintento. Sólo se abre la URL que devolvió el backend.
+4. **`/profile`** se mantiene como redirect de compatibilidad; el backend ya devuelve a `/perfil` (`6fcfdac`).
+
+**Hallazgos de la validación real (corregidos en esta rama):**
+- **`/perfil` mostraba "12 Abr 1994"** a cualquier visitante sin sesión. Sale de `createFallbackProfile()` (`birthDate: "1994-04-12"` hardcodeado) vía `useAppData()`: una fecha de nacimiento inventada presentada como propia. Ahora el hero sólo muestra la línea si existe un perfil real. Se arregló en el punto de render, sin tocar `src/domain/appData.ts`.
+- **`/diario` no exigía sesión**: renderizaba el shell y la navegación para cualquiera. Ahora va detrás de `RequireSession`.
+- **El login ofrecía "Seguir en modo demo"**, que además apuntaba a `/home` y por tanto rebotaba a `/login`: superficie demo muerta. Eliminada, junto con el copy "la web sigue andando en modo demo".
+- **La tarjeta de Clerk quedaba cortada a 320/390**: 112px de padding sobre 320 dejaban 208px para una tarjeta que pide ~400, y el campo de email no entraba. Padding responsive + `appearance` fluido.
+
+**Validación ejecutada contra Convex dev** (`localhost:8099`, iframes del mismo origen para forzar viewport real):
+- Rutas internas `/studio`, `/lab`, `/backoffice` → todas redirigen a `/`.
+- Rutas de app `/carta`, `/transito`, `/paywall`, `/diario` → redirigen a `/login` sin sesión.
+- `/profile` → `/perfil`.
+- Sin desborde horizontal a 320, 390 y 430 (`scrollWidth === innerWidth`).
+- `/perfil` y el resto de los tabs sin sesión muestran estados honestos ("Creá tu cuenta"), sin fechas ni lecturas inventadas.
+
+**NO validado — requiere a Lucas:** todo el recorrido con sesión (onboarding, fecha canónica, Home, carta Free, Tarot diario, Diario, Tránsitos, Umbral, paywall con comercio apagado y "Gestionar suscripción"). No puedo crear cuentas ni ingresar contraseñas.
+
+**Pendiente / decisión:**
+- **Clerk está en inglés** ("Sign in to Orbita", "Welcome back!", "Email address", "Continue", "Sign up"). El brief P0 exige auth en español. El arreglo es `@clerk/localizations` (`esES`) en `ClerkProvider`, pero implica agregar una dependencia (`package.json` es config gris): queda a tu decisión.
+- El badge **"Development mode"** de Clerk aparece por usar `pk_test` en local; con `pk_live` no se muestra. Verificar en el preview productivo.
+
 ## Órbita Web P0 — paywall y retorno de checkout (2026-07-28, Claude)
 
 **Objetivo:** consumir `payments.getWebOffer` y `payments.getCheckoutStatus` con el comercio apagado por defecto, sin precios en el cliente y sin que la URL de retorno pueda conceder Plus.

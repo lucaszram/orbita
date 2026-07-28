@@ -5,7 +5,7 @@ import { useFonts } from "expo-font";
 import { LinearGradient } from "expo-linear-gradient";
 import { Link } from "expo-router";
 import { ArrowRight, Check, Orbit } from "lucide-react-native";
-import { ActivityIndicator, ImageBackground, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, ImageBackground, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { webAssets } from "@/content/webAssets";
 import { backendConfig } from "@/services/backendProviders";
 import { useOrbitaAuth } from "@/hooks/useOrbitaAuth";
@@ -31,9 +31,8 @@ export function OrbitaLogin() {
       <Shell>
         <Text style={styles.title}>Login no configurado</Text>
         <Text style={styles.body}>
-          Falta `EXPO_PUBLIC_CONVEX_URL` y/o `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY`. La web sigue andando en modo demo.
+          No pudimos conectar con el servidor de cuentas. Volvé a intentar en un momento.
         </Text>
-        <HomeLink label="Ir a la demo" />
       </Shell>
     );
   }
@@ -69,15 +68,24 @@ function LoginGate() {
 
 function SignInPanel() {
   const { SignIn } = require("@clerk/expo/web") as { SignIn: ComponentType<Record<string, unknown>> };
+  const { width } = useWindowDimensions();
+  const isNarrow = width < 560;
   return (
-    <ScrollView style={styles.page} contentContainerStyle={styles.authWrap} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={styles.page}
+      contentContainerStyle={[styles.authWrap, isNarrow && styles.authWrapNarrow]}
+      showsVerticalScrollIndicator={false}
+    >
       <ImageBackground source={webAssets.heroOrbital.require} resizeMode="cover" style={styles.authPanel} imageStyle={styles.authPanelImage}>
-        <LinearGradient colors={["rgba(7,8,10,0.55)", "rgba(7,8,10,0.9)"]} style={styles.authOverlay}>
+        <LinearGradient colors={["rgba(7,8,10,0.55)", "rgba(7,8,10,0.9)"]} style={[styles.authOverlay, isNarrow && styles.authOverlayNarrow]}>
           <View style={styles.brand}><Orbit color={colors.copperSoft} size={20} strokeWidth={1.7} /><Text style={styles.brandText}>Órbita</Text></View>
           <Text style={styles.authTitle}>Entrá a tu cielo.</Text>
           <Text style={styles.body}>Guardá tu carta, tus lecturas y tus tránsitos en tu cuenta.</Text>
           <View style={styles.clerkPanel}>
+            {/* La tarjeta de Clerk trae un ancho propio de ~400px y a 320 quedaba
+                cortada: el campo de email no entraba en pantalla. */}
             <SignIn
+              appearance={{ elements: { rootBox: { width: "100%" }, cardBox: { width: "100%" }, card: { width: "100%" } } }}
               fallbackRedirectUrl="/home"
               forceRedirectUrl="/home"
               routing="hash"
@@ -85,7 +93,6 @@ function SignInPanel() {
               signUpForceRedirectUrl="/home"
             />
           </View>
-          <HomeLink label="Seguir en modo demo" subtle />
         </LinearGradient>
       </ImageBackground>
     </ScrollView>
@@ -122,9 +129,11 @@ const styles = StyleSheet.create({
   okBadge: { alignItems: "center", backgroundColor: colors.copperSoft, borderRadius: 22, height: 44, justifyContent: "center", width: 44 },
 
   authWrap: { flexGrow: 1, justifyContent: "center", minHeight: "100%", padding: 24 },
+  authWrapNarrow: { padding: 12 },
   authPanel: { alignSelf: "center", borderRadius: 20, maxWidth: 520, overflow: "hidden", width: "100%" },
   authPanelImage: { borderRadius: 20, opacity: 0.9 },
   authOverlay: { gap: 14, padding: 32 },
+  authOverlayNarrow: { padding: 16 },
   brand: { alignItems: "center", flexDirection: "row", gap: 8 },
   brandText: { color: colors.bone, fontFamily: "Inter_700Bold", fontSize: 16 },
   authTitle: { color: colors.bone, fontFamily: "Newsreader_500Medium", fontSize: 38, lineHeight: 44, marginTop: 4 },

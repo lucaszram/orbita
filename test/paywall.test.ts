@@ -4,6 +4,7 @@ import {
   CHECKOUT_POLL_TIMEOUT_MS,
   checkoutPollDecision,
   formatPlanPrice,
+  manageSubscription,
   offerPhase,
   planIntervalLabel,
   planTrialLabel,
@@ -162,4 +163,45 @@ test("paywall, retorno de checkout y perfil exigen sesión", () => {
   for (const route of ["/paywall", "/checkout/success", "/profile"]) {
     assert.equal(isPublicWebRoute(route), false, `${route} no debe ser pública`);
   }
+});
+
+// --- Gestión de la suscripción --------------------------------------------
+
+test("un Free nunca ve la gestión de suscripción", () => {
+  assert.equal(
+    manageSubscription({ entitlement: { canManageInStripePortal: false }, commerceEnabled: true }),
+    "oculto"
+  );
+});
+
+test("RevenueCat y lifetime quedan fuera porque el backend ya los excluye", () => {
+  // `canManageInStripePortal = provider === "stripe" && !isLifetime`.
+  assert.equal(
+    manageSubscription({ entitlement: { canManageInStripePortal: false }, commerceEnabled: true }),
+    "oculto"
+  );
+});
+
+test("con Stripe y comercio activo se ofrece el portal", () => {
+  assert.equal(
+    manageSubscription({ entitlement: { canManageInStripePortal: true }, commerceEnabled: true }),
+    "portal"
+  );
+});
+
+test("con una suscripción viva y el comercio apagado se ofrece soporte, no un portal que va a fallar", () => {
+  // Rollback: `createPortalSession` no puede construir el cliente de Stripe con
+  // `COMMERCE_MODE=off`, así que el botón mandaría a un error garantizado.
+  assert.equal(
+    manageSubscription({ entitlement: { canManageInStripePortal: true }, commerceEnabled: false }),
+    "soporte"
+  );
+});
+
+test("no se afirma nada mientras el plan o el comercio no resolvieron", () => {
+  assert.equal(manageSubscription({ entitlement: undefined, commerceEnabled: true }), "cargando");
+  assert.equal(
+    manageSubscription({ entitlement: { canManageInStripePortal: true }, commerceEnabled: undefined }),
+    "cargando"
+  );
 });

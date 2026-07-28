@@ -511,7 +511,7 @@ const styles = StyleSheet.create({
   topicQuestion: { color: colors.copperSoft, fontFamily: "Inter_500Medium", fontSize: 13, lineHeight: 19 },
 
   deep: { alignItems: "center", flexDirection: "row", gap: 44 },
-  deepVisual: { borderRadius: 12, height: 300, overflow: "hidden", width: 460 },
+  deepVisual: { borderRadius: 12, height: 300, maxWidth: 460, overflow: "hidden", width: "100%" },
   deepImage: { opacity: 0.95 },
   deepVisualOverlay: { flex: 1, gap: 8, justifyContent: "flex-end", padding: 22 },
   deepCaption: { color: colors.boneMuted, fontFamily: "Inter_700Bold", fontSize: 12, letterSpacing: 0.5 },

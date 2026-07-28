@@ -110,6 +110,36 @@ export function checkoutPollDecision(input: {
   return input.lastStatus === null ? "consultar" : "esperar";
 }
 
+// ---------------------------------------------------------------------------
+// Gestión de la suscripción (Customer Portal)
+// ---------------------------------------------------------------------------
+
+export type ManageSubscription = "oculto" | "cargando" | "portal" | "soporte";
+
+/**
+ * Si mostrar "Gestionar suscripción", y de qué forma.
+ *
+ * La autoridad es `canManageInStripePortal`, que el backend calcula como
+ * `provider === "stripe" && !isLifetime` — o sea que ya excluye Free,
+ * RevenueCat y lifetime. Acá sólo se suma el estado del comercio.
+ *
+ * `soporte` cubre el caso feo: alguien con una suscripción de Stripe viva
+ * mientras el comercio está apagado (un rollback). `createPortalSession` no
+ * puede construir el cliente de Stripe con `off` y tiraría, así que ofrecer el
+ * botón sería mandarlo a un error garantizado. Se ofrece soporte en su lugar.
+ */
+export function manageSubscription(input: {
+  /** `subscriptions.getCurrent`; `undefined` mientras la query resuelve. */
+  entitlement: { canManageInStripePortal: boolean } | null | undefined;
+  /** `getWebOffer().checkoutEnabled`; `undefined` mientras resuelve. */
+  commerceEnabled: boolean | null | undefined;
+}): ManageSubscription {
+  if (input.entitlement === undefined) return "cargando";
+  if (input.entitlement === null || !input.entitlement.canManageInStripePortal) return "oculto";
+  if (input.commerceEnabled === undefined) return "cargando";
+  return input.commerceEnabled ? "portal" : "soporte";
+}
+
 /**
  * Forma mínima de una session id de Stripe. El backend valida en serio; esto
  * evita mandarle basura de la barra de direcciones.

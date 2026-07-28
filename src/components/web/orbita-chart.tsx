@@ -268,7 +268,7 @@ export function ChartScreen({
           <NatalWheel payload={payload} size={wheelSize} />
         </View>
 
-        <View style={styles.side}>
+        <View style={[styles.side, !isNarrow && styles.sideWide]}>
           <View style={styles.card}>
             <Text style={styles.cardLabel}>TU TRÍADA</Text>
             {triad.map((p) => (
@@ -369,7 +369,8 @@ const styles = StyleSheet.create({
   content: { alignItems: "flex-start", flexDirection: "row", gap: 56, paddingBottom: 40, paddingTop: 40 },
   stack: { alignItems: "center", flexDirection: "column" },
   wheelWrap: { alignItems: "center" },
-  side: { flex: 1, gap: 16, minWidth: 300 },
+  side: { flex: 1, gap: 16, minWidth: 0 },
+  sideWide: { minWidth: 300 },
 
   card: { backgroundColor: colors.panel, borderColor: colors.line, borderRadius: 12, borderWidth: 1, gap: 14, padding: 22 },
   cardLabel: { color: colors.copperSoft, fontFamily: "Inter_700Bold", fontSize: 12, letterSpacing: 1 },

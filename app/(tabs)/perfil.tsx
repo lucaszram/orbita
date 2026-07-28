@@ -3,6 +3,7 @@ import { Alert, Linking, Pressable, StyleSheet, Text, View } from "react-native"
 import { router } from "expo-router";
 import { useMutation } from "convex/react";
 import { Body, Divider, Eyebrow, H2, MonoLine, Note, OrbitaScreen, Pill, Section } from "@/components/orbita/kit";
+import { ManageSubscriptionBlock } from "@/components/orbita/ManageSubscription";
 import { FullBleedHero } from "@/components/orbita/ImmersiveHero";
 import { CartaCard } from "@/components/home/CartaCard";
 import { useAppData } from "@/domain/appData";
@@ -54,12 +55,17 @@ function askConfirm(opts: {
 
 export default function PerfilScreen() {
   const { perfil } = useAppData();
+  const { profile } = useAppState();
   const { auth, isAuthLoading, userError, retryUser } = useLiveApp();
 
   return (
     <OrbitaScreen>
       <FullBleedHero kind="perfil">
-        <MonoLine>{perfil.birthLine}</MonoLine>
+        {/* Sin perfil real no se muestra ninguna fecha. `useAppData` cae a
+            `createFallbackProfile()`, que trae un `birthDate` hardcodeado
+            ("12 Abr 1994"): en la web, cualquiera sin sesión abría /perfil y
+            veía esa fecha inventada presentada como propia. */}
+        {profile ? <MonoLine>{perfil.birthLine}</MonoLine> : null}
       </FullBleedHero>
       <CartaCard />
       <Section style={{ paddingTop: orbita.spacing.lg }}>
@@ -89,6 +95,7 @@ export default function PerfilScreen() {
             ) : null}
           </View>
         )}
+        {auth?.isSignedIn ? <ManageSubscriptionBlock /> : null}
         <Divider />
         <Eyebrow>LEGAL</Eyebrow>
         <Pressable
