@@ -67,7 +67,7 @@ export function buildStripeCheckoutForm(args: {
 export function buildStripePortalForm(args: { customerId: string; webUrl: string }): StripeForm {
   return {
     customer: args.customerId,
-    return_url: `${args.webUrl}/profile`
+    return_url: `${args.webUrl}/perfil`
   };
 }
 
