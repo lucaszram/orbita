@@ -50,6 +50,13 @@ function configuredAccessKey() {
 }
 
 export function assertPublicLabAccess(accessKey?: string) {
+  if (
+    process.env.ORBITA_ENVIRONMENT === "production" ||
+    process.env.COMMERCE_MODE === "live" ||
+    process.env.CONVEX_DEPLOYMENT?.startsWith("prod:") === true
+  ) {
+    throw new Error("Public lab is not available in production.");
+  }
   if (process.env.ORBITA_PUBLIC_LAB_ENABLED !== "true") {
     throw new Error("Public lab is disabled. Set ORBITA_PUBLIC_LAB_ENABLED=true in Convex env.");
   }

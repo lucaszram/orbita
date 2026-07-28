@@ -34,7 +34,9 @@ const productEventName = v.union(
   v.literal("daily_guide_viewed"),
   v.literal("daily_card_revealed"),
   v.literal("paywall_viewed"),
-  v.literal("checkout_started")
+  v.literal("checkout_started"),
+  v.literal("checkout_completed"),
+  v.literal("checkout_failed")
 );
 const productEventSource = v.union(v.literal("frontend"), v.literal("backend"));
 const digestStatus = v.union(v.literal("sending"), v.literal("sent"), v.literal("error"));
@@ -467,6 +469,7 @@ export default defineSchema({
   dailyGuides: defineTable({
     userId: v.id("users"),
     localDate: v.string(),
+    timezone: v.optional(v.string()),
     payload: v.any(),
     createdAt: v.number(),
     // Generar la guía no revela la carta. La primera interacción guarda esta

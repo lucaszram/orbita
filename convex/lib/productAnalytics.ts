@@ -13,7 +13,9 @@ export const FRONTEND_PRODUCT_EVENTS = [
 export const BACKEND_PRODUCT_EVENTS = [
   "account_created",
   "onboarding_completed",
-  "daily_card_revealed"
+  "daily_card_revealed",
+  "checkout_completed",
+  "checkout_failed"
 ] as const;
 
 export type FrontendProductEventName = (typeof FRONTEND_PRODUCT_EVENTS)[number];

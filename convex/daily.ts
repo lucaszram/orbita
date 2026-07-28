@@ -321,6 +321,41 @@ export function localDateForTimezone(timezone?: string, now: Date = new Date()):
   }
 }
 
+type CanonicalDailyContext = {
+  localDate: string;
+  timezone: string;
+};
+
+export function resolveCanonicalDailyContext(args: {
+  birthTimezone?: string;
+  latestGuide?: {
+    localDate?: string;
+    timezone?: string;
+  } | null;
+  now?: Date;
+}): CanonicalDailyContext {
+  const now = args.now ?? new Date();
+  const birthTimezone =
+    args.birthTimezone?.trim() || DEFAULT_TIMEZONE;
+  const latestTimezone = args.latestGuide?.timezone?.trim();
+  const latestLocalDate = args.latestGuide?.localDate;
+
+  // Si el lugar natal se editó durante un ciclo ya abierto, ese ciclo conserva
+  // su timezone original. El cambio empieza cuando el día anterior termina.
+  if (
+    latestTimezone &&
+    latestLocalDate &&
+    localDateForTimezone(latestTimezone, now) === latestLocalDate
+  ) {
+    return { localDate: latestLocalDate, timezone: latestTimezone };
+  }
+
+  return {
+    localDate: localDateForTimezone(birthTimezone, now),
+    timezone: birthTimezone
+  };
+}
+
 /** Aritmética de fecha civil, siempre en UTC para no saltar días por DST. */
 export function shiftLocalDate(localDate: string, deltaDays: number): string | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(localDate);
@@ -1015,12 +1050,30 @@ export const getGuideTimezone = internalQuery({
       .withIndex("by_user", (q: any) => q.eq("userId", user._id))
       .order("desc")
       .first();
-    return birthData?.timezone ?? DEFAULT_TIMEZONE;
+    const latestGuide = await ctx.db
+      .query("dailyGuides")
+      .withIndex("by_user_date", (q: any) => q.eq("userId", user._id))
+      .order("desc")
+      .first();
+    return {
+      birthTimezone: birthData?.timezone ?? DEFAULT_TIMEZONE,
+      latestGuide: latestGuide
+        ? {
+            localDate: latestGuide.localDate,
+            timezone: latestGuide.timezone
+          }
+        : null
+    };
   }
 });
 
 export const ensureFastGuide = internalMutation({
-  args: { tokenIdentifier: v.string(), localDate: v.string(), payload: v.any() },
+  args: {
+    tokenIdentifier: v.string(),
+    localDate: v.string(),
+    timezone: v.string(),
+    payload: v.any()
+  },
   handler: async (ctx, args) => {
     const user = await findUserByTokenIdentifier(ctx, args.tokenIdentifier);
     if (!user) throw new Error("User record not found");
@@ -1038,6 +1091,7 @@ export const ensureFastGuide = internalMutation({
       await ctx.db.insert("dailyGuides", {
         userId: user._id,
         localDate: args.localDate,
+        timezone: args.timezone,
         payload: plan.payload,
         createdAt: now
       });
@@ -1191,17 +1245,41 @@ async function runFastGuide(
 ): Promise<{ payload: DailyGuidePayload; revealedAt: number | null }> {
     const startedAt = Date.now();
     const identity = await requireIdentity(ctx as any);
-    const timezone =
-      args.timezone ??
-      (args.localDate
-        ? DEFAULT_TIMEZONE
-        : await ctx.runQuery(internalApi.daily.getGuideTimezone, { tokenIdentifier: identity.tokenIdentifier }));
-    const localDate = args.localDate ?? localDateForTimezone(timezone);
+    const timezoneState: any = await ctx.runQuery(
+      internalApi.daily.getGuideTimezone,
+      { tokenIdentifier: identity.tokenIdentifier }
+    );
+    const canonical = resolveCanonicalDailyContext({
+      birthTimezone: timezoneState.birthTimezone,
+      latestGuide: timezoneState.latestGuide
+    });
+    const requestedDate = args.localDate ?? canonical.localDate;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) {
+      throw new Error("Fecha diaria inválida");
+    }
+    if (requestedDate > canonical.localDate) {
+      throw new Error("Ese día todavía no llegó");
+    }
+    const localDate = requestedDate;
+    const timezone = canonical.timezone;
     const state: any = await ctx.runQuery(internalApi.daily.getFastGuideState, {
       tokenIdentifier: identity.tokenIdentifier,
       localDate
     });
     const stateMs = Date.now() - startedAt;
+
+    if (localDate !== canonical.localDate) {
+      if (!isCurrentDailyGuidePayload(state.existing?.payload)) {
+        throw new Error("No hay una lectura guardada para ese día");
+      }
+      return {
+        payload: state.existing.payload,
+        revealedAt:
+          typeof state.existing.revealedAt === "number"
+            ? state.existing.revealedAt
+            : null
+      };
+    }
 
     const cardStartedAt = Date.now();
     const carta = drawCard({
@@ -1227,6 +1305,7 @@ async function runFastGuide(
       persisted = await ctx.runMutation(internalApi.daily.ensureFastGuide, {
         tokenIdentifier: identity.tokenIdentifier,
         localDate,
+        timezone,
         payload
       });
     }
@@ -1267,6 +1346,25 @@ export const getCard = action({
   }
 });
 
+export const getTodayContext = action({
+  args: {},
+  returns: v.object({
+    localDate: v.string(),
+    timezone: v.string()
+  }),
+  handler: async (ctx) => {
+    const identity = await requireIdentity(ctx as any);
+    const state: any = await ctx.runQuery(
+      internalApi.daily.getGuideTimezone,
+      { tokenIdentifier: identity.tokenIdentifier }
+    );
+    return resolveCanonicalDailyContext({
+      birthTimezone: state.birthTimezone,
+      latestGuide: state.latestGuide
+    });
+  }
+});
+
 // --- El ritual: dar vuelta la carta ----------------------------------------
 
 /** Da vuelta la carta de hoy. Idempotente: si ya estaba dada vuelta, no la re-escribe
@@ -1290,8 +1388,6 @@ export const revealCard = mutation({
     if (!isCurrentDailyGuidePayload(doc.payload)) {
       throw new Error("La carta de hoy todavía se está actualizando");
     }
-    if (doc.revealedAt) return doc.revealedAt;
-
     // No se puede sacar la carta de un día que todavía no empezó para esa persona.
     // El día se calcula con la timezone natal persistida, no con la timezone fija del
     // backend: cerca de medianoche pueden ser fechas distintas.
@@ -1300,8 +1396,24 @@ export const revealCard = mutation({
       .withIndex("by_user", (q: any) => q.eq("userId", user._id))
       .order("desc")
       .first();
-    const today = localDateForTimezone(birthData?.timezone);
-    if (args.localDate > today) throw new Error("Ese día todavía no llegó");
+    const latestGuide = await ctx.db
+      .query("dailyGuides")
+      .withIndex("by_user_date", (q: any) => q.eq("userId", user._id))
+      .order("desc")
+      .first();
+    const today = resolveCanonicalDailyContext({
+      birthTimezone: birthData?.timezone,
+      latestGuide: latestGuide
+        ? {
+            localDate: latestGuide.localDate,
+            timezone: latestGuide.timezone
+          }
+        : null
+    }).localDate;
+    if (args.localDate !== today) {
+      throw new Error("Sólo se puede revelar la carta del día actual");
+    }
+    if (doc.revealedAt) return doc.revealedAt;
 
     const revealedAt = Date.now();
     await ctx.db.patch(doc._id, { revealedAt });

@@ -29,6 +29,14 @@ function getIdentityEmail(identity: UserIdentity) {
   return identity.email?.trim().toLowerCase();
 }
 
+function isProductionRuntime() {
+  return (
+    process.env.ORBITA_ENVIRONMENT === "production" ||
+    process.env.COMMERCE_MODE === "live" ||
+    process.env.CONVEX_DEPLOYMENT?.startsWith("prod:") === true
+  );
+}
+
 function assertEmailAllowed(email: string | undefined, allowedEmails: string[], allowAll: boolean) {
   if (!allowAll && allowedEmails.length === 0) {
     throw new Error("Backoffice allowlist is not configured. Set ORBITA_BACKOFFICE_ALLOWED_EMAILS in Convex.");
@@ -47,7 +55,9 @@ export async function requireBackofficeIdentity(ctx: AuthOnlyCtx) {
 
   const email = getIdentityEmail(identity);
   const allowedEmails = getBackofficeAllowedEmails();
-  const allowAll = process.env.ORBITA_BACKOFFICE_ALLOW_ALL === "true";
+  const allowAll =
+    process.env.ORBITA_BACKOFFICE_ALLOW_ALL === "true" &&
+    !isProductionRuntime();
   assertEmailAllowed(email, allowedEmails, allowAll);
   return identity;
 }
