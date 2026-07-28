@@ -5,9 +5,10 @@ import { useFonts } from "expo-font";
 import { ActivityIndicator, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import Svg, { Circle, Line, Polygon, Text as SvgText } from "react-native-svg";
 import { ImmersiveScreen } from "@/components/web/immersive-bg";
-import { RequireSession, WebLoading, WebNotice } from "@/components/web/require-session";
+import { PlusLocked, RequireSession, WebLoading, WebNotice } from "@/components/web/require-session";
+import { valuesMapPhase } from "@/domain/entitlement";
 import { WebNav } from "@/components/web/web-nav";
-import { proposedApi, type ValuesMapPayload } from "@/services/appRefs";
+import { appApi, proposedApi, type ValuesMapPayload } from "@/services/appRefs";
 
 const colors = {
   black: "#07080A",
@@ -60,17 +61,38 @@ export function OrbitaValues() {
 
 function ValuesWithBackend() {
   const data = useQuery(proposedApi.valuesMap, {});
-  if (data === undefined) return <WebLoading />;
-  // `null` es "todavía no hay mapa de valores", no "mostrale el de la demo".
-  if (data === null) {
-    return (
-      <WebNotice
-        title="Todavía no hay mapa de valores"
-        body="Se calcula a partir de tu carta natal. Completá tus datos de nacimiento y volvé."
-      />
-    );
+  const entitlement = useQuery(appApi.subscriptions.getCurrent, {});
+  const chart = useQuery(appApi.charts.current, {});
+  // `valuesMap` devuelve `null` tanto para Free como para "todavía no hay
+  // carta". Sin desambiguar, a un Free con su carta ya calculada le decíamos
+  // "completá tus datos de nacimiento" — falso, y lo mandaba a rehacer el
+  // onboarding.
+  const phase = valuesMapPhase({
+    values: data,
+    entitlement,
+    hasChart: chart === undefined ? undefined : chart !== null
+  });
+
+  switch (phase) {
+    case "cargando":
+      return <WebLoading />;
+    case "bloqueado":
+      return (
+        <PlusLocked
+          title="El mapa de valores es parte de Órbita Plus"
+          body="Cruza tu carta natal para mostrar dónde tenés energía a favor y dónde aparece fricción."
+        />
+      );
+    case "sinCarta":
+      return (
+        <WebNotice
+          title="Todavía no hay mapa de valores"
+          body="Se calcula a partir de tu carta natal. Completá tus datos de nacimiento y volvé."
+        />
+      );
+    case "listo":
+      return <ValuesScreen payload={data as ValuesMapPayload} />;
   }
-  return <ValuesScreen payload={data} />;
 }
 
 export function ValuesScreen({ payload }: { payload: ValuesMapPayload }) {

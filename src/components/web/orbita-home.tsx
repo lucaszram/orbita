@@ -16,7 +16,8 @@ import {
   View
 } from "react-native";
 import { ImmersiveScreen } from "@/components/web/immersive-bg";
-import { RequireSession, WebLoading } from "@/components/web/require-session";
+import { RequireSession, WebLoading, WebNotice } from "@/components/web/require-session";
+import { useDailyContext } from "@/hooks/useDailyContext";
 import { useOrbitaAuth } from "@/hooks/useOrbitaAuth";
 import { WebNav } from "@/components/web/web-nav";
 import { webAssets } from "@/content/webAssets";
@@ -168,11 +169,6 @@ export function toHomeView(payload: unknown, triadOverride?: HomeView["triad"], 
 // Container — sólo datos reales, con estados completos.
 // ---------------------------------------------------------------------------
 
-function todayLocalDate(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-}
-
 export function OrbitaHome() {
   return (
     <RequireSession>
@@ -183,18 +179,34 @@ export function OrbitaHome() {
 
 function HomeWithBackend() {
   const { name, email } = useOrbitaAuth();
+  const daily = useDailyContext();
+  // La fecha la manda el servidor. Antes salía de un `todayLocalDate()` local:
+  // `generateToday` podía escribir bajo la fecha del navegador mientras
+  // `home.getDaily` leía la canónica, y la Home quedaba vacía para siempre.
+  const localDate = daily.status === "listo" ? daily.context.localDate : null;
   const genTransits = useAction(proposedApi.transitToday);
-  const data = useQuery(appApi.home.getDaily, { localDate: todayLocalDate() });
+  const data = useQuery(appApi.home.getDaily, localDate ? { localDate } : "skip");
   const chart = useQuery(appApi.charts.current, {});
   const [genDone, setGenDone] = useState(false);
   const greetingName = name || (email ? email.split("@")[0] : undefined);
 
   useEffect(() => {
+    if (!localDate) return;
+    setGenDone(false);
     // dispara la generación de tránsitos → actualiza dailyReadings (que lee home.getDaily)
-    genTransits({ localDate: todayLocalDate() }).then(() => setGenDone(true)).catch(() => setGenDone(true));
-  }, []);
+    genTransits({ localDate }).then(() => setGenDone(true)).catch(() => setGenDone(true));
+  }, [localDate]);
 
-  if (data === undefined) return <WebLoading />;
+  if (daily.status === "error") {
+    return (
+      <WebNotice
+        title="No pudimos ubicar tu día"
+        body="No conseguimos la fecha de tu zona natal. Probá de nuevo en un momento."
+        action={{ label: "Reintentar", onPress: daily.refresh }}
+      />
+    );
+  }
+  if (!localDate || data === undefined) return <WebLoading />;
   if (data === null) return genDone ? <StatusScreen kind="empty" /> : <WebLoading />;
   const triad = chart ? triadFromChart(chart) : undefined;
   return <HomeScreen view={toHomeView(data, triad, greetingName)} />;

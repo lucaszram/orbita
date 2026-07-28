@@ -40,6 +40,26 @@
 
 **Bloqueo móvil posterior:** `src/domain/appData.ts` todavía construye tránsitos nativos hardcodeados mediante `buildTransitos` y `chartMock`. No afecta Gate A web y queda fuera de este PR backend, pero debe eliminarse antes de cualquier nueva publicación móvil.
 
+## Órbita Web P0 — contratos nuevos: fecha canónica y Free/Plus (2026-07-28, Claude)
+
+**Objetivo:** consumir el contrato del backend P0 (PR #40): la fecha del día la decide el servidor, y las superficies recortadas por plan se leen como "esto es Plus" y no como una falla.
+
+**Criterios de aceptación:** ninguna pantalla calcula el día astrológico ni manda su timezone como autoridad; una sola llamada a `getTodayContext` por sesión, refrescada al cambiar de cuenta, volver al frente y cruzar la medianoche; `locked` y `access` tienen estado propio en Carta, Personalidad, Valores y la Carta nativa.
+
+**Ficha:** owner Claude (frontend); territorio `app/**`, `src/**`, `test/**`; rama `feature/web-p0-contracts` sobre `feature/web-p0-shell`; riesgo medio — cambia cómo se resuelve la fecha en toda la app; validación `pnpm typecheck` + suite completa; fuera de alcance `convex/**`, paywall/checkout (PR siguiente), responsive, PWA y `src/domain/appData.ts`.
+
+**Qué cambió:**
+1. **`DailyContextProvider`** (`src/hooks/useDailyContext.tsx`) monta una sola llamada a `daily.getTodayContext` por sesión, sobre la decisión pura `refetchReason` (`src/domain/dailyContext.ts`). Refresca por cambio de cuenta, foreground (`AppState`) y medianoche. El reloj del navegador **sólo dispara el refetch**: se compara contra la fecha civil observada al momento del último fetch, nunca contra el `localDate` del servidor — si se comparara contra el servidor, un ciclo congelado tras editar el lugar natal refetchearía en loop para siempre.
+2. **Se eliminaron los seis `todayLocalDate()`** del cliente. Esto no era cosmético: `transits.getToday` ahora **tira excepción** si la fecha no es la canónica, así que Tránsitos web, `app/reading/transito.tsx`, `app/reading/transitos.tsx` y `app/(tabs)/transitos.tsx` fallaban para cualquiera cuya zona natal no coincidiera con la del dispositivo.
+3. **`useLiveHome` recibe fecha y zona canónicas.** Antes escribía con `toISODate()` + `deviceTimezone()` y `home.getDaily` leía otra fecha: la Home podía quedar vacía para siempre. Además el flag de "ya intenté generar" pasó de booleano a por-fecha, si no el día siguiente nunca se generaba.
+4. **Free/Plus con estado propio** (`src/domain/entitlement.ts`): `valuesMapPhase` desambigua el `null` de `charts.valuesMap` (Free vs sin carta) — antes a un Free con su carta ya calculada le decíamos "completá tus datos de nacimiento"; `personalityPhase` trata `locked`; la Carta web oculta el bloque de aspectos con `access.aspects` en vez de dejar la tarjeta vacía.
+5. **`readingBlockPhase` suma `bloqueado`** y `locked` gana sobre `failed`/`generating`: para un Free la action de generación rechaza por diseño, así que la Carta nativa mostraba error con REINTENTAR o "Preparando tu lectura…" eterno.
+6. **Ref de `subscriptions.getCurrent` corregido.** Decía `{ entitlement: "free" | "plus" } | null`; el backend devuelve `orbita_pro`, incluye `isPro` y nunca es null. El tipo viejo hacía que cualquier decisión de gating leyera mal el plan.
+
+**Validación:** `pnpm typecheck` en verde y **406/406** tests (16 nuevos entre `test/dailyContext.test.ts` y `test/entitlement.test.ts`). Sin pasada manual todavía.
+
+**Pendiente:** paywall con `getWebOffer` y retorno de checkout con `getCheckoutStatus` (PR 3); responsive/PWA; prueba manual conjunta contra Convex dev con el #40 desplegado.
+
 ## Órbita Web P0 — shell limpio: sin mocks ni superficies internas (2026-07-28, Claude)
 
 **Objetivo:** que la web publicada no pueda mostrar contenido inventado ni rutear a herramientas internas. Pareja frontend del backend P0 (PR #40), primer PR de la serie.

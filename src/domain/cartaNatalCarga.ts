@@ -35,10 +35,10 @@ export function cartaGate(input: { doc: unknown; values: unknown }): CartaGate {
   return "listo";
 }
 
-export type ReadingBlockPhase = "cargando" | "error" | "listo";
+export type ReadingBlockPhase = "cargando" | "error" | "listo" | "bloqueado";
 
 /** Señal pública del backend sobre la generación (`personalityReadingState`). */
-export type NatalReadingRemoteStatus = "pending" | "ready" | "error";
+export type NatalReadingRemoteStatus = "pending" | "ready" | "error" | "locked";
 
 /**
  * Fase del bloque "Tu carta, explicada".
@@ -54,7 +54,8 @@ export type NatalReadingRemoteStatus = "pending" | "ready" | "error";
  * - `state` — `personalityReadingState().status` (`undefined` = query en
  *   vuelo). `error` remoto (p. ej. el prewarm tomó el claim y falló) → error
  *   inline: nunca "Preparando…" eterno. `ready` con `reading` aún null es la
- *   ventana entre las dos queries → sigue cargando.
+ *   ventana entre las dos queries → sigue cargando. `locked` = el plan no
+ *   incluye la lectura larga; el backend P0 la bloquea server-side.
  */
 export function readingBlockPhase(input: {
   reading: unknown;
@@ -63,6 +64,10 @@ export function readingBlockPhase(input: {
   state?: NatalReadingRemoteStatus;
 }): ReadingBlockPhase {
   if (input.reading != null) return "listo";
+  // `locked` gana sobre `failed` y `generating`: para un Free la action de
+  // generación REJECTA por diseño, y sin esto se mostraba un error con
+  // REINTENTAR — o, si la query llegaba primero, "Preparando…" para siempre.
+  if (input.state === "locked") return "bloqueado";
   if (input.failed) return "error";
   if (input.generating) return "cargando";
   if (input.state === "error") return "error";

@@ -409,7 +409,9 @@ export const appApi = {
       "query",
       "public",
       Empty,
-      { status: "pending" | "ready" | "error" }
+      // `locked` (backend P0): el gating Free/Plus es server-side; la lectura
+      // larga no se genera ni se entrega a Free.
+      { status: "pending" | "ready" | "error" | "locked" }
     >,
     // Genera (LLM) + cachea la lectura rica; la query de arriba la devuelve reactiva.
     generatePersonalityReading: anyApi.charts.generatePersonalityReading as FunctionReference<
@@ -457,11 +459,25 @@ export const appApi = {
     >
   },
   subscriptions: {
+    // Única fuente de verdad del acceso. El tipo anterior decía
+    // `{ entitlement: "free" | "plus" } | null` y no coincidía con el backend:
+    // el valor Plus es `orbita_pro`, `isPro` es explícito y nunca devuelve null
+    // (sin usuario responde el entitlement gratuito).
     getCurrent: anyApi.subscriptions.getCurrent as FunctionReference<
       "query",
       "public",
       Empty,
-      { entitlement: "free" | "plus"; status: string } | null
+      {
+        entitlement: "free" | "orbita_pro";
+        isPro: boolean;
+        status: string;
+        provider?: string;
+        plan?: string;
+        isLifetime: boolean;
+        currentPeriodEnd?: number;
+        willRenew?: boolean;
+        canManageInStripePortal: boolean;
+      }
     >
   }
 } as const;
@@ -498,6 +514,16 @@ export const proposedApi = {
   // void.suggestedQuestions(): preguntas sugeridas personalizadas por categoría.
   voidSuggested: anyApi.void.suggestedQuestions as FunctionReference<"action", "public", Empty, VoidSuggestedPayload>,
   // daily.getGuide(): guía diaria personalizada (action: genera+cachea 1/día/usuario).
+  // daily.getTodayContext(): fecha canónica + zona, calculadas por el servidor
+  // desde la timezone natal. Es una ACTION (no reactiva): se pide una vez por
+  // sesión desde `DailyContextProvider` y se comparte. El cliente NO calcula
+  // el día ni manda su timezone como autoridad.
+  todayContext: anyApi.daily.getTodayContext as FunctionReference<
+    "action",
+    "public",
+    Empty,
+    { localDate: string; timezone: string }
+  >,
   dailyGuide: anyApi.daily.getGuide as FunctionReference<"action", "public", { localDate?: string; timezone?: string }, DailyGuidePayload>,
   // daily.revealCard(): da vuelta la carta de ese día. Idempotente, irreversible.
   revealCard: anyApi.daily.revealCard as FunctionReference<"mutation", "public", { localDate: string }, number>,

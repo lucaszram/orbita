@@ -94,8 +94,42 @@ export function WebNotice({
   );
 }
 
+/**
+ * Superficie recortada por plan. El backend ya no manda el dato; esto sólo lo
+ * nombra, para que un bloque vacío no se lea como una falla.
+ *
+ * Sin precios ni CTA de compra: mientras el comercio esté apagado no hay nada
+ * que ofrecer, y el paywall real llega en su propio PR.
+ */
+export function PlusLocked({ title, body }: { title: string; body: string }) {
+  return (
+    <View style={styles.locked}>
+      <Text selectable style={styles.lockedLabel}>
+        ÓRBITA PLUS
+      </Text>
+      <Text selectable style={styles.lockedTitle}>
+        {title}
+      </Text>
+      <Text selectable style={styles.lockedBody}>
+        {body}
+      </Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   center: { alignItems: "center", backgroundColor: colors.black, flex: 1, justifyContent: "center", padding: 24 },
+  locked: {
+    backgroundColor: "rgba(196,106,58,0.08)",
+    borderColor: "rgba(214,154,106,0.35)",
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 8,
+    padding: 22
+  },
+  lockedLabel: { color: colors.copperSoft, fontSize: 11, fontWeight: "700", letterSpacing: 1.1 },
+  lockedTitle: { color: colors.bone, fontSize: 18, fontWeight: "500" },
+  lockedBody: { color: colors.boneMuted, fontSize: 15, lineHeight: 22 },
   card: {
     alignItems: "flex-start",
     backgroundColor: colors.panel,

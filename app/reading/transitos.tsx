@@ -8,13 +8,9 @@ import { GuestState } from "@/components/orbita/GuestState";
 import { ErrorState, MinimalLoading } from "@/components/orbita/states";
 import { sessionPhase } from "@/domain/screenPhase";
 import { useLiveApp } from "@/hooks/useLiveApp";
+import { useCanonicalLocalDate } from "@/hooks/useDailyContext";
 import { proposedApi, type TransitDetailPayload } from "@/services/appRefs";
 
-/** Fecha local YYYY-MM-DD (componentes locales, mismo criterio que la web; no UTC). */
-function todayLocalDate(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-}
 
 export default function TransitosPorAreaScreen() {
   const live = useLiveApp();
@@ -60,11 +56,15 @@ function TransitosPorAreaLive() {
     { kind: "loading" } | { kind: "error" } | { kind: "ok"; data: TransitDetailPayload }
   >({ kind: "loading" });
   const [attempt, setAttempt] = useState(0);
+  // La fecha la resuelve el servidor desde la zona natal; `transits.getToday`
+  // rechaza cualquier otra. Null = todavía no llegó → seguimos en carga.
+  const localDate = useCanonicalLocalDate();
 
   useEffect(() => {
+    if (!localDate) return;
     let alive = true;
     setState({ kind: "loading" });
-    getToday({ localDate: todayLocalDate() })
+    getToday({ localDate })
       .then((r) => {
         if (!alive) return;
         setState(r ? { kind: "ok", data: r as TransitDetailPayload } : { kind: "error" });
@@ -75,9 +75,9 @@ function TransitosPorAreaLive() {
     return () => {
       alive = false;
     };
-  }, [getToday, attempt]);
+  }, [getToday, attempt, localDate]);
 
-  if (state.kind === "loading") {
+  if (!localDate || state.kind === "loading") {
     return (
       <DetailScreen eyebrow="Tránsitos">
         <MinimalLoading />

@@ -8,7 +8,7 @@ import { AlertCircle, ArrowRight, Clock } from "lucide-react-native";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
 import Svg, { Circle, Line, Text as SvgText } from "react-native-svg";
 import { ImmersiveScreen } from "@/components/web/immersive-bg";
-import { RequireSession } from "@/components/web/require-session";
+import { PlusLocked, RequireSession } from "@/components/web/require-session";
 import { WebNav } from "@/components/web/web-nav";
 import { NatalWheel } from "@/components/orbita/NatalWheel";
 import { appApi, type NatalChartAspect, type NatalChartPayload, type SignPlacement } from "@/services/appRefs";
@@ -46,7 +46,16 @@ function ChartWithBackend() {
   const payload = mapNatalChart(data);
   const birth = (data as { payload?: { birth?: BirthInfo } })?.payload?.birth;
   const needsTime = payload.triad.ascendant.sign === "—" && !!birth;
-  return <ChartScreen payload={payload} topSlot={needsTime ? <BirthTimeFixer birth={birth as BirthInfo} /> : undefined} />;
+  // El backend P0 no manda casas ni aspectos a Free. Sin esta señal, las
+  // secciones quedaban vacías y se leían como un error de cálculo.
+  const access = (data as { access?: { houses?: boolean; aspects?: boolean } })?.access;
+  return (
+    <ChartScreen
+      payload={payload}
+      showAspects={access?.aspects !== false}
+      topSlot={needsTime ? <BirthTimeFixer birth={birth as BirthInfo} /> : undefined}
+    />
+  );
 }
 
 type BirthInfo = {
@@ -217,7 +226,16 @@ function Status({ kind }: { kind: "loading" | "empty" }) {
   );
 }
 
-export function ChartScreen({ payload, topSlot }: { payload: NatalChartPayload; topSlot?: React.ReactNode }) {
+export function ChartScreen({
+  payload,
+  topSlot,
+  showAspects = true
+}: {
+  payload: NatalChartPayload;
+  topSlot?: React.ReactNode;
+  /** Free no recibe aspectos: se nombra el bloqueo en vez de dejar la tarjeta vacía. */
+  showAspects?: boolean;
+}) {
   const { width } = useWindowDimensions();
   const isNarrow = width < 900;
   const [fontsLoaded] = useFonts({ Inter_400Regular, Inter_500Medium, Inter_700Bold, Newsreader_500Medium });
@@ -277,19 +295,26 @@ export function ChartScreen({ payload, topSlot }: { payload: NatalChartPayload; 
             ))}
           </View>
 
-          <View style={styles.card}>
-            <Text style={styles.cardLabel}>ASPECTOS</Text>
-            <View style={styles.legendRow}>
-              <View style={[styles.dot, { backgroundColor: colors.blue }]} />
-              <Text style={styles.legendLabel}>Armonía</Text>
-              <Text style={styles.legendDetail}>Energías que fluyen entre sí.</Text>
+          {showAspects ? (
+            <View style={styles.card}>
+              <Text style={styles.cardLabel}>ASPECTOS</Text>
+              <View style={styles.legendRow}>
+                <View style={[styles.dot, { backgroundColor: colors.blue }]} />
+                <Text style={styles.legendLabel}>Armonía</Text>
+                <Text style={styles.legendDetail}>Energías que fluyen entre sí.</Text>
+              </View>
+              <View style={styles.legendRow}>
+                <View style={[styles.dot, { backgroundColor: colors.copper }]} />
+                <Text style={styles.legendLabel}>Tensión</Text>
+                <Text style={styles.legendDetail}>Energías que se friccionan.</Text>
+              </View>
             </View>
-            <View style={styles.legendRow}>
-              <View style={[styles.dot, { backgroundColor: colors.copper }]} />
-              <Text style={styles.legendLabel}>Tensión</Text>
-              <Text style={styles.legendDetail}>Energías que se friccionan.</Text>
-            </View>
-          </View>
+          ) : (
+            <PlusLocked
+              title="Aspectos y casas en Órbita Plus"
+              body="Tu rueda, tu tríada y tus posiciones son tuyas siempre. El cruce entre planetas y el reparto por casas son parte de Plus."
+            />
+          )}
 
           <View style={styles.card}>
             <Text style={styles.cardLabel}>CÓMO LEERLA</Text>

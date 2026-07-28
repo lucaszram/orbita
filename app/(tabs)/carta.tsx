@@ -242,6 +242,16 @@ function CartaView({
               <ActivityIndicator color={orbita.colors.copper} />
               <Text style={styles.readingStatusText}>Preparando tu lectura…</Text>
             </View>
+          ) : readingPhase === "bloqueado" ? (
+            // El plan no incluye la lectura larga. Sin esto quedaba en
+            // "Preparando…" para siempre o pedía REINTENTAR sobre una action
+            // que el backend rechaza por diseño.
+            <View style={styles.readingStatus}>
+              <Text style={styles.readingStatusText}>
+                Los siete capítulos de tu carta son parte de Órbita Plus. Tu rueda, tu tríada y tus
+                posiciones siguen acá.
+              </Text>
+            </View>
           ) : (
             <View style={styles.readingStatus}>
               <Text style={styles.readingStatusText}>

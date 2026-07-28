@@ -9,6 +9,7 @@ import { ActivityIndicator, ImageBackground, ScrollView, StyleSheet, Text, useWi
 import Svg, { Circle, Line, Path, Rect, Text as SvgText } from "react-native-svg";
 import { ImmersiveScreen } from "@/components/web/immersive-bg";
 import { RequireSession, WebNotice } from "@/components/web/require-session";
+import { useDailyContext } from "@/hooks/useDailyContext";
 import { WebNav } from "@/components/web/web-nav";
 import { webAssets } from "@/content/webAssets";
 import { proposedApi, type TransitDetailPayload } from "@/services/appRefs";
@@ -79,26 +80,35 @@ export function OrbitaTransit() {
   );
 }
 
-function todayLocalDate() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-}
-
 function TransitWithBackend() {
   const getToday = useAction(proposedApi.transitToday);
+  const daily = useDailyContext();
+  // `transits.getToday` rechaza cualquier fecha que no sea la canónica del
+  // servidor, así que la fecha del navegador no sirve ni como aproximación.
+  const localDate = daily.status === "listo" ? daily.context.localDate : null;
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error" } | { kind: "ok"; data: unknown }>({ kind: "loading" });
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
+    if (!localDate) return;
     let alive = true;
     setState({ kind: "loading" });
-    getToday({ localDate: todayLocalDate() })
+    getToday({ localDate })
       .then((r) => { if (alive) setState({ kind: "ok", data: r }); })
       .catch(() => { if (alive) setState({ kind: "error" }); });
     return () => { alive = false; };
-  }, [attempt]);
+  }, [attempt, localDate]);
 
-  if (state.kind === "loading") {
+  if (daily.status === "error") {
+    return (
+      <WebNotice
+        title="No pudimos ubicar tu día"
+        body="No conseguimos la fecha de tu zona natal. Probá de nuevo en un momento."
+        action={{ label: "Reintentar", onPress: daily.refresh }}
+      />
+    );
+  }
+  if (!localDate || state.kind === "loading") {
     return <View style={styles.center}><ActivityIndicator color={colors.copperSoft} /><Text style={styles.loadingText}>Leyendo el cielo de hoy…</Text></View>;
   }
   // El proveedor puede fallar; lo que no puede pasar es que inventemos un

@@ -9,6 +9,7 @@ import "../global.css";
 // hay LogBox. Lo silenciamos para no ensuciar la pantalla en el testeo interno.
 LogBox.ignoreLogs(["[expo-notifications]"]);
 import { AppStateProvider } from "@/hooks/useAppState";
+import { DailyContextProvider } from "@/hooks/useDailyContext";
 import { OrbitaSessionProvider } from "@/hooks/useLiveApp";
 import { BackendProviders, backendConfig } from "@/services/backendProviders";
 import { InstallPing } from "@/components/InstallPing";
@@ -21,6 +22,9 @@ export default function RootLayout() {
         {/* Sesión central (hotfix build 11): un solo estado Clerk/Convex
             compartido; antes cada pantalla resolvía la sesión por su cuenta. */}
         <OrbitaSessionProvider>
+          {/* Fecha canónica compartida: una sola llamada a getTodayContext por
+              sesión, dentro de la sesión central. */}
+          <DailyContextProvider>
           <AppStateProvider>
             <StatusBar style="dark" />
             <Stack screenOptions={{ headerShown: false }}>
@@ -37,6 +41,7 @@ export default function RootLayout() {
               <Stack.Screen name="(tabs)" />
             </Stack>
           </AppStateProvider>
+          </DailyContextProvider>
         </OrbitaSessionProvider>
       </BackendProviders>
     </SafeAreaProvider>
