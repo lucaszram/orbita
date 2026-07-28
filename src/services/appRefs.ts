@@ -1,6 +1,7 @@
 import { anyApi } from "convex/server";
 import type { FunctionReference } from "convex/server";
 import type { PublicDailyHome } from "./publicLabRefs";
+import type { CheckoutStatus, WebOffer } from "@/domain/paywall";
 
 /**
  * Capa de datos del front para la Web B0 (usuario autenticado con Clerk).
@@ -523,6 +524,37 @@ export const proposedApi = {
     "public",
     Empty,
     { localDate: string; timezone: string }
+  >,
+  // --- Pagos (web) ---------------------------------------------------------
+  // Todas son ACTIONS. `getWebOffer` decide server-side si el comercio está
+  // habilitado; con `off` devuelve `plans: []` y no hay checkout posible.
+  // Los precios salen de Stripe: nunca se escriben en el cliente.
+  getWebOffer: anyApi.payments.stripeActions.getWebOffer as FunctionReference<
+    "action",
+    "public",
+    Empty,
+    WebOffer
+  >,
+  createCheckoutSession: anyApi.payments.stripeActions.createCheckoutSession as FunctionReference<
+    "action",
+    "public",
+    { plan: "weekly" | "yearly" },
+    { url: string }
+  >,
+  // Sólo se consulta en la pantalla de retorno. `active` significa que el
+  // backend verificó sesión, propietario, customer y el entitlement del
+  // webhook: la URL por sí sola nunca concede Plus.
+  getCheckoutStatus: anyApi.payments.stripeActions.getCheckoutStatus as FunctionReference<
+    "action",
+    "public",
+    { sessionId: string },
+    { status: CheckoutStatus }
+  >,
+  createPortalSession: anyApi.payments.stripeActions.createPortalSession as FunctionReference<
+    "action",
+    "public",
+    Empty,
+    { url: string }
   >,
   dailyGuide: anyApi.daily.getGuide as FunctionReference<"action", "public", { localDate?: string; timezone?: string }, DailyGuidePayload>,
   // daily.revealCard(): da vuelta la carta de ese día. Idempotente, irreversible.

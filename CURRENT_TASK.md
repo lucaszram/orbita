@@ -40,6 +40,27 @@
 
 **Bloqueo móvil posterior:** `src/domain/appData.ts` todavía construye tránsitos nativos hardcodeados mediante `buildTransitos` y `chartMock`. No afecta Gate A web y queda fuera de este PR backend, pero debe eliminarse antes de cualquier nueva publicación móvil.
 
+## Órbita Web P0 — paywall y retorno de checkout (2026-07-28, Claude)
+
+**Objetivo:** consumir `payments.getWebOffer` y `payments.getCheckoutStatus` con el comercio apagado por defecto, sin precios en el cliente y sin que la URL de retorno pueda conceder Plus.
+
+**Criterios de aceptación:** el paywall pide la oferta al entrar; con `commerceMode="off"` dice "Órbita Plus estará disponible pronto" y no ofrece ningún camino a checkout; los precios salen exclusivamente de `currency`/`unitAmount`/`interval`/`trialDays`; el retorno valida `session_id` con `getCheckoutStatus` y hace polling acotado sólo mientras responde `pending`, cortando con `active`, `failed`, timeout, logout o desmontaje; con el comercio apagado no se consulta el estado.
+
+**Ficha:** owner Claude (frontend); territorio `app/**`, `src/**`, `test/**`; rama `feature/web-p0-paywall` sobre `feature/web-p0-contracts`; riesgo alto por tocar el camino de cobro; validación `pnpm typecheck` + suite completa + export web; fuera de alcance `convex/**`, Stripe live, dominio/Clerk, responsive y PWA.
+
+**Qué cambió:**
+1. **`/paywall`** (`src/components/web/orbita-paywall.tsx`) llama `getWebOffer({})` al montar. `offerPhase` (`src/domain/paywall.ts`) resuelve cargando/error/próximamente/disponible. "Próximamente" cubre además el caso `checkoutEnabled=true` con `plans: []`: antes que una pantalla de compra vacía, se dice que todavía no está.
+2. **Precios sólo desde Stripe.** `formatPlanPrice` usa `currency` + `unitAmount` (unidad mínima) vía `Intl`; `planTrialLabel` sólo anuncia el trial si `trialDays > 0`; `planIntervalLabel` sale del `interval`. No hay ningún importe escrito en el cliente. Un código de moneda inválido cae a mostrar el código, nunca a un símbolo inventado.
+3. **`/checkout/success`** (`src/components/web/orbita-checkout-return.tsx`) valida la forma del `session_id` antes de mandarlo, consulta primero si el comercio está habilitado y sólo entonces llama `getCheckoutStatus`. El polling vive en la decisión pura `checkoutPollDecision`: se detiene con `active`, `failed`, timeout (90 s), logout (`isLive`) o desmontaje. El timeout no promete Plus ni declara un fallo: dice que el pago se está confirmando.
+4. **`/profile`** redirige a `/perfil`. El backend fija `return_url` del Customer Portal en `{WEB_APP_URL}/profile`, pero el perfil de Órbita vive en `/perfil`: volver del portal daba 404.
+5. **`PlusLocked` linkea a `/paywall`**, que resuelve por sí solo el estado del comercio. Con `off` no hay camino a checkout desde ninguna superficie.
+
+**Validación:** `pnpm typecheck` en verde, **425/425** tests (19 nuevos en `test/paywall.test.ts`) y `npx expo export --platform web` correcto. El bundle exportado confirma `getWebOffer`, `getCheckoutStatus`, `getTodayContext`, `/paywall` y `/checkout/success` presentes, y **cero** ocurrencias de `live=1`, `urlForcedLive`, `setStubPlusForDev` y el copy de demo.
+
+**Configuración del worktree:** `.env.local` y `.vercel` copiados desde el worktree principal — Convex dev `dutiful-viper-815`, Clerk `pk_test`, proyecto Vercel `orbita`. Ambos están cubiertos por `.gitignore` (`.env*`, `.vercel`); no se commiteó ningún secreto. `EXPO_PUBLIC_ORBITA_INTERNAL_TOOLS` queda sin setear.
+
+**Pendiente:** responsive/PWA; "Gestionar suscripción" en Perfil con `createPortalSession`; prueba manual conjunta contra Convex dev.
+
 ## Órbita Web P0 — contratos nuevos: fecha canónica y Free/Plus (2026-07-28, Claude)
 
 **Objetivo:** consumir el contrato del backend P0 (PR #40): la fecha del día la decide el servidor, y las superficies recortadas por plan se leen como "esto es Plus" y no como una falla.

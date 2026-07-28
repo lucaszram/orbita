@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
-import { Redirect } from "expo-router";
+import { Link, Redirect } from "expo-router";
 import { sessionPhase } from "@/domain/screenPhase";
 import { webRouteDecision } from "@/domain/webSession";
 import { useLiveApp } from "@/hooks/useLiveApp";
@@ -98,8 +98,9 @@ export function WebNotice({
  * Superficie recortada por plan. El backend ya no manda el dato; esto sólo lo
  * nombra, para que un bloque vacío no se lea como una falla.
  *
- * Sin precios ni CTA de compra: mientras el comercio esté apagado no hay nada
- * que ofrecer, y el paywall real llega en su propio PR.
+ * No muestra precios: los precios sólo existen en `/paywall`, que los pide a
+ * Stripe vía `getWebOffer`. Con el comercio apagado esa página dice
+ * "estará disponible pronto" y no ofrece ningún camino a checkout.
  */
 export function PlusLocked({ title, body }: { title: string; body: string }) {
   return (
@@ -113,6 +114,13 @@ export function PlusLocked({ title, body }: { title: string; body: string }) {
       <Text selectable style={styles.lockedBody}>
         {body}
       </Text>
+      {/* `/paywall` resuelve por sí solo el estado del comercio: con `off`
+          muestra "estará disponible pronto" y no ofrece checkout. */}
+      <Link href="/paywall" asChild>
+        <Pressable style={styles.lockedLink}>
+          <Text selectable style={styles.lockedLinkText}>Ver Órbita Plus</Text>
+        </Pressable>
+      </Link>
     </View>
   );
 }
@@ -130,6 +138,8 @@ const styles = StyleSheet.create({
   lockedLabel: { color: colors.copperSoft, fontSize: 11, fontWeight: "700", letterSpacing: 1.1 },
   lockedTitle: { color: colors.bone, fontSize: 18, fontWeight: "500" },
   lockedBody: { color: colors.boneMuted, fontSize: 15, lineHeight: 22 },
+  lockedLink: { alignSelf: "flex-start", marginTop: 4 },
+  lockedLinkText: { color: colors.bone, fontSize: 14, fontWeight: "700", textDecorationLine: "underline" },
   card: {
     alignItems: "flex-start",
     backgroundColor: colors.panel,
