@@ -15,9 +15,9 @@ import { backendConfig } from "@/services/backendProviders";
 import { OrbitaAuth, useOrbitaAuth } from "@/hooks/useOrbitaAuth";
 
 /**
- * Capa live nativa (no hay `?live=1` como en web): live ⟺ Convex configurado
- * + sesión Clerk autenticada en Convex. Mock/local-first: sin sesión, la app
- * se comporta exactamente igual que siempre.
+ * Capa de sesión compartida: live ⟺ Convex configurado + sesión Clerk
+ * autenticada en Convex. En web la consume `RequireSession`, que sin sesión
+ * manda a login; en nativo, sin sesión la app sigue local-first.
  *
  * Hotfix build 11: la sesión es CENTRAL (`OrbitaSessionProvider` en el root
  * layout). Antes cada consumidor corría su propio `ensureUser` con estado

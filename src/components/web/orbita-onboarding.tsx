@@ -277,7 +277,7 @@ export function OrbitaOnboarding({ backend, triad }: { backend?: OnboardingBacke
     if (index >= ONBOARDING_STEPS.length - 1) {
       // Al entrar, si hay sesión persistimos la carta para la app (live).
       if (backend && backend.isSignedIn) {
-        backend.complete(collectData()).then(() => router.replace("/home?live=1")).catch(() => router.replace("/home"));
+        backend.complete(collectData()).then(() => router.replace("/home")).catch(() => router.replace("/home"));
       } else {
         router.replace("/home");
       }

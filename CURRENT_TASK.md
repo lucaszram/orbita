@@ -40,6 +40,30 @@
 
 **Bloqueo móvil posterior:** `src/domain/appData.ts` todavía construye tránsitos nativos hardcodeados mediante `buildTransitos` y `chartMock`. No afecta Gate A web y queda fuera de este PR backend, pero debe eliminarse antes de cualquier nueva publicación móvil.
 
+## Órbita Web P0 — shell limpio: sin mocks ni superficies internas (2026-07-28, Claude)
+
+**Objetivo:** que la web publicada no pueda mostrar contenido inventado ni rutear a herramientas internas. Pareja frontend del backend P0 (PR #40), primer PR de la serie.
+
+**Criterios de aceptación:** ninguna pantalla web renderiza mocks, ni como demo para visitantes ni como fallback ante error/vacío; sin sesión toda ruta de app manda a login; Studio/Lab/backoffice no son ruteables en la web pública; `?live=1` no existe; `setStubPlusForDev` no se referencia.
+
+**Ficha:** owner Claude (frontend); territorio `app/**`, `src/**`, `test/**`; rama `feature/web-p0-shell` sobre `origin/main` `ef8b048` (misma base que el backend #40); riesgo medio — toca el arranque de sesión de la web y borra caminos de render; validación `pnpm typecheck` + suite completa; rollout PR → revisión → integración con #40 en Convex dev → pasada manual de Lucas; fuera de alcance `convex/**`, deploy, dominio/Clerk, Stripe, PWA, responsive y los contratos nuevos (van en los PR siguientes).
+
+**Qué cambió:**
+1. **`LiveGate` eliminado** (`src/components/web/live.tsx` borrado). Era la raíz del problema: no sólo daba una demo mock a visitantes sin sesión, también servía de fallback silencioso ante fallas reales. Casos concretos que veía gente **con sesión**: `orbita-transit.tsx` devolvía `transitMock` cuando la action de tránsitos fallaba o venía vacía, y `orbita-personality.tsx` rellenaba con `chartMock`/`personalityMock`/`valuesMock`, mostrándole a alguien sin carta la carta natal inventada de otro como si fuera suya.
+2. **`RequireSession`** (`src/components/web/require-session.tsx`) reemplaza esa dualidad, sobre la decisión pura `webRouteDecision` (`src/domain/webSession.ts`, testeada). Reusa `useLiveApp` + `sessionPhase` en vez de duplicar el handshake Clerk/Convex. Sin sesión → login; error de fila `users` → reintento; sin Convex/Clerk → "no está disponible", nunca demo.
+3. **Estados honestos** en Tránsitos (con reintento), Personalidad, Valores y Carta, vía `WebNotice`.
+4. **`?live=1` eliminado**, incluido el `router.replace("/home?live=1")` del onboarding web.
+5. **Superficies internas cerradas** por `INTERNAL_TOOLS_ENABLED` (`src/services/internalTools.ts`, apagado por defecto): `/studio`, `/lab` y `/backoffice` redirigen a `/`. El Lab antes sólo se cerraba en nativo: en la web publicada era ruteable. La landing pública además promocionaba el Studio con una sección entera ("el espacio interno donde Órbita prepara su material"); se eliminó y los CTA ahora son `Empezar` / `Ya tengo cuenta`.
+6. **`setStubPro` fuera de `appRefs.ts`** — apuntaba a la mutación que el backend eliminó.
+7. **`/empezar` sin backend** muestra el estado no-disponible en vez de correr el onboarding entero y descartar los datos en silencio.
+
+**Validación:** `pnpm typecheck` en verde y **379/379** tests (8 nuevos en `test/webSession.test.ts`, incluida la regresión de que "sin sesión" jamás rinde contenido de muestra). Sin pasada manual todavía.
+
+**Pendiente / handoff:**
+- `src/domain/appData.ts` (`buildTransitos`) todavía arma tránsitos hardcodeados con `chartMock` ("Venus armoniza tu Sol en…"). Sólo lo consume el Perfil **nativo** (`app/(tabs)/perfil.tsx`), no la web, así que queda fuera de este PR — pero es contenido astrológico inventado y hay que resolverlo antes de publicar el nativo.
+- Para el backend: `.env.example` sigue documentando `ALLOW_DEV_STUB` y `STRIPE_PRICE_LIFETIME`, ambos ya sin uso tras el P0.
+- `EXPO_PUBLIC_ORBITA_INTERNAL_TOOLS` debe quedar **sin setear** en el proyecto Vercel de producción.
+
 ## Analytics — eventos de producto + resumen diario por Telegram (2026-07-20, Codex)
 
 **Objetivo:** registrar hechos puntuales del funnel de Órbita y enviar cada mañana un resumen del día anterior con aperturas únicas, nuevos/recurrentes, onboarding completado, cartas reveladas y retención.

@@ -8,9 +8,8 @@ import { Check } from "lucide-react-native";
 import { ActivityIndicator, ImageBackground, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import Svg, { Circle, Line, Path, Rect, Text as SvgText } from "react-native-svg";
 import { ImmersiveScreen } from "@/components/web/immersive-bg";
-import { LiveGate } from "@/components/web/live";
+import { RequireSession, WebNotice } from "@/components/web/require-session";
 import { WebNav } from "@/components/web/web-nav";
-import { transitMock } from "@/content/transitMock";
 import { webAssets } from "@/content/webAssets";
 import { proposedApi, type TransitDetailPayload } from "@/services/appRefs";
 
@@ -73,7 +72,11 @@ function Scene({ payload }: { payload: TransitDetailPayload }) {
 // ---------------------------------------------------------------------------
 
 export function OrbitaTransit() {
-  return <LiveGate mock={<TransitScreen payload={transitMock} />} live={() => <TransitWithBackend />} />;
+  return (
+    <RequireSession>
+      <TransitWithBackend />
+    </RequireSession>
+  );
 }
 
 function todayLocalDate() {
@@ -84,22 +87,40 @@ function todayLocalDate() {
 function TransitWithBackend() {
   const getToday = useAction(proposedApi.transitToday);
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error" } | { kind: "ok"; data: unknown }>({ kind: "loading" });
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let alive = true;
+    setState({ kind: "loading" });
     getToday({ localDate: todayLocalDate() })
       .then((r) => { if (alive) setState({ kind: "ok", data: r }); })
       .catch(() => { if (alive) setState({ kind: "error" }); });
     return () => { alive = false; };
-  }, []);
+  }, [attempt]);
 
   if (state.kind === "loading") {
     return <View style={styles.center}><ActivityIndicator color={colors.copperSoft} /><Text style={styles.loadingText}>Leyendo el cielo de hoy…</Text></View>;
   }
-  if (state.kind === "error") return <TransitScreen payload={transitMock} />;
-  const data = state.data;
-  if (!data) return <TransitScreen payload={transitMock} />;
-  return <TransitScreen payload={data as TransitDetailPayload} />;
+  // El proveedor puede fallar; lo que no puede pasar es que inventemos un
+  // tránsito. Antes acá se renderizaba `transitMock` y el error era invisible.
+  if (state.kind === "error") {
+    return (
+      <WebNotice
+        title="No pudimos leer el cielo de hoy"
+        body="El cálculo de tránsitos no respondió. Probá de nuevo en un momento."
+        action={{ label: "Reintentar", onPress: () => setAttempt((a) => a + 1) }}
+      />
+    );
+  }
+  if (!state.data) {
+    return (
+      <WebNotice
+        title="Todavía no hay tránsitos para hoy"
+        body="Necesitamos tu carta natal para cruzarla con el cielo de hoy. Completá tus datos de nacimiento y volvé."
+      />
+    );
+  }
+  return <TransitScreen payload={state.data as TransitDetailPayload} />;
 }
 
 export function TransitScreen({ payload }: { payload: TransitDetailPayload }) {

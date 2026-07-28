@@ -504,8 +504,6 @@ export const proposedApi = {
   // daily.getStrip(): la tira del Diario (qué carta salió cada día, si ya la diste vuelta).
   // Query reactiva: después de revealCard, la Home y la tira se actualizan solas.
   dailyStrip: anyApi.daily.getStrip as FunctionReference<"query", "public", { from: string; to: string }, DailyStripDay[]>,
-  // Dev/testeo interno: marca al usuario como Pro (gateado por ALLOW_DEV_STUB en Convex).
-  setStubPro: anyApi.subscriptions.setStubPlusForDev as FunctionReference<"mutation", "public", Empty, unknown>,
   // Telemetría: aviso de instalación al bot de Telegram (1 vez por install, sin sesión).
   appOpened: anyApi.telemetry.appOpened as FunctionReference<"mutation", "public", { platform?: string }, null>
 } as const;

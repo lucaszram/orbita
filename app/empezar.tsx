@@ -1,5 +1,6 @@
 import { Redirect } from "expo-router";
-import { OnboardingWithBackend, OrbitaOnboarding } from "@/components/web/orbita-onboarding";
+import { OnboardingWithBackend } from "@/components/web/orbita-onboarding";
+import { WebNotice } from "@/components/web/require-session";
 import { backendConfig } from "@/services/backendProviders";
 
 export default function EmpezarRoute() {
@@ -7,9 +8,17 @@ export default function EmpezarRoute() {
     return <Redirect href="/onboarding" />;
   }
 
-  // Con Convex+Clerk: escribe carta real (login en el paso de cuenta). Sin config: demo mock.
-  if (backendConfig.isConfigured) {
-    return <OnboardingWithBackend />;
+  // Sin Convex+Clerk no hay dónde guardar la cuenta ni la carta. Antes se caía
+  // a `OrbitaOnboarding` suelto: la persona completaba los quince pasos y todo
+  // se descartaba en silencio. Preferimos decir que no está disponible.
+  if (!backendConfig.isConfigured) {
+    return (
+      <WebNotice
+        title="Órbita no está disponible"
+        body="No pudimos conectar con el servidor, así que todavía no podemos crear tu carta. Volvé a intentar en un momento."
+      />
+    );
   }
-  return <OrbitaOnboarding />;
+
+  return <OnboardingWithBackend />;
 }

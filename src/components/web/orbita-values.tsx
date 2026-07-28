@@ -5,9 +5,8 @@ import { useFonts } from "expo-font";
 import { ActivityIndicator, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import Svg, { Circle, Line, Polygon, Text as SvgText } from "react-native-svg";
 import { ImmersiveScreen } from "@/components/web/immersive-bg";
-import { LiveGate, LiveLoading } from "@/components/web/live";
+import { RequireSession, WebLoading, WebNotice } from "@/components/web/require-session";
 import { WebNav } from "@/components/web/web-nav";
-import { valuesMock } from "@/content/valuesMock";
 import { proposedApi, type ValuesMapPayload } from "@/services/appRefs";
 
 const colors = {
@@ -52,13 +51,25 @@ export function Radar({ payload, size }: { payload: ValuesMapPayload; size: numb
 }
 
 export function OrbitaValues() {
-  return <LiveGate mock={<ValuesScreen payload={valuesMock} />} live={() => <ValuesWithBackend />} />;
+  return (
+    <RequireSession>
+      <ValuesWithBackend />
+    </RequireSession>
+  );
 }
 
 function ValuesWithBackend() {
   const data = useQuery(proposedApi.valuesMap, {});
-  if (data === undefined) return <LiveLoading />;
-  if (data === null) return <ValuesScreen payload={valuesMock} />;
+  if (data === undefined) return <WebLoading />;
+  // `null` es "todavía no hay mapa de valores", no "mostrale el de la demo".
+  if (data === null) {
+    return (
+      <WebNotice
+        title="Todavía no hay mapa de valores"
+        body="Se calcula a partir de tu carta natal. Completá tus datos de nacimiento y volvé."
+      />
+    );
+  }
   return <ValuesScreen payload={data} />;
 }
 

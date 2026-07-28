@@ -16,13 +16,10 @@ import {
   View
 } from "react-native";
 import { ImmersiveScreen } from "@/components/web/immersive-bg";
-import { LiveGate, LiveLoading } from "@/components/web/live";
+import { RequireSession, WebLoading, WebNotice } from "@/components/web/require-session";
 import { NatalWheel, mapNatalChart } from "@/components/web/orbita-chart";
 import { Radar } from "@/components/web/orbita-values";
 import { WebNav } from "@/components/web/web-nav";
-import { chartMock } from "@/content/chartMock";
-import { personalityMock } from "@/content/personalityMock";
-import { valuesMock } from "@/content/valuesMock";
 import {
   appApi,
   type NatalChartPayload,
@@ -58,10 +55,9 @@ type ScreenData = { payload: PersonalityReadingPayload; chart: NatalChartPayload
 
 export function OrbitaPersonality() {
   return (
-    <LiveGate
-      mock={<PersonalityScreen payload={personalityMock} chart={chartMock} values={valuesMock} />}
-      live={() => <PersonalityWithBackend />}
-    />
+    <RequireSession>
+      <PersonalityWithBackend />
+    </RequireSession>
   );
 }
 
@@ -78,14 +74,27 @@ function PersonalityWithBackend() {
     fired.current = true;
     generate({}).catch(() => {});
   }, [generate]);
-  if (reading === undefined || chartDoc === undefined || values === undefined) return <LiveLoading />;
-  return (
-    <PersonalityScreen
-      payload={reading ?? personalityMock}
-      chart={chartDoc ? mapNatalChart(chartDoc) : chartMock}
-      values={values ?? valuesMock}
-    />
-  );
+  if (reading === undefined || chartDoc === undefined || values === undefined) return <WebLoading />;
+  // Sin carta no hay nada que interpretar. Antes se rellenaba con
+  // `chartMock`/`personalityMock`/`valuesMock`: una persona con sesión y sin
+  // datos natales veía la carta inventada de otro y la leía como propia.
+  if (!chartDoc) {
+    return (
+      <WebNotice
+        title="Todavía no hay carta"
+        body="Completá tus datos de nacimiento y calculamos tu carta base para poder interpretarla."
+      />
+    );
+  }
+  if (!reading || !values) {
+    return (
+      <WebNotice
+        title="Estamos preparando tu lectura"
+        body="Tu carta ya está calculada. La interpretación larga tarda un momento; volvé en unos minutos."
+      />
+    );
+  }
+  return <PersonalityScreen payload={reading} chart={mapNatalChart(chartDoc)} values={values} />;
 }
 
 export function PersonalityScreen({ payload, chart, values }: ScreenData) {

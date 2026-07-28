@@ -4,7 +4,7 @@ import { Newsreader_400Regular, Newsreader_500Medium } from "@expo-google-fonts/
 import { useFonts } from "expo-font";
 import { LinearGradient } from "expo-linear-gradient";
 import { Link } from "expo-router";
-import { ArrowRight, LockKeyhole, Orbit, ShieldCheck } from "lucide-react-native";
+import { ArrowRight, LogIn, Orbit } from "lucide-react-native";
 import {
   ActivityIndicator,
   Image,
@@ -93,10 +93,9 @@ export function OrbitaLanding() {
               <Text selectable style={styles.brandText}>Órbita</Text>
             </View>
             <View style={[styles.navActions, isNarrow && styles.navActionsNarrow]}>
-              <Link href="/studio" asChild>
+              <Link href="/login" asChild>
                 <Pressable style={styles.navLink}>
-                  <LockKeyhole color={colors.boneMuted} size={15} strokeWidth={1.8} />
-                  <Text selectable style={styles.navLinkText}>Studio</Text>
+                  <Text selectable style={styles.navLinkText}>Ya tengo cuenta</Text>
                 </Pressable>
               </Link>
             </View>
@@ -110,7 +109,7 @@ export function OrbitaLanding() {
             </Text>
             <View style={[styles.ctaRow, isNarrow && styles.ctaRowNarrow]}>
               <WebLinkButton href="/empezar" icon={ArrowRight} label="Empezar" />
-              <WebLinkButton href="/studio" icon={LockKeyhole} label="Entrar al Studio" variant="secondary" />
+              <WebLinkButton href="/login" icon={LogIn} label="Ya tengo cuenta" variant="secondary" />
             </View>
           </View>
 
@@ -167,43 +166,6 @@ export function OrbitaLanding() {
         </LinearGradient>
       </ImageBackground>
 
-      <View style={styles.section}>
-        <View style={[styles.studioPreview, isNarrow && styles.stack]}>
-          <ImageBackground
-            accessibilityLabel={webAssets.studioBackplate.alt}
-            imageStyle={styles.studioPreviewImage}
-            resizeMode="cover"
-            source={webAssets.studioBackplate.require}
-            style={styles.studioVisual}
-          >
-            <LinearGradient colors={["rgba(7,8,10,0.2)", "rgba(7,8,10,0.72)"]} style={styles.studioVisualOverlay}>
-              <Image
-                accessibilityLabel={webAssets.homePreview.alt}
-                resizeMode="cover"
-                source={webAssets.homePreview.require}
-                style={styles.homeShot}
-              />
-            </LinearGradient>
-          </ImageBackground>
-          <View style={styles.studioCopy}>
-            <Text selectable style={styles.eyebrow}>Studio V0</Text>
-            <Text selectable style={[styles.sectionTitle, isNarrow && styles.sectionTitleNarrow]}>
-              Un lugar para probar material sin ensuciar producción.
-            </Text>
-            <Text selectable style={styles.body}>
-              El espacio interno donde Órbita prepara y revisa su material visual antes de publicarlo, con estados editoriales y
-              acceso protegido.
-            </Text>
-            <Link href="/studio" asChild>
-              <Pressable style={styles.inlineButton}>
-                <ShieldCheck color={colors.black} size={17} strokeWidth={2} />
-                <Text selectable style={styles.inlineButtonText}>Abrir Studio</Text>
-              </Pressable>
-            </Link>
-          </View>
-        </View>
-      </View>
-
       <View style={styles.assetStrip}>
         {webAssetSequence.slice(5).map((asset) => (
           <View key={asset.key} style={styles.assetThumbWrap}>
@@ -226,7 +188,7 @@ function WebLinkButton({
   label,
   variant = "primary"
 }: {
-  href: "/empezar" | "/onboarding" | "/studio";
+  href: "/empezar" | "/onboarding" | "/login";
   icon: IconComponent;
   label: string;
   variant?: "primary" | "secondary";

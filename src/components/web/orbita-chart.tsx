@@ -8,9 +8,8 @@ import { AlertCircle, ArrowRight, Clock } from "lucide-react-native";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
 import Svg, { Circle, Line, Text as SvgText } from "react-native-svg";
 import { ImmersiveScreen } from "@/components/web/immersive-bg";
-import { LiveGate } from "@/components/web/live";
+import { RequireSession } from "@/components/web/require-session";
 import { WebNav } from "@/components/web/web-nav";
-import { chartMock } from "@/content/chartMock";
 import { NatalWheel } from "@/components/orbita/NatalWheel";
 import { appApi, type NatalChartAspect, type NatalChartPayload, type SignPlacement } from "@/services/appRefs";
 
@@ -33,7 +32,11 @@ export { NatalWheel };
 // ---------------------------------------------------------------------------
 
 export function OrbitaChart() {
-  return <LiveGate mock={<ChartScreen payload={chartMock} />} live={() => <ChartWithBackend />} />;
+  return (
+    <RequireSession>
+      <ChartWithBackend />
+    </RequireSession>
+  );
 }
 
 function ChartWithBackend() {

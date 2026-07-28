@@ -16,11 +16,10 @@ import {
   View
 } from "react-native";
 import { ImmersiveScreen } from "@/components/web/immersive-bg";
-import { LiveGate, LiveLoading } from "@/components/web/live";
+import { RequireSession, WebLoading } from "@/components/web/require-session";
 import { useOrbitaAuth } from "@/hooks/useOrbitaAuth";
 import { WebNav } from "@/components/web/web-nav";
 import { webAssets } from "@/content/webAssets";
-import { homeMock } from "@/content/homeMock";
 import { appApi, proposedApi } from "@/services/appRefs";
 import type { PublicDailyHome } from "@/services/publicLabRefs";
 
@@ -166,7 +165,7 @@ export function toHomeView(payload: unknown, triadOverride?: HomeView["triad"], 
 }
 
 // ---------------------------------------------------------------------------
-// Container — mock (sin Convex) vs backend (con estados).
+// Container — sólo datos reales, con estados completos.
 // ---------------------------------------------------------------------------
 
 function todayLocalDate(): string {
@@ -175,8 +174,11 @@ function todayLocalDate(): string {
 }
 
 export function OrbitaHome() {
-  // Autenticado → datos reales; si no, demo mock. Ver LiveGate.
-  return <LiveGate mock={<HomeScreen view={toHomeView(homeMock)} source="demo" />} live={() => <HomeWithBackend />} />;
+  return (
+    <RequireSession>
+      <HomeWithBackend />
+    </RequireSession>
+  );
 }
 
 function HomeWithBackend() {
@@ -192,10 +194,10 @@ function HomeWithBackend() {
     genTransits({ localDate: todayLocalDate() }).then(() => setGenDone(true)).catch(() => setGenDone(true));
   }, []);
 
-  if (data === undefined) return <LiveLoading />;
-  if (data === null) return genDone ? <StatusScreen kind="empty" /> : <LiveLoading />;
+  if (data === undefined) return <WebLoading />;
+  if (data === null) return genDone ? <StatusScreen kind="empty" /> : <WebLoading />;
   const triad = chart ? triadFromChart(chart) : undefined;
-  return <HomeScreen view={toHomeView(data, triad, greetingName)} source="live" />;
+  return <HomeScreen view={toHomeView(data, triad, greetingName)} />;
 }
 
 function StatusScreen({ kind }: { kind: "loading" | "empty" | "error" }) {
@@ -237,7 +239,7 @@ function StatusScreen({ kind }: { kind: "loading" | "empty" | "error" }) {
 // Presentational
 // ---------------------------------------------------------------------------
 
-export function HomeScreen({ view, source }: { view: HomeView; source: "demo" | "live" }) {
+export function HomeScreen({ view }: { view: HomeView }) {
   const { width } = useWindowDimensions();
   const isNarrow = width < 900;
   const [fontsLoaded] = useFonts({
@@ -385,7 +387,7 @@ export function HomeScreen({ view, source }: { view: HomeView; source: "demo" | 
       <View style={[styles.footer, { paddingHorizontal: pad }]}>
         <Text selectable style={styles.footerBrand}>Órbita</Text>
         <Text selectable style={styles.footerText}>
-          {source === "demo" ? "Vista demo · contenido de maqueta." : "Entretenimiento, autoconocimiento y contexto diario."}
+          Entretenimiento, autoconocimiento y contexto diario.
         </Text>
       </View>
     </ScrollView>
