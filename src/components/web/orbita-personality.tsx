@@ -18,8 +18,9 @@ import {
 import { ImmersiveScreen } from "@/components/web/immersive-bg";
 import { PlusLocked, RequireSession, WebLoading, WebNotice } from "@/components/web/require-session";
 import { personalityPhase } from "@/domain/entitlement";
-import { NatalWheel, mapNatalChart } from "@/components/web/orbita-chart";
-import { Radar } from "@/components/web/orbita-values";
+import { NatalWheel } from "@/components/orbita/NatalWheel";
+import { mapNatalChart } from "@/domain/natalChart";
+import { Radar } from "@/components/orbita/Radar";
 import { WebNav } from "@/components/web/web-nav";
 import {
   appApi,

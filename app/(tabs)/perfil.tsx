@@ -1,9 +1,10 @@
 import { useRef, useState } from "react";
-import { Alert, Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { useMutation } from "convex/react";
 import { Body, Divider, Eyebrow, H2, MonoLine, Note, OrbitaScreen, Pill, Section } from "@/components/orbita/kit";
 import { ManageSubscriptionBlock } from "@/components/orbita/ManageSubscription";
+import { useConfirm } from "@/components/orbita/ConfirmHost";
 import { FullBleedHero } from "@/components/orbita/ImmersiveHero";
 import { CartaCard } from "@/components/home/CartaCard";
 import { useAppData } from "@/domain/appData";
@@ -22,36 +23,6 @@ import { orbita } from "@/theme/orbita";
 
 const PRIVACY_URL = "https://orbitaastrologia.xyz/privacy";
 const SUPPORT_URL = "https://orbitaastrologia.xyz/support";
-
-/** Alert nativo como promesa; cerrar sin elegir cuenta como cancelar. */
-function askConfirm(opts: {
-  title: string;
-  message: string;
-  confirmLabel: string;
-  destructive?: boolean;
-}): Promise<boolean> {
-  return new Promise((resolve) => {
-    let settled = false;
-    const settle = (value: boolean) => {
-      if (settled) return;
-      settled = true;
-      resolve(value);
-    };
-    Alert.alert(
-      opts.title,
-      opts.message,
-      [
-        { text: "Cancelar", style: "cancel", onPress: () => settle(false) },
-        {
-          text: opts.confirmLabel,
-          style: opts.destructive ? "destructive" : "default",
-          onPress: () => settle(true)
-        }
-      ],
-      { cancelable: true, onDismiss: () => settle(false) }
-    );
-  });
-}
 
 export default function PerfilScreen() {
   const { perfil } = useAppData();
@@ -133,6 +104,9 @@ function AccountSignedIn({
   retryUser: () => void;
 }) {
   const { archiveAccountData, resetApp } = useAppState();
+  // `Alert.alert` es no-op en react-native-web: en la web la confirmación
+  // nunca resolvía y el flujo de borrado quedaba colgado con el lock tomado.
+  const askConfirm = useConfirm();
   const deleteConvexAccount = useMutation(appApi.users.deleteAccount);
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState(false);

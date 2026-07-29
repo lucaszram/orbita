@@ -8,7 +8,7 @@ import { useQuery } from "convex/react";
 import { NatalWheel } from "@/components/orbita/NatalWheel";
 import { GuestState } from "@/components/orbita/GuestState";
 import { EmptyState, ErrorState, LoadingState, MinimalLoading } from "@/components/orbita/states";
-import { mapNatalChart } from "@/components/web/orbita-chart";
+import { mapNatalChart } from "@/domain/natalChart";
 import { sessionPhase } from "@/domain/screenPhase";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";

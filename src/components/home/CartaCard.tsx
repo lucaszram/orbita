@@ -3,7 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 import { router } from "expo-router";
 import { useQuery } from "convex/react";
 import { NatalWheel } from "@/components/orbita/NatalWheel";
-import { mapNatalChart } from "@/components/web/orbita-chart";
+import { mapNatalChart } from "@/domain/natalChart";
 import { dataPhase, sessionPhase } from "@/domain/screenPhase";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { appApi, type NatalChartPayload } from "@/services/appRefs";

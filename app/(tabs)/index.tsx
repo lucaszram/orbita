@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { Alert, LayoutAnimation, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { LayoutAnimation, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -15,8 +15,9 @@ import {
 import { useMutation, useQuery } from "convex/react";
 import { Eyebrow, InsightRow, Section } from "@/components/orbita/kit";
 import { GuestState } from "@/components/orbita/GuestState";
+import { useNotify } from "@/components/orbita/ConfirmHost";
 import { LoadingState } from "@/components/orbita/states";
-import { mapNatalChart } from "@/components/web/orbita-chart";
+import { mapNatalChart } from "@/domain/natalChart";
 import { lastNDays, toLocalDate } from "@/domain/dateStrip";
 import { useDailyGuide } from "@/services/dailyGuideStore";
 import { markFirstRun, useFirstRun } from "@/services/firstRun";
@@ -53,6 +54,7 @@ function triadFromChart(payload: NatalChartPayload): Triad {
 export default function HomeScreen() {
   const { isReady, profile } = useRequireProfile();
   const { homeReading, saveTodayReading } = useAppState();
+  const notify = useNotify();
   const { isLive, isAuthLoading, userError, retryUser, auth } = useLiveApp();
   // Invitado CONFIRMADO (Clerk resuelto y sin sesión) → estado honesto, sin datos
   // inventados (decisión 2026-07-16). Mientras la sesión carga o reconecta
@@ -181,7 +183,8 @@ export default function HomeScreen() {
 
   async function guardar() {
     await saveTodayReading();
-    Alert.alert("Guardado", "Tu lectura de hoy quedó en guardadas.");
+    // `Alert.alert` no hace nada en web: guardar no daba ninguna señal.
+    notify("Guardado", "Tu lectura de hoy quedó en guardadas.");
   }
 
   return (

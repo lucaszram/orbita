@@ -5,7 +5,7 @@ import { DetailScreen } from "@/components/home/DetailScreen";
 import { H2, Note } from "@/components/orbita/kit";
 import { GuestState } from "@/components/orbita/GuestState";
 import { EmptyState, ErrorState, LoadingState, MinimalLoading } from "@/components/orbita/states";
-import { Radar } from "@/components/web/orbita-values";
+import { Radar } from "@/components/orbita/Radar";
 import { sessionPhase } from "@/domain/screenPhase";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { appApi, type ValuesMapPayload } from "@/services/appRefs";
