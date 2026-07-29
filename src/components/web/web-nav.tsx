@@ -91,7 +91,7 @@ function WebBottomNav({ active }: { active: NavKey }) {
 
 function EnterButton() {
   return (
-    <Link href="/login" asChild>
+    <Link href="/iniciar-sesion" asChild>
       <Pressable style={styles.enterBtn}>
         <Text style={styles.enterText}>Entrar</Text>
       </Pressable>
@@ -111,7 +111,7 @@ function AuthPill() {
   if (!isSignedIn) return <EnterButton />;
   const initial = (name || email || "?").trim().slice(0, 1).toUpperCase();
   return (
-    <Link href="/login" asChild>
+    <Link href="/iniciar-sesion" asChild>
       <Pressable style={styles.avatarWrap}>
         {imageUrl ? (
           <Image source={{ uri: imageUrl }} style={styles.avatar} />

@@ -1,17 +1,18 @@
 import { Redirect } from "expo-router";
 import { DiarioScreen } from "@/screens/DiarioScreen";
-import { RequireSession } from "@/components/web/require-session";
+import { WebAppShell } from "@/components/web/web-app-shell";
 
 // Diario real: la tira de cartas y el ritual de cada día.
 // Es la pantalla canónica compartida con el nativo, no una versión web aparte.
+// `WebAppShell` aporta la navegación que en nativo pone el layout de pestañas.
 export default function Route() {
   if (process.env.EXPO_OS !== "web") {
     return <Redirect href="/" />;
   }
 
   return (
-    <RequireSession>
+    <WebAppShell active="diario">
       <DiarioScreen />
-    </RequireSession>
+    </WebAppShell>
   );
 }

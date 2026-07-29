@@ -20,6 +20,9 @@ export function HomeBackdrop() {
 const styles = StyleSheet.create({
   // La textura cósmica corre continua por toda la Home, incluido el header (sin glow
   // cálido ni barra oscura arriba): inmersivo y parejo.
-  texture: { opacity: 0.5 },
+  // width/height explícitos: `absoluteFillObject` fija los cuatro lados pero
+  // NO el tamaño, y en react-native-web el <img> se va a su tamaño
+  // intrínseco (1024px) y desborda. En nativo no se nota.
+  texture: { height: "100%", opacity: 0.5, width: "100%" },
   scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(7,8,10,0.42)" }
 });

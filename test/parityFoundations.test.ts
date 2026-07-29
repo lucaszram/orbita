@@ -206,3 +206,71 @@ test("todo imageStyle de una pantalla compartida fija tamaño explícito", () =>
   }
   assert.deepEqual(culpables, [], `imageStyle sin tamaño explícito (desborda en web): ${culpables.join(" | ")}`);
 });
+
+// --- Un solo login ----------------------------------------------------------
+// La web tenía `/login` (componente `<SignIn>` de Clerk) además de
+// `/iniciar-sesion` (el canónico, compartido con nativo): dos pantallas de
+// entrada distintas para el mismo producto.
+
+test("el login canónico es /iniciar-sesion y no hay una pantalla web aparte", () => {
+  assert.throws(
+    () => readFileSync(join(ROOT, "src/components/web/orbita-login.tsx"), "utf8"),
+    "volvió a aparecer un login web aparte"
+  );
+  const alias = readFileSync(join(ROOT, "app/login.tsx"), "utf8");
+  assert.ok(/Redirect/.test(alias) && /\/iniciar-sesion/.test(alias), "/login debe redirigir al canónico");
+});
+
+test("ningún enlace público manda a /login: van directo al canónico", () => {
+  const publicas = [
+    "src/components/web/require-session.tsx",
+    "src/components/web/web-nav.tsx",
+    "src/components/web/orbita-landing.tsx"
+  ];
+  for (const f of publicas) {
+    const s = readFileSync(join(ROOT, f), "utf8");
+    assert.ok(!/href="\/login"/.test(s), `${f} sigue enlazando al alias legado`);
+  }
+});
+
+test("/login sigue siendo pública, como alias legado", () => {
+  const s = readFileSync(join(ROOT, "src/domain/webSession.ts"), "utf8");
+  assert.ok(/"\/login"/.test(s), "sacarla de la allowlist rompe los enlaces viejos");
+});
+
+// La localización de Clerk NO se puede sacar: Studio y backoffice siguen
+// montando `<SignIn>`, y cuelga del ClerkProvider.
+test("la localización de Clerk sigue configurada mientras haya componentes de Clerk", () => {
+  const usanSignIn = [...walk(join(ROOT, "src")), ...walk(join(ROOT, "app"))].filter((f) =>
+    /require\("@clerk\/expo\/web"\)/.test(readFileSync(f, "utf8"))
+  );
+  if (usanSignIn.length === 0) return; // si nadie los monta, se puede revisar
+  const providers = readFileSync(join(ROOT, "src/services/backendProviders.tsx"), "utf8");
+  assert.ok(/localization=\{orbitaEsES\}/.test(providers), "quedaría UI de Clerk en inglés");
+});
+
+// --- El destino post-login no puede caer en la landing -----------------------
+// En web `app/(tabs)/index.tsx` y `app/index.tsx` resuelven los dos a `/`, así
+// que `router.replace("/(tabs)")` devolvía a la página pública ya logueado.
+
+test("después de entrar se va a la Home autenticada, no a /(tabs) en web", () => {
+  const login = readFileSync(join(ROOT, "app/iniciar-sesion.tsx"), "utf8");
+  assert.ok(!/router\.replace\("\/\(tabs\)"\)/.test(login), "en web /(tabs) resuelve a la landing");
+  assert.ok(/HOME_ROUTE/.test(login), "debe usar el destino por plataforma");
+  const rutas = readFileSync(join(ROOT, "src/domain/appRoutes.ts"), "utf8");
+  assert.match(rutas, /HOME_ROUTE = IS_WEB \? "\/home" : "\/\(tabs\)"/);
+});
+
+test("la landing sólo se renderiza sin sesión", () => {
+  // Se miran las SENTENCIAS, no los comentarios: la explicación de por qué
+  // cambió es larga y empujaba el guard fuera de cualquier ventana fija.
+  const index = readFileSync(join(ROOT, "app/index.tsx"), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/.*$/gm, "");
+  const web = index.slice(index.indexOf("if (IS_WEB)"));
+  const hastaLanding = web.slice(0, web.indexOf("<OrbitaLanding />"));
+  assert.ok(
+    /isSignedIn/.test(hastaLanding) && /Redirect/.test(hastaLanding),
+    "la landing se renderiza antes de comprobar la sesión"
+  );
+});

@@ -55,7 +55,7 @@ export function RequireSession({ children }: { children: ReactNode }) {
         />
       );
     case "aLogin":
-      return <Redirect href="/login" />;
+      return <Redirect href="/iniciar-sesion" />;
     case "render":
       return <>{children}</>;
   }

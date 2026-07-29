@@ -93,7 +93,7 @@ export function OrbitaLanding() {
               <Text selectable style={styles.brandText}>Órbita</Text>
             </View>
             <View style={[styles.navActions, isNarrow && styles.navActionsNarrow]}>
-              <Link href="/login" asChild>
+              <Link href="/iniciar-sesion" asChild>
                 <Pressable style={styles.navLink}>
                   <Text selectable style={styles.navLinkText}>Ya tengo cuenta</Text>
                 </Pressable>
@@ -109,7 +109,7 @@ export function OrbitaLanding() {
             </Text>
             <View style={[styles.ctaRow, isNarrow && styles.ctaRowNarrow]}>
               <WebLinkButton href="/empezar" icon={ArrowRight} label="Empezar" />
-              <WebLinkButton href="/login" icon={LogIn} label="Ya tengo cuenta" variant="secondary" />
+              <WebLinkButton href="/iniciar-sesion" icon={LogIn} label="Ya tengo cuenta" variant="secondary" />
             </View>
           </View>
 
@@ -188,7 +188,7 @@ function WebLinkButton({
   label,
   variant = "primary"
 }: {
-  href: "/empezar" | "/onboarding" | "/login";
+  href: "/empezar" | "/onboarding" | "/iniciar-sesion";
   icon: IconComponent;
   label: string;
   variant?: "primary" | "secondary";

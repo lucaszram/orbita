@@ -38,6 +38,8 @@ export function webRouteDecision(input: {
 export const PUBLIC_WEB_ROUTES = [
   "/",
   "/empezar",
+  // `/login` es un alias legado: redirige a `/iniciar-sesion`, el login
+  // canónico. Sigue en la lista para no romper enlaces viejos.
   "/login",
   "/iniciar-sesion",
   "/privacy",

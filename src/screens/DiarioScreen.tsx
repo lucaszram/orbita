@@ -12,6 +12,7 @@ import { DetailScreen } from "@/components/home/DetailScreen";
 import { RitualReading } from "@/components/home/RitualReading";
 import { isRitualComplete } from "@/domain/ritual";
 import { Body, Eyebrow, H2 } from "@/components/orbita/kit";
+import { MinimalLoading } from "@/components/orbita/states";
 import { TarotStrip, type DiaCelda } from "@/components/diario/TarotStrip";
 import { CARD_BACK, cardById } from "@/content/tarotDeck";
 import { dayLabel, lastNDaysFrom, monthLabel } from "@/domain/dateStrip";
@@ -47,9 +48,13 @@ export function DiarioScreen() {
     isLive && days.length ? { from: days[0], to: days[days.length - 1] } : "skip"
   );
 
-  // Arranca en hoy (la última celda) y se puede caminar hacia atrás.
-  const [sel, setSel] = useState(days.length - 1);
-  const selectedDate = days[sel];
+  // Arranca en hoy (la última celda) y se puede caminar hacia atrás. Se guarda
+  // `null` hasta que la persona elige: `days` está vacío mientras no llegó la
+  // fecha canónica, así que inicializarlo con `days.length - 1` lo dejaba
+  // clavado en -1 para siempre y `selectedDate` quedaba undefined.
+  const [sel, setSel] = useState<number | null>(null);
+  const selIndex = sel ?? days.length - 1;
+  const selectedDate: string | undefined = days[selIndex];
 
   const byDate = useMemo(
     () => new Map((strip ?? []).map((d) => [d.localDate, d])),
@@ -115,13 +120,24 @@ export function DiarioScreen() {
   const orientacion = carta?.orientacion ?? entry?.orientacion ?? null;
   const ritual = carta?.ritual;
   // Sin fecha canónica todavía no se puede afirmar qué día es futuro.
-  const isFuture = today ? selectedDate > today : false;
+  const isFuture = today && selectedDate ? selectedDate > today : false;
+
+  // La fecha canónica llega por action, no por query: hasta entonces no hay
+  // ventana ni día seleccionado. Sin este gate, `monthLabel(undefined)` hacía
+  // `.split()` sobre undefined y la pantalla crasheaba en el primer render.
+  if (!selectedDate) {
+    return (
+      <DetailScreen eyebrow="Tu diario">
+        <MinimalLoading />
+      </DetailScreen>
+    );
+  }
 
   return (
     <DetailScreen eyebrow="Tu diario">
       <Eyebrow>{monthLabel(selectedDate)}</Eyebrow>
       <View style={styles.stripWrap}>
-        <TarotStrip dias={celdas} sel={sel} onSel={setSel} />
+        <TarotStrip dias={celdas} sel={selIndex} onSel={setSel} />
       </View>
 
       <Text style={styles.dayLabel}>{dayLabel(selectedDate, today ?? undefined).toUpperCase()}</Text>

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { Redirect, useRouter } from "expo-router";
 
+import { HOME_ROUTE, ONBOARDING_ROUTE } from "@/domain/appRoutes";
 import {
   isAccountSwitch,
   onboardingInputFromBirthData,
@@ -95,7 +96,7 @@ export default function IniciarSesionRoute() {
         // El perfil/carta remotos ganan; el snapshot solo aporta diario/lecturas.
         // Queda marcado con su dueño para que el arranque confíe en él.
         await createProfile(onboardingInputFromBirthData(result.birthData!), result.clerkUserId);
-        router.replace("/(tabs)");
+        router.replace(HOME_ROUTE);
         break;
       case "home-local":
         // La cuenta no tiene datos en Convex pero este teléfono sí: entrar con
@@ -105,10 +106,10 @@ export default function IniciarSesionRoute() {
         if (localProfile && !profileRestored && result.clerkUserId) {
           await adoptLocalProfile(result.clerkUserId);
         }
-        router.replace("/(tabs)");
+        router.replace(HOME_ROUTE);
         break;
       case "resume-onboarding":
-        router.replace({ pathname: "/onboarding", params: { resume: "datos" } });
+        router.replace({ pathname: ONBOARDING_ROUTE, params: { resume: "datos" } });
         break;
     }
   };
@@ -143,7 +144,7 @@ export default function IniciarSesionRoute() {
   const back = () =>
     void leaveWithoutSignIn(() => {
       if (router.canGoBack()) router.back();
-      else router.replace("/onboarding");
+      else router.replace(ONBOARDING_ROUTE);
     });
 
   // "Crear una cuenta": el alta, sin repetir la entrada (el usuario ya la

@@ -183,6 +183,12 @@ export default function IndexRoute() {
   }, [decision, hydrate, createProfile, recoveryTick]);
 
   if (IS_WEB) {
+    // La landing es SÓLO para quien no tiene sesión. Antes se renderizaba sin
+    // mirar la sesión, y como `/(tabs)` resuelve también a `/` en web, el
+    // `router.replace("/(tabs)")` de después del login devolvía a la página
+    // pública en vez de a la Home: quedabas logueado mirando el marketing.
+    // En web la Home autenticada tiene ruta propia (`/home`), sin colisión.
+    if (auth?.isLoaded && auth.isSignedIn) return <Redirect href="/home" />;
     return <OrbitaLanding />;
   }
 
