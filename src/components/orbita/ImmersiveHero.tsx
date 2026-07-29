@@ -42,7 +42,16 @@ export function FullBleedHero({
 }
 
 const styles = StyleSheet.create({
-  wrap: { justifyContent: "flex-end", paddingBottom: orbita.spacing.lg },
+  // El hero es el contenedor que RECORTA el asset decorativo: sin
+  // `overflow: hidden` + ancho acotado, en react-native-web la imagen se va
+  // a su tamaño intrínseco (1024px) y estira la página entera. En nativo el
+  // recorte era implícito, por eso nunca se vio.
+  wrap: {
+    justifyContent: "flex-end",
+    overflow: "hidden",
+    paddingBottom: orbita.spacing.lg,
+    width: "100%"
+  },
   img: { ...StyleSheet.absoluteFillObject, height: "100%", width: "100%" },
   foot: { alignItems: "center", paddingHorizontal: orbita.spacing.gutter }
 });

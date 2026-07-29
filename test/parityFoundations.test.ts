@@ -274,3 +274,61 @@ test("la landing sólo se renderiza sin sesión", () => {
     "la landing se renderiza antes de comprobar la sesión"
   );
 });
+
+// --- Patrones que desbordan en web ------------------------------------------
+// Tres formas distintas del mismo problema, todas invisibles en nativo:
+//  1. `absoluteFillObject` fija los cuatro lados pero NO el tamaño, y el <img>
+//     de react-native-web se va a su tamaño intrínseco (1024px).
+//  2. Un contenedor que debe recortar un asset decorativo sin `overflow: hidden`.
+//  3. Un item flex que no encoge porque en web `min-width` es `auto`.
+
+test("toda imagen con absoluteFillObject declara tamaño explícito", () => {
+  const compartidas = [
+    ...walk(join(ROOT, "src/components/orbita")),
+    ...walk(join(ROOT, "src/components/home")),
+    ...walk(join(ROOT, "src/components/diario")),
+    ...walk(join(ROOT, "src/components/void")),
+    ...walk(join(ROOT, "src/screens"))
+  ];
+  const culpables: string[] = [];
+  for (const f of compartidas) {
+    const s = readFileSync(f, "utf8");
+    // Estilos que mezclan absoluteFillObject y se usan sobre una <Image>.
+    for (const m of s.matchAll(/^\s*(\w*(?:[Ii]mg|[Ii]mage|backdrop|texture))\s*:\s*\{([^}]*absoluteFillObject[^}]*)\}/gm)) {
+      // Sólo estilos de IMAGEN. Los velos y degradés (`backdropScrim`,
+      // `heroFade`) son Views de color: no tienen tamaño intrínseco que fugue.
+      const cuerpo = m[2];
+      if (!/width/.test(cuerpo) || !/height/.test(cuerpo)) {
+        culpables.push(`${f.replace(ROOT + "/", "")} → ${m[1]}`);
+      }
+    }
+  }
+  assert.deepEqual(culpables, [], `imagen absoluteFill sin tamaño (estira la página en web): ${culpables.join(", ")}`);
+});
+
+test("el hero full-bleed recorta su asset decorativo", () => {
+  const s = readFileSync(join(ROOT, "src/components/orbita/ImmersiveHero.tsx"), "utf8");
+  const wrap = s.slice(s.indexOf("wrap: {"), s.indexOf("img: {"));
+  assert.ok(/overflow: "hidden"/.test(wrap), "sin recorte, la imagen de 1024px estira la página");
+  assert.ok(/width: "100%"/.test(wrap), "el contenedor debe quedar acotado al viewport");
+});
+
+test("el campo del Umbral puede encoger en pantallas angostas", () => {
+  const s = readFileSync(join(ROOT, "src/components/void/VoidExperience.tsx"), "utf8");
+  const askInput = s.slice(s.indexOf("askInput: {"), s.indexOf("askBtn: {"));
+  assert.ok(/minWidth: 0/.test(askInput), "sin minWidth:0 el botón PREGUNTAR se sale a 320px");
+});
+
+// --- Un solo chrome de navegación en web ------------------------------------
+
+test("las tabs no montan la barra de React Navigation en web", () => {
+  const layout = readFileSync(join(ROOT, "app/(tabs)/_layout.tsx"), "utf8");
+  assert.ok(/if \(IS_WEB\)/.test(layout), "en web debe salir por WebAppShell");
+  assert.ok(/WebAppShell/.test(layout) && /<Slot \/>/.test(layout));
+  // El nativo no se toca.
+  assert.ok(/<Tabs/.test(layout) && /OrbitaTabBar/.test(layout), "la barra nativa debe seguir igual");
+});
+
+test("no existe app/perfil.tsx: /perfil sigue viniendo de (tabs)", () => {
+  assert.throws(() => readFileSync(join(ROOT, "app/perfil.tsx"), "utf8"));
+});

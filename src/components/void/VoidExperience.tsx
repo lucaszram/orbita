@@ -512,7 +512,17 @@ const styles = StyleSheet.create({
     gap: orbita.spacing.md,
     paddingTop: orbita.spacing.md
   },
-  askInput: { color: orbita.colors.bone, flex: 1, fontFamily: orbita.fonts.serifRegular, fontSize: 18, paddingVertical: orbita.spacing.sm },
+  // `minWidth: 0`: en web un item flex no baja de su ancho intrínseco
+  // (min-width:auto), así que a 320 el input no encogía y empujaba el botón
+  // PREGUNTAR fuera de la pantalla. En nativo el flex ya encoge sin esto.
+  askInput: {
+    color: orbita.colors.bone,
+    flex: 1,
+    fontFamily: orbita.fonts.serifRegular,
+    fontSize: 18,
+    minWidth: 0,
+    paddingVertical: orbita.spacing.sm
+  },
   askBtn: {
     borderColor: "rgba(244,238,228,0.35)",
     borderRadius: 20,
