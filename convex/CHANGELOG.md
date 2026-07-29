@@ -1,5 +1,14 @@
 # Contrato — CHANGELOG
 
+## 2026-07-29 — Integridad natal: onboarding create-only y caches ligados a la carta vigente
+
+- **Onboarding:** `onboarding.completeBirthData(...)` conserva la misma firma, pero pasa a ser create-only e idempotente. Si la cuenta ya tiene datos natales distintos, falla con `ONBOARDING_BIRTH_DATA_CONFLICT`; las ediciones intencionales deben usar `birthData.upsertForCurrentUser({ ..., source: "profile" })`.
+- **Lectura vigente:** `charts.current`, Carta larga, Valores, Home, lecturas diarias y Tránsitos dejan de caer a “la última carta” o a un cache diario de otra carta. Mientras el cálculo exacto no exista devuelven estado vacío/pendiente o regeneran; nunca presentan la identidad anterior como actual.
+- **Guía diaria:** `dailyGuides` suma `birthDataUpdatedAt?` y `natalChartId?` como identidad interna de la personalización. Al cambiar datos natales, conserva la carta, orientación, ritual y `revealedAt` del día, reemplaza inmediatamente los módulos personalizados por el fast path y agenda un nuevo enriquecimiento. Un job viejo no puede escribir después de otra edición.
+- **Handoff frontend:** separar la persistencia de onboarding y Perfil; `useBackendPersistStrict` debe usar `birthData.upsertForCurrentUser` con `source: "profile"`. No generar la lectura diaria con fecha/timezone del dispositivo desde el hook de persistencia. El modo interno `debugStep` debe ser estrictamente read-only, y una cuenta con datos natales existentes no debe reingresar al onboarding para editar.
+- **Incidente dev:** el acceso directo al paso final del onboarding con sesión activa sobrescribió la cuenta de prueba. Producción no fue tocada. La recuperación se hará únicamente después del rollout coordinado en Convex dev y con aprobación explícita de Lucas.
+- **Rollout:** contrato backend + frontend coordinados en dev, restauración controlada de la cuenta, verificación de autorreparación de Carta/Home/Tránsitos/Guía y recién después PR. Sin deploy de producción.
+
 ## 2026-07-28 — Órbita Web P0: fecha canónica, Free/Plus y comercio apagable
 
 - **Comercio server-side:** `COMMERCE_MODE` acepta `off | test | live` y por defecto es `off`. En `off`, ninguna action de checkout o portal puede construir un cliente Stripe. `test` exige `sk_test_*`; `live` exige `sk_live_*`, HTTPS y `WEB_APP_URL=https://orbitaastrologia.xyz`.
