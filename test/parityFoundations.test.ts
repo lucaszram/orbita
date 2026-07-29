@@ -23,29 +23,42 @@ const SRC_FILES = walk(join(ROOT, "src"));
 // podía retirar la implementación web duplicada sin romper el nativo.
 
 /**
- * Rutas que TODAVÍA apuntan a una pantalla web duplicada. Esta lista existe
- * para que la deuda quede visible y se achique: cada ruta sale de acá cuando
- * pasa a renderizar la pantalla canónica. Cuando quede vacía, el test pasa a
- * prohibir el patrón por completo.
+ * Ya no queda ninguna ruta apuntando a una pantalla web duplicada. La lista de
+ * pendientes llegó a cero: de acá en adelante el patrón está prohibido.
  */
-const PENDIENTES_DE_UNIFICAR = [
-  // Último pendiente: el onboarding web de 12 pasos debe pasar al
-  // `OnboardingFlow` canónico de 15. Cuando salga, la lista queda vacía.
-  "app/empezar.tsx"
-];
-
-test("sólo las rutas ya conocidas importan una pantalla web duplicada", () => {
+test("ninguna ruta importa una pantalla web duplicada", () => {
   const culpables = APP_FILES.filter((f) => {
     const s = readFileSync(f, "utf8");
-    return /from "@\/components\/web\/orbita-(chart|values|home|transit|onboarding)"/.test(s);
+    return /from "@\/components\/web\/orbita-(chart|values|home|transit|onboarding|personality|soon)"/.test(s);
   })
     .map((f) => f.replace(ROOT + "/", ""))
     .sort();
-  const nuevas = culpables.filter((f) => !PENDIENTES_DE_UNIFICAR.includes(f));
-  assert.deepEqual(nuevas, [], `ruta nueva apuntando a una pantalla web: ${nuevas.join(", ")}`);
-  // La lista sólo puede achicarse: si una ruta ya se unificó, hay que sacarla.
-  const resueltas = PENDIENTES_DE_UNIFICAR.filter((f) => !culpables.includes(f));
-  assert.deepEqual(resueltas, [], `ya unificadas, sacar de PENDIENTES_DE_UNIFICAR: ${resueltas.join(", ")}`);
+  assert.deepEqual(culpables, [], `estas rutas duplican una pantalla: ${culpables.join(", ")}`);
+});
+
+test("web y nativo montan el MISMO onboarding de 15 pasos", () => {
+  const canonico = readFileSync(join(ROOT, "src/onboarding/OnboardingFlow.tsx"), "utf8");
+  assert.match(canonico, /const TOTAL = 15;/, "el flujo canónico debe seguir teniendo 15 pasos");
+  for (const ruta of ["app/empezar.tsx", "app/onboarding.tsx"]) {
+    const s = readFileSync(join(ROOT, ruta), "utf8");
+    assert.ok(/@\/onboarding\/OnboardingFlow/.test(s), `${ruta} no monta el onboarding canónico`);
+  }
+  assert.throws(
+    () => readFileSync(join(ROOT, "src/components/web/orbita-onboarding.tsx"), "utf8"),
+    "volvió a aparecer un onboarding web aparte"
+  );
+});
+
+test("Gate A: el onboarding no reintroduce una pantalla de pago web", () => {
+  const canonico = readFileSync(join(ROOT, "src/onboarding/OnboardingFlow.tsx"), "utf8");
+  assert.match(canonico, /const PAYWALL_ENABLED = false;/, "Gate A es comercio apagado");
+});
+
+test("el borrador de sesión está cableado al flujo canónico", () => {
+  const canonico = readFileSync(join(ROOT, "src/onboarding/OnboardingFlow.tsx"), "utf8");
+  for (const fn of ["readDraft", "writeDraft", "clearDraft"]) {
+    assert.ok(canonico.includes(fn), `OnboardingFlow debe usar ${fn}: sin eso, volver de Clerk borra el alta`);
+  }
 });
 
 test("mapNatalChart y Radar son módulos compartidos, no partes de una pantalla web", () => {

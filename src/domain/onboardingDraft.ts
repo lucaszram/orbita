@@ -1,27 +1,26 @@
 /**
- * Borrador del onboarding web.
+ * Borrador del onboarding.
  *
- * Todo el onboarding vive en `useState` dentro de `OrbitaOnboarding`. Crear la
- * cuenta hace que Clerk navegue de vuelta a `/empezar`, y cualquier remonte en
- * esa vuelta borraba fecha, lugar, hora, tríada y paso: la persona volvía a
- * empezar de cero justo después de registrarse.
+ * El flujo canónico (`src/onboarding/OnboardingFlow.tsx`) mantiene su estado en
+ * `useState`. En la web, crear la cuenta hace que Clerk vuelva a `/empezar`, y
+ * cualquier remonte en esa vuelta borraba identidad, fecha, lugar, hora y paso:
+ * la persona volvía a empezar de cero justo después de registrarse.
  *
  * Se guarda en `sessionStorage`, no en `localStorage`, a propósito: son datos
- * de nacimiento. Duran lo que dura la pestaña —que es exactamente lo que
- * necesitamos para sobrevivir la vuelta de Clerk— y no quedan en una máquina
+ * de nacimiento. Duran lo que dura la pestaña —que es exactamente lo que hace
+ * falta para sobrevivir la vuelta de Clerk— y no quedan en una máquina
  * compartida después de cerrar.
+ *
+ * En nativo no hay nada que guardar (no hay remonte por redirect de Clerk) y
+ * las funciones de acceso no-opean.
  */
 
 export const ONBOARDING_DRAFT_KEY = "orbita:onboarding-draft";
 
-export type DraftTriad = {
-  resolved: boolean;
-  sun: string | null;
-  moon: string | null;
-  ascendant: string | null;
-};
-
-export type DraftPlaceHit = {
+/** Espejo de los tipos del flujo canónico, sin importarlos (evita un ciclo). */
+export type DraftBirthDate = { day: number; month: number; year: number };
+export type DraftBirthTime = { hour: number; minute: number };
+export type DraftPlace = {
   label: string;
   latitude?: number;
   longitude?: number;
@@ -30,36 +29,52 @@ export type DraftPlaceHit = {
 };
 
 export type OnboardingDraft = {
-  index: number;
+  step: number;
   identity?: string;
-  day: string;
-  month: string;
-  year: string;
+  birthDate?: DraftBirthDate;
   placeQuery: string;
-  place?: string;
-  placeHit?: DraftPlaceHit;
-  hour: string;
-  minute: string;
+  birthPlace?: DraftPlace;
+  birthTime?: DraftBirthTime;
   timeUnknown: boolean;
-  plan?: string;
-  triad?: DraftTriad;
+  email: string;
 };
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const optStr = (v: unknown): string | undefined => (typeof v === "string" && v ? v : undefined);
 
-function parseTriad(v: unknown): DraftTriad | undefined {
+function intIn(v: unknown, min: number, max: number): number | null {
+  return typeof v === "number" && Number.isInteger(v) && v >= min && v <= max ? v : null;
+}
+
+/** Una fecha parcial o fuera de rango se descarta entera: no se completa nada. */
+function parseBirthDate(v: unknown): DraftBirthDate | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  const d = v as Record<string, unknown>;
+  const day = intIn(d.day, 1, 31);
+  const month = intIn(d.month, 1, 12);
+  const year = intIn(d.year, 1900, 2100);
+  return day && month && year ? { day, month, year } : undefined;
+}
+
+function parseBirthTime(v: unknown): DraftBirthTime | undefined {
   if (!v || typeof v !== "object") return undefined;
   const t = v as Record<string, unknown>;
-  if (typeof t.resolved !== "boolean") return undefined;
-  const point = (x: unknown) => (typeof x === "string" ? x : null);
-  return { resolved: t.resolved, sun: point(t.sun), moon: point(t.moon), ascendant: point(t.ascendant) };
+  const hour = intIn(t.hour, 0, 23);
+  const minute = intIn(t.minute, 0, 59);
+  // 0 es válido para las dos, así que se compara contra null explícitamente.
+  return hour !== null && minute !== null ? { hour, minute } : undefined;
+}
+
+function parsePlace(v: unknown): DraftPlace | undefined {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
+  const p = v as Record<string, unknown>;
+  return typeof p.label === "string" && p.label ? (p as DraftPlace) : undefined;
 }
 
 /**
- * Lectura defensiva: un borrador guardado por una versión anterior, truncado o
- * manipulado a mano no puede romper el arranque del onboarding. Ante cualquier
- * duda se devuelve `null` y se empieza limpio.
+ * Lectura defensiva: un borrador de otra versión, truncado o manipulado a mano
+ * no puede romper el arranque del onboarding. Ante cualquier duda, `null` y se
+ * empieza limpio.
  */
 export function parseDraft(raw: string | null, stepCount: number): OnboardingDraft | null {
   if (!raw) return null;
@@ -72,28 +87,18 @@ export function parseDraft(raw: string | null, stepCount: number): OnboardingDra
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const d = value as Record<string, unknown>;
 
-  const index = typeof d.index === "number" && Number.isInteger(d.index) ? d.index : 0;
-  if (index < 0 || index >= stepCount) return null;
-
-  const placeHit =
-    d.placeHit && typeof d.placeHit === "object" && !Array.isArray(d.placeHit)
-      ? (d.placeHit as DraftPlaceHit)
-      : undefined;
+  const step = intIn(d.step, 0, stepCount - 1);
+  if (step === null) return null;
 
   return {
-    index,
+    step,
     identity: optStr(d.identity),
-    day: str(d.day),
-    month: str(d.month),
-    year: str(d.year),
+    birthDate: parseBirthDate(d.birthDate),
     placeQuery: str(d.placeQuery),
-    place: optStr(d.place),
-    placeHit,
-    hour: str(d.hour),
-    minute: str(d.minute),
+    birthPlace: parsePlace(d.birthPlace),
+    birthTime: parseBirthTime(d.birthTime),
     timeUnknown: d.timeUnknown === true,
-    plan: optStr(d.plan),
-    triad: parseTriad(d.triad)
+    email: str(d.email)
   };
 }
 
@@ -101,15 +106,12 @@ export function serializeDraft(draft: OnboardingDraft): string {
   return JSON.stringify(draft);
 }
 
-/** ¿Vale la pena guardar? Un borrador en el paso 0 y vacío no aporta nada. */
+/** ¿Vale la pena guardar? En el paso 0 y sin nada cargado no aporta nada. */
 export function isWorthSaving(draft: OnboardingDraft): boolean {
-  return (
-    draft.index > 0 ||
-    Boolean(draft.day || draft.month || draft.year || draft.place || draft.placeQuery || draft.identity)
-  );
+  return draft.step > 0 || Boolean(draft.birthPlace || draft.placeQuery || draft.email);
 }
 
-// --- Acceso a sessionStorage (sólo web; en nativo estas funciones no-opean) ---
+// --- Acceso a sessionStorage (sólo web; en nativo no-opean) ------------------
 
 function storage(): Storage | null {
   try {
@@ -142,7 +144,7 @@ export function writeDraft(draft: OnboardingDraft): void {
   }
 }
 
-/** Se llama cuando el onboarding terminó: el borrador ya no debe sobrevivir. */
+/** El onboarding terminó: el borrador no debe sobrevivir. */
 export function clearDraft(): void {
   const s = storage();
   if (!s) return;

@@ -10,6 +10,7 @@ import { useAppState } from "@/hooks/useAppState";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
 import { backendConfig } from "@/services/backendProviders";
+import { clearDraft, readDraft, writeDraft } from "@/domain/onboardingDraft";
 
 import { AccountScreen } from "./screens/AccountScreen";
 import { AlignScreen } from "./screens/AlignScreen";
@@ -88,18 +89,34 @@ export function OnboardingFlow() {
   // desde la fecha, sin repetir splash/pitch ni crear una segunda cuenta.
   // `nuevo=1`: viene de "Crear una cuenta" en el login → arranca el alta en su
   // primer paso; la entrada (paso 0) ya la pasó.
+  // Borrador de sesión: en web, crear la cuenta hace que Clerk vuelva a
+  // `/empezar` y el remonte borraba todo lo cargado. Los params explícitos
+  // (`resume`, `nuevo`) mandan sobre el borrador: son una intención del usuario.
+  // En nativo `readDraft` devuelve null (no hay sessionStorage) y nada cambia.
+  const saved = useMemo(() => readDraft(TOTAL), []);
+
   const [step, setStep] = useState(() =>
-    params.resume === "datos" ? STEP_BIRTHDATE : params.nuevo === "1" ? STEP_ALTA : 0
+    params.resume === "datos"
+      ? STEP_BIRTHDATE
+      : params.nuevo === "1"
+        ? STEP_ALTA
+        : saved?.step ?? 0
   );
-  const [identity, setIdentity] = useState<Identity>("ella");
-  const [birthDate, setBirthDate] = useState<BirthDateParts>({ day: 15, month: 1, year: 1996 });
-  const [placeQuery, setPlaceQuery] = useState("");
-  const [birthPlace, setBirthPlace] = useState<PlaceOption | undefined>();
-  const [birthTime, setBirthTime] = useState<BirthTime>({ hour: 12, minute: 0 });
-  const [timeUnknown, setTimeUnknown] = useState(false);
+  const [identity, setIdentity] = useState<Identity>((saved?.identity as Identity) ?? "ella");
+  const [birthDate, setBirthDate] = useState<BirthDateParts>(
+    saved?.birthDate ?? { day: 15, month: 1, year: 1996 }
+  );
+  const [placeQuery, setPlaceQuery] = useState(saved?.placeQuery ?? "");
+  const [birthPlace, setBirthPlace] = useState<PlaceOption | undefined>(
+    saved?.birthPlace as PlaceOption | undefined
+  );
+  const [birthTime, setBirthTime] = useState<BirthTime>(saved?.birthTime ?? { hour: 12, minute: 0 });
+  const [timeUnknown, setTimeUnknown] = useState(saved?.timeUnknown ?? false);
   // Email tipeado en el login y traído por "Crear una cuenta" (`?email=`): el
   // usuario no lo vuelve a escribir; llega ya cargado al paso de cuenta.
-  const [email, setEmail] = useState(() => (typeof params.email === "string" ? params.email : ""));
+  const [email, setEmail] = useState(() =>
+    typeof params.email === "string" && params.email ? params.email : saved?.email ?? ""
+  );
   // Clerk Producción exige contraseña en el alta: se pide + confirmación.
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -138,6 +155,10 @@ export function OnboardingFlow() {
   useEffect(() => {
     if (typeof params.email === "string" && params.email) setEmail((e) => e || params.email!);
   }, [params.email]);
+
+  useEffect(() => {
+    writeDraft({ step, identity, birthDate, placeQuery, birthPlace, birthTime, timeUnknown, email });
+  }, [step, identity, birthDate, placeQuery, birthPlace, birthTime, timeUnknown, email]);
 
   const next = () => setStep((s) => Math.min(TOTAL - 1, s + 1));
   const back = () => setStep((s) => Math.max(0, s - 1));
@@ -281,6 +302,7 @@ export function OnboardingFlow() {
     // Al salir del onboarding, la primera entrega: la ceremonia de recepción de la
     // carta natal (/recepcion, full-screen, una sola vez). La tríada calculada viaja
     // por params para no depender de que Convex ya haya persistido la carta.
+    clearDraft();
     router.replace({
       pathname: "/recepcion",
       params: {
