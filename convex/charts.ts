@@ -13,7 +13,11 @@ import {
   getAiGatewayNatalPromptVersion
 } from "./lib/aiGateway";
 import { runAstrologyApiNatalChart } from "./lib/astrologyApi";
-import { buildBirthDataHash, buildNatalChartCacheKey } from "./lib/birthDataConsistency";
+import {
+  buildBirthDataHash,
+  buildNatalChartCacheKey,
+  findExactNatalChart
+} from "./lib/birthDataConsistency";
 import {
   ASTROLOGY_API_CHART_CALCULATION_VERSION,
   buildWebB0ValuesMapPayload,
@@ -36,12 +40,9 @@ async function getCurrentBirthData(ctx: any, userId: string) {
 async function getCurrentChart(ctx: any, userId: string) {
   const birthData = await getCurrentBirthData(ctx, userId);
   if (birthData) {
-    const cacheKey = buildNatalChartCacheKey(userId, buildBirthDataHash(birthData));
-    const exactChart = await ctx.db
-      .query("natalCharts")
-      .withIndex("by_cacheKey", (q: any) => q.eq("cacheKey", cacheKey))
-      .first();
-    if (exactChart) return exactChart;
+    // Si los datos cambiaron y la carta nueva todavía no terminó, estado vacío.
+    // Nunca presentar la carta anterior como si correspondiera al payload actual.
+    return await findExactNatalChart(ctx, userId, birthData);
   }
 
   return (

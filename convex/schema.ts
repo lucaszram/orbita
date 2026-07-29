@@ -470,6 +470,10 @@ export default defineSchema({
     userId: v.id("users"),
     localDate: v.string(),
     timezone: v.optional(v.string()),
+    // Identidad de la personalización. Permite conservar la carta/ritual del
+    // día y regenerar solo los módulos derivados cuando se editan datos natales.
+    birthDataUpdatedAt: v.optional(v.number()),
+    natalChartId: v.optional(v.id("natalCharts")),
     payload: v.any(),
     createdAt: v.number(),
     // Generar la guía no revela la carta. La primera interacción guarda esta

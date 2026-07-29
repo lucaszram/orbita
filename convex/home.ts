@@ -2,10 +2,14 @@ import { mutationGeneric as mutation, queryGeneric as query } from "convex/serve
 import { v } from "convex/values";
 import {
   buildDailyReadingPayload,
-  buildNatalChartSnapshot,
   CHART_CALCULATION_VERSION,
   DAILY_READING_CONTENT_VERSION
 } from "./lib/orbita";
+import {
+  belongsToNatalChart,
+  dailyReadingNeedsRefresh,
+  findExactNatalChart
+} from "./lib/birthDataConsistency";
 import { findUserByTokenIdentifier, omitUndefined, requireUser } from "./lib/users";
 
 type DailyReadingDoc = {
@@ -33,45 +37,6 @@ async function getCurrentBirthData(ctx: any, userId: string) {
     .query("birthData")
     .withIndex("by_user", (q: any) => q.eq("userId", userId))
     .first();
-}
-
-async function getCurrentChart(ctx: any, userId: string) {
-  return await ctx.db
-    .query("natalCharts")
-    .withIndex("by_user_version", (q: any) => q.eq("userId", userId).eq("calculationVersion", CHART_CALCULATION_VERSION))
-    .first();
-}
-
-async function ensureChart(ctx: any, userId: string) {
-  const existingChart = await getCurrentChart(ctx, userId);
-  if (existingChart) {
-    return existingChart;
-  }
-
-  const birthData = await getCurrentBirthData(ctx, userId);
-  if (!birthData) {
-    return null;
-  }
-
-  const payload = buildNatalChartSnapshot({
-    birthDate: birthData.birthDate,
-    birthTime: birthData.birthTime,
-    birthTimePrecision: birthData.birthTimePrecision,
-    birthPlaceLabel: birthData.birthPlaceLabel,
-    latitude: birthData.latitude,
-    longitude: birthData.longitude,
-    timezone: birthData.timezone
-  });
-
-  const chartId = await ctx.db.insert("natalCharts", {
-    userId,
-    birthDataId: birthData._id,
-    calculationVersion: CHART_CALCULATION_VERSION,
-    payload,
-    createdAt: Date.now()
-  });
-
-  return await ctx.db.get(chartId);
 }
 
 function toDailyHomeReading(reading: DailyReadingDoc) {
@@ -157,8 +122,10 @@ export const getDaily = query({
       .query("dailyReadings")
       .withIndex("by_user_date", (q: any) => q.eq("userId", user._id).eq("localDate", args.localDate))
       .first();
+    const birthData = await getCurrentBirthData(ctx, user._id);
+    const natalChart = await findExactNatalChart(ctx, user._id, birthData);
 
-    return reading ? toDailyHomeReading(reading) : null;
+    return belongsToNatalChart(reading, natalChart) ? toDailyHomeReading(reading) : null;
   }
 });
 
@@ -174,11 +141,15 @@ export const generateDaily = mutation({
       .withIndex("by_user_date", (q: any) => q.eq("userId", user._id).eq("localDate", args.localDate))
       .first();
 
-    if (existing) {
+    const birthData = await getCurrentBirthData(ctx, user._id);
+    const chart = await findExactNatalChart(ctx, user._id, birthData);
+    if (
+      existing &&
+      !dailyReadingNeedsRefresh(existing, chart?._id, args.timezone, DAILY_READING_CONTENT_VERSION)
+    ) {
       return toDailyHomeReading(existing);
     }
 
-    const chart = await ensureChart(ctx, user._id);
     const payload = {
       ...buildDailyReadingPayload({
         localDate: args.localDate,
@@ -189,18 +160,17 @@ export const generateDaily = mutation({
       reviewStatus: "needs_review"
     };
 
-    const readingId = await ctx.db.insert(
-      "dailyReadings",
-      omitUndefined({
-        userId: user._id,
-        localDate: args.localDate,
-        timezone: args.timezone,
-        natalChartId: chart?._id,
-        contentVersion: DAILY_READING_CONTENT_VERSION,
-        payload,
-        createdAt: Date.now()
-      })
-    );
+    const fields = omitUndefined({
+      userId: user._id,
+      localDate: args.localDate,
+      timezone: args.timezone,
+      natalChartId: chart?._id,
+      contentVersion: DAILY_READING_CONTENT_VERSION,
+      payload,
+      updatedAt: Date.now()
+    });
+    const readingId = existing?._id ?? (await ctx.db.insert("dailyReadings", { ...fields, createdAt: Date.now() }));
+    if (existing) await ctx.db.patch(existing._id, fields);
 
     const reading = await ctx.db.get(readingId);
     return toDailyHomeReading(reading);

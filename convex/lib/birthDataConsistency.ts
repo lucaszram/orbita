@@ -31,6 +31,35 @@ export function buildNatalChartCacheKey(userId: string, birthDataHash: string): 
   return `natal:${ASTROLOGY_API_CHART_CALCULATION_VERSION}:${userId}:${birthDataHash}`;
 }
 
+/** Devuelve únicamente la carta que corresponde al payload natal vigente. */
+export async function findExactNatalChart(ctx: any, userId: string, birthData: BirthDataForHash | null | undefined) {
+  if (!birthData) return null;
+  const cacheKey = buildNatalChartCacheKey(userId, buildBirthDataHash(birthData));
+  return await ctx.db
+    .query("natalCharts")
+    .withIndex("by_cacheKey", (q: any) => q.eq("cacheKey", cacheKey))
+    .first();
+}
+
+type NatalBoundDocument = {
+  natalChartId?: unknown;
+};
+
+type NatalChartIdentity = {
+  _id: unknown;
+};
+
+/** Un cache personalizado solo es reutilizable si nombra explícitamente la
+ *  carta que corresponde a los datos natales vigentes. `undefined ===
+ *  undefined` no alcanza: durante una edición eso volvería a servir un cache
+ *  anterior mientras la carta nueva todavía se está calculando. */
+export function belongsToNatalChart(
+  document: NatalBoundDocument | null | undefined,
+  natalChart: NatalChartIdentity | null | undefined
+): boolean {
+  return Boolean(document && natalChart && document.natalChartId === natalChart._id);
+}
+
 type DailyReadingIdentity = {
   natalChartId?: unknown;
   timezone: string;

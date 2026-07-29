@@ -26,6 +26,7 @@ import type * as lib_backoffice from "../lib/backoffice.js";
 import type * as lib_birthDataConsistency from "../lib/birthDataConsistency.js";
 import type * as lib_commerce from "../lib/commerce.js";
 import type * as lib_entitlements from "../lib/entitlements.js";
+import type * as lib_onboardingBirthData from "../lib/onboardingBirthData.js";
 import type * as lib_orbita from "../lib/orbita.js";
 import type * as lib_productAnalytics from "../lib/productAnalytics.js";
 import type * as lib_stripeApi from "../lib/stripeApi.js";
@@ -78,6 +79,7 @@ declare const fullApi: ApiFromModules<{
   "lib/birthDataConsistency": typeof lib_birthDataConsistency;
   "lib/commerce": typeof lib_commerce;
   "lib/entitlements": typeof lib_entitlements;
+  "lib/onboardingBirthData": typeof lib_onboardingBirthData;
   "lib/orbita": typeof lib_orbita;
   "lib/productAnalytics": typeof lib_productAnalytics;
   "lib/stripeApi": typeof lib_stripeApi;

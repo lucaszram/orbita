@@ -10,6 +10,20 @@
 
 **Decision:** `git.deploymentEnabled.main = false`. Unspecified feature branches remain enabled for preview deployments. Production will later use Vercel's promote workflow, which changes traffic to the exact tested deployment without rebuilding it.
 
+## P0 — integridad de datos natales y recuperación dev (2026-07-29, Codex)
+
+**Objetivo:** impedir que el onboarding o sus controles internos sobrescriban datos natales ya existentes y evitar que una carta vieja se presente como vigente durante una edición/reparación.
+
+**Criterios de aceptación:** `onboarding.completeBirthData` crea datos únicamente cuando la cuenta todavía no los tiene; una cuenta existente debe editar mediante `birthData.upsertForCurrentUser`; las lecturas de carta seleccionan exclusivamente el cache correspondiente al hash natal vigente y devuelven estado vacío mientras se recalcula, nunca una carta anterior; el modo `debugStep` del frontend no ejecuta escrituras; la reparación de la cuenta dev no se ejecuta sin aprobación explícita de Lucas y distingue datos natales/carta de caches diarios ya generados.
+
+**Ficha:** owner Codex para `convex/**` y Claude para el ajuste coordinado `app/**`/`src/**`; rama backend `feature/api` dentro del PR #40 por tratarse de un gate P0 descubierto durante la integración; riesgo alto por integridad de datos personales; pruebas unitarias/estructurales + suite completa + typecheck + codegen dev; rollout contrato backend y frontend coordinados en Convex dev → reparación controlada de la cuenta dev → pasada manual → PR, sin producción; rollback revertir el commit coordinado y no reparar/migrar ninguna cuenta; fuera de alcance producción, Stripe, deploy Vercel, PWA y cambios visuales.
+
+**Incidente:** el barrido responsive abrió `/empezar?debugStep=14` con una sesión dev activa. Como el paywall está apagado, el montaje ejecutó `submit()` y reemplazó los datos natales existentes por defaults, luego recalculó carta y contenido derivado. Producción no fue tocada. Las pruebas manuales quedan pausadas.
+
+**Estado backend:** implementado localmente y sin deploy. El onboarding es create-only/idempotente; Carta/Home/lecturas/Tránsitos rechazan caches que no pertenecen a la carta exacta vigente; `dailyGuides` conserva Tarot/ritual/reveal pero invalida y regenera los módulos personalizados ante un cambio natal, con protección contra jobs viejos en carrera. Verificación: typecheck 0, 375/375 tests, codegen correcto y `git diff --check` limpio. El function spec remoto confirmó que Convex dev todavía conserva el contrato anterior.
+
+**Handoff frontend requerido antes de desplegar dev:** separar `useBackendPersist` (onboarding → `onboarding.completeBirthData`) de `useBackendPersistStrict` (Perfil → `birthData.upsertForCurrentUser`, `source: "profile"`); retirar `readings.generateToday` con fecha/timezone del dispositivo del hook compartido; hacer `debugStep` estrictamente read-only; impedir que una cuenta con `birthData` vuelva al onboarding para editar (usar `/editar-datos`). Luego desplegar backend y frontend coordinados, restaurar la cuenta dev sólo con aprobación de Lucas y verificar que Carta/Tránsitos/Home se autorreparen sin cambiar la carta de Tarot ni `revealedAt`.
+
 ## Órbita Web P0 — contrato backend seguro (2026-07-28, Codex)
 
 **Objetivo:** preparar el backend P0 de Órbita Web para una salida gratuita primero y cobros después, sin permitir que cliente, URL o modo demo habiliten Plus o Stripe.
