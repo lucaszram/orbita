@@ -707,17 +707,24 @@ function useProfilePersistInner(): PersistBirthData {
 
   return useCallback(
     async (input) => {
-      if (!isSignedIn) return;
-      const birthTimezone = input.timezone ?? deviceTimezone();
+      // Sesión no lista: rechazar, no resolver. Si resolviera, el editor
+      // aplicaría el cambio local como si el backend lo hubiera guardado.
+      if (!isSignedIn) throw new Error("PROFILE_SESSION_NOT_READY");
+      // Validación en el BORDE de escritura. `birthSaveGate` espera el doc
+      // remoto, pero no lo valida: con un documento legado incompleto (sin
+      // coordenadas y con el lugar en "Sin especificar"), cambiar sólo la fecha
+      // o la hora arrastraba ese lugar vacío y volvía a escribirlo, recalculando
+      // la carta sobre datos que no son de nadie.
+      const payload = validateBirthPayload(input);
       await ensureUser({});
       await upsertBirthData({
-        birthDate: input.birthDate,
-        birthTime: input.birthTime,
-        birthTimePrecision: input.birthTime ? "known" : "unknown",
-        birthPlaceLabel: input.birthPlaceLabel ?? "Sin especificar",
-        latitude: input.latitude,
-        longitude: input.longitude,
-        timezone: birthTimezone,
+        birthDate: payload.birthDate,
+        birthTime: payload.birthTime,
+        birthTimePrecision: payload.birthTime ? "known" : "unknown",
+        birthPlaceLabel: payload.birthPlaceLabel,
+        latitude: payload.latitude,
+        longitude: payload.longitude,
+        timezone: payload.timezone,
         // Marca la intención: es una edición del perfil, no el alta.
         source: "profile"
       });

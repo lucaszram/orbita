@@ -226,3 +226,54 @@ test("el lock de reentrada es un ref sincrónico, no estado de React", () => {
   );
   assert.ok(/const submitLock = useRef\(false\)/.test(FLOW));
 });
+
+// --- Validación en el borde de escritura del EDITOR --------------------------
+// `birthSaveGate` espera el doc remoto pero NO lo valida. Con un documento
+// legado incompleto (lugar "Sin especificar" y sin coordenadas), cambiar sólo la
+// fecha o la hora arrastraba ese lugar vacío y lo volvía a escribir,
+// recalculando la carta sobre datos que no son de nadie.
+
+test("el editor valida el payload antes de cualquier mutación", () => {
+  const inner = bloqueDesde(PERSIST, "function useProfilePersistInner()");
+  const iValida = inner.indexOf("validateBirthPayload(input)");
+  const iEscribe = inner.indexOf("upsertBirthData({");
+  assert.ok(iValida !== -1, "el editor debe validar");
+  assert.ok(iValida < iEscribe, "validar ANTES de escribir");
+});
+
+test("el editor no rellena lugar ni zona", () => {
+  const inner = bloqueDesde(PERSIST, "function useProfilePersistInner()");
+  assert.ok(!/"Sin especificar"/.test(inner));
+  assert.ok(!/deviceTimezone\(\)/.test(inner));
+  // Sólo se usan campos del payload validado.
+  assert.ok(/birthPlaceLabel: payload\.birthPlaceLabel/.test(inner));
+  assert.ok(/timezone: payload\.timezone/.test(inner));
+  assert.ok(/latitude: payload\.latitude/.test(inner));
+});
+
+test("sesión no lista en el editor RECHAZA: no se actualiza el perfil local", () => {
+  const inner = bloqueDesde(PERSIST, "function useProfilePersistInner()");
+  assert.ok(/throw new Error\("PROFILE_SESSION_NOT_READY"\)/.test(inner));
+  assert.ok(!/if \(!isSignedIn\) return;/.test(inner));
+  // Y el editor sólo aplica el cambio local DESPUÉS de esperar el backend.
+  const save = bloqueDesde(EDITOR, "const save = async () => {");
+  const iBackend = save.indexOf("await persistBackend(");
+  const iLocal = save.indexOf("await updateProfile(");
+  assert.ok(iBackend !== -1 && iBackend < iLocal, "el rechazo tiene que impedir la escritura local");
+});
+
+test("el editor distingue documento incompleto de fallo de conexión", () => {
+  assert.ok(/BirthPayloadError/.test(EDITOR), "necesita reconocer el motivo");
+  assert.ok(/birthPayloadMessage\(e\.problem\)/.test(EDITOR), "y mostrar el mensaje concreto");
+  assert.ok(
+    /revisá tu conexión/.test(EDITOR),
+    "el mensaje de red sigue existiendo para los fallos que sí son de red"
+  );
+});
+
+test("no se toca birthSaveGate ni el arrastre del doc remoto", () => {
+  const editsSrc = readFileSync(join(ROOT, "src/domain/birthEdits.ts"), "utf8");
+  assert.ok(/export function birthSaveGate/.test(editsSrc));
+  assert.ok(/keepRemotePlace/.test(editsSrc), "el arrastre sigue siendo útil");
+  assert.ok(/birthSaveGate\(/.test(EDITOR), "el editor sigue esperando el doc remoto");
+});

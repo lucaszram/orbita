@@ -84,3 +84,55 @@ test("cada motivo tiene un mensaje concreto, sin jerga", () => {
     assert.ok(!/undefined|null|Error|payload/i.test(msg), `${problem} filtra jerga: ${msg}`);
   }
 });
+
+// --- Escenarios reales del editor -------------------------------------------
+// Lo que se valida es el payload FINAL que arma `buildBackendBirthPayload`:
+// según si el lugar cambió, arrastra el doc remoto o usa el elegido.
+
+const REMOTO_INCOMPLETO = {
+  birthPlaceLabel: "Sin especificar",
+  latitude: undefined,
+  longitude: undefined,
+  timezone: "America/Argentina/Buenos_Aires"
+};
+const REMOTO_COMPLETO = {
+  birthPlaceLabel: "Ciudad Autónoma de Buenos Aires, Argentina",
+  latitude: -34.6,
+  longitude: -58.44,
+  timezone: "America/Argentina/Buenos_Aires"
+};
+
+test("documento incompleto + cambiar sólo la hora → cero escrituras", () => {
+  // El arrastre conserva el lugar vacío del doc: se rechaza antes de escribir.
+  const payload = { birthDate: "1996-11-11", birthTime: "11:00", ...REMOTO_INCOMPLETO };
+  assert.throws(
+    () => validateBirthPayload(payload),
+    (e: unknown) => e instanceof BirthPayloadError && e.problem === "lugarFaltante"
+  );
+});
+
+test("documento incompleto sin lugar pero con coords → igual se rechaza por el lugar", () => {
+  const payload = { birthDate: "1996-11-11", birthTime: "11:00", ...REMOTO_INCOMPLETO, latitude: -34.6, longitude: -58.44 };
+  assert.throws(() => validateBirthPayload(payload), BirthPayloadError);
+});
+
+test("documento COMPLETO + cambiar sólo la hora sigue siendo válido", () => {
+  const out = validateBirthPayload({ birthDate: "1996-11-11", birthTime: "11:00", ...REMOTO_COMPLETO });
+  assert.equal(out.birthTime, "11:00");
+  assert.equal(out.birthPlaceLabel, REMOTO_COMPLETO.birthPlaceLabel);
+  assert.equal(out.latitude, -34.6);
+});
+
+test("elegir un lugar nuevo válido pasa, aunque el doc remoto esté roto", () => {
+  // Es el camino de la recuperación: re-elegir el lugar trae coords y zona.
+  const out = validateBirthPayload({
+    birthDate: "1996-11-11",
+    birthTime: "10:32",
+    birthPlaceLabel: "Ciudad Autónoma de Buenos Aires, Argentina",
+    latitude: -34.6037,
+    longitude: -58.3816,
+    timezone: "America/Argentina/Buenos_Aires"
+  });
+  assert.equal(out.birthPlaceLabel, "Ciudad Autónoma de Buenos Aires, Argentina");
+  assert.equal(out.timezone, "America/Argentina/Buenos_Aires");
+});
