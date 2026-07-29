@@ -39,6 +39,7 @@ export default function RootLayout() {
               <Stack.Screen name="backoffice" />
               <Stack.Screen name="studio" />
               <Stack.Screen name="reading" />
+              <Stack.Screen name="umbral" />
               <Stack.Screen name="paywall" />
               <Stack.Screen name="checkout/success" />
               <Stack.Screen name="profile" />

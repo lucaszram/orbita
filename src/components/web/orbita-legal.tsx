@@ -40,7 +40,7 @@ function LegalShell({ eyebrow, title, children }: { eyebrow: string; title: stri
   }
   return (
     <View style={styles.page}>
-      <WebNav active="hoy" />
+      <WebNav active="inicio" />
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.column}>
           <Text style={styles.eyebrow}>{eyebrow}</Text>

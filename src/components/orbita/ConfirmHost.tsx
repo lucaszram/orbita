@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Alert, Modal, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { orbita } from "@/theme/orbita";
 
@@ -59,13 +59,52 @@ export function ConfirmHost({ children }: { children: ReactNode }) {
   // no-op afectaba al aviso "Guardado" de la Home.
   const [pending, setPending] = useState<(ConfirmRequest & { notice?: boolean }) | null>(null);
   const resolver = useRef<((value: boolean) => void) | null>(null);
+  // Quién tenía el foco antes de abrir, para devolvérselo al cerrar. Sin esto
+  // el foco vuelve al principio del documento y con teclado hay que recorrer
+  // toda la página para llegar de nuevo al botón que abrió el diálogo.
+  const returnFocusTo = useRef<HTMLElement | null>(null);
+  const confirmRef = useRef<View | null>(null);
+
+  const rememberFocus = useCallback(() => {
+    if (!IS_WEB || typeof document === "undefined") return;
+    const active = document.activeElement;
+    returnFocusTo.current = active instanceof HTMLElement ? active : null;
+  }, []);
 
   const settle = useCallback((value: boolean) => {
     const resolve = resolver.current;
     resolver.current = null;
     setPending(null);
+    const back = returnFocusTo.current;
+    returnFocusTo.current = null;
     resolve?.(value);
+    // Después de desmontar el modal: si no, el foco se lo lleva la trampa.
+    if (IS_WEB && back && typeof window !== "undefined") {
+      window.requestAnimationFrame(() => {
+        try {
+          back.focus();
+        } catch {
+          // el disparador puede haberse desmontado (p. ej. tras borrar la cuenta)
+        }
+      });
+    }
   }, []);
+
+  // Foco inicial dentro del diálogo. La acción destructiva NO se autoenfoca:
+  // se enfoca el diálogo, para que un Enter reflejo no confirme un borrado.
+  useEffect(() => {
+    if (!IS_WEB || !pending) return;
+    const node = confirmRef.current as unknown as HTMLElement | null;
+    if (!node) return;
+    const id = window.requestAnimationFrame(() => {
+      try {
+        node.focus();
+      } catch {
+        // no-op
+      }
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [pending]);
 
   const confirm = useCallback<ConfirmFn>(
     (req) => {
@@ -73,12 +112,13 @@ export function ConfirmHost({ children }: { children: ReactNode }) {
       // Una confirmación ya abierta se cancela antes de abrir otra: nunca se
       // deja una promesa colgada sin resolver.
       resolver.current?.(false);
+      rememberFocus();
       return new Promise<boolean>((resolve) => {
         resolver.current = resolve;
         setPending(req);
       });
     },
-    []
+    [rememberFocus]
   );
 
   const notify = useCallback<NotifyFn>(
@@ -89,9 +129,10 @@ export function ConfirmHost({ children }: { children: ReactNode }) {
       }
       resolver.current?.(false);
       resolver.current = null;
+      rememberFocus();
       setPending({ title, message, confirmLabel: "Entendido", notice: true });
     },
-    []
+    [rememberFocus]
   );
 
   const value = useMemo(() => ({ confirm, notify }), [confirm, notify]);
@@ -102,7 +143,14 @@ export function ConfirmHost({ children }: { children: ReactNode }) {
       {IS_WEB && pending ? (
         <Modal transparent animationType="fade" visible onRequestClose={() => settle(false)}>
           <View style={styles.backdrop}>
-            <View style={styles.card}>
+            <View
+              accessibilityRole="alert"
+              accessibilityViewIsModal
+              accessibilityLabel={pending.title}
+              focusable
+              ref={confirmRef}
+              style={styles.card}
+            >
               <Text style={styles.title}>{pending.title}</Text>
               <Text style={styles.message}>{pending.message}</Text>
               <View style={styles.actions}>

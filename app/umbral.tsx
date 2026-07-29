@@ -1,8 +1,8 @@
 import { Redirect } from "expo-router";
-import { CartaScreen } from "@/screens/CartaScreen";
+import { VoidExperience } from "@/components/void/VoidExperience";
 import { RequireSession } from "@/components/web/require-session";
 
-// Carta natal: rueda/tabla, tríada, posiciones, aspectos, casas, valores y lectura.
+// El Umbral: la misma experiencia que la pestaña nativa.
 // Es la pantalla canónica compartida con el nativo, no una versión web aparte.
 export default function Route() {
   if (process.env.EXPO_OS !== "web") {
@@ -11,7 +11,7 @@ export default function Route() {
 
   return (
     <RequireSession>
-      <CartaScreen />
+      <VoidExperience showBack={false} />
     </RequireSession>
   );
 }

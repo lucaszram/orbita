@@ -12,13 +12,19 @@ const colors = {
   line: "rgba(214, 154, 106, 0.22)"
 };
 
-type NavKey = "hoy" | "carta" | "transitos" | "diario";
+export type NavKey = "inicio" | "transitos" | "umbral" | "perfil" | "carta" | "diario";
 
+/**
+ * Misma arquitectura de información que el nativo (`app/(tabs)/_layout.tsx`):
+ * Inicio · Tránsitos · Umbral · Perfil. La web tenía Hoy/Carta/Tránsitos/Diario,
+ * que omitía el Umbral y promovía dos destinos secundarios a sección principal.
+ * Carta y Diario siguen siendo destinos contextuales, no secciones.
+ */
 const items: Array<{ key: NavKey; label: string; href: string }> = [
-  { key: "hoy", label: "Hoy", href: "/home" },
-  { key: "carta", label: "Carta", href: "/carta" },
+  { key: "inicio", label: "Inicio", href: "/home" },
   { key: "transitos", label: "Tránsitos", href: "/transito" },
-  { key: "diario", label: "Diario", href: "/diario" }
+  { key: "umbral", label: "Umbral", href: "/umbral" },
+  { key: "perfil", label: "Perfil", href: "/perfil" }
 ];
 
 /** Debajo de esto no entra la navegación completa arriba. */

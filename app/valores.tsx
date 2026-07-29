@@ -1,10 +1,16 @@
 import { Redirect } from "expo-router";
-import { OrbitaValues } from "@/components/web/orbita-values";
+import { ValoresScreen } from "@/screens/ValoresScreen";
+import { RequireSession } from "@/components/web/require-session";
 
-export default function ValoresRoute() {
+// Mapa de valores: pantalla canónica compartida con el nativo.
+export default function Route() {
   if (process.env.EXPO_OS !== "web") {
     return <Redirect href="/" />;
   }
 
-  return <OrbitaValues />;
+  return (
+    <RequireSession>
+      <ValoresScreen />
+    </RequireSession>
+  );
 }

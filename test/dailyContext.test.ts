@@ -5,6 +5,7 @@ import {
   refetchReason,
   type DailyContextState
 } from "../src/domain/dailyContext";
+import { lastNDaysFrom } from "../src/domain/dateStrip";
 
 const CONTEXT = { localDate: "2026-07-28", timezone: "America/Argentina/Buenos_Aires" };
 
@@ -99,4 +100,25 @@ test("la fecha observada respeta la zona, no el reloj del proceso", () => {
   const instante = Date.UTC(2026, 6, 28, 2, 0, 0);
   assert.equal(observedDateInTimezone(instante, "America/Argentina/Buenos_Aires"), "2026-07-27");
   assert.equal(observedDateInTimezone(instante, "Europe/Madrid"), "2026-07-28");
+});
+
+// --- Ventana del historial desde la fecha canónica ---------------------------
+
+test("lastNDaysFrom termina en la fecha canónica e incluye ese día", () => {
+  const dias = lastNDaysFrom(7, "2026-07-29");
+  assert.equal(dias.length, 7);
+  assert.equal(dias[6], "2026-07-29");
+  assert.equal(dias[0], "2026-07-23");
+});
+
+test("cruza meses y años sin saltos", () => {
+  assert.deepEqual(lastNDaysFrom(3, "2026-03-01"), ["2026-02-27", "2026-02-28", "2026-03-01"]);
+  assert.deepEqual(lastNDaysFrom(2, "2027-01-01"), ["2026-12-31", "2027-01-01"]);
+  // 2028 es bisiesto.
+  assert.deepEqual(lastNDaysFrom(2, "2028-03-01"), ["2028-02-29", "2028-03-01"]);
+});
+
+test("una fecha inválida no inventa un rango", () => {
+  assert.deepEqual(lastNDaysFrom(7, ""), []);
+  assert.deepEqual(lastNDaysFrom(7, "no-es-fecha"), []);
 });

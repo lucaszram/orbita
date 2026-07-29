@@ -1,27 +1,17 @@
 import { Redirect } from "expo-router";
-import { OrbitaSoon } from "@/components/web/orbita-soon";
+import { DiarioScreen } from "@/screens/DiarioScreen";
 import { RequireSession } from "@/components/web/require-session";
 
-export default function DiarioRoute() {
+// Diario real: la tira de cartas y el ritual de cada día.
+// Es la pantalla canónica compartida con el nativo, no una versión web aparte.
+export default function Route() {
   if (process.env.EXPO_OS !== "web") {
     return <Redirect href="/" />;
   }
 
-  // Es una ruta de app: sin sesión no se muestra el shell ni la navegación.
   return (
     <RequireSession>
-      <DiarioContent />
+      <DiarioScreen />
     </RequireSession>
-  );
-}
-
-function DiarioContent() {
-  return (
-    <OrbitaSoon
-      active="diario"
-      eyebrow="Diario"
-      title="Lo que te movió, guardado."
-      body="Tus notas junto a la lectura de cada día, para volver a leerte con el tiempo."
-    />
   );
 }

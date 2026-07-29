@@ -29,11 +29,9 @@ const SRC_FILES = walk(join(ROOT, "src"));
  * prohibir el patrón por completo.
  */
 const PENDIENTES_DE_UNIFICAR = [
-  "app/carta.tsx",
-  "app/empezar.tsx",
-  "app/home.tsx",
-  "app/transito.tsx",
-  "app/valores.tsx"
+  // Último pendiente: el onboarding web de 12 pasos debe pasar al
+  // `OnboardingFlow` canónico de 15. Cuando salga, la lista queda vacía.
+  "app/empezar.tsx"
 ];
 
 test("sólo las rutas ya conocidas importan una pantalla web duplicada", () => {
@@ -98,4 +96,73 @@ test("no vuelve a existir un gate de mocks ni `?live=1`", () => {
     .map((f) => f.replace(ROOT + "/", ""))
     .filter((f) => !f.startsWith("src/domain/webSession.ts"));
   assert.deepEqual(culpables, []);
+});
+
+// --- Una sola definición de pantalla por experiencia -------------------------
+// El problema original: la web tenía su propia Home, Carta, Tránsitos y Diario
+// en `src/components/web/`, y derivaban del nativo sin que nada lo impidiera.
+
+const CANONICAS = [
+  ["src/screens/HomeScreen.tsx", "HomeScreen", "app/home.tsx", "app/(tabs)/index.tsx"],
+  ["src/screens/CartaScreen.tsx", "CartaScreen", "app/carta.tsx", "app/(tabs)/carta.tsx"],
+  ["src/screens/TransitosScreen.tsx", "TransitosScreen", "app/transito.tsx", "app/(tabs)/transitos.tsx"],
+  ["src/screens/DiarioScreen.tsx", "DiarioScreen", "app/diario.tsx", "app/reading/diario.tsx"]
+] as const;
+
+test("web y nativo resuelven a la MISMA pantalla canónica", () => {
+  for (const [modulo, nombre, rutaWeb, rutaNativa] of CANONICAS) {
+    const canon = readFileSync(join(ROOT, modulo), "utf8");
+    assert.ok(new RegExp(`export function ${nombre}`).test(canon), `${modulo} no exporta ${nombre}`);
+    for (const ruta of [rutaWeb, rutaNativa]) {
+      const s = readFileSync(join(ROOT, ruta), "utf8");
+      assert.ok(
+        s.includes(`@/screens/${nombre}`),
+        `${ruta} no renderiza la pantalla canónica ${nombre}`
+      );
+    }
+  }
+});
+
+test("las pantallas web duplicadas ya no existen", () => {
+  for (const f of [
+    "src/components/web/orbita-home.tsx",
+    "src/components/web/orbita-chart.tsx",
+    "src/components/web/orbita-transit.tsx",
+    "src/components/web/orbita-values.tsx",
+    "src/components/web/orbita-personality.tsx",
+    "src/components/web/orbita-soon.tsx"
+  ]) {
+    assert.throws(() => readFileSync(join(ROOT, f), "utf8"), `${f} volvió a aparecer`);
+  }
+});
+
+test("la navegación web tiene la misma arquitectura que las pestañas nativas", () => {
+  const nav = readFileSync(join(ROOT, "src/components/web/web-nav.tsx"), "utf8");
+  const seccionesWeb = [...nav.matchAll(/\{ key: "(\w+)", label: "([^"]+)", href/g)].map((m) => m[2]);
+  const tabs = readFileSync(join(ROOT, "app/(tabs)/_layout.tsx"), "utf8");
+  const seccionesNativas = [...tabs.matchAll(/<Tabs\.Screen name="\w+" options=\{\{ title: "([^"]+)" \}\} \/>/g)].map((m) => m[1]);
+  assert.deepEqual(seccionesWeb, seccionesNativas, "web y nativo deben ofrecer las mismas secciones, en el mismo orden");
+});
+
+test("el Umbral es una sección de la web, no una ruta olvidada", () => {
+  const umbral = readFileSync(join(ROOT, "app/umbral.tsx"), "utf8");
+  assert.ok(/VoidExperience/.test(umbral), "/umbral debe montar la experiencia canónica");
+  const nav = readFileSync(join(ROOT, "src/components/web/web-nav.tsx"), "utf8");
+  assert.ok(/href: "\/umbral"/.test(nav));
+});
+
+// --- La fecha del historial no puede volver al reloj del navegador -----------
+
+test("Home y Diario derivan el rango de la fecha canónica del servidor", () => {
+  for (const f of ["src/screens/HomeScreen.tsx", "src/screens/DiarioScreen.tsx"]) {
+    // Se mira el CÓDIGO, no los comentarios: los comentarios explican
+    // justamente de qué se migró y nombran las funciones viejas.
+    const s = readFileSync(join(ROOT, f), "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\/\/.*$/gm, "");
+    assert.ok(/useCanonicalLocalDate/.test(s), `${f} debe tomar el día del servidor`);
+    assert.ok(/lastNDaysFrom/.test(s), `${f} debe derivar la ventana de esa fecha`);
+    assert.ok(!/\blastNDays\(/.test(s), `${f} sigue usando el reloj del navegador`);
+    assert.ok(!/\btoLocalDate\(\)/.test(s), `${f} sigue usando el reloj del navegador`);
+  }
 });
