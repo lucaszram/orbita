@@ -84,11 +84,16 @@ function SignInPanel() {
           <View style={styles.clerkPanel}>
             {/* La tarjeta de Clerk trae un ancho propio de ~400px y a 320 quedaba
                 cortada: el campo de email no entraba en pantalla. */}
+            {/* `signUpUrl` manda el alta al onboarding de Órbita en vez del
+                Account Portal alojado de Clerk (`*.accounts.dev`), que está en
+                inglés y deja a la persona fuera del producto. Alguien nuevo
+                entra por `/empezar` y crea la cuenta dentro del flujo. */}
             <SignIn
               appearance={{ elements: { rootBox: { width: "100%" }, cardBox: { width: "100%" }, card: { width: "100%" } } }}
               fallbackRedirectUrl="/home"
               forceRedirectUrl="/home"
               routing="hash"
+              signUpUrl="/empezar"
               signUpFallbackRedirectUrl="/home"
               signUpForceRedirectUrl="/home"
             />

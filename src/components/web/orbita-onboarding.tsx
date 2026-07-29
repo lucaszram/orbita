@@ -32,6 +32,7 @@ import { formatSign, getZodiacSign } from "@/domain/zodiac";
 import { appApi, proposedApi } from "@/services/appRefs";
 import { publicLabApi } from "@/services/publicLabRefs";
 import { type PlaceHit, searchPlaces } from "@/services/geocoding";
+import { clearDraft, readDraft, writeDraft } from "@/domain/onboardingDraft";
 import { useOrbitaAuth } from "@/hooks/useOrbitaAuth";
 
 const colors = {
@@ -109,23 +110,48 @@ export function OrbitaOnboarding({ backend, triad }: { backend?: OnboardingBacke
     Inter_400Regular, Inter_500Medium, Inter_700Bold, Newsreader_400Regular, Newsreader_500Medium
   });
 
-  const [index, setIndex] = useState(0);
-  const [identity, setIdentity] = useState<Identity | undefined>();
-  const [day, setDay] = useState(""); const [month, setMonth] = useState(""); const [year, setYear] = useState("");
-  const [placeQuery, setPlaceQuery] = useState("");
-  const [place, setPlace] = useState<string | undefined>();
-  const [placeHit, setPlaceHit] = useState<PlaceHit | undefined>();
+  // Borrador persistido: crear la cuenta hace que Clerk vuelva a `/empezar`, y
+  // sin esto el remonte perdía fecha, lugar, hora, tríada y paso — la persona
+  // volvía a empezar de cero justo después de registrarse.
+  const saved = useMemo(() => readDraft(ONBOARDING_STEPS.length), []);
+
+  const [index, setIndex] = useState(saved?.index ?? 0);
+  const [identity, setIdentity] = useState<Identity | undefined>(saved?.identity as Identity | undefined);
+  const [day, setDay] = useState(saved?.day ?? "");
+  const [month, setMonth] = useState(saved?.month ?? "");
+  const [year, setYear] = useState(saved?.year ?? "");
+  const [placeQuery, setPlaceQuery] = useState(saved?.placeQuery ?? "");
+  const [place, setPlace] = useState<string | undefined>(saved?.place);
+  const [placeHit, setPlaceHit] = useState<PlaceHit | undefined>(saved?.placeHit as PlaceHit | undefined);
   const [placeResults, setPlaceResults] = useState<PlaceHit[]>([]);
   const [placeSearching, setPlaceSearching] = useState(false);
   const placeReq = useRef(0);
-  const [time, setTime] = useState<TimeState>({ hour: "", minute: "" });
-  const [timeUnknown, setTimeUnknown] = useState(false);
+  const [time, setTime] = useState<TimeState>({ hour: saved?.hour ?? "", minute: saved?.minute ?? "" });
+  const [timeUnknown, setTimeUnknown] = useState(saved?.timeUnknown ?? false);
   const [email, setEmail] = useState("");
-  const [plan, setPlan] = useState<PlanId>("annual");
+  const [plan, setPlan] = useState<PlanId>((saved?.plan as PlanId) ?? "annual");
   const [calc, setCalc] = useState(0);
-  const [computedTriad, setComputedTriad] = useState<OnbTriad | undefined>();
+  const [computedTriad, setComputedTriad] = useState<OnbTriad | undefined>(saved?.triad);
   const [computeError, setComputeError] = useState<string | null>(null);
   const [computing, setComputing] = useState(false);
+
+  useEffect(() => {
+    writeDraft({
+      index,
+      identity,
+      day,
+      month,
+      year,
+      placeQuery,
+      place,
+      placeHit,
+      hour: time.hour,
+      minute: time.minute,
+      timeUnknown,
+      plan,
+      triad: computedTriad
+    });
+  }, [index, identity, day, month, year, placeQuery, place, placeHit, time, timeUnknown, plan, computedTriad]);
 
   const step = ONBOARDING_STEPS[index];
   const anchored = ANCHORED_KINDS.has(step.kind);
@@ -196,9 +222,18 @@ export function OrbitaOnboarding({ backend, triad }: { backend?: OnboardingBacke
   // Si cambian los datos de nacimiento, invalidamos la tríada ya calculada para
   // que se recalcule (si no, quedaba pegada la de una persona anterior → mostraba
   // Luna/Asc equivocados con `yaCalc=true`).
+  //
+  // Se compara contra una FIRMA de los datos en vez de correr en cada montaje:
+  // al volver de crear la cuenta, el efecto se ejecutaba en el primer render y
+  // borraba la tríada restaurada del borrador aunque nada hubiera cambiado. La
+  // tríada guardada se calculó con estos mismos datos, así que es consistente.
+  const birthSignature = [day, month, year, time.hour, time.minute, timeUnknown, place, placeQuery].join("|");
+  const lastBirthSignature = useRef(birthSignature);
   useEffect(() => {
+    if (lastBirthSignature.current === birthSignature) return;
+    lastBirthSignature.current = birthSignature;
     setComputedTriad(undefined);
-  }, [day, month, year, time.hour, time.minute, timeUnknown, place, placeQuery]);
+  }, [birthSignature]);
 
   // Paso "Calculando": corre el cálculo real y ESPERA a que termine antes de
   // pasar al reveal (así no se ve el mock/placeholder primero). Mín 1.2s, máx 8s.
@@ -275,6 +310,8 @@ export function OrbitaOnboarding({ backend, triad }: { backend?: OnboardingBacke
 
   function next() {
     if (index >= ONBOARDING_STEPS.length - 1) {
+      // El onboarding terminó: el borrador ya no debe sobrevivir a la sesión.
+      clearDraft();
       // Al entrar, si hay sesión persistimos la carta para la app (live).
       if (backend && backend.isSignedIn) {
         backend.complete(collectData()).then(() => router.replace("/home")).catch(() => router.replace("/home"));
@@ -813,8 +850,14 @@ export function OnboardingWithBackend() {
   const backend: OnboardingBackend = {
     isSignedIn: auth.isSignedIn,
     email: auth.email,
+    // `withSignUp` deja que el alta ocurra DENTRO de este componente montado:
+    // un email nuevo continúa a registro sin salir a `*.accounts.dev`, que está
+    // en inglés y además perdía el onboarting cargado hasta acá.
+    // `routing="hash"` mantiene todo en `/empezar`; el borrador persistido
+    // cubre el remonte de la vuelta de Clerk.
     SignIn: () => (
       <SignIn
+        withSignUp
         routing="hash"
         fallbackRedirectUrl="/empezar"
         forceRedirectUrl="/empezar"

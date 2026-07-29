@@ -40,6 +40,30 @@
 
 **Bloqueo móvil posterior:** `src/domain/appData.ts` todavía construye tránsitos nativos hardcodeados mediante `buildTransitos` y `chartMock`. No afecta Gate A web y queda fuera de este PR backend, pero debe eliminarse antes de cualquier nueva publicación móvil.
 
+## Órbita Web P0 — alta de cuenta dentro de Órbita (2026-07-28, Claude)
+
+**Objetivo:** que crear cuenta ocurra dentro del producto, en español, sin perder el onboarding cargado.
+
+**Ficha:** owner Claude (frontend); territorio `app/**`, `src/**`, `test/**`; rama `feature/web-p0-signup-es` sobre `feature/web-p0-auth-es` `610f6ad`; riesgo medio (toca el estado del onboarding); validación typecheck + suite + export web + navegador a 320/390/1100.
+
+**Qué cambió:**
+1. **`/login`**: `signUpUrl="/empezar"` en el `<SignIn />`. "Registrate" ahora lleva al onboarding de Órbita, no al Account Portal alojado.
+2. **Paso de cuenta de `/empezar`**: `withSignUp` en el `<SignIn />` ya montado. Un email nuevo continúa a registro **en el mismo componente**, con `routing="hash"` (`/empezar#/create`). No hizo falta montar `<SignUp />` aparte: la instancia no bloqueó el flujo.
+3. **Borrador del onboarding persistido** (`src/domain/onboardingDraft.ts`). Sin esto no se cumplía el criterio de aceptación: todo el onboarding vivía en `useState` y la vuelta de Clerk a `/empezar` lo borraba entero. Se guarda en `sessionStorage`, no `localStorage`, a propósito — son datos de nacimiento: duran lo que dura la pestaña y no quedan en una máquina compartida. Lectura defensiva: un borrador corrupto, truncado o de otra versión se descarta y se empieza limpio. Se borra al terminar el onboarding.
+4. **Bug encontrado al validar:** el efecto que invalida la tríada cuando cambian los datos de nacimiento **también corría en el primer render**, así que al volver de crear la cuenta borraba la tríada restaurada aunque nada hubiera cambiado. Ahora compara contra una firma de los datos; la tríada guardada se calculó con esos mismos datos, así que es consistente por construcción.
+5. **Overrides de voz y de inglés faltante.** `esES` deja **550 claves** sin traducir respecto de `enUS`; casi todas son de passkeys, SSO empresarial, API keys y códigos por teléfono, que Órbita no usa. Se tradujeron sólo las alcanzables en email + contraseña: `signIn.start.titleCombined` (mostraba **"Continue to Orbita"** en el formulario combinado), `formFieldInputPlaceholder__signUpPassword`, `formFieldInput__emailAddress_format`, `protectCheck.*` y los títulos de contraseña comprometida/no confiable. Más el ajuste a voseo pedido: "Ingresá tu dirección de correo electrónico", "¿No tenés cuenta?", "Registrate", "Creá tu cuenta", "¿Ya tenés cuenta?".
+
+**Verificado en navegador contra Convex dev:**
+- Click real en "Registrate" desde `/login` → `http://localhost:8099/empezar`. **No** `accounts.dev`.
+- En el paso de cuenta, un email nuevo continuó a registro en `/empezar#/create` (dos `history.replaceState`, sin recarga ni navegación externa), con el paso "5/6 Guardá tu carta" intacto alrededor.
+- Formulario de alta en español: "Creá tu cuenta", "para continuar en Orbita", "¿Ya tenés cuenta? Iniciar sesión". Cero inglés.
+- Borrador tras entrar al alta: paso 8, `1994-4-12`, `10:40`, "Rosario, Santa Fe, Argentina", coordenadas y tríada `Aries/Tauro/Virgo` conservados.
+- 320, 390 y 1100: sin desborde horizontal, sin inglés, sin `accounts.dev`.
+
+**Validación: typecheck verde, 441/441 tests, export web 5,18 MB.**
+
+**Límite:** no completé un alta real (no creo cuentas ni ingreso contraseñas). Falta confirmar con una cuenta descartable que, **después** de crear la cuenta, el onboarding sigue en el paso de cuenta con los datos y que la carta queda guardada antes del paywall. El borrador y la tríada ya se verificaron sobrevivir el remonte y la entrada al alta.
+
 ## Órbita Web P0 — auth en español (2026-07-28, Claude)
 
 **Objetivo:** que los componentes de Clerk que montamos rindan en español. Sin rediseñar auth ni tocar la arquitectura de providers.
