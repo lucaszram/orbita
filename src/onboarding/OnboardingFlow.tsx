@@ -11,6 +11,8 @@ import { useLiveApp } from "@/hooks/useLiveApp";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
 import { backendConfig } from "@/services/backendProviders";
 import { clearDraft, readDraft, writeDraft } from "@/domain/onboardingDraft";
+import { resolveDebugStep } from "@/domain/onboardingDebug";
+import { INTERNAL_TOOLS_ENABLED } from "@/services/internalTools";
 
 import { AccountScreen } from "./screens/AccountScreen";
 import { AlignScreen } from "./screens/AlignScreen";
@@ -135,10 +137,16 @@ export function OnboardingFlow() {
   // inmediata, porque useAuth puede seguir stale en el render siguiente.
   const sessionActivated = useRef(false);
 
-  // Dev preview: jump to any step via ?debugStep=N.
+  // Salto de paso SÓLO con herramientas internas encendidas. En producción el
+  // param se ignora y el onboarding arranca normal: era un control de
+  // desarrollo servido en público, igual que el viejo `?live=1`.
   useEffect(() => {
-    const n = Number(params.debugStep);
-    if (Number.isFinite(n) && n >= 0 && n < TOTAL) setStep(n);
+    const n = resolveDebugStep({
+      raw: params.debugStep,
+      total: TOTAL,
+      internalToolsEnabled: INTERNAL_TOOLS_ENABLED
+    });
+    if (n !== null) setStep(n);
   }, [params.debugStep]);
 
   // Respaldo del resume: si los params llegan un render después del mount,

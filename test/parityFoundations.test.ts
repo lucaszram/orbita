@@ -104,10 +104,18 @@ test("el host de confirmación está montado en el layout raíz", () => {
 // --- Guardas P0 que no se pueden perder en la unificación --------------------
 
 test("no vuelve a existir un gate de mocks ni `?live=1`", () => {
+  // Se mira el CÓDIGO, no los comentarios: varios explican de qué se migró y
+  // nombran el patrón viejo a propósito. Una lista de exclusiones por archivo
+  // se desactualiza sola; sacar los comentarios es exacto.
   const todos = [...APP_FILES, ...SRC_FILES];
-  const culpables = todos.filter((f) => /LiveGate|urlForcedLive|live=1/.test(readFileSync(f, "utf8")))
-    .map((f) => f.replace(ROOT + "/", ""))
-    .filter((f) => !f.startsWith("src/domain/webSession.ts"));
+  const culpables = todos
+    .filter((f) => {
+      const codigo = readFileSync(f, "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/\/\/.*$/gm, "");
+      return /LiveGate|urlForcedLive|live=1/.test(codigo);
+    })
+    .map((f) => f.replace(ROOT + "/", ""));
   assert.deepEqual(culpables, []);
 });
 
