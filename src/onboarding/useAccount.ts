@@ -624,9 +624,25 @@ export type PersistBirthData = (input: {
  * Persistencia con errores TRAGADOS (onboarding: la copia local ya existe y
  * el flujo no debe cortarse). Para "Editar datos" usar la variante estricta.
  */
+/**
+ * Persistencia del ONBOARDING: `onboarding.completeBirthData`, que el backend
+ * volvió create-only e idempotente. Si la cuenta ya tiene otros datos falla con
+ * `ONBOARDING_BIRTH_DATA_CONFLICT` — una edición intencional NO es "completar
+ * onboarding" y va por `useProfileBirthDataPersist`.
+ */
 export function useBackendPersist(): PersistBirthData | null {
   if (!HAS_BACKEND) return null;
   return useBackendPersistSwallowInner();
+}
+
+/**
+ * Persistencia del EDITOR DE PERFIL: `birthData.upsertForCurrentUser` con
+ * `source: "profile"`. Es el único camino para CAMBIAR datos natales ya
+ * existentes; propaga el error para que "Guardar" pueda mostrar reintento.
+ */
+export function useProfileBirthDataPersist(): PersistBirthData | null {
+  if (!HAS_BACKEND) return null;
+  return useProfilePersistInner();
 }
 
 /**
@@ -661,7 +677,6 @@ function useBackendPersistInner(): PersistBirthData {
   // Backend la define como Action (igual que en la web); antes acá estaba mal
   // como useMutation → "Trying to execute ... as Mutation, but defined as Action".
   const calculateChart = useAction(appApi.charts.calculateOrCreateNatalChart);
-  const generateToday = useMutation(appApi.readings.generateToday);
   const isSignedIn = auth.isSignedIn;
 
   return useCallback(
@@ -679,8 +694,41 @@ function useBackendPersistInner(): PersistBirthData {
         timezone: birthTimezone
       });
       await calculateChart({});
-      await generateToday({ localDate: new Date().toISOString().slice(0, 10), timezone: deviceTimezone() });
+      // NO se llama `readings.generateToday` acá: usaba la fecha y la timezone
+      // del dispositivo, y el día astrológico lo decide el servidor desde la
+      // zona natal (`daily.getTodayContext`). La generación diaria sigue por el
+      // camino canónico, que ya corre en la Home con la fecha del servidor.
     },
-    [calculateChart, completeBirthData, ensureUser, generateToday, isSignedIn]
+    [calculateChart, completeBirthData, ensureUser, isSignedIn]
+  );
+}
+
+/** Igual que la anterior pero contra el endpoint de PERFIL (edición). */
+function useProfilePersistInner(): PersistBirthData {
+  const auth = useOrbitaAuth();
+  const ensureUser = useMutation(appApi.users.getOrCreateCurrentUser);
+  const upsertBirthData = useMutation(appApi.birthData.upsertForCurrentUser);
+  const calculateChart = useAction(appApi.charts.calculateOrCreateNatalChart);
+  const isSignedIn = auth.isSignedIn;
+
+  return useCallback(
+    async (input) => {
+      if (!isSignedIn) return;
+      const birthTimezone = input.timezone ?? deviceTimezone();
+      await ensureUser({});
+      await upsertBirthData({
+        birthDate: input.birthDate,
+        birthTime: input.birthTime,
+        birthTimePrecision: input.birthTime ? "known" : "unknown",
+        birthPlaceLabel: input.birthPlaceLabel ?? "Sin especificar",
+        latitude: input.latitude,
+        longitude: input.longitude,
+        timezone: birthTimezone,
+        // Marca la intención: es una edición del perfil, no el alta.
+        source: "profile"
+      });
+      await calculateChart({});
+    },
+    [calculateChart, ensureUser, isSignedIn, upsertBirthData]
   );
 }

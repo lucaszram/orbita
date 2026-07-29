@@ -140,14 +140,24 @@ export function OnboardingFlow() {
   // Salto de paso SÓLO con herramientas internas encendidas. En producción el
   // param se ignora y el onboarding arranca normal: era un control de
   // desarrollo servido en público, igual que el viejo `?live=1`.
+  const debugStep = resolveDebugStep({
+    raw: params.debugStep,
+    total: TOTAL,
+    internalToolsEnabled: INTERNAL_TOOLS_ENABLED
+  });
+  /**
+   * Inspección visual: SOLO LECTURA. Montar un paso por `debugStep` no puede
+   * escribir nada — ni datos natales, ni perfil, ni carta, ni cuenta, ni
+   * checkout, ni el submit final con su navegación.
+   *
+   * Motivo real: el paso 14 auto-ejecutaba `submit()` al montarse, así que
+   * abrir `?debugStep=14` con sesión activa PERSISTÍA los valores por defecto
+   * del flujo encima de los datos natales de la cuenta y recalculaba la carta.
+   */
+  const inspeccion = debugStep !== null;
   useEffect(() => {
-    const n = resolveDebugStep({
-      raw: params.debugStep,
-      total: TOTAL,
-      internalToolsEnabled: INTERNAL_TOOLS_ENABLED
-    });
-    if (n !== null) setStep(n);
-  }, [params.debugStep]);
+    if (debugStep !== null) setStep(debugStep);
+  }, [debugStep]);
 
   // Respaldo del resume: si los params llegan un render después del mount,
   // el useState inicial no los vio. Solo salta si todavía está en la entrada.
@@ -165,8 +175,11 @@ export function OnboardingFlow() {
   }, [params.email]);
 
   useEffect(() => {
+    // En inspección no se guarda: un salto arranca con los valores por defecto
+    // y sobrescribiría el borrador real de la persona.
+    if (inspeccion) return;
     writeDraft({ step, identity, birthDate, placeQuery, birthPlace, birthTime, timeUnknown, email });
-  }, [step, identity, birthDate, placeQuery, birthPlace, birthTime, timeUnknown, email]);
+  }, [step, identity, birthDate, placeQuery, birthPlace, birthTime, timeUnknown, email, inspeccion]);
 
   const next = () => setStep((s) => Math.min(TOTAL - 1, s + 1));
   const back = () => setStep((s) => Math.max(0, s - 1));
@@ -206,6 +219,8 @@ export function OnboardingFlow() {
   // el endpoint público, para que el preview muestre Luna/Ascendente reales aunque
   // el usuario no se haya logueado todavía. Requiere lugar (coords del geocoding).
   useEffect(() => {
+    // Inspección: no se le pega a la API de cálculo.
+    if (inspeccion) return;
     if (step < 11 || !computeTriad || !birthPlace) return;
     const birthTimeStr = timeUnknown ? undefined : to24hFromParts(birthTime);
     // Firma de los datos: si cambia (el usuario editó fecha/hora/lugar) recalcula;
@@ -228,11 +243,13 @@ export function OnboardingFlow() {
       .catch(() => { computedSig.current = null; });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, computeTriad, birthPlace, birthDateISO, timeUnknown, birthTime.hour, birthTime.minute, retryTick]);
+  }, [step, computeTriad, birthPlace, birthDateISO, timeUnknown, birthTime.hour, birthTime.minute, retryTick, inspeccion]);
 
   // `codeOverride`: la auto-verificación del CodeInput pasa el código recién
   // completado directo (el estado `accountCode` todavía no re-renderizó).
   const accountNext = async (codeOverride?: string) => {
+    // Inspección: nunca se crea una cuenta ni se avanza.
+    if (inspeccion) return;
     if (!account || account.isSignedIn) {
       next();
       return;
@@ -272,6 +289,8 @@ export function OnboardingFlow() {
   };
 
   const submit = async () => {
+    // Inspección visual: ninguna escritura, ni siquiera desde un CTA.
+    if (inspeccion) return;
     const birthTimeValue = timeUnknown ? undefined : timeLabel;
     // Con sesión activa (alta con cuenta, OAuth o resume=datos post-login) el
     // perfil queda marcado con su dueño: el próximo arranque lo reconoce como
@@ -323,16 +342,18 @@ export function OnboardingFlow() {
 
   // Sin paywall: al llegar al paso de pago (step 14) se entra directo a la app.
   useEffect(() => {
+    if (inspeccion) return;
     if (step === 14 && !PAYWALL_ENABLED) void submit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step]);
+  }, [step, inspeccion]);
 
   // Sesión ya activa (login previo o continuación del alta): el paso de crear
   // cuenta se saltea solo — nunca pedir crear/iniciar sesión de nuevo.
   useEffect(() => {
+    if (inspeccion) return;
     if (step === STEP_ACCOUNT && account?.isSignedIn) next();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, account?.isSignedIn]);
+  }, [step, account?.isSignedIn, inspeccion]);
 
   if (!fontsLoaded) return <View style={styles.fill} />;
 

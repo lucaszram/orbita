@@ -31,7 +31,7 @@ import { CTA } from "@/onboarding/components/CTA";
 import { Screen } from "@/onboarding/components/Screen";
 import { Body, Label, Title } from "@/onboarding/components/Type";
 import { font, GUTTER, orbita } from "@/onboarding/theme";
-import { useBackendPersistStrict } from "@/onboarding/useAccount";
+import { useProfileBirthDataPersist } from "@/onboarding/useAccount";
 import { searchPlaces, type PlaceHit } from "@/services/geocoding";
 
 /**
@@ -52,7 +52,9 @@ export default function EditarDatosRoute() {
   const { isReady, profile, updateProfile } = useAppState();
   const { isLive, auth, retryUser } = useLiveApp();
   const { birthData: remoteBirthData, birthDataResolved } = useLiveAppDocs(isLive);
-  const persistBackend = useBackendPersistStrict();
+  // Editar datos usa el endpoint de PERFIL: `completeBirthData` es create-only
+  // y rechazaría un cambio con ONBOARDING_BIRTH_DATA_CONFLICT.
+  const persistBackend = useProfileBirthDataPersist();
 
   const [date, setDate] = useState<Date>(() => isoToDate(profile?.birthDate ?? "1996-01-15"));
   const [time, setTime] = useState<Date>(() => timeToDate(profile?.birthTime));
