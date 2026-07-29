@@ -14,6 +14,8 @@
 
 **Handoff frontend requerido antes de desplegar dev:** separar `useBackendPersist` (onboarding → `onboarding.completeBirthData`) de `useBackendPersistStrict` (Perfil → `birthData.upsertForCurrentUser`, `source: "profile"`); retirar `readings.generateToday` con fecha/timezone del dispositivo del hook compartido; hacer `debugStep` estrictamente read-only; impedir que una cuenta con `birthData` vuelva al onboarding para editar (usar `/editar-datos`). Luego desplegar backend y frontend coordinados, restaurar la cuenta dev sólo con aprobación de Lucas y verificar que Carta/Tránsitos/Home se autorreparen sin cambiar la carta de Tarot ni `revealedAt`.
 
+**Rollout dev (2026-07-29 20:24 ART):** backend `1ad486f` + `a9ae1f2` desplegado únicamente a Convex dev `dutiful-viper-815`; function spec remoto confirma el nuevo argumento interno de `daily.persistEnrichedGuide`. Frontend de paridad/integridad revisado hasta `cd8b274`, con typecheck 0 y 512/512 tests verificados por Codex; servidor local activo en `http://localhost:8099` contra ese dev. Producción intacta. Próximo paso autorizado: Lucas restaura 11 Nov 1996 · 10:32 y vuelve a elegir Ciudad Autónoma de Buenos Aires desde el buscador; después verificar autorreparación de Carta/Home/Tránsitos y estabilidad del Tarot diario antes de retomar otros escenarios.
+
 ## Órbita Web P0 — contrato backend seguro (2026-07-28, Codex)
 
 **Objetivo:** preparar el backend P0 de Órbita Web para una salida gratuita primero y cobros después, sin permitir que cliente, URL o modo demo habiliten Plus o Stripe.
