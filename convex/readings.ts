@@ -1,9 +1,11 @@
 import { mutationGeneric as mutation, queryGeneric as query } from "convex/server";
 import { v } from "convex/values";
 import {
+  belongsToNatalChart,
   buildBirthDataHash,
   buildNatalChartCacheKey,
-  dailyReadingNeedsRefresh
+  dailyReadingNeedsRefresh,
+  findExactNatalChart
 } from "./lib/birthDataConsistency";
 import {
   buildDailyReadingPayload,
@@ -93,10 +95,13 @@ export const getToday = query({
   handler: async (ctx, args) => {
     const user = await findCurrentUser(ctx);
     if (!user) return null;
-    return await ctx.db
+    const reading = await ctx.db
       .query("dailyReadings")
       .withIndex("by_user_date", (q: any) => q.eq("userId", user._id).eq("localDate", args.localDate))
       .first();
+    const birthData = await getCurrentBirthData(ctx, user._id);
+    const natalChart = await findExactNatalChart(ctx, user._id, birthData);
+    return belongsToNatalChart(reading, natalChart) ? reading : null;
   }
 });
 

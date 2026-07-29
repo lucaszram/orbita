@@ -6,6 +6,7 @@ import {
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { runAstrologyApiDailyTransits } from "./lib/astrologyApi";
+import { belongsToNatalChart, findExactNatalChart } from "./lib/birthDataConsistency";
 import { resolveCanonicalDailyContext } from "./daily";
 import {
   buildDailyReadingPayloadFromAstrology,
@@ -27,14 +28,6 @@ async function getCurrentBirthData(ctx: any, userId: string) {
     .first();
 }
 
-async function getCurrentChart(ctx: any, userId: string) {
-  return await ctx.db
-    .query("natalCharts")
-    .withIndex("by_user", (q: any) => q.eq("userId", userId))
-    .order("desc")
-    .first();
-}
-
 export const getTodayState = internalQuery({
   args: {
     tokenIdentifier: v.string(),
@@ -48,31 +41,39 @@ export const getTodayState = internalQuery({
       throw new Error("User record not found");
     }
 
-    const providerTransitReading = await ctx.db
+    const cachedProviderTransitReading = await ctx.db
       .query("transitReadings")
       .withIndex("by_user_date_provider", (q: any) =>
         q.eq("userId", user._id).eq("localDate", args.localDate).eq("providerVersion", args.providerVersion)
       )
       .first();
-    const fallbackTransitReading = await ctx.db
+    const cachedFallbackTransitReading = await ctx.db
       .query("transitReadings")
       .withIndex("by_user_date", (q: any) => q.eq("userId", user._id).eq("localDate", args.localDate))
       .order("desc")
       .first();
-    const dailyReading = await ctx.db
+    const cachedDailyReading = await ctx.db
       .query("dailyReadings")
       .withIndex("by_user_date", (q: any) => q.eq("userId", user._id).eq("localDate", args.localDate))
       .order("desc")
       .first();
 
+    const birthData = await getCurrentBirthData(ctx, user._id);
+    const natalChart = await findExactNatalChart(ctx, user._id, birthData);
     return {
       userId: user._id,
       isPro: await isUserPro(ctx, user._id),
-      birthData: await getCurrentBirthData(ctx, user._id),
-      natalChart: await getCurrentChart(ctx, user._id),
-      providerTransitReading,
-      fallbackTransitReading,
-      dailyReading
+      birthData,
+      natalChart,
+      providerTransitReading: belongsToNatalChart(cachedProviderTransitReading, natalChart)
+        ? cachedProviderTransitReading
+        : null,
+      fallbackTransitReading: belongsToNatalChart(cachedFallbackTransitReading, natalChart)
+        ? cachedFallbackTransitReading
+        : null,
+      dailyReading: belongsToNatalChart(cachedDailyReading, natalChart)
+        ? cachedDailyReading
+        : null
     };
   }
 });

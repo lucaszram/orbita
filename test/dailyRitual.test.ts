@@ -184,6 +184,45 @@ test("un payload v3 previo se conserva como listo y no se regenera", () => {
   assert.deepEqual(plan.payload.carta, legacyReady.carta);
 });
 
+test("un cambio natal refresca la personalización sin volver a sortear la carta", () => {
+  const originalCard: TarotDraw = {
+    id: 18,
+    key: "major_18_la_luna",
+    nombre: "La Luna",
+    arcana: "major",
+    correspondencia: "Piscis ♓",
+    orientacion: "derecho"
+  };
+  const existing = composePayload({
+    carta: originalCard,
+    transits: [],
+    generated: {
+      headline: "Lectura de la carta anterior",
+      body: "No debe sobrevivir a una edición natal.",
+      clima: "Anterior.",
+      destacadoLectura: "Anterior.",
+      cartaRitual: COMPLETE_RITUAL
+    }
+  });
+  const replacement = composeFastPayload({
+    carta: { ...originalCard, id: 19, nombre: "El Sol", orientacion: "invertida" },
+    now: 3_000
+  });
+  const plan = planFastGuide({
+    existing,
+    candidate: replacement,
+    now: 3_000,
+    identityChanged: true
+  });
+
+  assert.equal(plan.shouldSchedule, true);
+  assert.equal(plan.cacheHit, false);
+  assert.equal(plan.reason, "identity_changed");
+  assert.deepEqual(plan.payload.carta, existing.carta);
+  assert.notEqual(plan.payload.headline, existing.headline);
+  assert.equal(plan.payload.enrichment?.status, "pending");
+});
+
 test("el enriquecimiento nunca reemplaza carta, orientación ni ritual", () => {
   const carta: TarotDraw = {
     id: 5,

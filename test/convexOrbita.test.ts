@@ -41,10 +41,13 @@ import {
 } from "../convex/publicLab";
 import { sanitizeAppFacingPayload } from "../convex/webB0Seed";
 import {
+  belongsToNatalChart,
   buildBirthDataHash,
   buildNatalChartCacheKey,
-  dailyReadingNeedsRefresh
+  dailyReadingNeedsRefresh,
+  findExactNatalChart
 } from "../convex/lib/birthDataConsistency";
+import { decideOnboardingBirthDataWrite } from "../convex/lib/onboardingBirthData";
 import { isCurrentDailyGuidePayload, localDateForTimezone } from "../convex/daily";
 import { drawCard } from "../convex/lib/tarot";
 
@@ -61,6 +64,31 @@ test("birth data cache identity changes when known time is removed", () => {
 
   assert.notEqual(known, unknown);
   assert.match(buildNatalChartCacheKey("user_123", unknown), /^natal:orbita-astrologyapi-western-v1:user_123:/);
+});
+
+test("onboarding birth data is create-only but idempotent", () => {
+  const original = {
+    birthDate: "1996-11-11",
+    birthTime: "10:32",
+    birthTimePrecision: "known",
+    birthPlaceLabel: "Ciudad Autónoma de Buenos Aires, Argentina",
+    latitude: -34.6037,
+    longitude: -58.3816,
+    timezone: "America/Argentina/Buenos_Aires"
+  };
+
+  assert.equal(decideOnboardingBirthDataWrite(null, original), "create");
+  assert.equal(decideOnboardingBirthDataWrite(original, { ...original }), "idempotent");
+  assert.throws(
+    () =>
+      decideOnboardingBirthDataWrite(original, {
+        ...original,
+        birthDate: "1996-01-15",
+        birthTime: "12:00",
+        birthPlaceLabel: "Sin especificar"
+      }),
+    /ONBOARDING_BIRTH_DATA_CONFLICT/
+  );
 });
 
 test("daily reading refreshes when the natal chart changes", () => {
@@ -86,6 +114,52 @@ test("daily reading refreshes when the natal chart changes", () => {
     dailyReadingNeedsRefresh(existing, "chart_old", existing.timezone, "orbita-daily-v2"),
     true
   );
+});
+
+test("current natal chart lookup uses only the active birth-data cache key", async () => {
+  const birthData = {
+    birthDate: "1996-11-11",
+    birthTime: "10:32",
+    birthTimePrecision: "known",
+    birthPlaceLabel: "Ciudad Autónoma de Buenos Aires, Argentina",
+    latitude: -34.6037,
+    longitude: -58.3816,
+    timezone: "America/Argentina/Buenos_Aires"
+  };
+  const expectedKey = buildNatalChartCacheKey("user_123", buildBirthDataHash(birthData));
+  let queriedKey = "";
+  const exact = { _id: "chart_exact" };
+  const ctx = {
+    db: {
+      query: (table: string) => {
+        assert.equal(table, "natalCharts");
+        return {
+          withIndex: (index: string, build: (q: any) => unknown) => {
+            assert.equal(index, "by_cacheKey");
+            build({
+              eq: (_field: string, value: string) => {
+                queriedKey = value;
+                return {};
+              }
+            });
+            return { first: async () => exact };
+          }
+        };
+      }
+    }
+  };
+
+  assert.equal(await findExactNatalChart(ctx, "user_123", birthData), exact);
+  assert.equal(queriedKey, expectedKey);
+  assert.equal(await findExactNatalChart(ctx, "user_123", null), null);
+});
+
+test("personalized caches require the exact active natal chart", () => {
+  const chart = { _id: "chart_current" };
+  assert.equal(belongsToNatalChart({ natalChartId: "chart_current" }, chart), true);
+  assert.equal(belongsToNatalChart({ natalChartId: "chart_previous" }, chart), false);
+  assert.equal(belongsToNatalChart({}, chart), false);
+  assert.equal(belongsToNatalChart({}, null), false);
 });
 
 function buildFixtureAstrologyChart() {
