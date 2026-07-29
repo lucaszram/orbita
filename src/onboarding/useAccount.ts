@@ -15,6 +15,7 @@ import {
   interpretSignUpAttempt,
   makeReentrancyGuard
 } from "@/onboarding/signup";
+import { validateBirthPayload } from "@/domain/birthPayload";
 import { deviceTimezone } from "@/hooks/useLiveApp";
 import { useOrbitaAuth } from "@/hooks/useOrbitaAuth";
 import { appApi, type BirthDataDoc } from "@/services/appRefs";
@@ -625,14 +626,17 @@ export type PersistBirthData = (input: {
  * el flujo no debe cortarse). Para "Editar datos" usar la variante estricta.
  */
 /**
- * Persistencia del ONBOARDING: `onboarding.completeBirthData`, que el backend
- * volvió create-only e idempotente. Si la cuenta ya tiene otros datos falla con
- * `ONBOARDING_BIRTH_DATA_CONFLICT` — una edición intencional NO es "completar
- * onboarding" y va por `useProfileBirthDataPersist`.
+ * Persistencia del ONBOARDING: `onboarding.completeBirthData`, create-only e
+ * idempotente del lado del backend.
+ *
+ * ESTRICTA a propósito: propaga el error. Antes pasaba por un wrapper que
+ * atrapaba cualquier fallo del backend y resolvía como si hubiera escrito, así
+ * que el cierre del alta creaba el perfil local, limpiaba el borrador y
+ * navegaba a la recepción sin que Convex tuviera nada.
  */
-export function useBackendPersist(): PersistBirthData | null {
+export function useOnboardingBirthDataPersist(): PersistBirthData | null {
   if (!HAS_BACKEND) return null;
-  return useBackendPersistSwallowInner();
+  return useBackendPersistInner();
 }
 
 /**
@@ -655,21 +659,6 @@ export function useBackendPersistStrict(): PersistBirthData | null {
   return useBackendPersistInner();
 }
 
-function useBackendPersistSwallowInner(): PersistBirthData {
-  const persist = useBackendPersistInner();
-  return useCallback(
-    async (input) => {
-      try {
-        await persist(input);
-      } catch (e) {
-        // La copia local ya existe: el backend puede fallar sin romper el flujo.
-        console.warn("Órbita: persistencia backend falló (la app sigue local)", e);
-      }
-    },
-    [persist]
-  );
-}
-
 function useBackendPersistInner(): PersistBirthData {
   const auth = useOrbitaAuth();
   const ensureUser = useMutation(appApi.users.getOrCreateCurrentUser);
@@ -681,17 +670,22 @@ function useBackendPersistInner(): PersistBirthData {
 
   return useCallback(
     async (input) => {
-      if (!isSignedIn) return;
-      const birthTimezone = input.timezone ?? deviceTimezone();
+      // Con backend configurado, "sesión todavía no lista" es la carrera
+      // post-verify: NO se puede resolver como éxito, porque el cierre seguiría
+      // adelante sin haber escrito nada. Se rechaza y la pantalla ofrece
+      // reintentar, que es lo que la carrera necesita.
+      if (!isSignedIn) throw new Error("ONBOARDING_SESSION_NOT_READY");
+      // Nada de rellenar: sin lugar elegido, coordenadas o zona, no se escribe.
+      const payload = validateBirthPayload(input);
       await ensureUser({});
       await completeBirthData({
-        birthDate: input.birthDate,
-        birthTime: input.birthTime,
-        birthTimePrecision: input.birthTime ? "known" : "unknown",
-        birthPlaceLabel: input.birthPlaceLabel ?? "Sin especificar",
-        latitude: input.latitude,
-        longitude: input.longitude,
-        timezone: birthTimezone
+        birthDate: payload.birthDate,
+        birthTime: payload.birthTime,
+        birthTimePrecision: payload.birthTime ? "known" : "unknown",
+        birthPlaceLabel: payload.birthPlaceLabel,
+        latitude: payload.latitude,
+        longitude: payload.longitude,
+        timezone: payload.timezone
       });
       await calculateChart({});
       // NO se llama `readings.generateToday` acá: usaba la fecha y la timezone

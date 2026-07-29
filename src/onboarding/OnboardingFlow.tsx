@@ -14,6 +14,7 @@ import { clearDraft, readDraft, writeDraft } from "@/domain/onboardingDraft";
 import { resolveDebugStep } from "@/domain/onboardingDebug";
 import { INTERNAL_TOOLS_ENABLED } from "@/services/internalTools";
 
+import { BirthPayloadError, birthPayloadMessage } from "@/domain/birthPayload";
 import { CTA } from "./components/CTA";
 import { Screen } from "./components/Screen";
 import { Body, Title } from "./components/Type";
@@ -34,7 +35,7 @@ import { PersonalizingScreen } from "./screens/PersonalizingScreen";
 import { SplashScreen } from "./screens/SplashScreen";
 import { orbita } from "./theme";
 import { validateSignupPassword } from "./signup";
-import { useAccountFlow, useBackendPersist, useOnboardingChart, useOnboardingComputeTriad } from "./useAccount";
+import { useAccountFlow, useOnboardingBirthDataPersist, useOnboardingChart, useOnboardingComputeTriad } from "./useAccount";
 import type { OnboardingChart } from "./useAccount";
 
 const TOTAL = 15;
@@ -129,7 +130,9 @@ export function OnboardingFlow() {
   const [accountCode, setAccountCode] = useState("");
   const [plan, setPlan] = useState<PlanId>("annual");
   const account = useAccountFlow();
-  const persistBackend = useBackendPersist();
+  // Persistencia ESTRICTA: propaga el error. Con el wrapper anterior el catch
+  // de `submit` era inalcanzable y el alta navegaba sin haber escrito.
+  const persistBackend = useOnboardingBirthDataPersist();
   const chartPreview = useOnboardingChart();
   const computeTriad = useOnboardingComputeTriad();
   const [computed, setComputed] = useState<OnboardingChart | undefined>();
@@ -137,7 +140,12 @@ export function OnboardingFlow() {
   // Persistencia del cierre: sin esto un fallo navegaba a la recepción
   // como si el alta hubiera funcionado.
   const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  // Lock SINCRÓNICO. `submitting` es estado de React: recién se refleja en el
+  // próximo render, así que dos taps en el mismo render pasaban los dos. El ref
+  // se toma en la primera línea; sólo se libera al fallar (en el éxito ya
+  // navegamos fuera del flujo).
+  const submitLock = useRef(false);
   const computedSig = useRef<string | null>(null);
   // La sesión se activó EN este flujo (verify/oauth ok): fuente de verdad
   // inmediata, porque useAuth puede seguir stale en el render siguiente.
@@ -283,8 +291,9 @@ export function OnboardingFlow() {
   const submit = async () => {
     // Inspección visual: ninguna escritura, ni siquiera desde un CTA.
     if (inspeccion) return;
-    // Reentrada: dos taps en "Reintentar" abrirían dos cierres en paralelo.
-    if (submitting) return;
+    // Reentrada: el lock va PRIMERO y es sincrónico.
+    if (submitLock.current) return;
+    submitLock.current = true;
     const birthTimeValue = timeUnknown ? undefined : timeLabel;
 
     // ÚNICA ruta de persistencia del onboarding, y se ESPERA. Antes había dos:
@@ -294,7 +303,7 @@ export function OnboardingFlow() {
     // fallo pasara desapercibido mientras el flujo navegaba a la recepción como
     // si todo hubiera salido bien.
     if (persistBackend) {
-      setSubmitError(false);
+      setSubmitError(null);
       setSubmitting(true);
       try {
         await persistBackend({
@@ -305,11 +314,16 @@ export function OnboardingFlow() {
           longitude: birthPlace?.longitude,
           timezone: birthPlace?.timezone,
         });
-      } catch {
+      } catch (e) {
         // Nada de perfil local, nada de limpiar el borrador, nada de navegar: la
         // persona ve el error y puede reintentar sin perder lo cargado.
-        setSubmitError(true);
+        setSubmitError(
+          e instanceof BirthPayloadError
+            ? birthPayloadMessage(e.problem)
+            : "Tus datos siguen acá. Puede ser la conexión; probá de nuevo y la guardamos."
+        );
         setSubmitting(false);
+        submitLock.current = false;
         return;
       }
       setSubmitting(false);
@@ -507,16 +521,14 @@ export function OnboardingFlow() {
             setRetryTick((t) => t + 1);
           }}
         />
-      ) : submitError ? (
+      ) : submitError !== null ? (
         // La persistencia falló: se dice, con reintento, y NO se navega a la
         // recepción. Antes el fallo era invisible (`void persistBackend`) y la
         // persona entraba a una app sin carta guardada.
         <Screen bg={undefined}>
           <View style={styles.closeError}>
             <Title>No pudimos guardar tu carta.</Title>
-            <Body>
-              Tus datos siguen acá. Puede ser la conexión; probá de nuevo y la guardamos.
-            </Body>
+            <Body>{submitError}</Body>
             <CTA label={submitting ? "Guardando…" : "Reintentar"} onPress={submit} />
           </View>
         </Screen>

@@ -156,12 +156,13 @@ test("la persistencia se ESPERA dentro de submit, antes del perfil y de navegar"
 
 test("si la persistencia falla no se crea perfil, no se limpia el borrador y no se navega", () => {
   const submit = bloqueDesde(FLOW, "const submit = async () => {");
-  const catchBlock = submit.slice(submit.indexOf("} catch {"), submit.indexOf("setSubmitting(false);\n      }"));
-  assert.ok(/setSubmitError\(true\)/.test(catchBlock), "el fallo tiene que ser visible");
+  const catchBlock = submit.slice(submit.indexOf("} catch (e) {"), submit.indexOf("setSubmitting(false);\n      }"));
+  assert.ok(/setSubmitError\(/.test(catchBlock), "el fallo tiene que ser visible");
   assert.ok(/return;/.test(catchBlock), "y tiene que cortar el cierre");
+  assert.ok(/submitLock\.current = false/.test(catchBlock), "el lock se libera para poder reintentar");
   // Y hay una pantalla de error con reintento.
-  assert.ok(/submitError \?/.test(FLOW), "el paso de cierre debe renderizar el error");
-  assert.ok(/label=\{submitting \? "Guardando…" : "Reintentar"\}/.test(FLOW), "con reintento y sin reentrada");
+  assert.ok(/submitError !== null \?/.test(FLOW), "el paso de cierre debe renderizar el error");
+  assert.ok(/label=\{submitting \? "Guardando…" : "Reintentar"\}/.test(FLOW), "con reintento visible");
 });
 
 // --- El alta normal sigue funcionando ---------------------------------------
@@ -173,7 +174,55 @@ test("el alta normal sigue creando datos natales una vez, y el reintento es idem
   const inner = bloqueDesde(PERSIST, "function useBackendPersistInner()");
   assert.ok(!/Date\.now\(\)/.test(inner), "un valor por llamada rompería la idempotencia");
   assert.ok(!/Math\.random/.test(inner));
-  assert.ok(/birthTimePrecision: input\.birthTime \? "known" : "unknown"/.test(inner), "derivado del input, no del entorno");
+  // Derivado del payload YA VALIDADO, no del entorno: es lo que hace que el
+  // reintento mande el mismo hash y el backend lo trate como idempotente.
+  assert.ok(/birthTimePrecision: payload\.birthTime \? "known" : "unknown"/.test(inner), "derivado del input, no del entorno");
   // Y el flujo canónico sigue llamando a la persistencia del alta.
-  assert.ok(/useBackendPersist\(\)/.test(FLOW));
+  assert.ok(/useOnboardingBirthDataPersist\(\)/.test(FLOW));
+});
+
+// --- Persistencia realmente estricta ----------------------------------------
+// El hook del alta pasaba por un wrapper que atrapaba TODO fallo del backend y
+// resolvía como éxito, así que el catch de `submit` era inalcanzable y el cierre
+// creaba perfil, limpiaba borrador y navegaba sin haber escrito en Convex.
+
+test("el hook del alta propaga el fallo: no queda ningún wrapper que lo trague", () => {
+  assert.ok(
+    !/useBackendPersistSwallowInner/.test(PERSIST),
+    "el wrapper que atrapaba los errores debe estar eliminado, no sólo sin usar"
+  );
+  const hook = bloqueDesde(PERSIST, "export function useOnboardingBirthDataPersist()");
+  assert.ok(/useBackendPersistInner\(\)/.test(hook), "el alta usa la variante estricta");
+  // Y el inner no tiene try/catch propio.
+  const inner = bloqueDesde(PERSIST, "function useBackendPersistInner()");
+  assert.ok(!/catch/.test(inner), "un catch acá volvería a esconder el fallo");
+});
+
+test("sesión no lista RECHAZA en vez de resolver como éxito", () => {
+  const inner = bloqueDesde(PERSIST, "function useBackendPersistInner()");
+  assert.ok(
+    /if \(!isSignedIn\) throw new Error\("ONBOARDING_SESSION_NOT_READY"\)/.test(inner),
+    "la carrera post-verify no puede resolver sin escribir"
+  );
+  assert.ok(!/if \(!isSignedIn\) return;/.test(inner));
+});
+
+test("el payload se valida antes de tocar Convex, sin rellenar faltantes", () => {
+  const inner = bloqueDesde(PERSIST, "function useBackendPersistInner()");
+  const iValida = inner.indexOf("validateBirthPayload(input)");
+  const iEscribe = inner.indexOf("completeBirthData({");
+  assert.ok(iValida !== -1 && iValida < iEscribe, "validar ANTES de escribir");
+  assert.ok(!/"Sin especificar"/.test(inner), "el lugar no se rellena");
+  assert.ok(!/deviceTimezone\(\)/.test(inner), "la zona no sale del dispositivo");
+});
+
+test("el lock de reentrada es un ref sincrónico, no estado de React", () => {
+  const submit = bloqueDesde(FLOW, "const submit = async () => {");
+  const primeras = submit.split("\n").slice(0, 8).join("\n");
+  assert.ok(/submitLock\.current = true/.test(primeras), "el lock se toma en las primeras líneas");
+  assert.ok(
+    !/if \(submitting\) return/.test(submit),
+    "`submitting` es estado: dos taps del mismo render pasarían los dos"
+  );
+  assert.ok(/const submitLock = useRef\(false\)/.test(FLOW));
 });
