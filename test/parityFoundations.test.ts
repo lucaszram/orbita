@@ -39,9 +39,13 @@ test("ninguna ruta importa una pantalla web duplicada", () => {
 test("web y nativo montan el MISMO onboarding de 15 pasos", () => {
   const canonico = readFileSync(join(ROOT, "src/onboarding/OnboardingFlow.tsx"), "utf8");
   assert.match(canonico, /const TOTAL = 15;/, "el flujo canónico debe seguir teniendo 15 pasos");
+  // Las dos rutas llegan al flujo canónico A TRAVÉS del gate compartido, que es
+  // el que impide que una cuenta con datos natales vuelva al alta.
+  const gate = readFileSync(join(ROOT, "src/onboarding/OnboardingGate.tsx"), "utf8");
+  assert.ok(/@\/onboarding\/OnboardingFlow/.test(gate), "el gate debe montar el flujo canónico");
   for (const ruta of ["app/empezar.tsx", "app/onboarding.tsx"]) {
     const s = readFileSync(join(ROOT, ruta), "utf8");
-    assert.ok(/@\/onboarding\/OnboardingFlow/.test(s), `${ruta} no monta el onboarding canónico`);
+    assert.ok(/OnboardingGate/.test(s), `${ruta} no pasa por el gate compartido`);
   }
   assert.throws(
     () => readFileSync(join(ROOT, "src/components/web/orbita-onboarding.tsx"), "utf8"),

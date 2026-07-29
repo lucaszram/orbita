@@ -14,6 +14,9 @@ import { clearDraft, readDraft, writeDraft } from "@/domain/onboardingDraft";
 import { resolveDebugStep } from "@/domain/onboardingDebug";
 import { INTERNAL_TOOLS_ENABLED } from "@/services/internalTools";
 
+import { CTA } from "./components/CTA";
+import { Screen } from "./components/Screen";
+import { Body, Title } from "./components/Type";
 import { AccountScreen } from "./screens/AccountScreen";
 import { AlignScreen } from "./screens/AlignScreen";
 import { BaseChartScreen } from "./screens/BaseChartScreen";
@@ -131,7 +134,10 @@ export function OnboardingFlow() {
   const computeTriad = useOnboardingComputeTriad();
   const [computed, setComputed] = useState<OnboardingChart | undefined>();
   const [retryTick, setRetryTick] = useState(0);
-  const calcFired = useRef(false);
+  // Persistencia del cierre: sin esto un fallo navegaba a la recepción
+  // como si el alta hubiera funcionado.
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState(false);
   const computedSig = useRef<string | null>(null);
   // La sesión se activó EN este flujo (verify/oauth ok): fuente de verdad
   // inmediata, porque useAuth puede seguir stale en el render siguiente.
@@ -199,22 +205,6 @@ export function OnboardingFlow() {
     : `${String(birthTime.hour).padStart(2, "0")}:${String(birthTime.minute).padStart(2, "0")}`;
   const placeShort = birthPlace?.label.split(",")[0] ?? "";
 
-  // Al llegar al preview (paso 14) disparamos el cálculo REAL de la carta una vez.
-  // Con sesión Clerk persiste birthData + carta + primera lectura; sin sesión no
-  // hace nada (persistBackend chequea isSignedIn) y el preview degrada a solo-Sol.
-  useEffect(() => {
-    if (step !== 14 || calcFired.current || !persistBackend) return;
-    calcFired.current = true;
-    void persistBackend({
-      birthDate: birthDateISO,
-      birthTime: timeUnknown ? undefined : timeLabel,
-      birthPlaceLabel: birthPlace?.label,
-      latitude: birthPlace?.latitude,
-      longitude: birthPlace?.longitude,
-      timezone: birthPlace?.timezone,
-    });
-  }, [step, persistBackend, birthDateISO, timeUnknown, timeLabel, birthPlace]);
-
   // Tríada real SIN login: al llegar a "Personalizing"(11) calculamos la carta con
   // el endpoint público, para que el preview muestre Luna/Ascendente reales aunque
   // el usuario no se haya logueado todavía. Requiere lugar (coords del geocoding).
@@ -277,6 +267,8 @@ export function OnboardingFlow() {
   };
 
   const accountOAuth = async (provider: "google" | "apple") => {
+    // Inspección: no se abre un flujo de OAuth ni se activa sesión.
+    if (inspeccion) return;
     if (!account) {
       next();
       return;
@@ -291,7 +283,38 @@ export function OnboardingFlow() {
   const submit = async () => {
     // Inspección visual: ninguna escritura, ni siquiera desde un CTA.
     if (inspeccion) return;
+    // Reentrada: dos taps en "Reintentar" abrirían dos cierres en paralelo.
+    if (submitting) return;
     const birthTimeValue = timeUnknown ? undefined : timeLabel;
+
+    // ÚNICA ruta de persistencia del onboarding, y se ESPERA. Antes había dos:
+    // un efecto al montar el paso 14 (con `void`, sin manejo de error) y otra
+    // acá, también con `void`. Ese efecto sin guarda persistía los valores por
+    // defecto cuando se saltaba directo al paso 14, y el `void` hacía que un
+    // fallo pasara desapercibido mientras el flujo navegaba a la recepción como
+    // si todo hubiera salido bien.
+    if (persistBackend) {
+      setSubmitError(false);
+      setSubmitting(true);
+      try {
+        await persistBackend({
+          birthDate: birthDateISO,
+          birthTime: birthTimeValue,
+          birthPlaceLabel: birthPlace?.label,
+          latitude: birthPlace?.latitude,
+          longitude: birthPlace?.longitude,
+          timezone: birthPlace?.timezone,
+        });
+      } catch {
+        // Nada de perfil local, nada de limpiar el borrador, nada de navegar: la
+        // persona ve el error y puede reintentar sin perder lo cargado.
+        setSubmitError(true);
+        setSubmitting(false);
+        return;
+      }
+      setSubmitting(false);
+    }
+
     // Con sesión activa (alta con cuenta, OAuth o resume=datos post-login) el
     // perfil queda marcado con su dueño: el próximo arranque lo reconoce como
     // propio en vez de mandarlo a reconciliar. Guest → sin dueño. Carrera
@@ -315,21 +338,11 @@ export function OnboardingFlow() {
       owner.ownerUserId,
       owner.adoptWhenReady,
     );
-    // Con sesión Clerk: persistir en Convex en background (no bloquea la entrada).
-    if (persistBackend) {
-      void persistBackend({
-        birthDate: birthDateISO,
-        birthTime: birthTimeValue,
-        birthPlaceLabel: birthPlace?.label,
-        latitude: birthPlace?.latitude,
-        longitude: birthPlace?.longitude,
-        timezone: birthPlace?.timezone,
-      });
-    }
+    // El onboarding terminó: el borrador ya no debe sobrevivir a la sesión.
+    clearDraft();
     // Al salir del onboarding, la primera entrega: la ceremonia de recepción de la
     // carta natal (/recepcion, full-screen, una sola vez). La tríada calculada viaja
     // por params para no depender de que Convex ya haya persistido la carta.
-    clearDraft();
     router.replace({
       pathname: "/recepcion",
       params: {
@@ -494,7 +507,21 @@ export function OnboardingFlow() {
             setRetryTick((t) => t + 1);
           }}
         />
+      ) : submitError ? (
+        // La persistencia falló: se dice, con reintento, y NO se navega a la
+        // recepción. Antes el fallo era invisible (`void persistBackend`) y la
+        // persona entraba a una app sin carta guardada.
+        <Screen bg={undefined}>
+          <View style={styles.closeError}>
+            <Title>No pudimos guardar tu carta.</Title>
+            <Body>
+              Tus datos siguen acá. Puede ser la conexión; probá de nuevo y la guardamos.
+            </Body>
+            <CTA label={submitting ? "Guardando…" : "Reintentar"} onPress={submit} />
+          </View>
+        </Screen>
       ) : (
+        // Cierre en curso (o paywall apagado): carga estable, sin flashear pago.
         <View style={styles.fill} />
       );
       break;
@@ -510,4 +537,5 @@ export function OnboardingFlow() {
 
 const styles = StyleSheet.create({
   fill: { backgroundColor: orbita.bg, flex: 1 },
+  closeError: { flex: 1, gap: 16, justifyContent: "center", paddingHorizontal: 24 },
 });

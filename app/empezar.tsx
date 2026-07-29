@@ -1,9 +1,6 @@
 import { Redirect } from "expo-router";
-import { useQuery } from "convex/react";
-import { OnboardingFlow } from "@/onboarding/OnboardingFlow";
+import { OnboardingGate } from "@/onboarding/OnboardingGate";
 import { WebLoading, WebNotice } from "@/components/web/require-session";
-import { useLiveApp } from "@/hooks/useLiveApp";
-import { appApi } from "@/services/appRefs";
 import { backendConfig } from "@/services/backendProviders";
 
 /**
@@ -31,24 +28,7 @@ export default function EmpezarRoute() {
     );
   }
 
-  return <EmpezarGate />;
-}
-
-/**
- * Una cuenta que YA tiene datos natales no vuelve al alta: el onboarding es
- * create-only (`ONBOARDING_BIRTH_DATA_CONFLICT` del lado del backend) y
- * recorrerlo de nuevo sólo puede terminar en un conflicto o en una
- * sobrescritura. Los cambios intencionales viven en `/editar-datos`.
- */
-function EmpezarGate() {
-  const { isLive, isAuthLoading } = useLiveApp();
-  const birthData = useQuery(appApi.birthData.getCurrent, isLive ? {} : "skip");
-
-  // Mientras la sesión o el dato resuelven no se afirma nada: mostrar el alta y
-  // después redirigir sería un salto delante del usuario.
-  if (isAuthLoading) return <WebLoading />;
-  if (isLive && birthData === undefined) return <WebLoading />;
-  if (isLive && birthData) return <Redirect href="/home" />;
-
-  return <OnboardingFlow />;
+  // El gate es COMPARTIDO con el onboarding nativo: si cada plataforma
+  // tuviera el suyo, volverían a divergir.
+  return <OnboardingGate fallback={<WebLoading />} />;
 }

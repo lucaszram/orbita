@@ -11,6 +11,10 @@ const PERSIST_RAW = readFileSync(join(ROOT, "src/onboarding/useAccount.ts"), "ut
 const PERSIST = PERSIST_RAW.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 const EDITOR = readFileSync(join(ROOT, "app/editar-datos.tsx"), "utf8");
 const EMPEZAR = readFileSync(join(ROOT, "app/empezar.tsx"), "utf8");
+const ONBOARDING = readFileSync(join(ROOT, "app/onboarding.tsx"), "utf8");
+const GATE = readFileSync(join(ROOT, "src/onboarding/OnboardingGate.tsx"), "utf8");
+/** Sin comentarios: varios nombran el patrón viejo a propósito. */
+const FLOW_CODE = FLOW.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 
 /** Cuerpo de un `useEffect`/función a partir de un ancla, balanceando llaves. */
 function bloqueDesde(src: string, ancla: string): string {
@@ -45,6 +49,11 @@ test("montar el paso 14 por debugStep no escribe nada", () => {
   const submit = bloqueDesde(FLOW, "const submit = async () => {");
   const primerasLineas = submit.split("\n").slice(0, 4).join("\n");
   assert.ok(/if \(inspeccion\) return;/.test(primerasLineas), "submit debe cortar en la primera línea");
+});
+
+test("en inspección tampoco se abre OAuth", () => {
+  const oauth = bloqueDesde(FLOW, 'const accountOAuth = async (provider: "google" | "apple") => {');
+  assert.ok(/if \(inspeccion\) return;/.test(oauth.split("\n").slice(0, 4).join("\n")));
 });
 
 test("en inspección no se crea cuenta, ni se calcula carta, ni se pisa el borrador", () => {
@@ -101,11 +110,58 @@ test("la persistencia compartida ya no genera el día con la fecha del dispositi
 
 // --- Una cuenta con datos no vuelve al alta ---------------------------------
 
-test("/empezar redirige a Home si la cuenta ya tiene datos natales", () => {
-  assert.ok(/birthData\.getCurrent/.test(EMPEZAR), "necesita consultar si ya hay datos");
-  assert.ok(/Redirect href="\/home"/.test(EMPEZAR));
+test("web y nativo rechazan una cuenta completa por el MISMO gate", () => {
+  const sinComentarios = (x: string) =>
+    x.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  for (const [nombre, src] of [["app/empezar.tsx", EMPEZAR], ["app/onboarding.tsx", ONBOARDING]] as const) {
+    const codigo = sinComentarios(src);
+    assert.ok(/OnboardingGate/.test(codigo), `${nombre} debe pasar por el gate compartido`);
+    assert.ok(
+      !/OnboardingFlow/.test(codigo),
+      `${nombre} no puede montar el flujo directo: se saltearía el gate`
+    );
+  }
+  assert.ok(/birthData\.getCurrent/.test(GATE), "el gate necesita consultar si ya hay datos");
+  assert.ok(/Redirect href=\{HOME_ROUTE/.test(GATE), "y redirigir a la Home de la plataforma");
   // No se afirma nada mientras resuelve: sin esto habría un salto visible.
-  assert.ok(/birthData === undefined/.test(EMPEZAR) && /isAuthLoading/.test(EMPEZAR));
+  assert.ok(/birthData === undefined/.test(GATE) && /isAuthLoading/.test(GATE));
+});
+
+// --- Una sola ruta de persistencia ------------------------------------------
+// Había DOS escrituras al llegar al paso 14: un efecto al montar (sin guarda de
+// inspección y con `void`, así que un fallo era invisible) y otra en `submit()`.
+// El efecto era el que persistía los valores por defecto en un salto directo.
+
+test("existe exactamente UNA llamada a persistBackend en el flujo", () => {
+  const llamadas = FLOW_CODE.match(/persistBackend\(\{/g) ?? [];
+  assert.equal(llamadas.length, 1, `se esperaba una sola persistencia, hay ${llamadas.length}`);
+});
+
+test("no queda ningún `void persistBackend(...)` ni el ref calcFired", () => {
+  assert.ok(!/void\s+persistBackend/.test(FLOW_CODE), "un `void` esconde el fallo y navega igual");
+  assert.ok(!/calcFired/.test(FLOW_CODE), "el efecto de persistencia del paso 14 debe estar eliminado");
+});
+
+test("la persistencia se ESPERA dentro de submit, antes del perfil y de navegar", () => {
+  const submit = bloqueDesde(FLOW, "const submit = async () => {");
+  const i = submit.indexOf("await persistBackend({");
+  assert.notEqual(i, -1, "la persistencia debe estar dentro de submit y con await");
+  const perfil = submit.indexOf("await createProfile(");
+  const limpiar = submit.indexOf("clearDraft()");
+  const navegar = submit.indexOf("router.replace(");
+  for (const [nombre, pos] of [["createProfile", perfil], ["clearDraft", limpiar], ["router.replace", navegar]] as const) {
+    assert.ok(pos > i, `${nombre} tiene que ir DESPUÉS de esperar la persistencia`);
+  }
+});
+
+test("si la persistencia falla no se crea perfil, no se limpia el borrador y no se navega", () => {
+  const submit = bloqueDesde(FLOW, "const submit = async () => {");
+  const catchBlock = submit.slice(submit.indexOf("} catch {"), submit.indexOf("setSubmitting(false);\n      }"));
+  assert.ok(/setSubmitError\(true\)/.test(catchBlock), "el fallo tiene que ser visible");
+  assert.ok(/return;/.test(catchBlock), "y tiene que cortar el cierre");
+  // Y hay una pantalla de error con reintento.
+  assert.ok(/submitError \?/.test(FLOW), "el paso de cierre debe renderizar el error");
+  assert.ok(/label=\{submitting \? "Guardando…" : "Reintentar"\}/.test(FLOW), "con reintento y sin reentrada");
 });
 
 // --- El alta normal sigue funcionando ---------------------------------------
