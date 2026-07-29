@@ -179,3 +179,30 @@ test("Home y Diario derivan el rango de la fecha canónica del servidor", () => 
     assert.ok(!/\btoLocalDate\(\)/.test(s), `${f} sigue usando el reloj del navegador`);
   }
 });
+
+// --- ImageBackground en react-native-web ------------------------------------
+// Pasar un `imageStyle` propio pisa el sizing por defecto y el <img> queda a su
+// tamaño intrínseco. El fondo del onboarding salía a 393px dentro de un
+// viewport de 318 y desbordaba en móvil. En nativo no se nota, así que sólo
+// aparece cuando la pantalla se sirve en web — justo lo que hace la paridad.
+
+test("todo imageStyle de una pantalla compartida fija tamaño explícito", () => {
+  const compartidas = [
+    ...walk(join(ROOT, "src/screens")),
+    ...walk(join(ROOT, "src/onboarding")),
+    ...walk(join(ROOT, "src/components/orbita")),
+    ...walk(join(ROOT, "src/components/home"))
+  ];
+  const culpables: string[] = [];
+  for (const f of compartidas) {
+    const s = readFileSync(f, "utf8");
+    // `imageStyle={{ ... }}` inline: tiene que declarar width y height.
+    for (const m of s.matchAll(/imageStyle=\{\{([^}]*)\}\}/g)) {
+      const cuerpo = m[1];
+      if (!/width/.test(cuerpo) || !/height/.test(cuerpo)) {
+        culpables.push(`${f.replace(ROOT + "/", "")}: ${cuerpo.trim().slice(0, 60)}`);
+      }
+    }
+  }
+  assert.deepEqual(culpables, [], `imageStyle sin tamaño explícito (desborda en web): ${culpables.join(" | ")}`);
+});

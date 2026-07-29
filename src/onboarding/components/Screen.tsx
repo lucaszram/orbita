@@ -28,7 +28,12 @@ export function Screen({ bg, bgOpacity = 1, wash = 0.55, children }: Props) {
         <ImageBackground
           source={bg}
           style={StyleSheet.absoluteFill}
-          imageStyle={{ opacity: bgOpacity }}
+          // width/height/resizeMode van EXPLÍCITOS en `imageStyle`: en
+          // react-native-web, pasar un imageStyle propio pisa el sizing por
+          // defecto y el <img> queda a su tamaño intrínseco. Acá el fondo salía
+          // a 393px dentro de un viewport de 318 y desbordaba el onboarding en
+          // móvil. En nativo no se nota, por eso nunca apareció.
+          imageStyle={{ height: "100%", opacity: bgOpacity, resizeMode: "cover", width: "100%" }}
           resizeMode="cover"
         >
           <LinearGradient
