@@ -15,14 +15,18 @@ import {
   applyBirthEdits,
   birthSaveGate,
   birthSyncUx,
-  buildBackendBirthPayload,
-  dateToIso,
-  dateToTime,
-  hasBirthChanges,
-  isoToDate,
-  timeToDate,
-  type BirthEdits
+  buildBackendBirthPayload
 } from "@/domain/birthEdits";
+import {
+  birthEditorBlockMessage,
+  birthEditorReadiness,
+  canSaveBirthEditor,
+  draftFromSeed,
+  draftToEdits,
+  resolveBirthEditorSeed,
+  type BirthEditorDraft,
+  type BirthEditorSeed
+} from "@/domain/birthEditorSeed";
 import { useAppState } from "@/hooks/useAppState";
 import { useLiveApp, useLiveAppDocs } from "@/hooks/useLiveApp";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
@@ -43,6 +47,11 @@ import { searchPlaces, type PlaceHit } from "@/services/geocoding";
  * sesión live, persiste al backend (recalcula carta y lectura) preservando
  * las coordenadas remotas si el lugar no cambió. Nunca pasa por el splash,
  * el onboarding ni pide cuenta.
+ *
+ * De dónde salen los valores iniciales: `resolveBirthEditorSeed`. Con sesión,
+ * SOLO del documento remoto — nunca del perfil local, ni de una fecha fija, ni
+ * de la zona del aparato, ni de un mediodía inventado. Hasta que el remoto
+ * resuelve no hay formulario: hay carga o reintento, y cero escrituras.
  */
 // Tope de la espera del birthData remoto antes de ofrecer reintento.
 const SYNC_REMOTE_TIMEOUT_MS = 10000;
@@ -51,16 +60,17 @@ export default function EditarDatosRoute() {
   const router = useRouter();
   const fontsLoaded = useOrbitaFonts();
   const { isReady, profile, updateProfile } = useAppState();
-  const { isLive, auth, retryUser } = useLiveApp();
+  const { isLive, isAuthLoading, auth, retryUser } = useLiveApp();
   const { birthData: remoteBirthData, birthDataResolved } = useLiveAppDocs(isLive);
   // Editar datos usa el endpoint de PERFIL: `completeBirthData` es create-only
   // y rechazaría un cambio con ONBOARDING_BIRTH_DATA_CONFLICT.
   const persistBackend = useProfileBirthDataPersist();
+  const signedIn = !!auth?.isSignedIn;
 
-  const [date, setDate] = useState<Date>(() => isoToDate(profile?.birthDate ?? "1996-01-15"));
-  const [time, setTime] = useState<Date>(() => timeToDate(profile?.birthTime));
-  const [timeUnknown, setTimeUnknown] = useState(() => !profile?.birthTime);
-  const [pickedPlace, setPickedPlace] = useState<PlaceHit | null>(null);
+  // La semilla se congela una vez, cuando el origen autoritativo resuelve. El
+  // borrador se compara SIEMPRE contra ella: es el dato real de la persona.
+  const [seed, setSeed] = useState<BirthEditorSeed | null>(null);
+  const [draft, setDraft] = useState<BirthEditorDraft | null>(null);
   const [placeQuery, setPlaceQuery] = useState("");
   const [placeHits, setPlaceHits] = useState<PlaceHit[]>([]);
   const [saving, setSaving] = useState(false);
@@ -75,10 +85,12 @@ export default function EditarDatosRoute() {
   // recalcularía la carta con la timezone del teléfono (mal para nacidos en
   // otra zona). El invitado no espera nada. La espera NUNCA es infinita:
   // pasado el timeout se muestra error con reintento (Convex caído, etc.).
-  const gate = birthSaveGate({
-    signedIn: !!auth?.isSignedIn,
-    remoteResolved: birthDataResolved
-  });
+  // La identidad todavía sin confirmar espera igual que un remoto sin resolver:
+  // no se puede afirmar todavía si esta persona tiene cuenta o es invitada, así
+  // que tampoco de dónde salen sus datos.
+  const gate = isAuthLoading
+    ? "wait-remote"
+    : birthSaveGate({ signedIn, remoteResolved: birthDataResolved });
   const syncState = birthSyncUx(gate, syncTimedOut);
 
   // La espera del birthData remoto tiene tope: si Convex no conecta o la
@@ -100,17 +112,29 @@ export default function EditarDatosRoute() {
     setSyncTick((t) => t + 1);
   };
 
-  // Si la ruta se montó antes de hidratar el perfil (deep link), precargar
-  // los campos cuando aparece: nunca dejar defaults que pisen datos reales.
-  const initializedFor = useRef<string | null>(profile?.id ?? null);
+  // Origen autoritativo de los valores iniciales. Se recalcula en cada render
+  // (es puro) pero se SIEMBRA una sola vez: una vez abierto el formulario, un
+  // cambio remoto no puede pisar lo que la persona está tipeando.
+  const seedState = useMemo(
+    () =>
+      resolveBirthEditorSeed({
+        authLoading: isAuthLoading,
+        signedIn,
+        remoteResolved: birthDataResolved,
+        remote: remoteBirthData,
+        // El perfil local es semilla SOLO de invitado; con sesión se ignora.
+        profile: profile ? { birthDate: profile.birthDate, birthTime: profile.birthTime, birthPlace: profile.birthPlace } : null
+      }),
+    [isAuthLoading, signedIn, birthDataResolved, remoteBirthData, profile]
+  );
+
+  const seeded = useRef(false);
   useEffect(() => {
-    if (!profile || initializedFor.current === profile.id) return;
-    initializedFor.current = profile.id;
-    setDate(isoToDate(profile.birthDate));
-    setTime(timeToDate(profile.birthTime));
-    setTimeUnknown(!profile.birthTime);
-    setPickedPlace(null);
-  }, [profile]);
+    if (seeded.current || seedState.status !== "ready") return;
+    seeded.current = true;
+    setSeed(seedState.seed);
+    setDraft(draftFromSeed(seedState.seed));
+  }, [seedState]);
 
   // Búsqueda de lugar (Photon, igual que el onboarding) con debounce.
   useEffect(() => {
@@ -131,35 +155,25 @@ export default function EditarDatosRoute() {
     };
   }, [placeQuery]);
 
-  const edits: BirthEdits = useMemo(
-    () => ({
-      birthDate: dateToIso(date),
-      birthTime: timeUnknown ? null : dateToTime(time),
-      place: pickedPlace
-        ? {
-            label: pickedPlace.label,
-            latitude: pickedPlace.latitude,
-            longitude: pickedPlace.longitude,
-            timezone: pickedPlace.timezone,
-            changed: true
-          }
-        : { label: profile?.birthPlace ?? "", changed: false }
-    }),
-    [date, time, timeUnknown, pickedPlace, profile?.birthPlace]
-  );
+  const readiness = birthEditorReadiness({ sync: syncState, seed, draft });
+  const blockMessage = birthEditorBlockMessage(readiness);
 
   if (!fontsLoaded) return <View style={styles.fill} />;
   if (isReady && !profile) return <Redirect href="/" />;
   if (!profile) return <View style={styles.fill} />;
 
-  const dirty = hasBirthChanges(profile, edits);
+  const patchDraft = (patch: Partial<BirthEditorDraft>) =>
+    setDraft((current) => (current ? { ...current, ...patch } : current));
 
   const save = async () => {
-    if (!dirty || saving || syncState !== "ready") return;
+    if (!draft || saving || !canSaveBirthEditor(readiness)) return;
+    // Último borde: si al borrador le falta algo, no se completa nada por él.
+    const edits = draftToEdits(draft);
+    if (!edits) return;
     setSaving(true);
     setSaveError(null);
     try {
-      if (auth?.isSignedIn && persistBackend) {
+      if (signedIn && persistBackend) {
         // Con sesión: esperar la confirmación del backend (recalcula carta y
         // lectura) ANTES de aplicar nada. Si falla, no se guarda ni local:
         // queda el error con reintento y los datos siguen consistentes.
@@ -210,58 +224,98 @@ export default function EditarDatosRoute() {
         <Title>Tus datos{"\n"}de nacimiento.</Title>
         <Body style={styles.sub}>Afinan toda la lectura. Guardá solo si cambiaste algo.</Body>
 
-        {/* Una interfaz, dos implementaciones: rueda nativa y control del
-            navegador en web. Las dos escriben el MISMO `date`. */}
-        <BirthDateField value={date} onChange={setDate} />
+        {/* Sin semilla no hay formulario: mostrar campos antes de que resuelva
+            el origen autoritativo obliga a rellenarlos con algo, y ese algo
+            sería inventado. Carga o reintento, y cero escrituras. */}
+        {draft === null ? (
+          <View style={styles.loadingBlock}>
+            {readiness === "retry-remote" ? (
+              <Body accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.saveError}>
+                {blockMessage}
+              </Body>
+            ) : (
+              <Body accessibilityLiveRegion="polite">Cargando tus datos de nacimiento…</Body>
+            )}
+          </View>
+        ) : (
+          <>
+            {/* Una interfaz, dos implementaciones: rueda nativa y controles del
+                navegador (`<input type="date">` / `type="time"`) en web. Las
+                dos escriben los MISMOS strings del dominio. */}
+            <BirthDateField
+              value={draft.birthDate}
+              onChange={(next) => patchDraft({ birthDate: next })}
+            />
 
-        <View style={styles.timeRow}>
-          <Label>Hora</Label>
-          <Pressable
-            onPress={() => setTimeUnknown((v) => !v)}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="No sé la hora"
-          >
-            <View style={[styles.toggle, timeUnknown && styles.toggleOn]}>
-              <Text style={[styles.toggleText, timeUnknown && styles.toggleTextOn]}>
-                {timeUnknown ? "✓ No sé la hora" : "No sé la hora"}
-              </Text>
+            <View style={styles.timeRow}>
+              <Label>Hora</Label>
+              <Pressable
+                // Sólo cambia el interruptor. Al apagarlo NO se propone un
+                // mediodía: si no había hora, el campo queda vacío y Guardar
+                // sigue bloqueado hasta que la persona elija una.
+                onPress={() => patchDraft({ timeUnknown: !draft.timeUnknown })}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="No sé la hora"
+              >
+                <View style={[styles.toggle, draft.timeUnknown && styles.toggleOn]}>
+                  <Text style={[styles.toggleText, draft.timeUnknown && styles.toggleTextOn]}>
+                    {draft.timeUnknown ? "✓ No sé la hora" : "No sé la hora"}
+                  </Text>
+                </View>
+              </Pressable>
             </View>
-          </Pressable>
-        </View>
-        <BirthTimeField value={time} onChange={setTime} disabled={timeUnknown} />
-        {timeUnknown ? (
-          <Body style={styles.noTimeNote}>Usamos una carta aproximada, sin Ascendente exacto.</Body>
-        ) : null}
+            <BirthTimeField
+              value={draft.birthTime}
+              onChange={(next) => patchDraft({ birthTime: next })}
+              disabled={draft.timeUnknown}
+            />
+            {draft.timeUnknown ? (
+              <Body style={styles.noTimeNote}>Usamos una carta aproximada, sin Ascendente exacto.</Body>
+            ) : null}
 
-        <Label style={styles.fieldLabel}>Lugar</Label>
-        <Body style={styles.placeCurrent}>{edits.place.label || "Sin especificar"}</Body>
-        <TextInput
-          value={placeQuery}
-          onChangeText={setPlaceQuery}
-          placeholder="Buscar otra ciudad…"
-          placeholderTextColor={orbita.faint}
-          autoCapitalize="none"
-          autoCorrect={false}
-          style={styles.input}
-        />
-        <View style={styles.inputLine} />
-        {placeHits.map((hit) => (
-          <Pressable
-            key={hit.label}
-            onPress={() => {
-              setPickedPlace(hit);
-              setPlaceQuery("");
-              setPlaceHits([]);
-            }}
-            style={styles.hit}
-            accessibilityRole="button"
-          >
-            <Text style={styles.hitText}>{hit.label}</Text>
-          </Pressable>
-        ))}
+            <Label style={styles.fieldLabel}>Lugar</Label>
+            <Body style={styles.placeCurrent}>
+              {draft.place.label || "Todavía no elegiste tu lugar de nacimiento."}
+            </Body>
+            <TextInput
+              value={placeQuery}
+              onChangeText={setPlaceQuery}
+              placeholder="Buscar otra ciudad…"
+              placeholderTextColor={orbita.faint}
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={styles.input}
+            />
+            <View style={styles.inputLine} />
+            {placeHits.map((hit) => (
+              <Pressable
+                key={hit.label}
+                onPress={() => {
+                  // Sólo una elección real del autocompletado cambia el lugar:
+                  // trae etiqueta, coordenadas y zona juntas.
+                  patchDraft({
+                    place: {
+                      label: hit.label,
+                      latitude: hit.latitude,
+                      longitude: hit.longitude,
+                      timezone: hit.timezone,
+                      changed: true
+                    }
+                  });
+                  setPlaceQuery("");
+                  setPlaceHits([]);
+                }}
+                style={styles.hit}
+                accessibilityRole="button"
+              >
+                <Text style={styles.hitText}>{hit.label}</Text>
+              </Pressable>
+            ))}
 
-        <View style={styles.spacer} />
+            <View style={styles.spacer} />
+          </>
+        )}
 
         {/* `alert` + región viva: un lector de pantalla anuncia el fallo sin que
             la persona tenga que ir a buscarlo. Los valores tipeados quedan tal
@@ -275,26 +329,27 @@ export default function EditarDatosRoute() {
             {saveError}
           </Body>
         ) : null}
-        {syncState === "retry" ? (
-          <Body accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.saveError}>
-            No pudimos sincronizar los datos de tu cuenta. No cambiamos nada; podés reintentar o
-            cancelar.
+        {/* Qué falta para poder guardar, dicho en el mismo lugar donde se
+            resuelve. Sin esto, un Guardar deshabilitado no se explica. */}
+        {draft !== null && blockMessage !== null ? (
+          <Body accessibilityLiveRegion="polite" style={styles.blockNote}>
+            {blockMessage}
           </Body>
         ) : null}
         <CTA
           label={
             saving
               ? "Guardando…"
-              : syncState === "waiting"
+              : readiness === "loading-remote"
                 ? "Sincronizando tus datos…"
-                : syncState === "retry"
+                : readiness === "retry-remote"
                   ? "Reintentar sincronización"
                   : saveError !== null
                     ? "Reintentar"
                     : "Guardar cambios"
           }
-          onPress={syncState === "retry" ? retrySync : save}
-          disabled={saving || syncState === "waiting" || (syncState === "ready" && !dirty)}
+          onPress={readiness === "retry-remote" ? retrySync : save}
+          disabled={saving || (readiness !== "retry-remote" && !canSaveBirthEditor(readiness))}
         />
         <Pressable
           onPress={() => router.back()}
@@ -312,6 +367,7 @@ export default function EditarDatosRoute() {
 
 const styles = StyleSheet.create({
   backBtn: { alignItems: "flex-start", height: 30, justifyContent: "center", width: 28 },
+  blockNote: { color: orbita.muted, marginBottom: 12 },
   body: { flexGrow: 1, paddingBottom: 48, paddingHorizontal: GUTTER, paddingTop: 18 },
   cancelRow: { alignItems: "center", marginTop: 16, paddingBottom: 10 },
   cancelText: { color: orbita.faint, fontFamily: font.sans, fontSize: 14 },
@@ -329,8 +385,8 @@ const styles = StyleSheet.create({
     paddingVertical: 6
   },
   inputLine: { backgroundColor: orbita.lineStrong, height: 1, marginTop: 4 },
+  loadingBlock: { paddingVertical: 40 },
   noTimeNote: { marginTop: 8 },
-  picker: { alignSelf: "center" },
   placeCurrent: { marginTop: 6 },
   saveError: { color: "#D07A5A", marginBottom: 12 },
   spacer: { height: 24 },

@@ -5,11 +5,7 @@ import {
   birthSaveGate,
   birthSyncUx,
   buildBackendBirthPayload,
-  dateToIso,
-  dateToTime,
   hasBirthChanges,
-  isoToDate,
-  timeToDate,
   type BirthEdits
 } from "../src/domain/birthEdits";
 import type { UserProfile } from "../src/domain/types";
@@ -152,18 +148,5 @@ describe("birthSyncUx — la espera del remoto nunca es infinita", () => {
   it("remoto resuelto → ready, aunque antes haya vencido el tope", () => {
     assert.equal(birthSyncUx("ok", false), "ready");
     assert.equal(birthSyncUx("ok", true), "ready");
-  });
-});
-
-describe("helpers fecha/hora del editor", () => {
-  it("iso ↔ Date roundtrip estable (sin corrimiento de timezone)", () => {
-    assert.equal(dateToIso(isoToDate("1996-01-15")), "1996-01-15");
-    assert.equal(dateToIso(isoToDate("2002-12-31")), "2002-12-31");
-  });
-
-  it("hora ↔ Date roundtrip", () => {
-    assert.equal(dateToTime(timeToDate("08:05")), "08:05");
-    assert.equal(dateToTime(timeToDate("23:59")), "23:59");
-    assert.equal(dateToTime(timeToDate(undefined)), "12:00");
   });
 });
