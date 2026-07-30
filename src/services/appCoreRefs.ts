@@ -18,7 +18,11 @@ import type { FunctionReference } from "convex/server";
  *   - Perfil             → `users.current`, `subscriptions.getCurrent`
  *
  * Este archivo agrega SOLO lo nuevo del app core: Vínculo (sinastría) y
- * Calendario/lunar. Mientras no existan, `src/domain/appData.ts` es el mock tipado.
+ * Calendario/lunar. Mientras no existan, la pantalla no muestra nada: el mock
+ * tipado que las alimentaba (`src/domain/appData.ts` + `src/content/chartMock.ts`)
+ * se eliminó. Fabricaba tránsitos ("Venus armoniza tu Sol en Leo") a partir de
+ * una carta de demo y de un perfil de relleno, y era alcanzable desde el Perfil
+ * de una cuenta real: contenido inventado presentado como dato personal.
  */
 
 // ---------------------------------------------------------------------------

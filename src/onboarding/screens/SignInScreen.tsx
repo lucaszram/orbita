@@ -124,6 +124,7 @@ export function SignInScreen({ flow, onSignedIn, onCreateAccount, onBack }: Prop
                 <TextInput
                   value={password}
                   onChangeText={setPassword}
+                  accessibilityLabel="Contraseña"
                   placeholder="Tu contraseña"
                   placeholderTextColor={orbita.faint}
                   autoCapitalize="none"
@@ -140,6 +141,7 @@ export function SignInScreen({ flow, onSignedIn, onCreateAccount, onBack }: Prop
                 <TextInput
                   value={email}
                   onChangeText={setEmail}
+                  accessibilityLabel="Email de tu cuenta"
                   placeholder="tu@email.com"
                   placeholderTextColor={orbita.faint}
                   autoCapitalize="none"
@@ -154,7 +156,11 @@ export function SignInScreen({ flow, onSignedIn, onCreateAccount, onBack }: Prop
             )}
           </>
         ) : null}
-        {flow.error ? <Text style={styles.error}>{flow.error}</Text> : null}
+        {flow.error ? (
+          <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.error}>
+            {flow.error}
+          </Text>
+        ) : null}
 
         <View style={styles.primary}>
           <CTA label={ctaLabel} onPress={busy ? () => undefined : () => void submit()} />

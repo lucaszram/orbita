@@ -5,7 +5,7 @@ import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "convex/react";
-import { MeasuredSquare } from "@/components/orbita/ContentCanvas";
+import { ContentCanvas, MeasuredSquare } from "@/components/orbita/ContentCanvas";
 import { NatalWheel } from "@/components/orbita/NatalWheel";
 import { GuestState } from "@/components/orbita/GuestState";
 import { EmptyState, ErrorState, LoadingState, MinimalLoading } from "@/components/orbita/states";
@@ -107,6 +107,8 @@ function Frame({ children }: { children: React.ReactNode }) {
           hitSlop={12}
           accessibilityRole="button"
           accessibilityLabel="Cerrar"
+          // 44px reales: `hitSlop` no existe en web.
+          style={styles.closeBtn}
         >
           <Text style={styles.close}>✕</Text>
         </Pressable>
@@ -141,9 +143,11 @@ function CartaFullView({ payload }: { payload: NatalChartPayload }) {
         showsVerticalScrollIndicator={false}
       >
         {/* El lado sale del contenedor medido, nunca del ancho de la ventana. */}
-        <MeasuredSquare max={380}>
-          {(size) => <NatalWheel payload={payload} size={size} selectedKey={selected} onSelect={setSelected} />}
-        </MeasuredSquare>
+        <ContentCanvas>
+          <MeasuredSquare max={380}>
+            {(size) => <NatalWheel payload={payload} size={size} selectedKey={selected} onSelect={setSelected} />}
+          </MeasuredSquare>
+        </ContentCanvas>
       </ScrollView>
 
       <View style={[styles.triadBar, { paddingBottom: insets.bottom + orbita.spacing.lg }]}>
@@ -160,6 +164,7 @@ const styles = StyleSheet.create({
   screen: { backgroundColor: orbita.colors.background, flex: 1 },
   bg: { ...StyleSheet.absoluteFillObject, height: "100%", opacity: 0.4, width: "100%" },
   topbar: { alignItems: "flex-end", paddingHorizontal: orbita.spacing.gutter, position: "absolute", right: 0, top: 0, zIndex: 10 },
+  closeBtn: { alignItems: "center", justifyContent: "center", minHeight: 44, minWidth: 44 },
   close: { color: orbita.colors.bone, fontFamily: orbita.fonts.body, fontSize: 22 },
 
   hint: { alignItems: "center", gap: orbita.spacing.xs, paddingTop: orbita.spacing.xxl * 2 },

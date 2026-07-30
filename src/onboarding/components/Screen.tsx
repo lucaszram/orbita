@@ -8,6 +8,8 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { ContentCanvas } from "@/components/orbita/ContentCanvas";
+
 import { orbita } from "../theme";
 
 type Props = {
@@ -20,7 +22,15 @@ type Props = {
   children: ReactNode;
 };
 
-/** Dark immersive screen shell: full-bleed asset + legibility wash + safe area. */
+/**
+ * Dark immersive screen shell: full-bleed asset + legibility wash + safe area.
+ *
+ * El fondo sigue siendo full-bleed (es atmósfera); el CONTENIDO viaja en el
+ * lienzo compartido. Los quince pasos del alta, el login, la recuperación y el
+ * editor de datos montan este shell, así que en escritorio ninguno estira sus
+ * CTAs (`alignSelf: stretch`) ni sus párrafos a lo ancho de la ventana. En un
+ * teléfono el tope de 720 nunca se alcanza: el nativo queda igual.
+ */
 export function Screen({ bg, bgOpacity = 1, wash = 0.55, children }: Props) {
   return (
     <View style={styles.root}>
@@ -48,7 +58,9 @@ export function Screen({ bg, bgOpacity = 1, wash = 0.55, children }: Props) {
           />
         </ImageBackground>
       ) : null}
-      <SafeAreaView style={styles.safe}>{children}</SafeAreaView>
+      <SafeAreaView style={styles.safe}>
+        <ContentCanvas fill>{children}</ContentCanvas>
+      </SafeAreaView>
     </View>
   );
 }

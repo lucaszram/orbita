@@ -108,6 +108,7 @@ export function AccountScreen({
             <TextInput
               value={email}
               onChangeText={onEmail}
+              accessibilityLabel="Email"
               placeholder="tu@email.com"
               placeholderTextColor={orbita.faint}
               autoCapitalize="none"
@@ -122,6 +123,7 @@ export function AccountScreen({
             <TextInput
               value={password}
               onChangeText={onPassword}
+              accessibilityLabel="Contraseña"
               placeholder="Al menos 8 caracteres"
               placeholderTextColor={orbita.faint}
               autoCapitalize="none"
@@ -136,6 +138,7 @@ export function AccountScreen({
             <TextInput
               value={confirmPassword}
               onChangeText={onConfirmPassword}
+              accessibilityLabel="Repetir contraseña"
               placeholder="Repetí la contraseña"
               placeholderTextColor={orbita.faint}
               autoCapitalize="none"
@@ -148,7 +151,13 @@ export function AccountScreen({
             <View style={styles.inputLine} />
           </>
         )}
-        {shownError ? <Text style={styles.error}>{shownError}</Text> : null}
+        {shownError ? (
+          /* `alert` + región viva: un lector de pantalla anuncia el fallo sin
+             que la persona tenga que ir a buscarlo. */
+          <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.error}>
+            {shownError}
+          </Text>
+        ) : null}
 
         <View style={styles.primary}>
           <CTA label={ctaLabel} onPress={account?.busy ? () => undefined : () => onNext()} />

@@ -49,3 +49,37 @@
     --ring: 19 51% 50%;
   }
 }
+
+/**
+ * Foco visible en web.
+ *
+ * react-native-web pone `outline: none` en todo lo enfocable (en nativo el foco
+ * no existe), así que se podía recorrer la app entera con el tabulador sin ver
+ * NUNCA dónde estabas: los botones, los links de la navegación y los campos no
+ * daban ninguna señal. `:focus-visible` sólo se dispara con teclado, así que el
+ * cobre no aparece al tocar ni al hacer click.
+ *
+ * Va fuera de `@layer base` a propósito: tiene que ganarle al reset en línea de
+ * react-native-web sin depender del orden de las capas de Tailwind.
+ */
+:focus-visible {
+  outline: 2px solid rgb(214 154 106);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/**
+ * Menos movimiento. Las animaciones con estado propio se apagan desde el código
+ * (`useReducedMotion`); esto cubre lo que anima el navegador —transiciones de
+ * react-native-web, `scroll-behavior`— sin tener que enumerarlo.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

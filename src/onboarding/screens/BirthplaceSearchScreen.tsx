@@ -113,6 +113,7 @@ export function BirthplaceSearchScreen({ step, query, onQuery, onSelect, onBack 
           <TextInput
             value={query}
             onChangeText={onQuery}
+            accessibilityLabel="Tu ciudad de nacimiento"
             placeholder="Escribí tu ciudad"
             placeholderTextColor={orbita.faint}
             autoCorrect={false}

@@ -93,6 +93,7 @@ export function SignUpGateScreen({
               <TextInput
                 value={email}
                 onChangeText={setEmail}
+                accessibilityLabel="Email"
                 autoCapitalize="none"
                 autoComplete="email"
                 keyboardType="email-address"
@@ -106,6 +107,7 @@ export function SignUpGateScreen({
               <TextInput
                 value={password}
                 onChangeText={setPassword}
+                accessibilityLabel="Contraseña"
                 autoCapitalize="none"
                 autoComplete="new-password"
                 secureTextEntry
@@ -117,6 +119,7 @@ export function SignUpGateScreen({
               <TextInput
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
+                accessibilityLabel="Repetir contraseña"
                 autoCapitalize="none"
                 autoComplete="new-password"
                 secureTextEntry
@@ -126,7 +129,11 @@ export function SignUpGateScreen({
           </>
         )}
 
-        {shownError ? <Body style={styles.error}>{shownError}</Body> : null}
+        {shownError ? (
+          <Body accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.error}>
+            {shownError}
+          </Body>
+        ) : null}
 
         <View style={styles.spacer} />
         <CTA

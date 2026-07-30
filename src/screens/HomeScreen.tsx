@@ -20,6 +20,7 @@ import {
   TopicsSection
 } from "@/components/home/sections";
 import { useMutation, useQuery } from "convex/react";
+import { ContentCanvas } from "@/components/orbita/ContentCanvas";
 import { Eyebrow, InsightRow, Section } from "@/components/orbita/kit";
 import { GuestState } from "@/components/orbita/GuestState";
 import { useNotify } from "@/components/orbita/ConfirmHost";
@@ -221,6 +222,10 @@ export function HomeScreen() {
         contentContainerStyle={{ paddingTop: insets.top, paddingBottom: insets.bottom + orbita.spacing.xxl }}
         showsVerticalScrollIndicator={false}
       >
+        {/* Mismo lienzo que el resto de la app autenticada: ancho completo con
+            las gutters nativas en móvil, columna centrada de 720 en escritorio.
+            El fondo (`HomeBackdrop`) queda full-bleed detrás. */}
+        <ContentCanvas>
         <HomeHeader />
         {/* La recepción de la carta natal ya no es un banner acá: es la ceremonia
             full-screen (/recepcion) a la que el onboarding entra antes de la Home. */}
@@ -375,6 +380,7 @@ export function HomeScreen() {
             onPress={() => router.push("/reading/valores")}
           />
         </Section>
+        </ContentCanvas>
       </ScrollView>
     </View>
   );

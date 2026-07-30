@@ -4,10 +4,11 @@
  * Vivía dentro de `app/reading/valores.tsx`, así que la web mantenía su propia
  * versión en paralelo y las dos derivaban.
  */
-import { StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { useQuery } from "convex/react";
 import { DetailScreen } from "@/components/home/DetailScreen";
+import { MeasuredSquare } from "@/components/orbita/ContentCanvas";
 import { H2, Note } from "@/components/orbita/kit";
 import { GuestState } from "@/components/orbita/GuestState";
 import { EmptyState, ErrorState, LoadingState, MinimalLoading } from "@/components/orbita/states";
@@ -91,15 +92,15 @@ function MiniBar({ value, color }: { value: number; color: string }) {
 }
 
 function ValoresView({ payload }: { payload: ValuesMapPayload }) {
-  const { width } = useWindowDimensions();
-  const size = Math.min(width - orbita.spacing.gutter * 2, 345);
-
   return (
     <DetailScreen eyebrow="Mapa de valores">
       <H2>Qué te impulsa,{"\n"}qué te pesa.</H2>
 
+      {/* El lado sale del contenedor MEDIDO, no de `useWindowDimensions()`: en
+          web el ancho de la ventana no es el ancho de esta columna, así que el
+          radar salía enorme a 700px y clavado en el tope a 1400px. */}
       <View style={styles.radarWrap}>
-        <Radar payload={payload} size={size} />
+        <MeasuredSquare max={345}>{(size) => <Radar payload={payload} size={size} />}</MeasuredSquare>
       </View>
 
       <View style={styles.legend}>

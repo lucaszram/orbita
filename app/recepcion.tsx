@@ -5,7 +5,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "convex/react";
 import { HomeBackdrop } from "@/components/home/HomeBackdrop";
-import { MeasuredSquare } from "@/components/orbita/ContentCanvas";
+import { ContentCanvas, MeasuredSquare } from "@/components/orbita/ContentCanvas";
 import { bodyCode } from "@/domain/astroSymbols";
 import { NatalWheel } from "@/components/orbita/NatalWheel";
 import { mapNatalChart } from "@/domain/natalChart";
@@ -104,12 +104,16 @@ export default function RecepcionScreen() {
       <HomeBackdrop />
       <StatusBar style="light" />
       <ScrollView
-        contentContainerStyle={[
-          styles.content,
-          { paddingTop: insets.top + orbita.spacing.xxl, paddingBottom: insets.bottom + orbita.spacing.xxl }
-        ]}
+        contentContainerStyle={{
+          paddingTop: insets.top + orbita.spacing.xxl,
+          paddingBottom: insets.bottom + orbita.spacing.xxl
+        }}
         showsVerticalScrollIndicator={false}
       >
+        {/* Las gutters van DENTRO del lienzo, como en el resto de la app: así
+            la columna mide lo mismo acá que en la Carta o en la Home. */}
+        <ContentCanvas>
+        <View style={styles.content}>
         {/* El lado sale del contenedor medido, nunca del ancho de la ventana.
             El inset conserva el aire lateral que tenía la recepción. */}
         <View style={styles.wheelWrap}>
@@ -150,6 +154,8 @@ export default function RecepcionScreen() {
         >
           <Text style={styles.laterLabel}>VER DESPUÉS</Text>
         </Pressable>
+        </View>
+        </ContentCanvas>
       </ScrollView>
     </View>
   );

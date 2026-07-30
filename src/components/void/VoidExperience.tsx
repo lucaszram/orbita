@@ -7,6 +7,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAction, useQuery } from "convex/react";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
 import { useLiveApp } from "@/hooks/useLiveApp";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
+import { ContentCanvas } from "@/components/orbita/ContentCanvas";
 import { GuestState } from "@/components/orbita/GuestState";
 import { ErrorState, MinimalLoading } from "@/components/orbita/states";
 import { sessionPhase } from "@/domain/screenPhase";
@@ -144,6 +146,10 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
   // REINTENTAR, jamás el oráculo de maqueta como si fuera la respuesta.
   const [askFailed, setAskFailed] = useState(false);
   const pulse = useRef(new Animated.Value(0.4)).current;
+  // El pulso late hasta que llega la respuesta: es la única animación de Órbita
+  // que no termina sola, así que es la que la preferencia de menos movimiento
+  // tiene que poder apagar.
+  const reducedMotion = useReducedMotion();
 
   const question = typed.trim() || DEFAULT_QUESTION;
   const activeCategory = categories.find((c) => c.key === category) ?? categories[0];
@@ -174,13 +180,18 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
 
   useEffect(() => {
     if (phase !== "escuchando") return;
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 900, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 0.4, duration: 900, useNativeDriver: true })
-      ])
-    );
-    loop.start();
+    // Con la preferencia activa el punto queda encendido y quieto: la espera se
+    // sigue leyendo (el texto lo dice) sin un latido que no se pidió.
+    const loop = reducedMotion
+      ? null
+      : Animated.loop(
+          Animated.sequence([
+            Animated.timing(pulse, { toValue: 1, duration: 900, useNativeDriver: true }),
+            Animated.timing(pulse, { toValue: 0.4, duration: 900, useNativeDriver: true })
+          ])
+        );
+    if (loop) loop.start();
+    else pulse.setValue(1);
     let cancelled = false;
 
     // Respuesta real; si la action falla → estado de error real con reintento.
@@ -200,9 +211,9 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
       });
     return () => {
       cancelled = true;
-      loop.stop();
+      loop?.stop();
     };
-  }, [phase, pulse, ask, question]);
+  }, [phase, pulse, ask, question, reducedMotion]);
 
   if (!fontsLoaded) return <View style={styles.screen} />;
 
@@ -217,20 +228,28 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
       />
 
       {showBack && phase !== "escuchando" ? (
-        <View style={[styles.topbar, { paddingTop: insets.top + orbita.spacing.sm }]}>
-          <Pressable
-            onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)"))}
-            hitSlop={12}
-            accessibilityRole="button"
-          >
-            <Text style={styles.back}>←</Text>
-          </Pressable>
+        <View style={{ paddingTop: insets.top + orbita.spacing.sm }}>
+          <ContentCanvas>
+            <View style={styles.topbar}>
+              <Pressable
+                onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)"))}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel="Volver"
+                // 44px reales: `hitSlop` no existe en web.
+                style={styles.backBtn}
+              >
+                <Text style={styles.back}>←</Text>
+              </Pressable>
+            </View>
+          </ContentCanvas>
         </View>
       ) : (
         <View style={{ paddingTop: insets.top + orbita.spacing.xl }} />
       )}
 
       {phase === "entrada" ? (
+        <ContentCanvas fill>
         <View style={styles.entrada}>
           <View style={styles.entradaHead}>
             <Text style={styles.eyebrow}>EL UMBRAL</Text>
@@ -283,6 +302,9 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
               onChangeText={setTyped}
               placeholder="Preguntá lo que quieras"
               placeholderTextColor={orbita.colors.muted}
+              // El placeholder no es una etiqueta: desaparece al tipear y un
+              // lector de pantalla no tiene después qué anunciar.
+              accessibilityLabel="Tu pregunta para el Umbral"
               style={styles.askInput}
               returnKeyType="send"
               onSubmitEditing={() => askQuestion(question)}
@@ -297,9 +319,11 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
             </Pressable>
           </View>
         </View>
+        </ContentCanvas>
       ) : null}
 
       {phase === "escuchando" ? (
+        <ContentCanvas fill>
         <View style={styles.center}>
           <View style={styles.listenZone}>
             <Animated.View style={[styles.ring, { opacity: pulse }]} />
@@ -310,9 +334,11 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
           <View style={{ height: orbita.spacing.xl }} />
           <Text style={styles.eyebrow}>EL UMBRAL ESTÁ ESCUCHANDO</Text>
         </View>
+        </ContentCanvas>
       ) : null}
 
       {phase === "respuesta" && locked ? (
+        <ContentCanvas fill>
         <View style={styles.center}>
           <Text style={styles.eyebrow}>EL UMBRAL · POR HOY</Text>
           <View style={{ height: orbita.spacing.xxl }} />
@@ -323,7 +349,9 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
             <Text style={styles.footnote}>El Umbral no contesta sí o no.</Text>
           </View>
         </View>
+        </ContentCanvas>
       ) : phase === "respuesta" && askFailed ? (
+        <ContentCanvas fill>
         <View style={styles.center}>
           <Text style={styles.eyebrow}>EL UMBRAL</Text>
           <View style={{ height: orbita.spacing.xxl }} />
@@ -344,6 +372,7 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
             </View>
           </Pressable>
         </View>
+        </ContentCanvas>
       ) : phase === "respuesta" ? (
         <ScrollView
           style={styles.answerScroll}
@@ -353,6 +382,8 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
           ]}
           showsVerticalScrollIndicator={false}
         >
+          <ContentCanvas>
+          <View style={styles.answerColumn}>
           <Text style={styles.eyebrow}>EL UMBRAL · HOY</Text>
           <View style={{ height: orbita.spacing.sm }} />
           <Text style={styles.questionSmall}>“{shownQuestion}”</Text>
@@ -370,6 +401,8 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
           <Text style={styles.microMono}>{payload?.paso}</Text>
           <View style={{ height: orbita.spacing.xxl }} />
           <Text style={styles.footnote}>El Umbral no contesta sí o no.</Text>
+          </View>
+          </ContentCanvas>
         </ScrollView>
       ) : null}
     </View>
@@ -380,15 +413,14 @@ const styles = StyleSheet.create({
   screen: { backgroundColor: orbita.colors.background, flex: 1 },
   bg: { ...StyleSheet.absoluteFillObject, height: "100%", opacity: 0.5, width: "100%" },
   topbar: { paddingHorizontal: orbita.spacing.gutter, paddingBottom: orbita.spacing.md },
+  backBtn: { alignItems: "flex-start", justifyContent: "center", minHeight: 44, minWidth: 44 },
   back: { color: orbita.colors.bone, fontFamily: orbita.fonts.body, fontSize: 26, width: 40 },
   center: { alignItems: "center", flex: 1, paddingHorizontal: orbita.spacing.gutter, paddingTop: orbita.spacing.xxl * 2 },
   answerScroll: { flex: 1 },
-  answerScrollContent: {
-    alignItems: "center",
-    flexGrow: 1,
-    paddingHorizontal: orbita.spacing.gutter,
-    paddingTop: orbita.spacing.xxl * 2
-  },
+  answerScrollContent: { flexGrow: 1, paddingTop: orbita.spacing.xxl * 2 },
+  // La respuesta es el párrafo más largo de la app: sin la columna acotada,
+  // en escritorio se leía a lo ancho de la ventana.
+  answerColumn: { alignItems: "center", paddingHorizontal: orbita.spacing.gutter },
 
   eyebrow: {
     color: orbita.colors.copper,

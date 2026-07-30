@@ -3,14 +3,12 @@ import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { useMutation } from "convex/react";
 import { Body, Divider, Eyebrow, H2, MonoLine, Note, OrbitaScreen, Pill, Section } from "@/components/orbita/kit";
-import { ContentCanvas } from "@/components/orbita/ContentCanvas";
 import { ManageSubscriptionBlock } from "@/components/orbita/ManageSubscription";
 import { useConfirm } from "@/components/orbita/ConfirmHost";
 import { FullBleedHero } from "@/components/orbita/ImmersiveHero";
 import { CartaCard } from "@/components/home/CartaCard";
 import { useQuery } from "convex/react";
 import { resolveBirthInfo } from "@/domain/birthInfo";
-import { useAppData } from "@/domain/appData";
 import { requestAccountDeletion } from "@/domain/accountDeletion";
 import { useAppState } from "@/hooks/useAppState";
 import { useLiveApp } from "@/hooks/useLiveApp";
@@ -26,22 +24,29 @@ import { orbita } from "@/theme/orbita";
 
 const PRIVACY_URL = "https://orbitaastrologia.xyz/privacy";
 const SUPPORT_URL = "https://orbitaastrologia.xyz/support";
+/**
+ * Microcopy de privacidad. Salía de `useAppData().perfil.privacy` — el mock
+ * tipado del App Core, que para entregar esta constante armaba de paso una
+ * carta, unos tránsitos y un calendario inventados sobre un perfil de relleno.
+ * Es una frase fija: vive acá, y el mock ya no existe.
+ */
+const PRIVACY_NOTE = "Se usan solo para calcular tu carta. No los compartimos con nadie.";
 
 export default function PerfilScreen() {
-  const { perfil } = useAppData();
   const { auth, isAuthLoading, userError, retryUser } = useLiveApp();
   const isLive = !!auth?.isSignedIn;
   // La autoridad de los datos natales es el documento REMOTO, no el perfil
-  // local: `useAppData` cae a `createFallbackProfile()` y así se llegó a mostrar
-  // "12 Abr 1994" —una fecha inventada— como si fuera de la persona.
+  // local: el perfil local cae a `createFallbackProfile()` y así se llegó a
+  // mostrar "12 Abr 1994" —una fecha inventada— como si fuera de la persona.
   const remote = useQuery(appApi.birthData.getCurrent, isLive ? {} : "skip");
   const birth = resolveBirthInfo({ doc: remote ?? null, resolved: !isLive || remote !== undefined });
 
   return (
     <OrbitaScreen>
-      {/* Mismo lienzo que la Carta: ancho completo con gutters nativas en móvil,
-          columna centrada con ancho máximo en escritorio. */}
-      <ContentCanvas>
+      {/* El lienzo (ancho completo con gutters nativas en móvil, columna
+          centrada en escritorio) lo monta `OrbitaScreen` para todas sus
+          pantallas: acá ya no se repite. */}
+      <>
         <FullBleedHero kind="perfil">
           {/* Sólo se muestra la línea con datos remotos COMPLETOS y verificados. */}
           {birth.status === "complete" ? <MonoLine>{birth.line}</MonoLine> : null}
@@ -62,7 +67,7 @@ export default function PerfilScreen() {
           <View style={{ height: orbita.spacing.md }} />
           <Pill label="EDITAR DATOS" onPress={() => router.push("/editar-datos")} />
           <View style={{ height: orbita.spacing.md }} />
-          <Note>{perfil.privacy}</Note>
+          <Note>{PRIVACY_NOTE}</Note>
           <Divider />
           <Eyebrow>CUENTA</Eyebrow>
           {auth?.isSignedIn ? (
@@ -105,7 +110,7 @@ export default function PerfilScreen() {
             <Body bone>Soporte</Body>
           </Pressable>
         </Section>
-      </ContentCanvas>
+      </>
     </OrbitaScreen>
   );
 }

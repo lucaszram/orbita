@@ -11,7 +11,7 @@ import { router } from "expo-router";
 import { useAction, useQuery } from "convex/react";
 
 import { Body, Divider, Eyebrow, H2, Note, OrbitaScreen, Pill, Section, TabStrip } from "@/components/orbita/kit";
-import { ContentCanvas, MeasuredSquare } from "@/components/orbita/ContentCanvas";
+import { MeasuredSquare } from "@/components/orbita/ContentCanvas";
 import { GuestState } from "@/components/orbita/GuestState";
 import { NatalWheel } from "@/components/orbita/NatalWheel";
 import { EmptyState, ErrorState, MinimalLoading } from "@/components/orbita/states";
@@ -73,16 +73,12 @@ export function CartaScreen() {
 }
 
 /**
- * Shell de la pantalla + lienzo de contenido compartido: ancho completo con las
- * gutters nativas en móvil, columna centrada con ancho máximo en escritorio.
- * Nada de tipografías ni tarjetas que escalen con el ancho de la ventana.
+ * Shell de la pantalla. El lienzo de contenido lo monta `OrbitaScreen` para
+ * TODAS sus pantallas (ancho completo con las gutters nativas en móvil, columna
+ * centrada con ancho máximo en escritorio), así que acá ya no se repite.
  */
 function CartaShell({ children }: { children: ReactNode }) {
-  return (
-    <OrbitaScreen right="Carta">
-      <ContentCanvas>{children}</ContentCanvas>
-    </OrbitaScreen>
-  );
+  return <OrbitaScreen right="Carta">{children}</OrbitaScreen>;
 }
 
 function CartaLive() {

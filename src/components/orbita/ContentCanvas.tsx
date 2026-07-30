@@ -14,10 +14,10 @@ import { CONTENT_CANVAS_MAX_WIDTH, fitSquare } from "@/domain/contentCanvas";
  * En un teléfono el `maxWidth` no cambia nada (siempre es mayor que el ancho de
  * pantalla), así que montar esto en las pantallas canónicas no altera el nativo.
  */
-export function ContentCanvas({ children }: { children: ReactNode }) {
+export function ContentCanvas({ children, fill }: { children: ReactNode; fill?: boolean }) {
   return (
-    <View style={styles.outer}>
-      <View style={styles.canvas}>{children}</View>
+    <View style={[styles.outer, fill && styles.fill]}>
+      <View style={[styles.canvas, fill && styles.fill]}>{children}</View>
     </View>
   );
 }
@@ -60,5 +60,9 @@ export function MeasuredSquare({
 const styles = StyleSheet.create({
   outer: { alignItems: "center", width: "100%" },
   canvas: { maxWidth: CONTENT_CANVAS_MAX_WIDTH, width: "100%" },
+  // `fill`: para pantallas cuyo contenido es `flex: 1` con algo anclado abajo
+  // (los pasos del alta, el Umbral). Sin heredar el alto, la columna colapsa al
+  // contenido y el CTA sube al medio de la pantalla.
+  fill: { flex: 1 },
   square: { alignItems: "center", justifyContent: "center", width: "100%" }
 });

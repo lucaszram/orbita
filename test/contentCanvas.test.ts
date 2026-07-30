@@ -107,14 +107,21 @@ test("el lienzo no escala tipografía ni tarjetas con el ancho", () => {
   assert.ok(!/fontSize: [a-z]+Size/.test(sinComentarios(CARTA)), "ninguna tipografía derivada de una medida");
 });
 
-test("Carta y Perfil montan el MISMO lienzo", () => {
+test("Carta y Perfil montan el MISMO lienzo — ahora desde el shell compartido", () => {
+  // El lienzo se consolidó en `OrbitaScreen`: lo monta una vez para TODAS sus
+  // pantallas, en vez de que cada una lo repita (y algunas se lo olvidaran).
+  // La cobertura real de qué pantalla queda dentro del lienzo está en
+  // `test/responsiveShells.test.ts`, que lo resuelve por el grafo de imports.
+  const kit = sinComentarios(leer("src/components/orbita/kit.tsx"));
+  assert.ok(/from "@\/components\/orbita\/ContentCanvas"/.test(kit), "el shell importa el lienzo compartido");
+  assert.ok(/<ContentCanvas>\{children\}<\/ContentCanvas>/.test(kit), "el shell lo monta alrededor del contenido");
   for (const [rel, src] of [
     ["src/screens/CartaScreen.tsx", CARTA],
     ["app/(tabs)/perfil.tsx", PERFIL]
   ] as const) {
     const codigo = sinComentarios(src);
-    assert.ok(/from "@\/components\/orbita\/ContentCanvas"/.test(codigo), `${rel} importa el lienzo compartido`);
-    assert.ok(/<ContentCanvas>/.test(codigo), `${rel} lo monta`);
+    assert.ok(/<OrbitaScreen/.test(codigo), `${rel} monta el shell que aplica el lienzo`);
+    assert.ok(!/<ContentCanvas>/.test(codigo), `${rel} ya no lo repite por su cuenta`);
   }
 });
 
