@@ -36,12 +36,17 @@ function bloqueDesde(src: string, ancla: string): string {
 // flujo encima de los datos natales de la cuenta y recalculaba la carta: el
 // paso 14 auto-ejecutaba `submit()` al montarse.
 
-test("montar el paso 14 por debugStep no escribe nada", () => {
-  // El auto-submit del paso 14 sale antes si es inspección.
-  const autoSubmit = bloqueDesde(FLOW, "if (step === 14 && !PAYWALL_ENABLED)");
+test("montar el ÚLTIMO paso por debugStep no escribe nada", () => {
+  // El paso de cierre se nombra (`FINAL_STEP`) en vez de ir por número: el
+  // camino de escritura depende del índice y un renumerado silencioso ya costó
+  // datos cuando el alta salió del onboarding.
+  assert.ok(/const FINAL_STEP = TOTAL - 1;/.test(FLOW), "el último paso debe estar nombrado");
+  const autoSubmit = bloqueDesde(FLOW, "if (step === FINAL_STEP && !PAYWALL_ENABLED)");
   assert.ok(
-    /if \(inspeccion\) return;/.test(bloqueDesde(FLOW, "useEffect(() => {\n    if (inspeccion) return;\n    if (step === 14")),
-    "el efecto del paso 14 debe cortar en inspección"
+    /if \(inspeccion\) return;/.test(
+      bloqueDesde(FLOW, "useEffect(() => {\n    if (inspeccion) return;\n    if (step === FINAL_STEP")
+    ),
+    "el efecto de cierre debe cortar en inspección"
   );
   assert.ok(autoSubmit.includes("submit()"), "el efecto sigue siendo el del submit");
 
@@ -51,17 +56,20 @@ test("montar el paso 14 por debugStep no escribe nada", () => {
   assert.ok(/if \(inspeccion\) return;/.test(primerasLineas), "submit debe cortar en la primera línea");
 });
 
-test("en inspección tampoco se abre OAuth", () => {
-  const oauth = bloqueDesde(FLOW, 'const accountOAuth = async (provider: "google" | "apple") => {');
-  assert.ok(/if \(inspeccion\) return;/.test(oauth.split("\n").slice(0, 4).join("\n")));
+test("el alta ya no vive dentro del onboarding", () => {
+  // Auth es la puerta ANTERIOR: no hay pantalla de cuenta ni OAuth adentro del
+  // flujo, así que tampoco hay nada que guardar contra la inspección.
+  assert.ok(!/AccountScreen/.test(FLOW_CODE), "AccountScreen no puede ser un paso del onboarding");
+  assert.ok(!/accountOAuth/.test(FLOW_CODE), "el OAuth del alta salió del flujo");
+  assert.ok(!/STEP_ACCOUNT/.test(FLOW_CODE), "no queda un índice de paso de cuenta");
+  // Y el alta existe como ruta propia.
+  const alta = readFileSync(join(ROOT, "app/crear-cuenta.tsx"), "utf8");
+  assert.ok(/SignUpGateScreen/.test(alta), "la puerta de alta debe montar su pantalla");
 });
 
-test("en inspección no se crea cuenta, ni se calcula carta, ni se pisa el borrador", () => {
-  const cuenta = bloqueDesde(FLOW, "const accountNext = async (codeOverride?: string) => {");
-  assert.ok(/if \(inspeccion\) return;/.test(cuenta.split("\n").slice(0, 4).join("\n")));
-
-  const triada = bloqueDesde(FLOW, "if (step < 11 || !computeTriad || !birthPlace) return;");
-  assert.ok(/inspeccion/.test(FLOW.slice(FLOW.indexOf("Inspección: no se le pega a la API"), FLOW.indexOf("if (step < 11"))));
+test("en inspección no se calcula carta ni se pisa el borrador", () => {
+  const triada = bloqueDesde(FLOW, "if (step < STEP_COMPUTE_TRIAD || !computeTriad || !birthPlace) return;");
+  assert.ok(/inspeccion/.test(FLOW.slice(FLOW.indexOf("Inspección: no se le pega a la API"), FLOW.indexOf("if (step < STEP_COMPUTE_TRIAD"))));
   assert.ok(triada.length > 0);
 
   const borrador = bloqueDesde(FLOW, "writeDraft({ step, identity");
@@ -121,10 +129,15 @@ test("web y nativo rechazan una cuenta completa por el MISMO gate", () => {
       `${nombre} no puede montar el flujo directo: se saltearía el gate`
     );
   }
-  assert.ok(/birthData\.getCurrent/.test(GATE), "el gate necesita consultar si ya hay datos");
-  assert.ok(/Redirect href=\{HOME_ROUTE/.test(GATE), "y redirigir a la Home de la plataforma");
+  // El gate delega en el resolver único; la consulta de `birthData` y la
+  // redirección viven ahí, no duplicadas en cada superficie.
+  assert.ok(/AccountGate surface="onboarding"/.test(GATE), "el gate usa la puerta compartida");
+  const puerta = readFileSync(join(ROOT, "src/components/orbita/AccountGate.tsx"), "utf8");
+  assert.ok(/HOME_ROUTE/.test(puerta) && /ONBOARDING_ROUTE/.test(puerta) && /SIGN_IN_ROUTE/.test(puerta));
+  const hook = readFileSync(join(ROOT, "src/hooks/useAccountDestination.tsx"), "utf8");
+  assert.ok(/birthData\.getCurrent/.test(hook), "el resolver necesita el estado remoto");
   // No se afirma nada mientras resuelve: sin esto habría un salto visible.
-  assert.ok(/birthData === undefined/.test(GATE) && /isAuthLoading/.test(GATE));
+  assert.ok(/birthData !== undefined/.test(hook));
 });
 
 // --- Una sola ruta de persistencia ------------------------------------------

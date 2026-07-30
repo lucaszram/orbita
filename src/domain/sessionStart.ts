@@ -153,13 +153,25 @@ export function resolveTabsGuard(s: StartSnapshot): TabsGuard {
  */
 export type SignInDestination = "home-remote" | "home-local" | "resume-onboarding";
 
+/**
+ * Destino después de entrar.
+ *
+ * Con backend configurado la ÚNICA autoridad es `birthData` remoto. El destino
+ * `home-local` se eliminó: un perfil local no prueba que la cuenta completó el
+ * alta, y con él una cuenta remota sin datos entraba a Home y el onboarding
+ * quedaba sin hacer. El snapshot local sigue restaurando diario y guardadas
+ * después de identificar al dueño, pero no reemplaza la prueba remota.
+ */
 export function resolveSignInDestination(s: {
   hasRemoteBirthData: boolean;
+  backendConfigured: boolean;
+  /** Sólo para builds sin backend, donde no hay estado remoto que consultar. */
   hasLocalProfile: boolean;
   profileRestored: boolean;
 }): SignInDestination {
   if (s.hasRemoteBirthData) return "home-remote";
-  return s.hasLocalProfile || s.profileRestored ? "home-local" : "resume-onboarding";
+  if (!s.backendConfigured && (s.hasLocalProfile || s.profileRestored)) return "home-local";
+  return "resume-onboarding";
 }
 
 /**

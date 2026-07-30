@@ -391,24 +391,33 @@ describe("login: email inexistente y cuenta existente", () => {
 
   it("REGRESIÓN: login de una cuenta existente → hidrata Convex y vuelve a Home con datos reales", () => {
     assert.equal(
-      resolveSignInDestination({ hasRemoteBirthData: true, hasLocalProfile: false, profileRestored: false }),
+      resolveSignInDestination({ hasRemoteBirthData: true, backendConfigured: true, hasLocalProfile: false, profileRestored: false }),
       "home-remote"
     );
     // El remoto manda aunque este teléfono ya tenga perfil.
     assert.equal(
-      resolveSignInDestination({ hasRemoteBirthData: true, hasLocalProfile: true, profileRestored: true }),
+      resolveSignInDestination({ hasRemoteBirthData: true, backendConfigured: true, hasLocalProfile: true, profileRestored: true }),
       "home-remote"
     );
   });
 
-  it("cuenta sin datos en Convex pero con perfil en este teléfono → Home con lo local", () => {
+  it("auth-first: con backend, un perfil local NO autoriza entrar a Home", () => {
+    // Antes esto devolvía "home-local" y una cuenta remota sin datos entraba a
+    // Home con el perfil del teléfono: el onboarding quedaba sin hacer y la
+    // cuenta sin `birthData`. La autoridad es el remoto.
     assert.equal(
-      resolveSignInDestination({ hasRemoteBirthData: false, hasLocalProfile: true, profileRestored: false }),
-      "home-local"
+      resolveSignInDestination({ hasRemoteBirthData: false, backendConfigured: true, hasLocalProfile: true, profileRestored: false }),
+      "resume-onboarding"
     );
-    // Perfil restaurado del archivo de la cuenta (logout previo en este teléfono).
     assert.equal(
-      resolveSignInDestination({ hasRemoteBirthData: false, hasLocalProfile: false, profileRestored: true }),
+      resolveSignInDestination({ hasRemoteBirthData: false, backendConfigured: true, hasLocalProfile: false, profileRestored: true }),
+      "resume-onboarding"
+    );
+  });
+
+  it("sin backend configurado no hay estado remoto: lo local sigue valiendo", () => {
+    assert.equal(
+      resolveSignInDestination({ hasRemoteBirthData: false, backendConfigured: false, hasLocalProfile: true, profileRestored: false }),
       "home-local"
     );
   });
@@ -435,7 +444,7 @@ describe("login: email inexistente y cuenta existente", () => {
 
   it("cuenta sin datos y teléfono sin perfil → continuar el alta (sin segunda cuenta)", () => {
     assert.equal(
-      resolveSignInDestination({ hasRemoteBirthData: false, hasLocalProfile: false, profileRestored: false }),
+      resolveSignInDestination({ hasRemoteBirthData: false, backendConfigured: true, hasLocalProfile: false, profileRestored: false }),
       "resume-onboarding"
     );
   });

@@ -1,9 +1,7 @@
 import type { ReactNode } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
-import { Link, Redirect } from "expo-router";
-import { sessionPhase } from "@/domain/screenPhase";
-import { webRouteDecision } from "@/domain/webSession";
-import { useLiveApp } from "@/hooks/useLiveApp";
+import { Link } from "expo-router";
+import { AccountGate } from "@/components/orbita/AccountGate";
 import { backendConfig } from "@/services/backendProviders";
 
 const colors = {
@@ -30,35 +28,31 @@ export function WebLoading() {
  * renderiza contenido de demostración ni datos de otra persona.
  */
 export function RequireSession({ children }: { children: ReactNode }) {
-  const { isLive, isAuthLoading, userError, retryUser } = useLiveApp();
-  const decision = webRouteDecision({
-    phase: sessionPhase({ isLive, isAuthLoading, userError }),
-    backendConfigured: backendConfig.isConfigured
-  });
-
-  switch (decision) {
-    case "cargando":
-      return <WebLoading />;
-    case "sinBackend":
-      return (
-        <WebNotice
-          title="Órbita no está disponible"
-          body="No pudimos conectar con el servidor. Volvé a intentar en un momento."
-        />
-      );
-    case "error":
-      return (
+  if (!backendConfig.isConfigured) {
+    return (
+      <WebNotice
+        title="Órbita no está disponible"
+        body="No pudimos conectar con el servidor. Volvé a intentar en un momento."
+      />
+    );
+  }
+  // El destino lo decide el resolver único: sin sesión va a login, y una cuenta
+  // sin `birthData` va al onboarding en vez de entrar a una Home sin carta.
+  return (
+    <AccountGate
+      surface="app"
+      loading={<WebLoading />}
+      error={(retry) => (
         <WebNotice
           title="No pudimos abrir tu cuenta"
           body="La sesión quedó a medias. Reintentá; si sigue, cerrá sesión y volvé a entrar."
-          action={{ label: "Reintentar", onPress: retryUser }}
+          action={{ label: "Reintentar", onPress: retry }}
         />
-      );
-    case "aLogin":
-      return <Redirect href="/iniciar-sesion" />;
-    case "render":
-      return <>{children}</>;
-  }
+      )}
+    >
+      {children}
+    </AccountGate>
+  );
 }
 
 /**

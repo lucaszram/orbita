@@ -3,6 +3,7 @@ import { StyleSheet, View } from "react-native";
 import { Redirect, useRouter } from "expo-router";
 
 import { HOME_ROUTE, ONBOARDING_ROUTE } from "@/domain/appRoutes";
+import { backendConfig } from "@/services/backendProviders";
 import {
   isAccountSwitch,
   onboardingInputFromBirthData,
@@ -88,6 +89,7 @@ export default function IniciarSesionRoute() {
     switch (
       resolveSignInDestination({
         hasRemoteBirthData: !!result.birthData,
+        backendConfigured: backendConfig.isConfigured,
         hasLocalProfile: !!localProfile,
         profileRestored
       })

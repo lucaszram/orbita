@@ -18,3 +18,9 @@ export const HOME_ROUTE = IS_WEB ? "/home" : "/(tabs)";
 
 /** Onboarding canónico de 15 pasos. */
 export const ONBOARDING_ROUTE = IS_WEB ? "/empezar" : "/onboarding";
+
+/** Login canónico (`/iniciar-sesion`), igual en las dos plataformas. */
+export const SIGN_IN_ROUTE = "/iniciar-sesion";
+
+/** Alta: la puerta ANTES del onboarding, no un paso interno. */
+export const SIGN_UP_ROUTE = "/crear-cuenta";

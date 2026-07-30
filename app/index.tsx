@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { Redirect } from "expo-router";
 import { OrbitaLanding } from "@/components/web/orbita-landing";
+import { AccountGate } from "@/components/orbita/AccountGate";
+import { WebLoading } from "@/components/web/require-session";
 import { attemptPendingDeletionFinalize, resolvePendingDeletionBoot } from "@/domain/accountDeletion";
 import {
   isAccountSwitch,
@@ -183,13 +185,15 @@ export default function IndexRoute() {
   }, [decision, hydrate, createProfile, recoveryTick]);
 
   if (IS_WEB) {
-    // La landing es SÓLO para quien no tiene sesión. Antes se renderizaba sin
-    // mirar la sesión, y como `/(tabs)` resuelve también a `/` en web, el
-    // `router.replace("/(tabs)")` de después del login devolvía a la página
-    // pública en vez de a la Home: quedabas logueado mirando el marketing.
-    // En web la Home autenticada tiene ruta propia (`/home`), sin colisión.
-    if (auth?.isLoaded && auth.isSignedIn) return <Redirect href="/home" />;
-    return <OrbitaLanding />;
+    // La landing es SÓLO para quien no tiene sesión, y quién lo decide es el
+    // resolver compartido — no una comprobación propia de esta ruta. Antes se
+    // renderizaba sin mirar la sesión y, como `/(tabs)` resuelve también a `/`
+    // en web, después del login volvías a la página pública ya logueado.
+    return (
+      <AccountGate surface="landing" loading={<WebLoading />}>
+        <OrbitaLanding />
+      </AccountGate>
+    );
   }
 
   if (pendingAccountDeletion) {

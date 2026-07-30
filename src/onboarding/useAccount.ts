@@ -50,6 +50,12 @@ export type AccountFlow = {
   verify: (code: string) => Promise<boolean>;
   /** Reenvía el código sin crear otra cuenta ni reiniciar el flujo. */
   resend: () => Promise<ResendResult>;
+  /**
+   * El email ya tenía cuenta: el alta cambió a iniciar sesión con código. Se
+   * expone para poder DECIRLO — si no, la pantalla de alta pide un código sin
+   * explicar por qué dejó de ser un alta.
+   */
+  existingAccount: boolean;
   oauth: (provider: OAuthProvider) => Promise<boolean>;
   resetToEmail: () => void;
 };
@@ -112,6 +118,7 @@ function useAccountFlowInner(): AccountFlow {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [oauthBusy, setOauthBusy] = useState<OAuthProvider | null>(null);
+  const [existingAccount, setExistingAccount] = useState(false);
   const flowRef = useRef<"signUp" | "signIn">("signUp");
   // emailAddressId del intento de sign-in (rama email ya existente): lo guarda
   // `start` para que el reenvío pueda repetir prepareFirstFactor sin perderlo.
@@ -126,6 +133,7 @@ function useAccountFlowInner(): AccountFlow {
       if (!signUp || !signIn) return;
       setBusy(true);
       setError(null);
+      setExistingAccount(false);
       try {
         // Con contraseña desde la creación: Clerk Producción tiene
         // `password: required`, así que sin esto el alta queda en
@@ -138,6 +146,7 @@ function useAccountFlowInner(): AccountFlow {
       } catch (e) {
         const code = (e as { errors?: Array<{ code?: string }> })?.errors?.[0]?.code;
         if (code === "form_identifier_exists") {
+          setExistingAccount(true);
           // El email ya tiene cuenta: entrar por sign-in con código.
           try {
             const attempt = await signIn.create({ identifier: emailAddress });
@@ -229,9 +238,11 @@ function useAccountFlowInner(): AccountFlow {
     verify,
     resend,
     oauth,
+    existingAccount,
     resetToEmail: () => {
       setError(null);
       setPhase("email");
+      setExistingAccount(false);
     }
   };
 }

@@ -1,8 +1,6 @@
 import { Link } from "expo-router";
 import { Orbit } from "lucide-react-native";
-import { Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
-import { backendConfig } from "@/services/backendProviders";
-import { useOrbitaAuth } from "@/hooks/useOrbitaAuth";
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 
 const colors = {
   copperSoft: "#D69A6A",
@@ -32,42 +30,44 @@ export const WEB_NAV_BREAKPOINT = 900;
 /** Alto de la barra inferior + respiro; los ScrollView reservan este espacio. */
 export const WEB_BOTTOM_NAV_HEIGHT = 64;
 
+/**
+ * Navegación de la APP autenticada. No lleva avatar, botón de entrar ni atajo de
+ * cuenta: todo lo de la cuenta vive en `/perfil`. Antes la barra tenía un avatar
+ * que llevaba al login, así que una persona ya logueada veía un CTA de "Entrar".
+ *
+ * En móvil no hay barra superior: sólo la inferior fija, como en el nativo.
+ */
 export function WebNav({ active, meta }: { active: NavKey; meta?: string }) {
   const { width } = useWindowDimensions();
   const isNarrow = width < WEB_NAV_BREAKPOINT;
+
+  if (isNarrow) {
+    // Sin topbar en móvil: duplicaba la marca sobre el header de la propia
+    // pantalla y comía alto útil.
+    return <WebBottomNav active={active} />;
+  }
+
   return (
-    <>
-      <View style={[styles.topbar, { paddingHorizontal: isNarrow ? 20 : 40 }]}>
-        <Link href="/home" asChild>
-          <Pressable style={styles.brand}>
-            <Orbit color={colors.copperSoft} size={18} strokeWidth={1.7} />
-            <Text style={styles.brandText}>Órbita</Text>
-          </Pressable>
-        </Link>
+    <View style={[styles.topbar, { paddingHorizontal: 40 }]}>
+      <Link href="/home" asChild>
+        <Pressable style={styles.brand}>
+          <Orbit color={colors.copperSoft} size={18} strokeWidth={1.7} />
+          <Text style={styles.brandText}>Órbita</Text>
+        </Pressable>
+      </Link>
 
-        {!isNarrow && (
-          <View style={styles.nav}>
-            {items.map((it) => (
-              <Link key={it.key} href={it.href as never} asChild>
-                <Pressable style={styles.navItem}>
-                  <Text style={active === it.key ? styles.navActive : styles.navLink}>{it.label}</Text>
-                </Pressable>
-              </Link>
-            ))}
-          </View>
-        )}
-
-        <View style={styles.right}>
-          {meta && !isNarrow ? <Text style={styles.metaText}>{meta}</Text> : null}
-          <AuthArea />
-        </View>
+      <View style={styles.nav}>
+        {items.map((it) => (
+          <Link key={it.key} href={it.href as never} asChild>
+            <Pressable style={styles.navItem}>
+              <Text style={active === it.key ? styles.navActive : styles.navLink}>{it.label}</Text>
+            </Pressable>
+          </Link>
+        ))}
       </View>
 
-      {/* En móvil la navegación superior no entra. Antes simplemente se ocultaba
-          y no quedaba NINGÚN modo de moverse entre secciones: la web era
-          inusable en teléfono. Ahora baja a una barra fija, como en el nativo. */}
-      {isNarrow ? <WebBottomNav active={active} /> : null}
-    </>
+      <View style={styles.right}>{meta ? <Text style={styles.metaText}>{meta}</Text> : null}</View>
+    </View>
   );
 }
 
@@ -86,40 +86,6 @@ function WebBottomNav({ active }: { active: NavKey }) {
         </Link>
       ))}
     </View>
-  );
-}
-
-function EnterButton() {
-  return (
-    <Link href="/iniciar-sesion" asChild>
-      <Pressable style={styles.enterBtn}>
-        <Text style={styles.enterText}>Entrar</Text>
-      </Pressable>
-    </Link>
-  );
-}
-
-function AuthArea() {
-  // useOrbitaAuth requiere ClerkProvider montado → solo cuando hay Clerk configurado.
-  if (!backendConfig.hasClerk) return <EnterButton />;
-  return <AuthPill />;
-}
-
-function AuthPill() {
-  const { isLoaded, isSignedIn, imageUrl, name, email } = useOrbitaAuth();
-  if (!isLoaded) return <View style={styles.avatarSpinner} />;
-  if (!isSignedIn) return <EnterButton />;
-  const initial = (name || email || "?").trim().slice(0, 1).toUpperCase();
-  return (
-    <Link href="/iniciar-sesion" asChild>
-      <Pressable style={styles.avatarWrap}>
-        {imageUrl ? (
-          <Image source={{ uri: imageUrl }} style={styles.avatar} />
-        ) : (
-          <View style={styles.avatarFallback}><Text style={styles.avatarInitial}>{initial}</Text></View>
-        )}
-      </Pressable>
-    </Link>
   );
 }
 
@@ -162,13 +128,6 @@ const styles = StyleSheet.create({
   bottomLink: { color: colors.boneDim, fontFamily: "Inter_500Medium", fontSize: 13 },
   metaText: { color: colors.boneMuted, fontFamily: "Inter_500Medium", fontSize: 13 },
   right: { alignItems: "center", flexDirection: "row", gap: 14 },
-  enterBtn: { borderColor: colors.line, borderRadius: 999, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 7 },
-  enterText: { color: colors.bone, fontFamily: "Inter_700Bold", fontSize: 13 },
-  avatarSpinner: { backgroundColor: "rgba(244,238,228,0.08)", borderRadius: 16, height: 32, width: 32 },
-  avatarWrap: { borderColor: colors.copperSoft, borderRadius: 17, borderWidth: 1, height: 34, overflow: "hidden", width: 34 },
-  avatar: { height: "100%", width: "100%" },
-  avatarFallback: { alignItems: "center", backgroundColor: "rgba(196,106,58,0.25)", flex: 1, justifyContent: "center" },
-  avatarInitial: { color: colors.bone, fontFamily: "Inter_700Bold", fontSize: 14 }
 });
 
 export default WebNav;

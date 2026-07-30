@@ -18,7 +18,6 @@ import { BirthPayloadError, birthPayloadMessage } from "@/domain/birthPayload";
 import { CTA } from "./components/CTA";
 import { Screen } from "./components/Screen";
 import { Body, Title } from "./components/Type";
-import { AccountScreen } from "./screens/AccountScreen";
 import { AlignScreen } from "./screens/AlignScreen";
 import { BaseChartScreen } from "./screens/BaseChartScreen";
 import { BeforeAfterScreen } from "./screens/BeforeAfterScreen";
@@ -38,7 +37,14 @@ import { validateSignupPassword } from "./signup";
 import { useAccountFlow, useOnboardingBirthDataPersist, useOnboardingChart, useOnboardingComputeTriad } from "./useAccount";
 import type { OnboardingChart } from "./useAccount";
 
-const TOTAL = 15;
+// El alta de cuenta salió del onboarding (es la puerta anterior), así que hay
+// un paso menos. Los índices se nombran a propósito: el camino de escritura
+// depende del último paso y un renumerado silencioso ya costó datos.
+const TOTAL = 14;
+/** Primer paso que ya puede calcular la tríada real (necesita lugar). */
+const STEP_COMPUTE_TRIAD = 11;
+/** Último paso: cierra el onboarding (paywall si estuviera activo). */
+const FINAL_STEP = TOTAL - 1;
 
 // Con backend hay puerta "Ya tengo cuenta" en la entrada (paso 0).
 const HAS_BACKEND = backendConfig.hasConvex && backendConfig.hasClerk;
@@ -49,7 +55,6 @@ const STEP_BIRTHDATE = 4;
 // Primer paso del alta propiamente dicha (el 0 es la entrada con las puertas).
 // Destino de "Crear una cuenta" desde el login: `/onboarding?nuevo=1`.
 const STEP_ALTA = 1;
-const STEP_ACCOUNT = 13;
 
 // Paywall temporalmente DESACTIVADO (2-3 semanas, mientras refinamos el onboarding
 // y el flujo). Con `false`, al terminar el onboarding se entra DIRECTO a la app sin
@@ -124,10 +129,6 @@ export function OnboardingFlow() {
     typeof params.email === "string" && params.email ? params.email : saved?.email ?? ""
   );
   // Clerk Producción exige contraseña en el alta: se pide + confirmación.
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [accountFormError, setAccountFormError] = useState<string | null>(null);
-  const [accountCode, setAccountCode] = useState("");
   const [plan, setPlan] = useState<PlanId>("annual");
   const account = useAccountFlow();
   // Persistencia ESTRICTA: propaga el error. Con el wrapper anterior el catch
@@ -219,7 +220,7 @@ export function OnboardingFlow() {
   useEffect(() => {
     // Inspección: no se le pega a la API de cálculo.
     if (inspeccion) return;
-    if (step < 11 || !computeTriad || !birthPlace) return;
+    if (step < STEP_COMPUTE_TRIAD || !computeTriad || !birthPlace) return;
     const birthTimeStr = timeUnknown ? undefined : to24hFromParts(birthTime);
     // Firma de los datos: si cambia (el usuario editó fecha/hora/lugar) recalcula;
     // si es la misma, no vuelve a pegarle a la API. Antes un ref "fired" dejaba
@@ -242,51 +243,6 @@ export function OnboardingFlow() {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, computeTriad, birthPlace, birthDateISO, timeUnknown, birthTime.hour, birthTime.minute, retryTick, inspeccion]);
-
-  // `codeOverride`: la auto-verificación del CodeInput pasa el código recién
-  // completado directo (el estado `accountCode` todavía no re-renderizó).
-  const accountNext = async (codeOverride?: string) => {
-    // Inspección: nunca se crea una cuenta ni se avanza.
-    if (inspeccion) return;
-    if (!account || account.isSignedIn) {
-      next();
-      return;
-    }
-    const trimmed = email.trim().toLowerCase();
-    if (account.phase === "email") {
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(trimmed)) {
-        setAccountFormError("Revisá el email.");
-        return;
-      }
-      const pwError = validateSignupPassword(password, confirmPassword);
-      if (pwError) {
-        setAccountFormError(pwError);
-        return;
-      }
-      setAccountFormError(null);
-      await account.start(trimmed, password);
-      return;
-    }
-    const ok = await account.verify((codeOverride ?? accountCode).trim());
-    if (ok) {
-      sessionActivated.current = true;
-      next();
-    }
-  };
-
-  const accountOAuth = async (provider: "google" | "apple") => {
-    // Inspección: no se abre un flujo de OAuth ni se activa sesión.
-    if (inspeccion) return;
-    if (!account) {
-      next();
-      return;
-    }
-    const ok = await account.oauth(provider);
-    if (ok) {
-      sessionActivated.current = true;
-      next();
-    }
-  };
 
   const submit = async () => {
     // Inspección visual: ninguna escritura, ni siquiera desde un CTA.
@@ -370,18 +326,12 @@ export function OnboardingFlow() {
   // Sin paywall: al llegar al paso de pago (step 14) se entra directo a la app.
   useEffect(() => {
     if (inspeccion) return;
-    if (step === 14 && !PAYWALL_ENABLED) void submit();
+    if (step === FINAL_STEP && !PAYWALL_ENABLED) void submit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, inspeccion]);
 
   // Sesión ya activa (login previo o continuación del alta): el paso de crear
   // cuenta se saltea solo — nunca pedir crear/iniciar sesión de nuevo.
-  useEffect(() => {
-    if (inspeccion) return;
-    if (step === STEP_ACCOUNT && account?.isSignedIn) next();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, account?.isSignedIn, inspeccion]);
-
   if (!fontsLoaded) return <View style={styles.fill} />;
 
   let screen: ReactNode;
@@ -480,27 +430,7 @@ export function OnboardingFlow() {
     case 12:
       screen = <BeforeAfterScreen step={step} onNext={next} onBack={back} />;
       break;
-    case 13:
-      screen = (
-        <AccountScreen
-          step={step}
-          email={email}
-          onEmail={setEmail}
-          password={password}
-          onPassword={setPassword}
-          confirmPassword={confirmPassword}
-          onConfirmPassword={setConfirmPassword}
-          formError={accountFormError}
-          code={accountCode}
-          onCode={setAccountCode}
-          account={account}
-          onNext={accountNext}
-          onOAuth={accountOAuth}
-          onBack={back}
-        />
-      );
-      break;
-    case 14:
+    case FINAL_STEP:
     default:
       // Paso 14 = paywall único. La tríada real va arriba como gancho (antes era
       // una pantalla de preview aparte, que hacía parecer que pagabas dos veces).

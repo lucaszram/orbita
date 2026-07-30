@@ -36,9 +36,11 @@ test("ninguna ruta importa una pantalla web duplicada", () => {
   assert.deepEqual(culpables, [], `estas rutas duplican una pantalla: ${culpables.join(", ")}`);
 });
 
-test("web y nativo montan el MISMO onboarding de 15 pasos", () => {
+test("web y nativo montan el MISMO onboarding canónico", () => {
   const canonico = readFileSync(join(ROOT, "src/onboarding/OnboardingFlow.tsx"), "utf8");
-  assert.match(canonico, /const TOTAL = 15;/, "el flujo canónico debe seguir teniendo 15 pasos");
+  // 14 pasos desde que el alta salió del flujo: auth es la puerta anterior y no
+  // cuenta en el progreso del onboarding.
+  assert.match(canonico, /const TOTAL = 14;/, "el flujo canónico debe tener 14 pasos");
   // Las dos rutas llegan al flujo canónico A TRAVÉS del gate compartido, que es
   // el que impide que una cuenta con datos natales vuelva al alta.
   const gate = readFileSync(join(ROOT, "src/onboarding/OnboardingGate.tsx"), "utf8");
@@ -273,17 +275,15 @@ test("después de entrar se va a la Home autenticada, no a /(tabs) en web", () =
   assert.match(rutas, /HOME_ROUTE = IS_WEB \? "\/home" : "\/\(tabs\)"/);
 });
 
-test("la landing sólo se renderiza sin sesión", () => {
-  // Se miran las SENTENCIAS, no los comentarios: la explicación de por qué
-  // cambió es larga y empujaba el guard fuera de cualquier ventana fija.
+test("la landing sólo se renderiza sin sesión, y lo decide el resolver único", () => {
   const index = readFileSync(join(ROOT, "app/index.tsx"), "utf8")
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/\/\/.*$/gm, "");
   const web = index.slice(index.indexOf("if (IS_WEB)"));
   const hastaLanding = web.slice(0, web.indexOf("<OrbitaLanding />"));
   assert.ok(
-    /isSignedIn/.test(hastaLanding) && /Redirect/.test(hastaLanding),
-    "la landing se renderiza antes de comprobar la sesión"
+    /AccountGate surface="landing"/.test(hastaLanding),
+    "la landing debe pasar por el gate compartido, no por un guard propio"
   );
 });
 
