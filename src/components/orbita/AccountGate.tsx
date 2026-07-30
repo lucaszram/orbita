@@ -34,6 +34,9 @@ export function AccountGate({
   useEffect(() => {
     if (destination !== "bootstrap") return;
     if (bootstrap.state !== "idle") return;
+    // `incomplete` NO es un error: el aislamiento salió bien y la cuenta
+    // simplemente no completó el alta. El resolver reevalúa con el estado local
+    // ya limpio y manda al onboarding.
     void bootstrap.run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [destination, bootstrap.state]);

@@ -1,4 +1,4 @@
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { AccountGate } from "@/components/orbita/AccountGate";
 import { WebLoading } from "@/components/web/require-session";
 import { SIGN_IN_ROUTE } from "@/domain/appRoutes";
@@ -22,7 +22,11 @@ export default function CrearCuentaRoute() {
 
 function SignUpGateInner() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ email?: string | string[] }>();
   const account = useAccountFlow();
+  // El login manda el email tipeado: llega cargado al alta.
+  const raw = Array.isArray(params.email) ? params.email[0] : params.email;
+  const initialEmail = typeof raw === "string" ? raw : "";
 
   // Sin backend no hay cuenta que crear: se va al onboarding local.
   if (!account) {
@@ -32,6 +36,7 @@ function SignUpGateInner() {
   return (
     <SignUpGateScreen
       account={account}
+      initialEmail={initialEmail}
       onSignIn={() => router.replace(SIGN_IN_ROUTE as never)}
       // No se navega a mano: al quedar la sesión activa, el resolver reevalúa y
       // `AccountGate` manda al onboarding (o a Home si ya hubiera datos).

@@ -1,29 +1,34 @@
-import { useCallback, useRef, useState } from "react";
-import { isAccountSwitch, onboardingInputFromBirthData } from "@/domain/sessionStart";
+import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
+import { runAccountBootstrap, type BootstrapOutcome } from "@/domain/accountBootstrap";
 import { useAppState } from "@/hooks/useAppState";
 import { useSignInHydrate } from "@/onboarding/useAccount";
 
 export type BootstrapState = "idle" | "running" | "error";
 
-/**
- * Bootstrap de cuenta: traer el estado remoto y dejar el perfil LOCAL listo para
- * la cuenta activa.
- *
- * Lo usan los dos caminos de entrada — abrir la app con sesión ya activa y
- * terminar de iniciar sesión — porque son el mismo problema. Antes esta lógica
- * vivía sólo dentro de `enter()` del login, así que un navegador nuevo con
- * sesión activa y `birthData` completo entraba a Home sin perfil local: el guard
- * de Home mandaba a onboarding, el gate del onboarding devolvía a Home, y
- * quedaba dando vueltas.
- *
- * Nunca escribe en `birthData`: sólo lee lo remoto y arma lo local.
- */
-export function useAccountBootstrap(): {
+type BootstrapValue = {
   state: BootstrapState;
-  /** Corre el bootstrap. `true` si el perfil local quedó listo. */
-  run: () => Promise<boolean>;
+  /** Corre la transacción una sola vez a la vez. */
+  run: () => Promise<BootstrapOutcome>;
   reset: () => void;
-} {
+};
+
+/**
+ * Dueño ÚNICO de la transacción de bootstrap y de su lock.
+ *
+ * Es un provider y no un hook suelto porque cada instancia del hook tenía su
+ * propio `useRef`: con `AccountGate` y la pantalla de login llamándolo por
+ * separado, había dos locks independientes y el archivado podía correr dos
+ * veces. Ahora hay un solo estado compartido montado sobre el gate.
+ */
+const BootstrapContext = createContext<BootstrapValue | null>(null);
+
+const SIN_PROVIDER: BootstrapValue = {
+  state: "idle",
+  run: async () => ({ status: "error" }),
+  reset: () => undefined
+};
+
+export function AccountBootstrapProvider({ children }: { children: ReactNode }) {
   const {
     profile,
     profileOwner,
@@ -35,62 +40,35 @@ export function useAccountBootstrap(): {
   } = useAppState();
   const hydrate = useSignInHydrate();
   const [state, setState] = useState<BootstrapState>("idle");
-  // Lock sincrónico: el gate puede re-renderizar antes de que `state` se
-  // refleje, y dos bootstraps en paralelo archivarían dos veces.
-  const running = useRef(false);
+  // Lock SINCRÓNICO: el estado de React recién se refleja en el próximo render,
+  // así que dos disparos del mismo render pasarían los dos y archivarían dos veces.
+  const running = useRef<Promise<BootstrapOutcome> | null>(null);
 
-  const run = useCallback(async (): Promise<boolean> => {
-    if (running.current || !hydrate) return false;
-    running.current = true;
+  const run = useCallback(async (): Promise<BootstrapOutcome> => {
+    // Una corrida en vuelo se comparte en vez de arrancar otra: dos llamadas
+    // concurrentes hacen UN solo archive/reset/restore.
+    if (running.current) return running.current;
+    if (!hydrate) return { status: "error" };
     setState("running");
-    try {
-      const result = await hydrate();
-      if (result.status === "error") {
-        setState("error");
-        return false;
-      }
-
-      // CAMBIO DE CUENTA en el mismo dispositivo: lo local es de OTRA persona
-      // (su sesión se perdió sin logout, así que nada se archivó). Se archiva
-      // bajo SU dueño —no se destruye— y recién ahí se limpia. Sin esto, su
-      // diario y sus guardadas se mezclarían con los de quien entra.
-      const switchingAccount = isAccountSwitch({
-        localProfileOwner: profileOwner,
-        incomingUserId: result.clerkUserId
+    const corrida = runAccountBootstrap({
+      hydrate,
+      profileOwner,
+      hasLocalProfile: !!profile,
+      archiveAccountData,
+      resetApp,
+      restoreAccountData,
+      createProfile,
+      adoptLocalProfile
+    })
+      .then((outcome) => {
+        setState(outcome.status === "error" ? "error" : "idle");
+        return outcome;
+      })
+      .finally(() => {
+        running.current = null;
       });
-      if (switchingAccount) {
-        // Falla cerrado: antes que arriesgar mezclar dos cuentas, se reintenta.
-        await archiveAccountData(profileOwner);
-        await resetApp();
-      }
-      // Tras el reset, el `profile` de este closure es del usuario anterior.
-      const localProfile = switchingAccount ? null : profile;
-
-      // Si esta cuenta ya usó el dispositivo, volver su diario y sus guardadas
-      // (se archivan al cerrar sesión; no viven en Convex). El id sale del
-      // backend, no de `useAuth`: React puede no haber re-renderizado todavía.
-      const { profileRestored } = result.clerkUserId
-        ? await restoreAccountData(result.clerkUserId)
-        : { profileRestored: false };
-
-      if (result.birthData) {
-        // Lo remoto manda; el snapshot sólo aporta diario y guardadas. Queda
-        // marcado con su dueño para que el arranque lo reconozca como propio.
-        await createProfile(onboardingInputFromBirthData(result.birthData), result.clerkUserId);
-      } else if (localProfile && !profileRestored && result.clerkUserId) {
-        // Guest-upgrade sin datos remotos: la cuenta ADOPTA el perfil local
-        // explícitamente (el arranque nunca confía en un perfil sin dueño).
-        await adoptLocalProfile(result.clerkUserId);
-      }
-
-      setState("idle");
-      return !!result.birthData || !!localProfile || profileRestored;
-    } catch {
-      setState("error");
-      return false;
-    } finally {
-      running.current = false;
-    }
+    running.current = corrida;
+    return corrida;
   }, [
     adoptLocalProfile,
     archiveAccountData,
@@ -103,6 +81,12 @@ export function useAccountBootstrap(): {
   ]);
 
   const reset = useCallback(() => setState("idle"), []);
+  const value = useMemo(() => ({ state, run, reset }), [state, run, reset]);
 
-  return { state, run, reset };
+  return <BootstrapContext.Provider value={value}>{children}</BootstrapContext.Provider>;
+}
+
+/** Lee el bootstrap compartido. NUNCA crea uno nuevo. */
+export function useAccountBootstrap(): BootstrapValue {
+  return useContext(BootstrapContext) ?? SIN_PROVIDER;
 }

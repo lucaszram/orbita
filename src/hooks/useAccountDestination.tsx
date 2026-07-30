@@ -37,6 +37,12 @@ export function useAccountDestination(): {
     localProfileReady: !isReady
       ? undefined
       : !!profile && !!profileOwner && profileOwner === auth?.userId,
+    // Datos locales de otra cuenta (o de un guest sin dueño) con sesión activa:
+    // hay que aislarlos antes de elegir destino. Incluye el caso de una cuenta
+    // creada desde `/crear-cuenta` en un dispositivo que ya tenía datos.
+    localProfileForeign: !isReady
+      ? undefined
+      : !!profile && profileOwner !== (auth?.userId ?? null),
     // Una fila `users` que no se pudo crear es un fallo de recuperación: la
     // cuenta existe en Clerk pero no se puede leer su estado.
     recoveryFailed: userError

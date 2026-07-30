@@ -20,15 +20,21 @@ import type { AccountFlow } from "@/onboarding/useAccount";
  */
 export function SignUpGateScreen({
   account,
+  initialEmail = "",
   onSignIn,
   onVerified
 }: {
   account: AccountFlow;
+  /**
+   * Email que la persona ya venía tipeando en el login (`?email=`): llega
+   * cargado para no pedírselo dos veces.
+   */
+  initialEmail?: string;
   onSignIn: () => void;
   /** La sesión quedó activa: el resolver decide el destino. */
   onVerified: () => void;
 }) {
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [code, setCode] = useState("");

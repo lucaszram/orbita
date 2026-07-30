@@ -48,6 +48,13 @@ export type AccountState = {
    * storage local todavía no se leyó.
    */
   localProfileReady?: boolean;
+  /**
+   * Hay datos locales de OTRA cuenta (o sin dueño) en este dispositivo. Hay que
+   * aislarlos ANTES de elegir cualquier destino — también cuando la cuenta
+   * activa no tiene `birthData`: si no, quien entra con otra cuenta arranca el
+   * onboarding llevándose el diario y las guardadas del dueño anterior.
+   */
+  localProfileForeign?: boolean;
   /** La recuperación de la cuenta falló y hay que ofrecer reintento. */
   recoveryFailed?: boolean;
 };
@@ -67,9 +74,12 @@ export function resolveAccountDestination(s: AccountState): AccountDestination {
   // landing, a un perfil local ni al onboarding "por si acaso": montar el
   // onboarding para una cuenta completa es lo que permitía sobrescribir.
   if (!s.birthDataResolved) return "loading";
+  if (s.localProfileReady === undefined) return "loading";
+  // El aislamiento va PRIMERO, con o sin `birthData`: mezclar los datos de dos
+  // cuentas es peor que hacer esperar un instante.
+  if (s.localProfileForeign) return "bootstrap";
   if (!s.hasBirthData) return "onboarding";
   // Cuenta completa: recién se entra cuando el perfil local es de ESTA cuenta.
-  if (s.localProfileReady === undefined) return "loading";
   return s.localProfileReady ? "app-home" : "bootstrap";
 }
 

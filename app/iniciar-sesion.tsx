@@ -4,7 +4,6 @@ import { Redirect, useRouter } from "expo-router";
 
 import { ONBOARDING_ROUTE, SIGN_UP_ROUTE } from "@/domain/appRoutes";
 import { AccountGate } from "@/components/orbita/AccountGate";
-import { useAccountBootstrap } from "@/hooks/useAccountBootstrap";
 import { useAppState } from "@/hooks/useAppState";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
 import { CTA } from "@/onboarding/components/CTA";
@@ -43,7 +42,6 @@ function SignInSurface() {
   const { profileOwner, archiveAccountData, resetApp } = useAppState();
   const flow = useSignInFlow();
   const hydrate = useSignInHydrate();
-  const bootstrap = useAccountBootstrap();
   const [hydrateFailed, setHydrateFailed] = useState(false);
   const [retrying, setRetrying] = useState(false);
 
@@ -51,19 +49,16 @@ function SignInSurface() {
   if (!flow || !hydrate) return <Redirect href="/onboarding" />;
   if (!fontsLoaded) return <View style={styles.fill} />;
 
+  /**
+   * La sesión quedó activa. NO se corre el bootstrap acá: el dueño único es el
+   * provider por encima del gate. Antes esta pantalla tenía su propia instancia
+   * del hook, o sea su propio lock, y el archivado podía correr dos veces.
+   *
+   * Al activarse la sesión el resolver reevalúa y `AccountGate` desmonta esta
+   * pantalla para hidratar y navegar.
+   */
   const enter = async () => {
     setHydrateFailed(false);
-    // Mismo bootstrap que la entrada con sesión ya activa: traer lo remoto,
-    // separar los datos si entra otra cuenta, restaurar lo archivado e hidratar
-    // el perfil local. Antes esta lógica vivía SÓLO acá, y por eso un navegador
-    // nuevo con sesión activa entraba a Home sin perfil local y rebotaba.
-    const ok = await bootstrap.run();
-    if (!ok) {
-      setHydrateFailed(true);
-      return;
-    }
-    // El destino lo decide el resolver en el próximo render: con `birthData`
-    // remoto va a Home, sin él al onboarding. No se navega a mano.
   };
 
   /**

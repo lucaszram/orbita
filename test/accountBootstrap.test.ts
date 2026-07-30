@@ -48,15 +48,33 @@ test("tras hidratar, la misma cuenta entra a Home", () => {
   assert.equal(resolveAccountDestination({ ...CON_SESION, localProfileReady: true }), "app-home");
 });
 
-test("una cuenta INcompleta nunca pasa por bootstrap: va al onboarding", () => {
-  // El bootstrap es sólo para hidratar una cuenta que YA completó el alta.
-  for (const localProfileReady of [true, false, undefined]) {
+test("cuenta incompleta SIN datos ajenos → onboarding directo", () => {
+  for (const localProfileReady of [true, false]) {
     assert.equal(
-      resolveAccountDestination({ ...CON_SESION, hasBirthData: false, localProfileReady }),
+      resolveAccountDestination({
+        ...CON_SESION,
+        hasBirthData: false,
+        localProfileReady,
+        localProfileForeign: false
+      }),
       "onboarding",
       `localProfileReady=${localProfileReady}`
     );
   }
+});
+
+test("cuenta incompleta CON datos ajenos → primero aislar", () => {
+  // Sin esto, quien entra con otra cuenta arrancaba el onboarding llevándose el
+  // diario y las guardadas del dueño anterior.
+  assert.equal(
+    resolveAccountDestination({
+      ...CON_SESION,
+      hasBirthData: false,
+      localProfileReady: false,
+      localProfileForeign: true
+    }),
+    "bootstrap"
+  );
 });
 
 test("el gate no redirige en el estado bootstrap: muestra carga o reintento", () => {
@@ -89,26 +107,20 @@ test("el bootstrap no escribe en birthData", () => {
   }
 });
 
-test("cuenta A local con cuenta B activa: se archiva y limpia antes de restaurar", () => {
-  // La regla pura sigue siendo la autoridad del cambio de cuenta.
-  assert.equal(isAccountSwitch({ localProfileOwner: "user_A", incomingUserId: "user_B" }), true);
-  assert.equal(isAccountSwitch({ localProfileOwner: "user_A", incomingUserId: "user_A" }), false);
+test("el orden y la concurrencia del bootstrap se prueban ejecutándolo", () => {
+  // La conducta vive en `test/accountBootstrapTx.test.ts`, que corre la
+  // transacción con dobles. Acá sólo se ancla que el provider sea el dueño
+  // ÚNICO del lock: dos instancias del hook eran dos locks distintos.
+  const provider = sinComentarios(readFileSync(join(ROOT, "src/hooks/useAccountBootstrap.tsx"), "utf8"));
+  assert.ok(/AccountBootstrapProvider/.test(provider));
+  assert.ok(/useContext\(BootstrapContext\)/.test(provider), "el hook LEE el contexto, no crea estado");
+  assert.ok(/running\.current/.test(provider), "la corrida en vuelo se comparte");
 
-  const src = readFileSync(join(ROOT, "src/hooks/useAccountBootstrap.tsx"), "utf8");
-  const iArchiva = src.indexOf("archiveAccountData(profileOwner)");
-  const iLimpia = src.indexOf("resetApp()");
-  const iRestaura = src.indexOf("restoreAccountData(");
-  assert.ok(iArchiva !== -1 && iArchiva < iLimpia, "archivar ANTES de limpiar");
-  assert.ok(iLimpia < iRestaura, "limpiar ANTES de restaurar: si no, se mezclan las dos cuentas");
-  // Y un perfil ajeno no cuenta como listo, así que siempre pasa por acá.
-  const hook = readFileSync(join(ROOT, "src/hooks/useAccountDestination.tsx"), "utf8");
-  assert.ok(/profileOwner === auth\?\.userId/.test(hook), "el perfil debe ser de la cuenta ACTIVA");
-});
+  const login = sinComentarios(readFileSync(join(ROOT, "app/iniciar-sesion.tsx"), "utf8"));
+  assert.ok(!/useAccountBootstrap/.test(login), "el login no puede tener su propia instancia");
 
-test("el bootstrap tiene lock sincrónico: no archiva dos veces", () => {
-  const src = readFileSync(join(ROOT, "src/hooks/useAccountBootstrap.tsx"), "utf8");
-  assert.ok(/useRef\(false\)/.test(src));
-  assert.ok(/if \(running\.current/.test(src), "el lock va antes de cualquier trabajo");
+  const layout = readFileSync(join(ROOT, "app/_layout.tsx"), "utf8");
+  assert.ok(/<AccountBootstrapProvider>/.test(layout), "el provider va montado sobre el gate");
 });
 
 // --- "Crear una cuenta" ------------------------------------------------------

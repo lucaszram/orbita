@@ -41,7 +41,14 @@ test("cuenta completa CON perfil local propio → Home de la app", () => {
 });
 
 test("cuenta incompleta → onboarding", () => {
-  const s = { ...BASE, signedIn: true, birthDataResolved: true, hasBirthData: false };
+  const s = {
+    ...BASE,
+    signedIn: true,
+    birthDataResolved: true,
+    hasBirthData: false,
+    localProfileReady: false,
+    localProfileForeign: false
+  };
   assert.equal(resolveAccountDestination(s), "onboarding");
   assert.ok(destinationAllows("onboarding", "onboarding"));
   assert.ok(!destinationAllows("onboarding", "app"), "una cuenta sin carta no entra a Home");
@@ -99,7 +106,14 @@ test("un usuario con sesión no puede montar la pantalla de login", () => {
   assert.equal(resolveAccountDestination(completa), "app-home");
   assert.ok(!destinationAllows("app-home", "auth"), "una cuenta completa no puede quedarse en el login");
 
-  const incompleta = { ...BASE, signedIn: true, birthDataResolved: true, hasBirthData: false };
+  const incompleta = {
+    ...BASE,
+    signedIn: true,
+    birthDataResolved: true,
+    hasBirthData: false,
+    localProfileReady: false,
+    localProfileForeign: false
+  };
   assert.equal(resolveAccountDestination(incompleta), "onboarding");
   assert.ok(!destinationAllows("onboarding", "auth"), "una cuenta incompleta tampoco");
 

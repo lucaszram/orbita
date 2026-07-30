@@ -9,6 +9,7 @@ import "../global.css";
 // hay LogBox. Lo silenciamos para no ensuciar la pantalla en el testeo interno.
 LogBox.ignoreLogs(["[expo-notifications]"]);
 import { ConfirmHost } from "@/components/orbita/ConfirmHost";
+import { AccountBootstrapProvider } from "@/hooks/useAccountBootstrap";
 import { AppStateProvider } from "@/hooks/useAppState";
 import { DailyContextProvider } from "@/hooks/useDailyContext";
 import { OrbitaSessionProvider } from "@/hooks/useLiveApp";
@@ -28,6 +29,7 @@ export default function RootLayout() {
           <DailyContextProvider>
           <AppStateProvider>
           <ConfirmHost>
+          <AccountBootstrapProvider>
             <StatusBar style="dark" />
             <Stack screenOptions={{ headerShown: false }}>
               <Stack.Screen name="index" />
@@ -46,6 +48,7 @@ export default function RootLayout() {
               <Stack.Screen name="carta-full" />
               <Stack.Screen name="(tabs)" />
             </Stack>
+          </AccountBootstrapProvider>
           </ConfirmHost>
           </AppStateProvider>
           </DailyContextProvider>
