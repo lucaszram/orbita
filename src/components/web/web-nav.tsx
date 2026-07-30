@@ -1,13 +1,11 @@
 import { Link } from "expo-router";
-import { Orbit } from "lucide-react-native";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { CANVAS_MAX_WIDTH, WEB_SHELL_BACKGROUND } from "@/domain/webLayout";
 import { useIsDesktop } from "@/hooks/useLayoutMode";
 
 const colors = {
   shell: WEB_SHELL_BACKGROUND,
   copper: "#C46A3A",
-  copperSoft: "#D69A6A",
   bone: "#F4EEE4",
   // 0.72 y no 0.5: sobre el negro del shell, el 0.5 de antes quedaba al borde de
   // lo ilegible en los links inactivos.
@@ -15,6 +13,13 @@ const colors = {
   boneDim: "rgba(244, 238, 228, 0.5)",
   line: "rgba(244, 238, 228, 0.12)"
 };
+
+/**
+ * El ícono REAL de la app (el mismo binario que se firma en iOS), no un glifo
+ * genérico de librería. Antes acá había un `Orbit` de lucide: un anillo dibujado
+ * que no es la marca y que en la barra leía como un ícono de sistema.
+ */
+const APP_ICON = require("../../../assets/icon.png");
 
 export type NavKey = "inicio" | "transitos" | "umbral" | "perfil" | "carta" | "diario";
 
@@ -54,33 +59,43 @@ export function WebNav({ active, meta }: { active: NavKey; meta?: string }) {
     <View style={styles.topbar}>
       <View style={styles.topbarInner}>
         <Link href="/home" asChild>
-          <Pressable style={styles.brand}>
-            <Orbit color={colors.copperSoft} size={18} strokeWidth={1.7} />
+          <Pressable style={styles.brand} accessibilityRole="link" accessibilityLabel="Órbita · Inicio">
+            {/* Tratamiento de ícono de app: cuadrado redondeado chico con
+                hairline, como se ve en una barra de tareas. El PNG es de
+                1024px, así que a 28 baja limpio en cualquier densidad. */}
+            <View style={styles.markFrame}>
+              <Image source={APP_ICON} style={styles.mark} resizeMode="cover" />
+            </View>
             <Text style={styles.brandText}>Órbita</Text>
           </Pressable>
         </Link>
 
-        <View style={styles.nav}>
-          {items.map((it) => {
-            const on = active === it.key;
-            return (
-              <Link key={it.key} href={it.href as never} asChild>
-                <Pressable
-                  accessibilityRole="link"
-                  accessibilityState={{ selected: on }}
-                  style={styles.navItem}
-                >
-                  <Text style={on ? styles.navActive : styles.navLink}>{it.label}</Text>
-                  {/* El estado activo no puede ser sólo un peso de fuente: se
-                      perdía a simple vista. Subrayado cobre, como los tabs. */}
-                  <View style={[styles.navUnderline, on && styles.navUnderlineOn]} />
-                </Pressable>
-              </Link>
-            );
-          })}
+        {/* La navegación va arriba a la DERECHA, como cualquier header web.
+            Antes quedaba centrada por un `space-between` de tres celdas cuya
+            tercera celda estaba siempre vacía: leía como un menú suelto en el
+            medio de la barra. */}
+        <View style={styles.actions}>
+          <View style={styles.nav}>
+            {items.map((it) => {
+              const on = active === it.key;
+              return (
+                <Link key={it.key} href={it.href as never} asChild>
+                  <Pressable
+                    accessibilityRole="link"
+                    accessibilityState={{ selected: on }}
+                    style={styles.navItem}
+                  >
+                    <Text style={on ? styles.navActive : styles.navLink}>{it.label}</Text>
+                    {/* El estado activo no puede ser sólo un peso de fuente: se
+                        perdía a simple vista. Subrayado cobre, como los tabs. */}
+                    <View style={[styles.navUnderline, on && styles.navUnderlineOn]} />
+                  </Pressable>
+                </Link>
+              );
+            })}
+          </View>
+          {meta ? <Text style={styles.metaText}>{meta}</Text> : null}
         </View>
-
-        <View style={styles.right}>{meta ? <Text style={styles.metaText}>{meta}</Text> : null}</View>
       </View>
     </View>
   );
@@ -124,8 +139,21 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     width: "100%"
   },
-  brand: { alignItems: "center", flexDirection: "row", gap: 8, minHeight: 44 },
+  brand: { alignItems: "center", flexDirection: "row", gap: 10, minHeight: 44 },
+  // El ícono trae su propio fondo azul-noche, así que el marco redondeado lo
+  // separa del negro del shell y lo hace leer como ícono, no como una foto.
+  markFrame: {
+    borderColor: "rgba(244, 238, 228, 0.18)",
+    borderRadius: 7,
+    borderWidth: 1,
+    height: 28,
+    overflow: "hidden",
+    width: 28
+  },
+  mark: { height: 26, width: 26 },
   brandText: { color: colors.bone, fontFamily: "Inter_700Bold", fontSize: 16 },
+  // Grupo derecho del header: la navegación (y el meta si algún día se usa).
+  actions: { alignItems: "center", flexDirection: "row", gap: 24 },
   nav: { flexDirection: "row", gap: 26 },
   // 44px de alto mínimo: es el tamaño táctil accesible, y en escritorio no
   // cambia nada visualmente porque el texto queda centrado.
@@ -154,8 +182,7 @@ const styles = StyleSheet.create({
   bottomItem: { alignItems: "center", flex: 1, justifyContent: "center", minHeight: 56, paddingVertical: 10 },
   bottomActive: { color: colors.bone, fontFamily: "Inter_700Bold", fontSize: 13 },
   bottomLink: { color: colors.boneDim, fontFamily: "Inter_500Medium", fontSize: 13 },
-  metaText: { color: colors.boneMuted, fontFamily: "Inter_500Medium", fontSize: 13 },
-  right: { alignItems: "center", flexDirection: "row", gap: 14 }
+  metaText: { color: colors.boneMuted, fontFamily: "Inter_500Medium", fontSize: 13 }
 });
 
 export default WebNav;

@@ -301,6 +301,79 @@ test("la navegación de escritorio es opaca, ancha y con estado activo visible",
   assert.doesNotMatch(nav, /boneDim,\s*fontFamily: "Inter_500Medium", fontSize: 14/, "el link inactivo era ilegible");
 });
 
+test("el header usa el ícono REAL de la app, no un glifo de librería", () => {
+  const nav = sinComentarios(leer("src/components/web/web-nav.tsx"));
+  // El binario que se firma en iOS, no un anillo dibujado por lucide.
+  assert.match(nav, /require\("\.\.\/\.\.\/\.\.\/assets\/icon\.png"\)/, "la marca sale del ícono real");
+  assert.match(nav, /<Image source=\{APP_ICON\}/, "y se dibuja como imagen");
+  assert.doesNotMatch(nav, /lucide-react-native/, "no puede volver el ícono genérico");
+  assert.doesNotMatch(nav, /<Orbit\b/, "no puede volver el ícono genérico");
+  // Tratamiento de ícono de app: cuadrado redondeado con recorte, y tamaño
+  // chico contra un PNG de 1024 (baja limpio en cualquier densidad).
+  assert.match(nav, /markFrame: \{[^}]*borderRadius: \d+[^}]*overflow: "hidden"/s, "marco de ícono redondeado y recortado");
+  assert.match(nav, /mark: \{ height: 2\d, width: 2\d \}/, "el ícono es chico: nunca se agranda por encima de su fuente");
+  // Y la marca sigue siendo ícono + wordmark, con objetivo táctil accesible.
+  assert.match(nav, /<Text style=\{styles\.brandText\}>Órbita<\/Text>/, "el wordmark se conserva");
+  assert.match(nav, /brand: \{[^}]*minHeight: 44/, "44px de objetivo táctil");
+});
+
+test("el ícono de la app existe y es el mismo que declara app.json", () => {
+  assert.ok(statSync(join(ROOT, "assets/icon.png")).size > 0, "el header apunta a un archivo real");
+  const appJson = JSON.parse(leer("app.json"));
+  assert.equal(appJson.expo.icon, "./assets/icon.png", "el header y el build tienen que usar el mismo ícono");
+});
+
+test("la navegación de escritorio va arriba a la derecha, sin celda vacía", () => {
+  const nav = sinComentarios(leer("src/components/web/web-nav.tsx"));
+  // Antes eran tres celdas con `space-between` y la tercera SIEMPRE vacía, así
+  // que la navegación quedaba centrada en el medio de la barra.
+  assert.match(nav, /<View style=\{styles\.actions\}>\s*<View style=\{styles\.nav\}>/, "la navegación va en el grupo derecho");
+  assert.match(nav, /actions: \{ alignItems: "center", flexDirection: "row"/, "el grupo derecho es una fila");
+  assert.match(nav, /justifyContent: "space-between"/, "marca a la izquierda, acciones a la derecha");
+  assert.doesNotMatch(nav, /styles\.right/, "la celda vacía de la derecha no puede volver");
+  assert.doesNotMatch(nav, /right: \{ alignItems: "center", flexDirection: "row", gap: 14 \}/);
+  // Y sigue sin atajos de cuenta: todo eso vive en /perfil.
+  for (const prohibido of ["avatar", "AuthPill", "iniciar-sesion"]) {
+    assert.ok(!new RegExp(prohibido, "i").test(nav), `la barra autenticada no puede tener ${prohibido}`);
+  }
+});
+
+test("el Perfil no dibuja el hero en escritorio, y sí en móvil y nativo", () => {
+  // El hero es una banda de 240px dentro de una columna de 720 sobre un fondo
+  // cósmico full-bleed: en escritorio quedaba como una lámina rectangular con
+  // los bordes cortados contra ese fondo. Fuera de escritorio se conserva.
+  const perfil = sinComentarios(leer("app/(tabs)/perfil.tsx"));
+  assert.match(perfil, /const desktop = useIsDesktop\(\);/, "el Perfil consume el contexto de layout");
+  assert.match(
+    perfil,
+    /\{desktop \? null : \(\s*<FullBleedHero kind="perfil" height=\{240\}>/,
+    "el hero tiene que quedar fuera SÓLO en escritorio"
+  );
+  // Y el dato que sólo vivía adentro del hero se conserva en el contenido, sin
+  // duplicarse en móvil (donde ya se lee al pie del hero).
+  const enHero = perfil.match(/\{birth\.status === "complete" \? <MonoLine>\{birth\.line\}<\/MonoLine> : null\}/g) ?? [];
+  assert.equal(enHero.length, 1, "la línea del hero sigue siendo una sola");
+  assert.match(
+    perfil,
+    /\{desktop && birth\.status === "complete" \? \(\s*<View style=\{styles\.birthLine\}>\s*<MonoLine>\{birth\.line\}<\/MonoLine>/,
+    "en escritorio la línea de nacimiento se conserva en el contenido"
+  );
+});
+
+test("cambiar de destino arranca arriba de todo en escritorio web", () => {
+  const shell = sinComentarios(leer("src/components/web/web-app-shell.tsx"));
+  assert.match(shell, /usePathname/, "el reset se dispara por cambio de ruta");
+  assert.match(
+    shell,
+    /useRouteScrollTop\(\{ pathname, enabled: resetsScrollOnRoute\(\{ web: true, mode \}\), containerRef: contentRef \}\)/,
+    "la decisión sale del contrato, no de un chequeo suelto"
+  );
+  // No alcanza con el documento: scrollean los ScrollView de cada pantalla.
+  assert.match(shell, /node\.querySelectorAll\("\*"\)/, "hay que recorrer los scrollers internos");
+  assert.match(shell, /el\.scrollTop = 0/, "y llevarlos a cero");
+  assert.match(shell, /<View ref=\{contentRef\}/, "el contenedor del contenido se referencia");
+});
+
 test("el colchón de la barra inferior no puede volver a ser un View sin fondo", () => {
   const shell = sinComentarios(leer("src/components/web/web-app-shell.tsx"));
   assert.doesNotMatch(shell, /bottomSpacer/, "ese View sin fondo dejaba una banda BLANCA sobre la barra");

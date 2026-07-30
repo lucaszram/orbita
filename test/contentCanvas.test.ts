@@ -9,6 +9,7 @@ import {
   canvasMaxWidth,
   layoutModeFor,
   reservesBottomNav,
+  resetsScrollOnRoute,
   showsScreenHeader,
   splitsColumns,
   WEB_LAYOUT_BREAKPOINT
@@ -77,6 +78,17 @@ test("el header interno se oculta SÓLO en escritorio web", () => {
   assert.equal(showsScreenHeader({ web: true, mode: "mobile" }), true, "en móvil web es el único chrome");
   assert.equal(showsScreenHeader({ web: false, mode: "mobile" }), true, "el nativo no cambia");
   assert.equal(showsScreenHeader({ web: false, mode: "desktop" }), true, "el nativo no cambia ni en tablet");
+});
+
+test("sólo el escritorio web lleva el destino al tope al cambiar de ruta", () => {
+  assert.equal(resetsScrollOnRoute({ web: true, mode: "desktop" }), true, "en la web un link empieza arriba");
+  assert.equal(
+    resetsScrollOnRoute({ web: true, mode: "mobile" }),
+    false,
+    "en móvil web la navegación es la barra inferior: conserva dónde estabas, como una pestaña"
+  );
+  assert.equal(resetsScrollOnRoute({ web: false, mode: "mobile" }), false, "el nativo no cambia");
+  assert.equal(resetsScrollOnRoute({ web: false, mode: "desktop" }), false, "el nativo no cambia");
 });
 
 test("sólo la web angosta reserva el alto de la barra fija", () => {

@@ -87,6 +87,23 @@ export function showsScreenHeader(input: { web: boolean; mode: LayoutMode }): bo
 }
 
 /**
+ * ¿Cambiar de destino tiene que arrancar arriba de todo?
+ *
+ * En la web sí, y es lo que espera cualquiera: hacés click en "Tránsitos" y la
+ * página empieza por el principio. En este stack no pasaba solo — las pantallas
+ * scrollean adentro de un `ScrollView` y el navegador no las conoce, así que al
+ * volver a un destino ya visitado reaparecía a media altura, con el contenido
+ * cortado debajo del header.
+ *
+ * Sólo escritorio: en móvil web y en nativo la navegación es la barra inferior
+ * y el comportamiento de las pestañas —conservar dónde estabas— es el correcto
+ * y el que ya tiene el nativo. No se toca.
+ */
+export function resetsScrollOnRoute(input: { web: boolean; mode: LayoutMode }): boolean {
+  return input.web && input.mode === "desktop";
+}
+
+/**
  * ¿Hay que reservar espacio para la barra inferior fija?
  *
  * Sólo en la web angosta (la barra es `position: fixed`). El espacio se reserva
