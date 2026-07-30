@@ -1,4 +1,5 @@
-import { Image, type ImageSourcePropType, StyleSheet, View } from "react-native";
+import { Image, type ImageSourcePropType, ScrollView, StyleSheet, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Text } from "@/components/ui/text";
 
@@ -27,23 +28,41 @@ const DESPUES = [
 
 type Props = { step: number; onNext: () => void; onBack: () => void };
 
-/** 13 — Before / after Órbita. */
+/**
+ * 13 — Antes / después de Órbita.
+ *
+ * Es el paso más denso del alta: dos tarjetas de cinco filas cada una. Con
+ * altura fija no entraba —a 400x774 el CTA quedaba cortado contra el borde
+ * inferior, y a 320x568 directamente fuera de pantalla— porque el cuerpo era un
+ * `View` rígido. Ahora las tarjetas viven en un `ScrollView` y el CTA queda
+ * ANCLADO fuera de él: se puede leer todo bajando, y el botón está siempre
+ * visible y alcanzable, con el respiro del área segura por debajo.
+ */
 export function BeforeAfterScreen({ step, onNext, onBack }: Props) {
+  const insets = useSafeAreaInsets();
   return (
     <Screen bg={A.beforeAfterBg} bgOpacity={0.8} wash={0.6}>
       <Header step={step} total={15} onBack={onBack} />
       <View style={styles.body}>
-        <Title style={styles.title}>Antes y después{"\n"}de Órbita</Title>
-        <Body style={styles.sub}>Una guía diaria puede cambiar cómo mirás tu día.</Body>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <Title style={styles.title}>Antes y después{"\n"}de Órbita</Title>
+          <Body style={styles.sub}>Una guía diaria puede cambiar cómo mirás tu día.</Body>
 
-        <View style={styles.columns}>
-          <Column icon={A.moon} title="Antes" items={ANTES} positive={false} />
-          <Column icon={A.sun} title="Después" items={DESPUES} positive />
-        </View>
+          <View style={styles.columns}>
+            <Column icon={A.moon} title="Antes" items={ANTES} positive={false} />
+            <Column icon={A.sun} title="Después" items={DESPUES} positive />
+          </View>
 
-        <View style={styles.spacer} />
-        <Caption style={styles.note}>No resuelve por vos. Te devuelve contexto.</Caption>
-        <View style={styles.footer}>
+          <Caption style={styles.note}>No resuelve por vos. Te devuelve contexto.</Caption>
+        </ScrollView>
+
+        {/* Fuera del scroll: el CTA no puede depender de que alguien llegue al
+            fondo de una lista de diez filas. */}
+        <View style={[styles.footer, { paddingBottom: 12 + insets.bottom }]}>
           <CTA label="Continuar" onPress={onNext} />
         </View>
       </View>
@@ -82,6 +101,8 @@ function Column({
 
 const styles = StyleSheet.create({
   body: { flex: 1, paddingHorizontal: GUTTER, paddingTop: 22 },
+  scroll: { flex: 1 },
+  scrollContent: { paddingBottom: 8 },
   card: {
     alignItems: "center",
     backgroundColor: "rgba(18,20,26,0.82)",
@@ -107,13 +128,12 @@ const styles = StyleSheet.create({
   chipAfter: { backgroundColor: "rgba(196,106,58,0.16)", borderColor: "rgba(196,106,58,0.5)" },
   chipBefore: { backgroundColor: "rgba(140,136,128,0.12)", borderColor: "rgba(140,136,128,0.4)" },
   columns: { flexDirection: "row", gap: 12, marginTop: 24 },
-  footer: { paddingBottom: 12, paddingTop: 12 },
+  footer: { paddingTop: 12 },
   icon: { borderRadius: 20, height: 40, width: 40 },
   mark: { fontFamily: font.sansBold, fontSize: 11 },
-  note: { marginBottom: 8, textAlign: "center" },
+  note: { marginTop: 16, textAlign: "center" },
   row: { alignSelf: "stretch", flexDirection: "row", gap: 8 },
   rowTxt: { color: orbita.bone, flex: 1, fontFamily: font.sansMed, fontSize: 12.5, lineHeight: 17 },
-  spacer: { flex: 1, minHeight: 12 },
   sub: { marginTop: 10, textAlign: "center" },
   title: { textAlign: "center" },
 });

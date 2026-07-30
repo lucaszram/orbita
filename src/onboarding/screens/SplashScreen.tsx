@@ -64,7 +64,7 @@ function EntryDoors({ onNext, onSignIn }: Props) {
               onPress={onSignIn}
               hitSlop={10}
               style={styles.signInRow}
-              accessibilityRole="button"
+              accessibilityRole="link"
               accessibilityLabel="Ya tengo cuenta: iniciar sesión"
             >
               <Text style={styles.signInText}>
@@ -127,13 +127,23 @@ const styles = StyleSheet.create({
   doors: { paddingBottom: 18 },
   hero: { alignItems: "center", flex: 1, justifyContent: "center" },
   root: { backgroundColor: "#0A0B0E", flex: 1 },
-  signInDot: { color: orbita.faint },
-  signInLink: { color: orbita.copper, fontFamily: font.sansMed },
-  signInRow: { alignItems: "center", marginTop: 18 },
+  signInDot: { color: orbita.muted },
+  // El cobre de marca (#C46A3A) sobre el casi-negro de Órbita da 5,13:1 —
+  // pasa el mínimo, pero justo, y a 14px sin peso ni subrayado el enlace se
+  // perdía en el fondo. Es el único camino de vuelta para alguien que YA tiene
+  // cuenta, así que se sube a `copperSoft` (#D69A6A, 8,14:1) y se lo subraya:
+  // deja de depender del color para leerse como enlace (WCAG 1.4.1).
+  signInLink: {
+    color: orbita.copperSoft,
+    fontFamily: font.sansBold,
+    textDecorationLine: "underline"
+  },
+  // 44px de alto real: `hitSlop` no existe en web.
+  signInRow: { alignItems: "center", justifyContent: "center", marginTop: 14, minHeight: 44 },
   signInText: {
     color: orbita.bone,
     fontFamily: font.sans,
-    fontSize: 14,
+    fontSize: 15,
     textAlign: "center"
   },
   tagline: { marginTop: 10, textAlign: "center" },

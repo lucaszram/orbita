@@ -1,20 +1,14 @@
 import { StyleSheet, View } from "react-native";
 
+import { isRealDateParts } from "@/domain/birthInput";
+
 import { A } from "../assets";
+import { BirthDatePicker } from "../components/BirthPicker";
 import { CTA } from "../components/CTA";
 import { Header } from "../components/Header";
 import { Screen } from "../components/Screen";
 import { Body, Caption, Title } from "../components/Type";
-import { Wheel, WHEEL_ROW_H } from "../components/Wheel";
-import { GUTTER, orbita } from "../theme";
-
-export const MONTHS = [
-  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
-];
-
-const DAYS = Array.from({ length: 31 }, (_, i) => String(i + 1));
-const YEARS = Array.from({ length: 90 }, (_, i) => String(2014 - i));
+import { GUTTER } from "../theme";
 
 export type BirthDateParts = { day: number; month: number; year: number };
 
@@ -26,9 +20,19 @@ type Props = {
   onBack: () => void;
 };
 
-/** 05 — Birthdate wheel picker. */
+/**
+ * 05 — Fecha de nacimiento.
+ *
+ * El control lo pone `BirthDatePicker`, que tiene una implementación por
+ * plataforma: rueda en nativo, `<input type="date">` en web. La pantalla no
+ * sabe cuál está montada — sólo conoce las partes `{day, month, year}`, que son
+ * las mismas que usa el resto del flujo. Eso es lo que garantiza que lo que se
+ * VE y lo que se confirma sean el mismo valor.
+ */
 export function BirthdateScreen({ step, value, onChange, onNext, onBack }: Props) {
-  const yearIndex = YEARS.indexOf(String(value.year));
+  // Un día que no existe (31 de febrero) se puede armar con la rueda nativa.
+  // No se confirma: se avisa y "Continuar" queda bloqueado.
+  const real = isRealDateParts(value);
   return (
     <Screen bg={A.dailyTexture} wash={0.52}>
       <Header step={step} total={15} onBack={onBack} />
@@ -36,72 +40,31 @@ export function BirthdateScreen({ step, value, onChange, onNext, onBack }: Props
         <Title>¿Cuándo naciste?</Title>
         <Body style={styles.sub}>Tu fecha ubica el Sol en tu carta.</Body>
 
-        <View style={styles.pickerZone}>
-          <View style={styles.hairlineTop} pointerEvents="none" />
-          <View style={styles.hairlineBottom} pointerEvents="none" />
-          <View style={styles.wheels}>
-            <Wheel
-              items={DAYS}
-              index={value.day - 1}
-              onChange={(i) => onChange({ ...value, day: i + 1 })}
-              width={64}
-              align="center"
-            />
-            <Wheel
-              items={MONTHS}
-              index={value.month - 1}
-              onChange={(i) => onChange({ ...value, month: i + 1 })}
-              width={150}
-              align="center"
-            />
-            <Wheel
-              items={YEARS}
-              index={yearIndex < 0 ? 0 : yearIndex}
-              onChange={(i) => onChange({ ...value, year: Number(YEARS[i]) })}
-              width={84}
-              align="center"
-            />
-          </View>
-        </View>
+        <BirthDatePicker value={value} onChange={onChange} />
+
+        {real ? null : (
+          <Body accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.invalid}>
+            Ese día no existe en el mes que elegiste. Ajustá la fecha para continuar.
+          </Body>
+        )}
 
         <View style={styles.spacer} />
         <Caption style={styles.privacy}>
           La usamos para armar tu carta. Nunca vendemos ni compartimos tus datos.
         </Caption>
         <View style={styles.footer}>
-          <CTA label="Continuar" onPress={onNext} />
+          <CTA label="Continuar" onPress={onNext} disabled={!real} />
         </View>
       </View>
     </Screen>
   );
 }
 
-const HAIRLINE_TOP = WHEEL_ROW_H * 2;
-
 const styles = StyleSheet.create({
   body: { flex: 1, paddingHorizontal: GUTTER, paddingTop: 26 },
   footer: { paddingBottom: 12, paddingTop: 12 },
-  hairlineBottom: {
-    backgroundColor: orbita.lineStrong,
-    height: 1,
-    left: 0,
-    position: "absolute",
-    right: 0,
-    top: HAIRLINE_TOP + WHEEL_ROW_H,
-    zIndex: 2,
-  },
-  hairlineTop: {
-    backgroundColor: orbita.lineStrong,
-    height: 1,
-    left: 0,
-    position: "absolute",
-    right: 0,
-    top: HAIRLINE_TOP,
-    zIndex: 2,
-  },
-  pickerZone: { marginTop: 40 },
+  invalid: { color: "#D07A5A", marginTop: 14 },
   privacy: { marginBottom: 8, textAlign: "center" },
   spacer: { flex: 1, minHeight: 16 },
   sub: { marginTop: 10 },
-  wheels: { flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 8 },
 });

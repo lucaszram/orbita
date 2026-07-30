@@ -26,10 +26,17 @@ type Props = {
  * Dark immersive screen shell: full-bleed asset + legibility wash + safe area.
  *
  * El fondo sigue siendo full-bleed (es atmósfera); el CONTENIDO viaja en el
- * lienzo compartido. Los quince pasos del alta, el login, la recuperación y el
- * editor de datos montan este shell, así que en escritorio ninguno estira sus
- * CTAs (`alignSelf: stretch`) ni sus párrafos a lo ancho de la ventana. En un
- * teléfono el tope de 720 nunca se alcanza: el nativo queda igual.
+ * lienzo compartido, en la variante `form`: una columna de 480 centrada. Los
+ * quince pasos del alta, el login, la recuperación y el editor de datos montan
+ * este shell, así que en escritorio ninguno estira sus CTAs
+ * (`alignSelf: stretch`) ni sus párrafos a lo ancho de la ventana.
+ *
+ * Por qué 480 y no la columna de lectura de 720: cada paso es UNA pregunta con
+ * un CTA al pie. A 720 el botón medía media ventana y el paso se leía como una
+ * captura de teléfono estirada; a 480 es una columna deliberada sobre el fondo
+ * cósmico, que es como se compone un alta en la web. Debajo de 480 la variante
+ * es ancho completo, así que en un teléfono no cambia NADA: el nativo y la web
+ * angosta quedan idénticos.
  */
 export function Screen({ bg, bgOpacity = 1, wash = 0.55, children }: Props) {
   return (
@@ -59,7 +66,7 @@ export function Screen({ bg, bgOpacity = 1, wash = 0.55, children }: Props) {
         </ImageBackground>
       ) : null}
       <SafeAreaView style={styles.safe}>
-        <ContentCanvas fill>{children}</ContentCanvas>
+        <ContentCanvas fill variant="form">{children}</ContentCanvas>
       </SafeAreaView>
     </View>
   );

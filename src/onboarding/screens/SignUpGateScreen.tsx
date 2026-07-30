@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Text } from "@/components/ui/text";
 import { CodeInput } from "@/onboarding/components/CodeInput";
 import { CTA } from "@/onboarding/components/CTA";
 import { Screen } from "@/onboarding/components/Screen";
@@ -140,8 +141,17 @@ export function SignUpGateScreen({
           label={account.busy ? "Un momento…" : codePhase ? "Verificar código" : "Crear mi cuenta"}
           onPress={() => void submit()}
         />
-        <Pressable onPress={onSignIn} hitSlop={10} accessibilityRole="button" style={styles.signInLink}>
-          <Body style={styles.signInText}>Ya tengo cuenta · Iniciar sesión</Body>
+        <Pressable
+          onPress={onSignIn}
+          hitSlop={10}
+          accessibilityRole="link"
+          accessibilityLabel="Ya tengo cuenta: iniciar sesión"
+          style={styles.signInLink}
+        >
+          <Body style={styles.signInText}>
+            Ya tengo cuenta <Text style={styles.signInDot}>·</Text>{" "}
+            <Text style={styles.signInStrong}>Iniciar sesión</Text>
+          </Body>
         </Pressable>
       </View>
     </Screen>
@@ -162,6 +172,17 @@ const styles = StyleSheet.create({
   error: { color: "#D07A5A" },
   notice: { color: orbita.muted },
   spacer: { height: 8 },
-  signInLink: { alignSelf: "center", paddingVertical: 10 },
-  signInText: { color: orbita.muted }
+  // 44px reales de objetivo táctil: `hitSlop` no existe en web.
+  signInLink: { alignItems: "center", alignSelf: "center", justifyContent: "center", minHeight: 44, paddingHorizontal: 12 },
+  signInDot: { color: orbita.muted },
+  // Era `orbita.muted` entero, sin subrayado y sin peso: la línea completa
+  // leía como una nota al pie y no como el camino de vuelta que es. Ahora el
+  // destino va en `copperSoft` (8,14:1 sobre el fondo) y subrayado, así que se
+  // reconoce como enlace sin depender del color.
+  signInStrong: {
+    color: orbita.copperSoft,
+    fontFamily: font.sansBold,
+    textDecorationLine: "underline"
+  },
+  signInText: { color: orbita.bone, fontSize: 15 }
 });

@@ -152,11 +152,18 @@ test("la copy del alta es la del handoff", () => {
     "Repetir contraseña",
     "Crear mi cuenta",
     "Verificar código",
-    "Ya tengo cuenta · Iniciar sesión",
     "Ya existe una cuenta con ese email. Iniciá sesión para continuar."
   ]) {
     assert.ok(pantalla.includes(texto), `falta la copy: ${texto}`);
   }
+  // "Ya tengo cuenta · Iniciar sesión" se renderiza en tres nodos: el destino
+  // va subrayado y en cobre suave aparte, para que se lea como enlace y no como
+  // una nota al pie. La copy visible es la misma, palabra por palabra.
+  assert.match(
+    pantalla,
+    /Ya tengo cuenta <Text style=\{styles\.signInDot\}>·<\/Text>\{" "\}\s*<Text style=\{styles\.signInStrong\}>Iniciar sesión<\/Text>/,
+    "falta la copy: Ya tengo cuenta · Iniciar sesión"
+  );
 });
 
 // --- Chrome de la app autenticada ------------------------------------------

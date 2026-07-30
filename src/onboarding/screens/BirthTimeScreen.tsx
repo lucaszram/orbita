@@ -3,15 +3,12 @@ import { Pressable, StyleSheet, View } from "react-native";
 import { Text } from "@/components/ui/text";
 
 import { A } from "../assets";
+import { BirthTimePicker } from "../components/BirthPicker";
 import { CTA } from "../components/CTA";
 import { Header } from "../components/Header";
 import { Screen } from "../components/Screen";
 import { Body, Caption, Title } from "../components/Type";
-import { Wheel, WHEEL_ROW_H } from "../components/Wheel";
 import { font, GUTTER, orbita } from "../theme";
-
-const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"));
-const MINUTES = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0"));
 
 export type BirthTime = { hour: number; minute: number };
 
@@ -25,7 +22,14 @@ type Props = {
   onBack: () => void;
 };
 
-/** 09 — Birth time wheel picker + "No sé la hora". */
+/**
+ * 09 — Hora de nacimiento + "No sé la hora".
+ *
+ * El control lo pone `BirthTimePicker`, con implementación por plataforma:
+ * rueda en nativo, `<input type="time">` en web. Con "No sé la hora" activo el
+ * control web NO se dibuja (una hora visible que nadie eligió es justamente el
+ * problema que este cambio arregla) y la rueda nativa se atenúa, como siempre.
+ */
 export function BirthTimeScreen({ step, value, onChange, unknown, onToggleUnknown, onNext, onBack }: Props) {
   return (
     <Screen bg={A.dailyTexture} wash={0.52}>
@@ -34,27 +38,14 @@ export function BirthTimeScreen({ step, value, onChange, unknown, onToggleUnknow
         <Title>¿A qué hora naciste?</Title>
         <Body style={styles.sub}>La hora afina tu ascendente y tus casas.</Body>
 
-        <View style={[styles.pickerZone, unknown && styles.dimmed]} pointerEvents={unknown ? "none" : "auto"}>
-          <View style={styles.hairlineTop} pointerEvents="none" />
-          <View style={styles.hairlineBottom} pointerEvents="none" />
-          <View style={styles.wheels}>
-            <Wheel
-              items={HOURS}
-              index={value.hour}
-              onChange={(i) => onChange({ ...value, hour: i })}
-              width={84}
-            />
-            <Wheel
-              items={MINUTES}
-              index={value.minute}
-              onChange={(i) => onChange({ ...value, minute: i })}
-              width={84}
-            />
-          </View>
-        </View>
+        <BirthTimePicker value={value} onChange={onChange} unknown={unknown} />
 
         <Pressable
           onPress={onToggleUnknown}
+          accessibilityRole="switch"
+          accessibilityLabel="No sé la hora"
+          accessibilityHint="Usamos una carta aproximada, sin ascendente afinado."
+          accessibilityState={{ checked: unknown }}
           style={[styles.unknownCard, { borderColor: unknown ? orbita.copper : "rgba(214,154,106,0.45)" }]}
         >
           <View style={styles.unknownTxts}>
@@ -78,8 +69,6 @@ export function BirthTimeScreen({ step, value, onChange, unknown, onToggleUnknow
   );
 }
 
-const HAIRLINE_TOP = WHEEL_ROW_H * 2;
-
 const styles = StyleSheet.create({
   body: { flex: 1, paddingHorizontal: GUTTER, paddingTop: 26 },
   check: {
@@ -93,28 +82,8 @@ const styles = StyleSheet.create({
   },
   checkMark: { color: orbita.ink, fontFamily: font.sansBold, fontSize: 12 },
   checkOn: { backgroundColor: orbita.copper, borderColor: orbita.copper },
-  dimmed: { opacity: 0.35 },
   footer: { paddingBottom: 12, paddingTop: 12 },
-  hairlineBottom: {
-    backgroundColor: "rgba(196,106,58,0.5)",
-    height: 1,
-    left: 0,
-    position: "absolute",
-    right: 0,
-    top: HAIRLINE_TOP + WHEEL_ROW_H,
-    zIndex: 2,
-  },
-  hairlineTop: {
-    backgroundColor: "rgba(196,106,58,0.5)",
-    height: 1,
-    left: 0,
-    position: "absolute",
-    right: 0,
-    top: HAIRLINE_TOP,
-    zIndex: 2,
-  },
   note: { marginBottom: 8, textAlign: "center" },
-  pickerZone: { marginTop: 28 },
   spacer: { flex: 1, minHeight: 12 },
   sub: { marginTop: 10 },
   unknownCard: {
@@ -131,5 +100,4 @@ const styles = StyleSheet.create({
   unknownSub: { color: orbita.muted, fontFamily: font.sans, fontSize: 12, marginTop: 3 },
   unknownTitle: { color: orbita.bone, fontFamily: font.sansBold, fontSize: 14 },
   unknownTxts: { flex: 1 },
-  wheels: { flexDirection: "row", justifyContent: "center", gap: 22 },
 });
