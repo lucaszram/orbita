@@ -31,6 +31,22 @@ export function buildNatalChartCacheKey(userId: string, birthDataHash: string): 
   return `natal:${ASTROLOGY_API_CHART_CALCULATION_VERSION}:${userId}:${birthDataHash}`;
 }
 
+/** Selecciona una única autoridad natal para todos los consumidores.
+ *
+ * Aunque el flujo normal mantiene una fila por usuario, datos históricos o una
+ * carrera de versiones anteriores pueden dejar más de una. Todos los módulos
+ * deben mirar la misma fila más reciente; mezclar `.first()` con
+ * `.order("desc").first()` puede hacer que Perfil y Carta hablen de personas
+ * natales distintas.
+ */
+export async function findCurrentBirthData(ctx: any, userId: string) {
+  return await ctx.db
+    .query("birthData")
+    .withIndex("by_user", (q: any) => q.eq("userId", userId))
+    .order("desc")
+    .first();
+}
+
 /** Devuelve únicamente la carta que corresponde al payload natal vigente. */
 export async function findExactNatalChart(ctx: any, userId: string, birthData: BirthDataForHash | null | undefined) {
   if (!birthData) return null;
@@ -39,6 +55,12 @@ export async function findExactNatalChart(ctx: any, userId: string, birthData: B
     .query("natalCharts")
     .withIndex("by_cacheKey", (q: any) => q.eq("cacheKey", cacheKey))
     .first();
+}
+
+/** Carta vigente completa: sin fila natal no se rescata una carta histórica. */
+export async function findCurrentNatalChart(ctx: any, userId: string) {
+  const birthData = await findCurrentBirthData(ctx, userId);
+  return await findExactNatalChart(ctx, userId, birthData);
 }
 
 type NatalBoundDocument = {

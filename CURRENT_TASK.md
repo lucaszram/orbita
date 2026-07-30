@@ -26,6 +26,8 @@
 
 **Rollout dev (2026-07-29 20:24 ART):** backend `1ad486f` + `a9ae1f2` desplegado únicamente a Convex dev `dutiful-viper-815`; function spec remoto confirma el nuevo argumento interno de `daily.persistEnrichedGuide`. Frontend de paridad/integridad revisado hasta `cd8b274`, con typecheck 0 y 512/512 tests verificados por Codex; servidor local activo en `http://localhost:8099` contra ese dev. Producción intacta. Próximo paso autorizado: Lucas restaura 11 Nov 1996 · 10:32 y vuelve a elegir Ciudad Autónoma de Buenos Aires desde el buscador; después verificar autorreparación de Carta/Home/Tránsitos y estabilidad del Tarot diario antes de retomar otros escenarios.
 
+**Corrección posterior al PR 3 frontend (2026-07-30):** la defensa del cliente detectó dos huecos residuales del selector backend: `charts.current` todavía rescataba una carta histórica cuando no existía ninguna fila `birthData`, y algunos módulos elegían `.first()` mientras otros usaban la fila natal más reciente. El follow-up unifica Perfil, Carta, Home, lecturas y Tránsitos sobre `findCurrentBirthData(...).order("desc").first()` y hace que, sin datos natales vigentes, la carta vigente sea estrictamente `null`. No cambia firmas públicas ni despliega nada. Validación: typecheck verde, 376/376 tests y `git diff --check` limpio.
+
 ## Órbita Web P0 — contrato backend seguro (2026-07-28, Codex)
 
 **Objetivo:** preparar el backend P0 de Órbita Web para una salida gratuita primero y cobros después, sin permitir que cliente, URL o modo demo habiliten Plus o Stripe.

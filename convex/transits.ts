@@ -6,7 +6,7 @@ import {
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { runAstrologyApiDailyTransits } from "./lib/astrologyApi";
-import { belongsToNatalChart, findExactNatalChart } from "./lib/birthDataConsistency";
+import { belongsToNatalChart, findCurrentBirthData, findExactNatalChart } from "./lib/birthDataConsistency";
 import { resolveCanonicalDailyContext } from "./daily";
 import {
   buildDailyReadingPayloadFromAstrology,
@@ -19,14 +19,6 @@ import { isUserPro } from "./lib/subscriptionAccess";
 
 const internalApi = internal as any;
 const DAILY_TRANSITS_TIMELINE_VERSION = "orbita-daily-transits-v1";
-
-async function getCurrentBirthData(ctx: any, userId: string) {
-  return await ctx.db
-    .query("birthData")
-    .withIndex("by_user", (q: any) => q.eq("userId", userId))
-    .order("desc")
-    .first();
-}
 
 export const getTodayState = internalQuery({
   args: {
@@ -58,7 +50,7 @@ export const getTodayState = internalQuery({
       .order("desc")
       .first();
 
-    const birthData = await getCurrentBirthData(ctx, user._id);
+    const birthData = await findCurrentBirthData(ctx, user._id);
     const natalChart = await findExactNatalChart(ctx, user._id, birthData);
     return {
       userId: user._id,
