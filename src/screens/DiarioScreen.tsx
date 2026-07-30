@@ -12,6 +12,7 @@ import { DetailScreen } from "@/components/home/DetailScreen";
 import { RitualReading } from "@/components/home/RitualReading";
 import { isRitualComplete } from "@/domain/ritual";
 import { Body, Eyebrow, H2 } from "@/components/orbita/kit";
+import { Column, Columns } from "@/components/orbita/Layout";
 import { MinimalLoading } from "@/components/orbita/states";
 import { TarotStrip, type DiaCelda } from "@/components/diario/TarotStrip";
 import { CARD_BACK, cardById } from "@/content/tarotDeck";
@@ -127,14 +128,17 @@ export function DiarioScreen() {
   // `.split()` sobre undefined y la pantalla crasheaba en el primer render.
   if (!selectedDate) {
     return (
-      <DetailScreen eyebrow="Tu diario">
+      <DetailScreen eyebrow="Tu diario" canvas="wide">
         <MinimalLoading />
       </DetailScreen>
     );
   }
 
   return (
-    <DetailScreen eyebrow="Tu diario">
+    // Lienzo `wide`: en escritorio la tira de días ocupa todo el ancho del
+    // contenido y la carta elegida queda enfrentada a su lectura. En móvil
+    // `Columns` no hace nada y el orden es el de siempre.
+    <DetailScreen eyebrow="Tu diario" canvas="wide">
       <Eyebrow>{monthLabel(selectedDate)}</Eyebrow>
       <View style={styles.stripWrap}>
         <TarotStrip dias={celdas} sel={selIndex} onSel={setSel} />
@@ -159,37 +163,41 @@ export function DiarioScreen() {
            locales): estado honesto, cero datos inventados. */
         <Body>Creá tu cuenta para que tus días se vayan guardando acá.</Body>
       ) : isRevealed && (carta || entryCard) ? (
-        <>
-          <View style={styles.center}>
-            <View style={styles.bigCard}>
-              {/* id fuera del mazo local → dorso, nunca el marco vacío */}
-              <Image
-                source={image ?? CARD_BACK}
-                style={[styles.bigImg, orientacion === "invertida" ? styles.bigImgFlipped : null]}
-                resizeMode="cover"
-              />
-            </View>
-          </View>
-          <H2>Te salió {cardName}.</H2>
-          {orientacion ? (
-            <Text style={styles.orient}>
-              {orientacion === "invertida" ? "SALIÓ INVERTIDA" : "SALIÓ AL DERECHO"}
-            </Text>
-          ) : null}
-
-          {/* Mismo bloque canónico que la Home: orientación → esencia → significado
-              general → en tu día → consejo → cierre. Sin el bloque de cielo/cruce astro
-              (no vuelve a la lectura de la carta — handoff v3). Completo o carga/error. */}
-          {loading ? (
+        <Columns>
+          <Column weight={2}>
             <View style={styles.center}>
-              <ActivityIndicator color={orbita.colors.copper} />
+              <View style={styles.bigCard}>
+                {/* id fuera del mazo local → dorso, nunca el marco vacío */}
+                <Image
+                  source={image ?? CARD_BACK}
+                  style={[styles.bigImg, orientacion === "invertida" ? styles.bigImgFlipped : null]}
+                  resizeMode="cover"
+                />
+              </View>
             </View>
-          ) : isRitualComplete(ritual) ? (
-            <RitualReading ritual={ritual} />
-          ) : (
-            <Body>No pudimos traer la lectura de ese día. Volvé a entrar para reintentar.</Body>
-          )}
-        </>
+            <H2>Te salió {cardName}.</H2>
+            {orientacion ? (
+              <Text style={styles.orient}>
+                {orientacion === "invertida" ? "SALIÓ INVERTIDA" : "SALIÓ AL DERECHO"}
+              </Text>
+            ) : null}
+          </Column>
+
+          <Column weight={3}>
+            {/* Mismo bloque canónico que la Home: orientación → esencia → significado
+                general → en tu día → consejo → cierre. Sin el bloque de cielo/cruce astro
+                (no vuelve a la lectura de la carta — handoff v3). Completo o carga/error. */}
+            {loading ? (
+              <View style={styles.center}>
+                <ActivityIndicator color={orbita.colors.copper} />
+              </View>
+            ) : isRitualComplete(ritual) ? (
+              <RitualReading ritual={ritual} />
+            ) : (
+              <Body>No pudimos traer la lectura de ese día. Volvé a entrar para reintentar.</Body>
+            )}
+          </Column>
+        </Columns>
       ) : loading ? (
         <View style={styles.center}>
           <ActivityIndicator color={orbita.colors.copper} />

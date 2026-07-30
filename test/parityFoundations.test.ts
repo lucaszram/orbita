@@ -325,11 +325,17 @@ test("toda imagen con absoluteFillObject declara tamaño explícito", () => {
   assert.deepEqual(culpables, [], `imagen absoluteFill sin tamaño (estira la página en web): ${culpables.join(", ")}`);
 });
 
-test("el hero full-bleed recorta su asset decorativo", () => {
+test("el hero full-bleed recorta su asset decorativo y lo dibuja MEDIDO", () => {
   const s = readFileSync(join(ROOT, "src/components/orbita/ImmersiveHero.tsx"), "utf8");
-  const wrap = s.slice(s.indexOf("wrap: {"), s.indexOf("img: {"));
+  const wrap = s.slice(s.indexOf("wrap: {"), s.indexOf("rounded: {"));
   assert.ok(/overflow: "hidden"/.test(wrap), "sin recorte, la imagen de 1024px estira la página");
-  assert.ok(/width: "100%"/.test(wrap), "el contenedor debe quedar acotado al viewport");
+  // El contenedor ya no se acota con `width: "100%"` sobre un `absoluteFill`:
+  // ese combo podía terminar sin pintar en react-native-web y dejaba un hueco
+  // negro del alto del hero (regresión de Tránsitos en móvil). Ahora el ancho
+  // sale de `MeasuredBox` y la imagen se dibuja en píxeles.
+  assert.ok(/<MeasuredBox height=\{h\}/.test(s), "el alto y el ancho salen de una medida real");
+  assert.ok(/style=\{\{ height: h, width \}\}/.test(s), "la imagen se dibuja con píxeles");
+  assert.ok(!/absoluteFillObject/.test(s), "el `absoluteFill` + porcentaje era el bug");
 });
 
 test("el campo del Umbral puede encoger en pantallas angostas", () => {

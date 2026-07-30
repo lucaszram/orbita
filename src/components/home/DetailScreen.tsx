@@ -4,18 +4,29 @@ import { StatusBar } from "expo-status-bar";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ContentCanvas } from "@/components/orbita/ContentCanvas";
+import type { CanvasVariant } from "@/domain/webLayout";
 import { orbita } from "@/theme/orbita";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
 
 /**
  * Shell dark reutilizable para las pantallas de detalle de la Home.
  *
- * El lienzo de contenido se monta acá (una vez): en móvil no cambia nada —el
- * tope de 720 nunca se alcanza— y en escritorio el texto deja de medir el ancho
- * de la ventana. La barra de volver viaja en el mismo lienzo para no quedar a
- * media pantalla del título que encabeza.
+ * El lienzo de contenido se monta acá (una vez): en móvil no cambia nada —
+ * ningún tope se alcanza— y en escritorio el texto deja de medir el ancho de la
+ * ventana. `canvas` elige la variante: `wide` para las que componen en dos
+ * columnas (Valores, Diario), `reading` para las de texto corrido. La barra de
+ * volver viaja en el mismo lienzo para no quedar a media pantalla del título
+ * que encabeza.
  */
-export function DetailScreen({ eyebrow, children }: { eyebrow?: string; children: ReactNode }) {
+export function DetailScreen({
+  eyebrow,
+  children,
+  canvas = "reading"
+}: {
+  eyebrow?: string;
+  children: ReactNode;
+  canvas?: CanvasVariant;
+}) {
   const insets = useSafeAreaInsets();
   const fontsLoaded = useOrbitaFonts();
   if (!fontsLoaded) return <View style={styles.screen} />;
@@ -23,7 +34,7 @@ export function DetailScreen({ eyebrow, children }: { eyebrow?: string; children
     <View style={styles.screen}>
       <StatusBar style="light" />
       <View style={{ paddingTop: insets.top + orbita.spacing.sm }}>
-        <ContentCanvas>
+        <ContentCanvas variant={canvas}>
           <View style={styles.topbar}>
             <Pressable
               onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)"))}
@@ -43,7 +54,7 @@ export function DetailScreen({ eyebrow, children }: { eyebrow?: string; children
         contentContainerStyle={{ paddingBottom: insets.bottom + orbita.spacing.xxl }}
         showsVerticalScrollIndicator={false}
       >
-        <ContentCanvas>
+        <ContentCanvas variant={canvas}>
           <View style={styles.body}>{children}</View>
         </ContentCanvas>
       </ScrollView>

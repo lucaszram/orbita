@@ -1,6 +1,7 @@
 import { ReactNode } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { useIsDesktop } from "@/hooks/useLayoutMode";
 import { HomeReading, HomeTopic, Topic } from "@/domain/types";
 import type { DailyGuidePayload, DailyTopic } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
@@ -83,21 +84,25 @@ export function SignalTop({
   /** Figma "Home unificada": botón "VER MI CARTA →" bajo la tríada. */
   onVerCarta?: () => void;
 }) {
+  const desktop = useIsDesktop();
   const triad = triadOverride ?? reading.triad;
   const headline = daily?.headline ?? reading.headline;
   const body = daily?.body ?? reading.body;
   return (
     <View style={styles.section}>
       {/* Hero full-bleed (Figma V4.7 "Home / Top"): el orbital es el FONDO detrás de
-          todo el hero; tríada + frase del día van ENCIMA, sobre el degradé a negro. */}
+          todo el hero; tríada + frase del día van ENCIMA, sobre el degradé a negro.
+          En escritorio el planeta se ancla a la DERECHA y el texto queda a ancho
+          de lectura a la izquierda (Figma `225:10`): con el lienzo ancho, un
+          titular serif de 40px corriendo 1200px no se lee. */}
       <View style={styles.hero}>
-        <Image source={HERO_HOME} style={styles.heroImg} resizeMode="cover" />
+        <Image source={HERO_HOME} style={[styles.heroImg, desktop && styles.heroImgWide]} resizeMode="cover" />
         <LinearGradient
           colors={["rgba(7,8,10,0.1)", "rgba(7,8,10,0.1)", "rgba(7,8,10,0.34)", "rgba(7,8,10,0)"]}
           locations={[0, 0.5, 0.84, 1]}
           style={styles.heroFade}
         />
-        <View style={styles.heroContent}>
+        <View style={[styles.heroContent, desktop && styles.heroContentWide]}>
           <Text style={styles.triadEyebrow}>TU CARTA NATAL</Text>
           <Text style={[styles.triad, styles.triadCentered]}>
             {`${triad.sun.glyph} ${triad.sun.label}   ${triad.moon.glyph} ${triad.moon.label}   ${triad.ascendant.glyph} ${triad.ascendant.label}`}
@@ -395,6 +400,10 @@ const styles = StyleSheet.create({
   // Luna fija en la posición del Figma "Home / Top" (entera, borde superior pegado al
   // header). NO se mueve para subir el texto — solo se ajusta paddingTop.
   heroImg: { height: 520, left: 52, position: "absolute", top: -66, width: 520 },
+  // Escritorio: el planeta pasa al borde derecho del lienzo ancho y el texto
+  // respira a la izquierda, en vez de quedar los dos apretados a la izquierda.
+  heroImgWide: { left: undefined, right: 0, top: -40 },
+  heroContentWide: { maxWidth: 640, paddingTop: 40 },
   heroFade: { bottom: 0, left: 0, position: "absolute", right: 0, top: 0 },
   heroContent: { paddingBottom: orbita.spacing.lg, paddingHorizontal: G, paddingTop: 60 },
   heroTextGap: { height: orbita.spacing.xl },

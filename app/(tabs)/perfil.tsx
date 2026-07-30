@@ -42,12 +42,16 @@ export default function PerfilScreen() {
   const birth = resolveBirthInfo({ doc: remote ?? null, resolved: !isLive || remote !== undefined });
 
   return (
-    <OrbitaScreen>
-      {/* El lienzo (ancho completo con gutters nativas en móvil, columna
-          centrada en escritorio) lo monta `OrbitaScreen` para todas sus
-          pantallas: acá ya no se repite. */}
+    // El Perfil es una columna de LECTURA, no una pantalla de composición: son
+    // datos, ajustes y links, no una pieza visual que quiera 1200px. El lienzo
+    // lo monta `OrbitaScreen` (y en escritorio web se queda sin el header
+    // interno, que duplicaba la marca de la navegación).
+    <OrbitaScreen canvas="reading">
       <>
-        <FullBleedHero kind="perfil">
+        {/* Hero medido: alto fijo y ancho real del contenedor. Antes se
+            dimensionaba en porcentaje y en web podía quedar un rectángulo
+            negro del alto del hero, sin imagen. */}
+        <FullBleedHero kind="perfil" height={240}>
           {/* Sólo se muestra la línea con datos remotos COMPLETOS y verificados. */}
           {birth.status === "complete" ? <MonoLine>{birth.line}</MonoLine> : null}
         </FullBleedHero>

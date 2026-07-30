@@ -9,6 +9,7 @@ import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { ContentCanvas } from "@/components/orbita/ContentCanvas";
+import { ReadingBlock } from "@/components/orbita/Layout";
 import { GuestState } from "@/components/orbita/GuestState";
 import { ErrorState, MinimalLoading } from "@/components/orbita/states";
 import { sessionPhase } from "@/domain/screenPhase";
@@ -229,7 +230,9 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
 
       {showBack && phase !== "escuchando" ? (
         <View style={{ paddingTop: insets.top + orbita.spacing.sm }}>
-          <ContentCanvas>
+          {/* La barra es chrome del Umbral: acompaña a la superficie entera, no
+              a la columna de lectura. */}
+          <ContentCanvas variant="immersive">
             <View style={styles.topbar}>
               <Pressable
                 onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)"))}
@@ -249,7 +252,8 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
       )}
 
       {phase === "entrada" ? (
-        <ContentCanvas fill>
+        <ContentCanvas variant="immersive" fill>
+        <ReadingBlock fill>
         <View style={styles.entrada}>
           <View style={styles.entradaHead}>
             <Text style={styles.eyebrow}>EL UMBRAL</Text>
@@ -319,11 +323,13 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
             </Pressable>
           </View>
         </View>
+        </ReadingBlock>
         </ContentCanvas>
       ) : null}
 
       {phase === "escuchando" ? (
-        <ContentCanvas fill>
+        <ContentCanvas variant="immersive" fill>
+        <ReadingBlock fill>
         <View style={styles.center}>
           <View style={styles.listenZone}>
             <Animated.View style={[styles.ring, { opacity: pulse }]} />
@@ -334,11 +340,13 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
           <View style={{ height: orbita.spacing.xl }} />
           <Text style={styles.eyebrow}>EL UMBRAL ESTÁ ESCUCHANDO</Text>
         </View>
+        </ReadingBlock>
         </ContentCanvas>
       ) : null}
 
       {phase === "respuesta" && locked ? (
-        <ContentCanvas fill>
+        <ContentCanvas variant="immersive" fill>
+        <ReadingBlock fill>
         <View style={styles.center}>
           <Text style={styles.eyebrow}>EL UMBRAL · POR HOY</Text>
           <View style={{ height: orbita.spacing.xxl }} />
@@ -349,9 +357,11 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
             <Text style={styles.footnote}>El Umbral no contesta sí o no.</Text>
           </View>
         </View>
+        </ReadingBlock>
         </ContentCanvas>
       ) : phase === "respuesta" && askFailed ? (
-        <ContentCanvas fill>
+        <ContentCanvas variant="immersive" fill>
+        <ReadingBlock fill>
         <View style={styles.center}>
           <Text style={styles.eyebrow}>EL UMBRAL</Text>
           <View style={{ height: orbita.spacing.xxl }} />
@@ -372,6 +382,7 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
             </View>
           </Pressable>
         </View>
+        </ReadingBlock>
         </ContentCanvas>
       ) : phase === "respuesta" ? (
         <ScrollView
@@ -382,7 +393,10 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
           ]}
           showsVerticalScrollIndicator={false}
         >
-          <ContentCanvas>
+          {/* El párrafo más largo de la app: el lienzo es inmersivo pero el
+              texto queda acotado al ancho de LECTURA. */}
+          <ContentCanvas variant="immersive">
+          <ReadingBlock>
           <View style={styles.answerColumn}>
           <Text style={styles.eyebrow}>EL UMBRAL · HOY</Text>
           <View style={{ height: orbita.spacing.sm }} />
@@ -402,6 +416,7 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
           <View style={{ height: orbita.spacing.xxl }} />
           <Text style={styles.footnote}>El Umbral no contesta sí o no.</Text>
           </View>
+          </ReadingBlock>
           </ContentCanvas>
         </ScrollView>
       ) : null}

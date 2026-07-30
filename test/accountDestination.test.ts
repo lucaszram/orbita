@@ -171,12 +171,13 @@ test("la barra de la app no tiene avatar, botón de entrar ni atajo de cuenta", 
 
 test("en móvil no hay barra superior, sólo la inferior fija con área segura", () => {
   const nav = readFileSync(join(ROOT, "src/components/web/web-nav.tsx"), "utf8");
-  assert.ok(/if \(isNarrow\) \{[\s\S]*?return <WebBottomNav/.test(nav), "en angosto sale sólo la inferior");
+  assert.ok(/if \(!desktop\) \{[\s\S]*?return <WebBottomNav/.test(nav), "en angosto sale sólo la inferior");
   assert.ok(/position: "fixed"/.test(nav), "la barra inferior queda pegada al viewport");
   assert.ok(/env\(safe-area-inset-bottom\)/.test(nav), "respeta el área segura");
   // Y el shell reserva alto para que no tape los últimos controles.
   const shell = readFileSync(join(ROOT, "src/components/web/web-app-shell.tsx"), "utf8");
   assert.ok(/WEB_BOTTOM_NAV_HEIGHT/.test(shell), "el contenido reserva espacio para la barra");
+  assert.ok(/contentSafeBottom/.test(shell), "y lo hace como padding del contenido, no con un View suelto");
 });
 
 test("Perfil es siempre /perfil, nunca el login", () => {

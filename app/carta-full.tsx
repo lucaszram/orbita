@@ -142,8 +142,10 @@ function CartaFullView({ payload }: { payload: NatalChartPayload }) {
         showsHorizontalScrollIndicator={false}
         showsVerticalScrollIndicator={false}
       >
-        {/* El lado sale del contenedor medido, nunca del ancho de la ventana. */}
-        <ContentCanvas>
+        {/* Lienzo `immersive`: acá la rueda ES la pantalla, no hay columna de
+            lectura que respetar. El lado sigue saliendo del contenedor medido,
+            nunca del ancho de la ventana. */}
+        <ContentCanvas variant="immersive">
           <MeasuredSquare max={380}>
             {(size) => <NatalWheel payload={payload} size={size} selectedKey={selected} onSelect={setSelected} />}
           </MeasuredSquare>

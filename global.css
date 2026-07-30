@@ -51,6 +51,25 @@
 }
 
 /**
+ * El documento es negro.
+ *
+ * Órbita es una app dark, pero el documento seguía siendo blanco: cualquier
+ * superficie sin fondo propio dejaba ver ese blanco. Pasaba en dos lugares muy
+ * visibles — la barra de navegación de escritorio (transparente, con los links
+ * en cobre sobre blanco) y el colchón de la barra inferior en móvil. También
+ * aparece en el rebote de scroll de Safari y detrás del área segura.
+ *
+ * Va fuera de `@layer base` para ganarle al preflight de Tailwind sin depender
+ * del orden de las capas. `#07080A` es el mismo negro del shell
+ * (`domain/webLayout` → `WEB_SHELL_BACKGROUND`).
+ */
+html,
+body,
+#root {
+  background-color: #07080a;
+}
+
+/**
  * Foco visible en web.
  *
  * react-native-web pone `outline: none` en todo lo enfocable (en nativo el foco

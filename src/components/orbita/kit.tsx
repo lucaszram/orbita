@@ -3,9 +3,13 @@ import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-nati
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ContentCanvas } from "@/components/orbita/ContentCanvas";
+import { showsScreenHeader, type CanvasVariant } from "@/domain/webLayout";
+import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
 import { orbita } from "@/theme/orbita";
 import type { Triad as TriadData } from "@/domain/types";
+
+const IS_WEB = process.env.EXPO_OS === "web";
 
 /** Textura cósmica de fondo (inmersivo) para las pantallas OrbitaScreen. */
 const SCREEN_BACKDROP = require("../../../assets/orbita/optimized/core/orbita_daily_texture_a.jpg");
@@ -16,28 +20,45 @@ const G = orbita.spacing.gutter;
  * Dark editorial screen shell: bg #111, top bar, scroll, font gate.
  *
  * El lienzo de contenido (`ContentCanvas`) se monta ACÁ, una sola vez por
- * pantalla: ancho completo con las gutters nativas en móvil, columna centrada
- * de 720 en escritorio. Antes lo montaba cada pantalla por su cuenta, así que
+ * pantalla. La VARIANTE la elige la pantalla: `wide` (1200) para las que
+ * componen en dos columnas —Carta, Tránsitos—, `reading` (720) para las que son
+ * texto —Perfil—. Antes lo montaba cada pantalla por su cuenta, así que
  * Tránsitos y Vínculo se estiraban con la ventana mientras Carta y Perfil no.
- * En un teléfono el tope nunca aplica, así que el nativo no cambia.
+ * En un teléfono ningún tope aplica, así que el nativo no cambia.
+ *
+ * En escritorio web el header interno NO se dibuja: la navegación del shell ya
+ * pone la marca y la sección, y tener las dos era una barra de marca debajo de
+ * otra barra de marca (ver `domain/webLayout`).
  */
-export function OrbitaScreen({ children, right = "Hoy  ˅" }: { children: ReactNode; right?: string }) {
+export function OrbitaScreen({
+  children,
+  right = "Hoy  ˅",
+  canvas = "reading"
+}: {
+  children: ReactNode;
+  right?: string;
+  canvas?: CanvasVariant;
+}) {
   const insets = useSafeAreaInsets();
   const fontsLoaded = useOrbitaFonts();
+  const mode = useLayoutMode();
+  const header = showsScreenHeader({ web: IS_WEB, mode });
   if (!fontsLoaded) return <View style={styles.screen} />;
   return (
     <View style={styles.screen}>
       <Image source={SCREEN_BACKDROP} style={styles.backdrop} resizeMode="cover" />
       <View style={styles.backdropScrim} pointerEvents="none" />
       <StatusBar style="light" />
-      <View style={{ paddingTop: insets.top }}>
-        <TopBar right={right} />
-      </View>
+      {header ? (
+        <View style={{ paddingTop: insets.top }}>
+          <TopBar right={right} canvas={canvas} />
+        </View>
+      ) : null}
       <ScrollView
         contentContainerStyle={{ paddingBottom: insets.bottom + orbita.spacing.xxl }}
         showsVerticalScrollIndicator={false}
       >
-        <ContentCanvas>{children}</ContentCanvas>
+        <ContentCanvas variant={canvas}>{children}</ContentCanvas>
       </ScrollView>
     </View>
   );
@@ -48,10 +69,10 @@ export function OrbitaScreen({ children, right = "Hoy  ˅" }: { children: ReactN
  * marca y el selector viajan en el mismo lienzo que el contenido: si no, en
  * escritorio quedaban a 350px del texto que encabezan.
  */
-export function TopBar({ right = "HOY ˅" }: { right?: string }) {
+export function TopBar({ right = "HOY ˅", canvas = "reading" }: { right?: string; canvas?: CanvasVariant }) {
   return (
     <View>
-      <ContentCanvas>
+      <ContentCanvas variant={canvas}>
         <View style={styles.topbar}>
           <Text style={styles.brand}>ÓRBITA</Text>
           <Text style={styles.selector}>{right}</Text>
