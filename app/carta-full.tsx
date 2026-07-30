@@ -1,14 +1,17 @@
 import { useState } from "react";
-import { Image, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "convex/react";
+import { MeasuredSquare } from "@/components/orbita/ContentCanvas";
 import { NatalWheel } from "@/components/orbita/NatalWheel";
 import { GuestState } from "@/components/orbita/GuestState";
 import { EmptyState, ErrorState, LoadingState, MinimalLoading } from "@/components/orbita/states";
+import { bodyCode } from "@/domain/astroSymbols";
 import { mapNatalChart } from "@/domain/natalChart";
+import { personalChartGate } from "@/domain/natalChartGate";
 import { sessionPhase } from "@/domain/screenPhase";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
@@ -56,15 +59,23 @@ export default function CartaFullScreen() {
 
 function CartaFullLive() {
   const doc = useQuery(appApi.charts.current, {});
-  if (doc === undefined) return <Frame><LoadingState /></Frame>;
-  if (doc === null) {
+  // Una rueda personal exige datos natales remotos completos Y una carta que
+  // corresponda a esos datos (ver `domain/natalChartGate`).
+  const remoteBirth = useQuery(appApi.birthData.getCurrent, {});
+  const chartGate = personalChartGate({ birth: remoteBirth, chart: doc });
+  if (chartGate === "cargando") return <Frame><LoadingState /></Frame>;
+  if (chartGate !== "listo") {
     return (
       <Frame>
         <EmptyState
-          title="Todavía no hay carta"
-          body="Completá tu fecha, hora y lugar de nacimiento para calcular tu carta natal."
-          cta="COMPLETAR MIS DATOS"
-          onCta={() => router.replace("/(tabs)/perfil")}
+          title={chartGate === "desactualizada" ? "Tu carta tiene que recalcularse" : "Todavía no hay carta"}
+          body={
+            chartGate === "desactualizada"
+              ? "Tus datos de nacimiento cambiaron desde el último cálculo. Abrí tu carta para recalcularla."
+              : "Completá tu fecha, hora y lugar de nacimiento para calcular tu carta natal."
+          }
+          cta={chartGate === "desactualizada" ? "VER MI CARTA" : "COMPLETAR MIS DATOS"}
+          onCta={() => router.replace(chartGate === "desactualizada" ? "/(tabs)/carta" : "/(tabs)/perfil")}
         />
       </Frame>
     );
@@ -106,11 +117,9 @@ function Frame({ children }: { children: React.ReactNode }) {
 }
 
 function CartaFullView({ payload }: { payload: NatalChartPayload }) {
-  const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const fontsLoaded = useOrbitaFonts();
   const [selected, setSelected] = useState<string | undefined>(undefined);
-  const size = Math.min(width - orbita.spacing.gutter, 380);
   const triad = payload.triad;
 
   if (!fontsLoaded) return <View style={styles.screen} />;
@@ -131,12 +140,15 @@ function CartaFullView({ payload }: { payload: NatalChartPayload }) {
         showsHorizontalScrollIndicator={false}
         showsVerticalScrollIndicator={false}
       >
-        <NatalWheel payload={payload} size={size} selectedKey={selected} onSelect={setSelected} />
+        {/* El lado sale del contenedor medido, nunca del ancho de la ventana. */}
+        <MeasuredSquare max={380}>
+          {(size) => <NatalWheel payload={payload} size={size} selectedKey={selected} onSelect={setSelected} />}
+        </MeasuredSquare>
       </ScrollView>
 
       <View style={[styles.triadBar, { paddingBottom: insets.bottom + orbita.spacing.lg }]}>
         <Text style={styles.triad}>
-          {`☉ ${triad.sun.sign}    ☽ ${triad.moon.sign}    ↑ ${triad.ascendant.sign}`}
+          {`${bodyCode({ key: "sun" })} ${triad.sun.sign}    ${bodyCode({ key: "moon" })} ${triad.moon.sign}    ${bodyCode({ key: "ascendant" })} ${triad.ascendant.sign}`}
         </Text>
         {payload.accuracy ? <Text style={styles.accuracy}>{payload.accuracy}</Text> : null}
       </View>

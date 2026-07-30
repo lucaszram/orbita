@@ -7,6 +7,7 @@ import { Divider, Eyebrow, Note, TabStrip } from "@/components/orbita/kit";
 import { GlyphRow } from "@/components/orbita/GlyphRow";
 import { GuestState } from "@/components/orbita/GuestState";
 import { EmptyState, ErrorState, LoadingState, MinimalLoading } from "@/components/orbita/states";
+import { RETROGRADE_CODE } from "@/domain/astroSymbols";
 import { mapNatalChart } from "@/domain/natalChart";
 import { sessionPhase } from "@/domain/screenPhase";
 import { useLiveApp } from "@/hooks/useLiveApp";
@@ -115,7 +116,7 @@ function CartaTablaView({ payload }: { payload: NatalChartPayload }) {
             <GlyphRow
               key={p.key ?? p.planet}
               title={`${p.planet} en ${p.sign}`}
-              body={`Casa ${p.house} · ${deg(p.normDegree)}${p.isRetrograde ? " · retrógrado ℞" : ""}`}
+              body={`Casa ${p.house} · ${deg(p.normDegree)}${p.isRetrograde ? ` · retrógrado ${RETROGRADE_CODE}` : ""}`}
             />
           ))}
         </>

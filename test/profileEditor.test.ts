@@ -485,7 +485,9 @@ test("el Perfil conserva la estructura pedida", () => {
 test("la CartaCard tampoco dibuja rueda con datos remotos incompletos", () => {
   const codigo = sinComentarios(CARTA_CARD);
   assert.ok(/birthData\.getCurrent/.test(codigo));
-  const guarda = codigo.indexOf('birth.status === "incomplete"');
+  // La guarda pasó a ser el gate compartido (`personalChartGate`), que además de
+  // exigir datos completos exige que la carta CORRESPONDA a esos datos.
+  const guarda = codigo.indexOf('chartGate === "datosIncompletos"');
   const mapea = codigo.indexOf("mapNatalChart(doc)");
   assert.ok(guarda !== -1 && guarda < mapea, "la guarda va ANTES de mapear la carta");
 });

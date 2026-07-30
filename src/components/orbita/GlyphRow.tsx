@@ -1,35 +1,20 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { bodyCodeForName } from "@/domain/astroSymbols";
 import { orbita } from "@/theme/orbita";
 
 /**
- * Fila editorial con marcador circular + glifo astrológico (Figma V4.7:
- * Carta/Posiciones 266:11 y Tránsitos/Por área 267:2). El glifo se deriva
+ * Fila editorial con marcador circular + símbolo astrológico (Figma V4.7:
+ * Carta/Posiciones 266:11 y Tránsitos/Por área 267:2). El símbolo se deriva
  * del primer cuerpo que aparezca en el título.
  */
-const GLYPHS: [RegExp, string][] = [
-  [/\bSol\b/i, "☉"],
-  [/\bLuna\b/i, "☽"],
-  [/\bAscendente\b/i, "↑"],
-  [/\bMercurio\b/i, "☿"],
-  [/\bVenus\b/i, "♀"],
-  [/\bMarte\b/i, "♂"],
-  [/\bJ[úu]piter\b/i, "♃"],
-  [/\bSaturno\b/i, "♄"]
-];
 
+/**
+ * Código monocromo del cuerpo del título. Antes devolvía glifos Unicode
+ * (`☉ ☽ ☿ ♀ ♂ ♃ ♄`) que ninguna familia empaquetada tiene: en web y Android
+ * caían al font de emoji. Ver `domain/astroSymbols`.
+ */
 export function glyphFor(title: string): string {
-  // Gana el cuerpo que aparece primero en el título (el sujeto del tránsito),
-  // no el orden de la lista: "Venus armoniza al Sol" → ♀, no ☉.
-  let best: string | null = null;
-  let bestIndex = Infinity;
-  for (const [re, glyph] of GLYPHS) {
-    const m = title.match(re);
-    if (m && m.index !== undefined && m.index < bestIndex) {
-      bestIndex = m.index;
-      best = glyph;
-    }
-  }
-  return best ?? "☉";
+  return bodyCodeForName(title) ?? "SO";
 }
 
 export function GlyphRow({ title, body, onPress }: { title: string; body: string; onPress?: () => void }) {
@@ -61,7 +46,8 @@ const styles = StyleSheet.create({
     marginRight: orbita.spacing.md,
     width: 26
   },
-  glyph: { color: orbita.colors.bone, fontFamily: orbita.fonts.body, fontSize: 13 },
+  // Mono: el código son dos letras y tienen que caber centradas en el marcador.
+  glyph: { color: orbita.colors.bone, fontFamily: orbita.fonts.mono, fontSize: 11, letterSpacing: 0.5 },
   title: { color: orbita.colors.bone, flex: 1, fontFamily: orbita.fonts.serif, fontSize: 24, lineHeight: 30 },
   arrow: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 20, marginLeft: orbita.spacing.md },
   body: {

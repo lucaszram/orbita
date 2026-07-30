@@ -3,6 +3,7 @@ import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { useMutation } from "convex/react";
 import { Body, Divider, Eyebrow, H2, MonoLine, Note, OrbitaScreen, Pill, Section } from "@/components/orbita/kit";
+import { ContentCanvas } from "@/components/orbita/ContentCanvas";
 import { ManageSubscriptionBlock } from "@/components/orbita/ManageSubscription";
 import { useConfirm } from "@/components/orbita/ConfirmHost";
 import { FullBleedHero } from "@/components/orbita/ImmersiveHero";
@@ -38,69 +39,73 @@ export default function PerfilScreen() {
 
   return (
     <OrbitaScreen>
-      <FullBleedHero kind="perfil">
-        {/* Sólo se muestra la línea con datos remotos COMPLETOS y verificados. */}
-        {birth.status === "complete" ? <MonoLine>{birth.line}</MonoLine> : null}
-      </FullBleedHero>
-      {/* Con datos incompletos no se dibuja rueda ni se afirma que hay carta. */}
-      {birth.status === "complete" ? <CartaCard /> : null}
-      <Section style={{ paddingTop: orbita.spacing.lg }}>
-        <Eyebrow>PERFIL</Eyebrow>
-        <H2>Tu carta,{"\n"}tus datos.</H2>
-        {birth.status === "incomplete" ? (
-          <Body bone>{birth.message}</Body>
-        ) : (
-          <Body>Tus datos de nacimiento afinan toda la lectura. Editá tu cuenta y tus datos cuando quieras.</Body>
-        )}
-        {/* Un ÚNICO `EDITAR DATOS`, acá arriba: con datos incompletos es la
-            acción a tomar, y con datos completos sigue siendo su lugar natural.
-            Antes vivía al final de la pantalla, lejos del estado que lo pide. */}
-        <View style={{ height: orbita.spacing.md }} />
-        <Pill label="EDITAR DATOS" onPress={() => router.push("/editar-datos")} />
-        <View style={{ height: orbita.spacing.md }} />
-        <Note>{perfil.privacy}</Note>
-        <Divider />
-        <Eyebrow>CUENTA</Eyebrow>
-        {auth?.isSignedIn ? (
-          // Solo se monta con sesión: los providers de Convex/Clerk existen.
-          <AccountSignedIn auth={auth} isAuthLoading={isAuthLoading} userError={userError} retryUser={retryUser} />
-        ) : isAuthLoading ? (
-          // Clerk/Convex todavía cargando: estado neutro, NUNCA afirmar invitado.
-          <Body bone>Conectando tu cuenta…</Body>
-        ) : (
-          <View>
-            <Body bone>Modo invitado · datos solo en este teléfono.</Body>
-            {backendConfig.isConfigured ? (
-              <Pressable
-                onPress={() => router.push("/iniciar-sesion")}
-                accessibilityRole="button"
-                hitSlop={8}
-              >
-                <Note>¿Ya tenés cuenta? Iniciá sesión para recuperar tu carta y tus lecturas.</Note>
-              </Pressable>
-            ) : null}
-          </View>
-        )}
-        {auth?.isSignedIn ? <ManageSubscriptionBlock /> : null}
-        <Divider />
-        <Eyebrow>LEGAL</Eyebrow>
-        <Pressable
-          onPress={() => Linking.openURL(PRIVACY_URL)}
-          accessibilityRole="link"
-          hitSlop={8}
-          style={styles.legalLink}
-        >
-          <Body bone>Política de privacidad</Body>
-        </Pressable>
-        <Pressable
-          onPress={() => Linking.openURL(SUPPORT_URL)}
-          accessibilityRole="link"
-          hitSlop={8}
-          style={styles.legalLink}
-        >
-          <Body bone>Soporte</Body>
-        </Pressable>
-      </Section>
+      {/* Mismo lienzo que la Carta: ancho completo con gutters nativas en móvil,
+          columna centrada con ancho máximo en escritorio. */}
+      <ContentCanvas>
+        <FullBleedHero kind="perfil">
+          {/* Sólo se muestra la línea con datos remotos COMPLETOS y verificados. */}
+          {birth.status === "complete" ? <MonoLine>{birth.line}</MonoLine> : null}
+        </FullBleedHero>
+        {/* Con datos incompletos no se dibuja rueda ni se afirma que hay carta. */}
+        {birth.status === "complete" ? <CartaCard /> : null}
+        <Section style={{ paddingTop: orbita.spacing.lg }}>
+          <Eyebrow>PERFIL</Eyebrow>
+          <H2>Tu carta,{"\n"}tus datos.</H2>
+          {birth.status === "incomplete" ? (
+            <Body bone>{birth.message}</Body>
+          ) : (
+            <Body>Tus datos de nacimiento afinan toda la lectura. Editá tu cuenta y tus datos cuando quieras.</Body>
+          )}
+          {/* Un ÚNICO `EDITAR DATOS`, acá arriba: con datos incompletos es la
+              acción a tomar, y con datos completos sigue siendo su lugar natural.
+              Antes vivía al final de la pantalla, lejos del estado que lo pide. */}
+          <View style={{ height: orbita.spacing.md }} />
+          <Pill label="EDITAR DATOS" onPress={() => router.push("/editar-datos")} />
+          <View style={{ height: orbita.spacing.md }} />
+          <Note>{perfil.privacy}</Note>
+          <Divider />
+          <Eyebrow>CUENTA</Eyebrow>
+          {auth?.isSignedIn ? (
+            // Solo se monta con sesión: los providers de Convex/Clerk existen.
+            <AccountSignedIn auth={auth} isAuthLoading={isAuthLoading} userError={userError} retryUser={retryUser} />
+          ) : isAuthLoading ? (
+            // Clerk/Convex todavía cargando: estado neutro, NUNCA afirmar invitado.
+            <Body bone>Conectando tu cuenta…</Body>
+          ) : (
+            <View>
+              <Body bone>Modo invitado · datos solo en este teléfono.</Body>
+              {backendConfig.isConfigured ? (
+                <Pressable
+                  onPress={() => router.push("/iniciar-sesion")}
+                  accessibilityRole="button"
+                  hitSlop={8}
+                >
+                  <Note>¿Ya tenés cuenta? Iniciá sesión para recuperar tu carta y tus lecturas.</Note>
+                </Pressable>
+              ) : null}
+            </View>
+          )}
+          {auth?.isSignedIn ? <ManageSubscriptionBlock /> : null}
+          <Divider />
+          <Eyebrow>LEGAL</Eyebrow>
+          <Pressable
+            onPress={() => Linking.openURL(PRIVACY_URL)}
+            accessibilityRole="link"
+            hitSlop={8}
+            style={styles.legalLink}
+          >
+            <Body bone>Política de privacidad</Body>
+          </Pressable>
+          <Pressable
+            onPress={() => Linking.openURL(SUPPORT_URL)}
+            accessibilityRole="link"
+            hitSlop={8}
+            style={styles.legalLink}
+          >
+            <Body bone>Soporte</Body>
+          </Pressable>
+        </Section>
+      </ContentCanvas>
     </OrbitaScreen>
   );
 }

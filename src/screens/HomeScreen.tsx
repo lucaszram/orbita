@@ -24,6 +24,7 @@ import { Eyebrow, InsightRow, Section } from "@/components/orbita/kit";
 import { GuestState } from "@/components/orbita/GuestState";
 import { useNotify } from "@/components/orbita/ConfirmHost";
 import { LoadingState } from "@/components/orbita/states";
+import { bodyCode } from "@/domain/astroSymbols";
 import { mapNatalChart } from "@/domain/natalChart";
 import { lastNDaysFrom } from "@/domain/dateStrip";
 import { useCanonicalLocalDate } from "@/hooks/useDailyContext";
@@ -39,7 +40,13 @@ import { HomeTopic, Topic, Triad } from "@/domain/types";
 import { appApi, proposedApi, type DailyGuidePayload, type NatalChartPayload } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
 
-const TRIAD_GLYPH = { sol: "☉", luna: "☽", ascendente: "↑" } as const;
+// Códigos monocromos (ver `domain/astroSymbols`): los glifos Unicode caían al
+// font de emoji en web y Android.
+const TRIAD_GLYPH = {
+  sol: bodyCode({ key: "sun" }),
+  luna: bodyCode({ key: "moon" }),
+  ascendente: bodyCode({ key: "ascendant" })
+} as const;
 
 /** Tríada de la Home tomada de la MISMA fuente que la Carta (el chart), para que
  *  Home y Carta muestren exactamente lo mismo. */

@@ -1,0 +1,37 @@
+/**
+ * Lienzo de contenido de la app autenticada — medida, no viewport.
+ *
+ * Las pantallas dimensionaban la rueda y el radar con `useWindowDimensions()`:
+ * `Math.min(width - gutter * 2, 360)`. En el teléfono coincide con el ancho útil
+ * por casualidad. En la web no: el ancho de la VENTANA no es el ancho del
+ * contenedor donde vive la rueda —hay barra de navegación, una columna centrada
+ * con ancho máximo y, en escritorio, cientos de píxeles de margen—, así que a
+ * 1400px la rueda pedía 360 (tope) y a 700px pedía 652 aunque su columna midiera
+ * 672 menos padding. El tamaño tiene que salir del contenedor REAL (`onLayout`),
+ * que es la única medida que incluye el shell, el canvas y el padding de la
+ * sección.
+ *
+ * El lienzo en sí es deliberadamente tonto: en móvil ocupa todo el ancho (las
+ * gutters las siguen poniendo las `Section`, como en nativo) y en escritorio se
+ * centra con un ancho máximo fijo. Nada de tipografías ni tarjetas que escalen
+ * con el ancho de la ventana: el cuerpo de texto de Órbita mide lo mismo en un
+ * teléfono y en un monitor de 27".
+ */
+
+/** Ancho máximo de la columna de contenido autenticado (escritorio). */
+export const CONTENT_CANVAS_MAX_WIDTH = 720;
+
+/**
+ * Lado de un cuadrado (rueda, radar) a partir del ancho MEDIDO de su contenedor.
+ *
+ * `container === null` = todavía no midió: devuelve `null` y quien llama reserva
+ * el espacio sin dibujar. Nunca se adivina con el viewport.
+ */
+export function fitSquare(input: { container: number | null; max: number; inset?: number }): number | null {
+  const { container, max } = input;
+  if (container === null || !Number.isFinite(container) || container <= 0) return null;
+  const inset = input.inset ?? 0;
+  const available = container - inset * 2;
+  if (available <= 0) return null;
+  return Math.min(Math.floor(available), max);
+}
