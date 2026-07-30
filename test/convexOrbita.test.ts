@@ -45,6 +45,8 @@ import {
   buildBirthDataHash,
   buildNatalChartCacheKey,
   dailyReadingNeedsRefresh,
+  findCurrentBirthData,
+  findCurrentNatalChart,
   findExactNatalChart
 } from "../convex/lib/birthDataConsistency";
 import { decideOnboardingBirthDataWrite } from "../convex/lib/onboardingBirthData";
@@ -152,6 +154,57 @@ test("current natal chart lookup uses only the active birth-data cache key", asy
   assert.equal(await findExactNatalChart(ctx, "user_123", birthData), exact);
   assert.equal(queriedKey, expectedKey);
   assert.equal(await findExactNatalChart(ctx, "user_123", null), null);
+});
+
+test("all consumers select the newest birth row and never rescue a chart without it", async () => {
+  const calls: string[] = [];
+  const newest = { _id: "birth_newest" };
+  const ctx = {
+    db: {
+      query: (table: string) => {
+        calls.push(`query:${table}`);
+        assert.equal(table, "birthData");
+        return {
+          withIndex: (index: string, build: (q: any) => unknown) => {
+            assert.equal(index, "by_user");
+            build({ eq: (_field: string, value: string) => {
+              assert.equal(value, "user_123");
+              return {};
+            } });
+            return {
+              order: (direction: string) => {
+                calls.push(`order:${direction}`);
+                assert.equal(direction, "desc");
+                return { first: async () => newest };
+              }
+            };
+          }
+        };
+      }
+    }
+  };
+
+  assert.equal(await findCurrentBirthData(ctx, "user_123"), newest);
+  assert.deepEqual(calls, ["query:birthData", "order:desc"]);
+
+  const emptyCalls: string[] = [];
+  const emptyCtx = {
+    db: {
+      query: (table: string) => {
+        emptyCalls.push(`query:${table}`);
+        assert.equal(table, "birthData");
+        return {
+          withIndex: (_index: string, build: (q: any) => unknown) => {
+            build({ eq: () => ({}) });
+            return { order: () => ({ first: async () => null }) };
+          }
+        };
+      }
+    }
+  };
+
+  assert.equal(await findCurrentNatalChart(emptyCtx, "user_123"), null);
+  assert.deepEqual(emptyCalls, ["query:birthData"]);
 });
 
 test("personalized caches require the exact active natal chart", () => {

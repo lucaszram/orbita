@@ -1,5 +1,6 @@
 import { mutationGeneric as mutation, queryGeneric as query } from "convex/server";
 import { v } from "convex/values";
+import { findCurrentBirthData } from "./lib/birthDataConsistency";
 import { normalizeBirthTime } from "./lib/orbita";
 import { findCurrentUser, omitUndefined, requireUser } from "./lib/users";
 
@@ -9,10 +10,7 @@ export const getCurrent = query({
   handler: async (ctx) => {
     const user = await findCurrentUser(ctx);
     if (!user) return null;
-    return await ctx.db
-      .query("birthData")
-      .withIndex("by_user", (q: any) => q.eq("userId", user._id))
-      .first();
+    return await findCurrentBirthData(ctx, user._id);
   }
 });
 
@@ -32,10 +30,7 @@ export const upsertForCurrentUser = mutation({
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
     const now = Date.now();
-    const existing = await ctx.db
-      .query("birthData")
-      .withIndex("by_user", (q: any) => q.eq("userId", user._id))
-      .first();
+    const existing = await findCurrentBirthData(ctx, user._id);
 
     const payload = omitUndefined({
       userId: user._id,

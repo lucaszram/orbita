@@ -5,6 +5,7 @@ import {
   buildBirthDataHash,
   buildNatalChartCacheKey,
   dailyReadingNeedsRefresh,
+  findCurrentBirthData,
   findExactNatalChart
 } from "./lib/birthDataConsistency";
 import {
@@ -46,16 +47,8 @@ export async function listSavedReadingsForUser(ctx: any, userId: string, limit?:
   return rows.map(savedReadingListItem);
 }
 
-async function getCurrentBirthData(ctx: any, userId: string) {
-  return await ctx.db
-    .query("birthData")
-    .withIndex("by_user", (q: any) => q.eq("userId", userId))
-    .order("desc")
-    .first();
-}
-
 async function ensureChart(ctx: any, userId: string) {
-  const birthData = await getCurrentBirthData(ctx, userId);
+  const birthData = await findCurrentBirthData(ctx, userId);
   if (!birthData) {
     return null;
   }
@@ -99,7 +92,7 @@ export const getToday = query({
       .query("dailyReadings")
       .withIndex("by_user_date", (q: any) => q.eq("userId", user._id).eq("localDate", args.localDate))
       .first();
-    const birthData = await getCurrentBirthData(ctx, user._id);
+    const birthData = await findCurrentBirthData(ctx, user._id);
     const natalChart = await findExactNatalChart(ctx, user._id, birthData);
     return belongsToNatalChart(reading, natalChart) ? reading : null;
   }

@@ -8,6 +8,7 @@ import {
 import {
   belongsToNatalChart,
   dailyReadingNeedsRefresh,
+  findCurrentBirthData,
   findExactNatalChart
 } from "./lib/birthDataConsistency";
 import { findUserByTokenIdentifier, omitUndefined, requireUser } from "./lib/users";
@@ -30,13 +31,6 @@ function ensureThreeItems(items: unknown, fallback: string): string[] {
     : [];
 
   return [values[0] ?? fallback, values[1] ?? fallback, values[2] ?? fallback];
-}
-
-async function getCurrentBirthData(ctx: any, userId: string) {
-  return await ctx.db
-    .query("birthData")
-    .withIndex("by_user", (q: any) => q.eq("userId", userId))
-    .first();
 }
 
 function toDailyHomeReading(reading: DailyReadingDoc) {
@@ -122,7 +116,7 @@ export const getDaily = query({
       .query("dailyReadings")
       .withIndex("by_user_date", (q: any) => q.eq("userId", user._id).eq("localDate", args.localDate))
       .first();
-    const birthData = await getCurrentBirthData(ctx, user._id);
+    const birthData = await findCurrentBirthData(ctx, user._id);
     const natalChart = await findExactNatalChart(ctx, user._id, birthData);
 
     return belongsToNatalChart(reading, natalChart) ? toDailyHomeReading(reading) : null;
@@ -141,7 +135,7 @@ export const generateDaily = mutation({
       .withIndex("by_user_date", (q: any) => q.eq("userId", user._id).eq("localDate", args.localDate))
       .first();
 
-    const birthData = await getCurrentBirthData(ctx, user._id);
+    const birthData = await findCurrentBirthData(ctx, user._id);
     const chart = await findExactNatalChart(ctx, user._id, birthData);
     if (
       existing &&

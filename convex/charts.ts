@@ -16,12 +16,13 @@ import { runAstrologyApiNatalChart } from "./lib/astrologyApi";
 import {
   buildBirthDataHash,
   buildNatalChartCacheKey,
+  findCurrentBirthData,
+  findCurrentNatalChart,
   findExactNatalChart
 } from "./lib/birthDataConsistency";
 import {
   ASTROLOGY_API_CHART_CALCULATION_VERSION,
   buildWebB0ValuesMapPayload,
-  CHART_CALCULATION_VERSION,
   extractNormalizedChartFromPayload
 } from "./lib/orbita";
 import { isUserPro } from "./lib/subscriptionAccess";
@@ -29,33 +30,10 @@ import { findCurrentUser, findUserByTokenIdentifier, requireIdentity } from "./l
 
 const internalApi = internal as any;
 
-async function getCurrentBirthData(ctx: any, userId: string) {
-  return await ctx.db
-    .query("birthData")
-    .withIndex("by_user", (q: any) => q.eq("userId", userId))
-    .order("desc")
-    .first();
-}
-
 async function getCurrentChart(ctx: any, userId: string) {
-  const birthData = await getCurrentBirthData(ctx, userId);
-  if (birthData) {
-    // Si los datos cambiaron y la carta nueva todavía no terminó, estado vacío.
-    // Nunca presentar la carta anterior como si correspondiera al payload actual.
-    return await findExactNatalChart(ctx, userId, birthData);
-  }
-
-  return (
-    (await ctx.db
-      .query("natalCharts")
-      .withIndex("by_user", (q: any) => q.eq("userId", userId))
-      .order("desc")
-      .first()) ??
-    (await ctx.db
-      .query("natalCharts")
-      .withIndex("by_user_version", (q: any) => q.eq("userId", userId).eq("calculationVersion", CHART_CALCULATION_VERSION))
-      .first())
-  );
+  // Sin datos vigentes no existe una carta personal vigente. Con datos
+  // cambiados, estado vacío hasta que aparezca el cache exacto.
+  return await findCurrentNatalChart(ctx, userId);
 }
 
 function publicChartDocument(chart: any, isPro: boolean) {
@@ -491,7 +469,7 @@ export const getBirthDataForNatalCalculation = internalQuery({
       throw new Error("User record not found");
     }
 
-    const birthData = await getCurrentBirthData(ctx, user._id);
+    const birthData = await findCurrentBirthData(ctx, user._id);
 
     if (!birthData) {
       throw new Error("Birth data is required before calculating a natal chart");
