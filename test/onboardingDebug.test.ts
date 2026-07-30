@@ -55,10 +55,11 @@ test("el flujo canónico no lee debugStep sin pasar por la guarda", () => {
   );
 });
 
-test("`resume` y `nuevo` siguen siendo intenciones reales, sin guarda", () => {
+test("`resume` sigue siendo una intención real, sin guarda", () => {
+  // `nuevo=1` quedó obsoleto: el alta salió del onboarding y tiene ruta propia.
   const flow = readFileSync(join(ROOT, "src/onboarding/OnboardingFlow.tsx"), "utf8");
   assert.ok(/params\.resume === "datos"/.test(flow));
-  assert.ok(/params\.nuevo === "1"/.test(flow));
+  assert.ok(!/params\.nuevo/.test(flow), "el param obsoleto no puede seguir cableado");
 });
 
 test("las herramientas internas siguen apagadas por defecto", () => {

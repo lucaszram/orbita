@@ -30,8 +30,8 @@ test("sin sesión → login (la landing es la única superficie pública)", () =
   assert.ok(!destinationAllows("sign-in", "onboarding"));
 });
 
-test("cuenta completa → Home de la app", () => {
-  const s = { ...BASE, signedIn: true, birthDataResolved: true, hasBirthData: true };
+test("cuenta completa CON perfil local propio → Home de la app", () => {
+  const s = { ...BASE, signedIn: true, birthDataResolved: true, hasBirthData: true, localProfileReady: true };
   assert.equal(resolveAccountDestination(s), "app-home");
   assert.ok(destinationAllows("app-home", "app"));
   // Y no puede quedarse en landing, login ni onboarding.
@@ -90,15 +90,31 @@ test("todas las superficies de entrada pasan por el gate compartido", () => {
   }
 });
 
-test("un usuario con sesión no puede quedarse en el login", () => {
-  // El login pasa por el gate: con sesión, el destino resuelto no es "sign-in".
+test("un usuario con sesión no puede montar la pantalla de login", () => {
+  // Conductual: con sesión el destino NO es "sign-in", así que la superficie
+  // "auth" no está permitida y el gate navega. Antes el test sólo miraba que
+  // las constantes de ruta aparecieran en el archivo — un falso positivo que no
+  // probaba nada: la ruta seguía renderizando SignInScreen directo.
+  const completa = { ...BASE, signedIn: true, birthDataResolved: true, hasBirthData: true, localProfileReady: true };
+  assert.equal(resolveAccountDestination(completa), "app-home");
+  assert.ok(!destinationAllows("app-home", "auth"), "una cuenta completa no puede quedarse en el login");
+
+  const incompleta = { ...BASE, signedIn: true, birthDataResolved: true, hasBirthData: false };
+  assert.equal(resolveAccountDestination(incompleta), "onboarding");
+  assert.ok(!destinationAllows("onboarding", "auth"), "una cuenta incompleta tampoco");
+
+  // Y estructuralmente: la ruta envuelve la UI de ingreso en el gate.
   const login = readFileSync(join(ROOT, "app/iniciar-sesion.tsx"), "utf8");
-  assert.ok(/HOME_ROUTE/.test(login) && /ONBOARDING_ROUTE/.test(login));
-  // Y el destino ya no puede salir de un perfil local.
+  const antesDeLaUI = login.slice(0, login.indexOf("function SignInSurface"));
+  assert.ok(/surface="auth"/.test(antesDeLaUI), "la ruta debe montar el gate antes de la UI");
+  // Se mira el USO en JSX, no el import ni el docstring.
+  assert.ok(!/<SignInScreen/.test(antesDeLaUI), "SignInScreen no puede renderizarse antes del gate");
+});
+
+test("home-local sólo vale sin backend configurado", () => {
   const dominio = sinComentarios(readFileSync(join(ROOT, "src/domain/sessionStart.ts"), "utf8"));
   assert.ok(
-    /if \(!s\.backendConfigured && \(s\.hasLocalProfile \|\| s\.profileRestored\)\) return "home-local";/.test(dominio),
-    "home-local sólo vale sin backend configurado"
+    /if \(!s\.backendConfigured && \(s\.hasLocalProfile \|\| s\.profileRestored\)\) return "home-local";/.test(dominio)
   );
 });
 

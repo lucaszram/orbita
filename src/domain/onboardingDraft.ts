@@ -36,7 +36,12 @@ export type OnboardingDraft = {
   birthPlace?: DraftPlace;
   birthTime?: DraftBirthTime;
   timeUnknown: boolean;
-  email: string;
+  /**
+   * Quedó del paso de cuenta, que salió del onboarding (auth es la puerta
+   * anterior). Se mantiene OPCIONAL para no invalidar borradores guardados con
+   * la forma anterior: un borrador viejo se sigue leyendo y su email se ignora.
+   */
+  email?: string;
 };
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -97,8 +102,7 @@ export function parseDraft(raw: string | null, stepCount: number): OnboardingDra
     placeQuery: str(d.placeQuery),
     birthPlace: parsePlace(d.birthPlace),
     birthTime: parseBirthTime(d.birthTime),
-    timeUnknown: d.timeUnknown === true,
-    email: str(d.email)
+    timeUnknown: d.timeUnknown === true
   };
 }
 
@@ -108,7 +112,7 @@ export function serializeDraft(draft: OnboardingDraft): string {
 
 /** ¿Vale la pena guardar? En el paso 0 y sin nada cargado no aporta nada. */
 export function isWorthSaving(draft: OnboardingDraft): boolean {
-  return draft.step > 0 || Boolean(draft.birthPlace || draft.placeQuery || draft.email);
+  return draft.step > 0 || Boolean(draft.birthPlace || draft.placeQuery);
 }
 
 // --- Acceso a sessionStorage (sólo web; en nativo no-opean) ------------------

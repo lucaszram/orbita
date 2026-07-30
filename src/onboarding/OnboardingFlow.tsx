@@ -33,8 +33,7 @@ import { PaywallScreen, type PlanId } from "./screens/PaywallScreen";
 import { PersonalizingScreen } from "./screens/PersonalizingScreen";
 import { SplashScreen } from "./screens/SplashScreen";
 import { orbita } from "./theme";
-import { validateSignupPassword } from "./signup";
-import { useAccountFlow, useOnboardingBirthDataPersist, useOnboardingChart, useOnboardingComputeTriad } from "./useAccount";
+import { useOnboardingBirthDataPersist, useOnboardingChart, useOnboardingComputeTriad } from "./useAccount";
 import type { OnboardingChart } from "./useAccount";
 
 // El alta de cuenta salió del onboarding (es la puerta anterior), así que hay
@@ -52,9 +51,6 @@ const HAS_BACKEND = backendConfig.hasConvex && backendConfig.hasClerk;
 // Paso donde arranca la carga de datos de nacimiento (continuación del alta
 // post-login para una cuenta sin birthData: `/onboarding?resume=datos`).
 const STEP_BIRTHDATE = 4;
-// Primer paso del alta propiamente dicha (el 0 es la entrada con las puertas).
-// Destino de "Crear una cuenta" desde el login: `/onboarding?nuevo=1`.
-const STEP_ALTA = 1;
 
 // Paywall temporalmente DESACTIVADO (2-3 semanas, mientras refinamos el onboarding
 // y el flujo). Con `false`, al terminar el onboarding se entra DIRECTO a la app sin
@@ -92,8 +88,6 @@ export function OnboardingFlow() {
   const params = useLocalSearchParams<{
     debugStep?: string;
     resume?: string;
-    nuevo?: string;
-    email?: string;
   }>();
 
   // `resume=datos`: sesión activa sin datos de nacimiento → continuar el alta
@@ -107,11 +101,7 @@ export function OnboardingFlow() {
   const saved = useMemo(() => readDraft(TOTAL), []);
 
   const [step, setStep] = useState(() =>
-    params.resume === "datos"
-      ? STEP_BIRTHDATE
-      : params.nuevo === "1"
-        ? STEP_ALTA
-        : saved?.step ?? 0
+    params.resume === "datos" ? STEP_BIRTHDATE : saved?.step ?? 0
   );
   const [identity, setIdentity] = useState<Identity>((saved?.identity as Identity) ?? "ella");
   const [birthDate, setBirthDate] = useState<BirthDateParts>(
@@ -123,14 +113,8 @@ export function OnboardingFlow() {
   );
   const [birthTime, setBirthTime] = useState<BirthTime>(saved?.birthTime ?? { hour: 12, minute: 0 });
   const [timeUnknown, setTimeUnknown] = useState(saved?.timeUnknown ?? false);
-  // Email tipeado en el login y traído por "Crear una cuenta" (`?email=`): el
-  // usuario no lo vuelve a escribir; llega ya cargado al paso de cuenta.
-  const [email, setEmail] = useState(() =>
-    typeof params.email === "string" && params.email ? params.email : saved?.email ?? ""
-  );
   // Clerk Producción exige contraseña en el alta: se pide + confirmación.
   const [plan, setPlan] = useState<PlanId>("annual");
-  const account = useAccountFlow();
   // Persistencia ESTRICTA: propaga el error. Con el wrapper anterior el catch
   // de `submit` era inalcanzable y el alta navegaba sin haber escrito.
   const persistBackend = useOnboardingBirthDataPersist();
@@ -148,9 +132,6 @@ export function OnboardingFlow() {
   // navegamos fuera del flujo).
   const submitLock = useRef(false);
   const computedSig = useRef<string | null>(null);
-  // La sesión se activó EN este flujo (verify/oauth ok): fuente de verdad
-  // inmediata, porque useAuth puede seguir stale en el render siguiente.
-  const sessionActivated = useRef(false);
 
   // Salto de paso SÓLO con herramientas internas encendidas. En producción el
   // param se ignora y el onboarding arranca normal: era un control de
@@ -180,21 +161,14 @@ export function OnboardingFlow() {
     if (params.resume === "datos") setStep((s) => (s === 0 ? STEP_BIRTHDATE : s));
   }, [params.resume]);
 
-  // Mismo respaldo para `nuevo=1` (y su email) llegando un render tarde.
-  useEffect(() => {
-    if (params.nuevo === "1") setStep((s) => (s === 0 ? STEP_ALTA : s));
-  }, [params.nuevo]);
 
-  useEffect(() => {
-    if (typeof params.email === "string" && params.email) setEmail((e) => e || params.email!);
-  }, [params.email]);
 
   useEffect(() => {
     // En inspección no se guarda: un salto arranca con los valores por defecto
     // y sobrescribiría el borrador real de la persona.
     if (inspeccion) return;
-    writeDraft({ step, identity, birthDate, placeQuery, birthPlace, birthTime, timeUnknown, email });
-  }, [step, identity, birthDate, placeQuery, birthPlace, birthTime, timeUnknown, email, inspeccion]);
+    writeDraft({ step, identity, birthDate, placeQuery, birthPlace, birthTime, timeUnknown });
+  }, [step, identity, birthDate, placeQuery, birthPlace, birthTime, timeUnknown, inspeccion]);
 
   const next = () => setStep((s) => Math.min(TOTAL - 1, s + 1));
   const back = () => setStep((s) => Math.max(0, s - 1));
@@ -292,7 +266,9 @@ export function OnboardingFlow() {
     // perfil se crea sin dueño con ADOPCIÓN PENDIENTE y se marca solo apenas
     // aparece el userId (resolveProfileOwnerAtCreation + AppState).
     const owner = resolveProfileOwnerAtCreation({
-      sessionActive: sessionActivated.current || !!auth?.isSignedIn || !!account?.isSignedIn,
+      // El onboarding arranca con sesión activa (auth es la puerta anterior),
+      // así que basta con lo que reporta Clerk.
+      sessionActive: !!auth?.isSignedIn,
       knownUserId: auth?.userId ?? null,
     });
     await createProfile(

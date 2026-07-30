@@ -268,9 +268,12 @@ test("la localización de Clerk sigue configurada mientras haya componentes de C
 // que `router.replace("/(tabs)")` devolvía a la página pública ya logueado.
 
 test("después de entrar se va a la Home autenticada, no a /(tabs) en web", () => {
+  // El login ya no navega a mano: lo decide el resolver, y el gate usa
+  // HOME_ROUTE, que en web es `/home` (en web `/(tabs)` resolvía a la landing).
   const login = readFileSync(join(ROOT, "app/iniciar-sesion.tsx"), "utf8");
-  assert.ok(!/router\.replace\("\/\(tabs\)"\)/.test(login), "en web /(tabs) resuelve a la landing");
-  assert.ok(/HOME_ROUTE/.test(login), "debe usar el destino por plataforma");
+  assert.ok(!/router\.replace\("\/\(tabs\)"\)/.test(login));
+  const puerta = readFileSync(join(ROOT, "src/components/orbita/AccountGate.tsx"), "utf8");
+  assert.ok(/HOME_ROUTE/.test(puerta), "el gate navega con el destino por plataforma");
   const rutas = readFileSync(join(ROOT, "src/domain/appRoutes.ts"), "utf8");
   assert.match(rutas, /HOME_ROUTE = IS_WEB \? "\/home" : "\/\(tabs\)"/);
 });

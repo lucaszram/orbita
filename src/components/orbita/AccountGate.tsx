@@ -1,10 +1,10 @@
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { Redirect } from "expo-router";
 import { destinationAllows } from "@/domain/accountDestination";
 import { HOME_ROUTE, ONBOARDING_ROUTE, SIGN_IN_ROUTE } from "@/domain/appRoutes";
+import { useAccountBootstrap } from "@/hooks/useAccountBootstrap";
 import { useAccountDestination } from "@/hooks/useAccountDestination";
-import { MinimalLoading } from "@/components/orbita/states";
-import { ErrorState } from "@/components/orbita/states";
+import { ErrorState, MinimalLoading } from "@/components/orbita/states";
 
 /**
  * Puerta compartida por landing, login, alta, onboarding y rutas de app.
@@ -27,11 +27,33 @@ export function AccountGate({
   error?: (retry: () => void) => ReactNode;
 }) {
   const { destination, retry } = useAccountDestination();
+  const bootstrap = useAccountBootstrap();
 
-  if (destination === "loading") return <>{loading ?? <MinimalLoading />}</>;
-  if (destination === "retry") {
-    return <>{error ? error(retry) : <ErrorState onRetry={retry} />}</>;
+  // Cuenta completa sin perfil local propio: se hidrata ANTES de entrar. Sin
+  // esto, Home rebotaba a onboarding y el onboarding devolvía a Home.
+  useEffect(() => {
+    if (destination !== "bootstrap") return;
+    if (bootstrap.state !== "idle") return;
+    void bootstrap.run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [destination, bootstrap.state]);
+
+  const mostrarError = (onRetry: () => void) =>
+    error ? <>{error(onRetry)}</> : <ErrorState onRetry={onRetry} />;
+
+  if (destination === "retry") return mostrarError(retry);
+  if (destination === "bootstrap") {
+    // La hidratación falló: reintento visible. NO se redirige a ningún lado —
+    // redirigir sería justo el loop que este estado existe para cortar.
+    if (bootstrap.state === "error") {
+      return mostrarError(() => {
+        bootstrap.reset();
+        void bootstrap.run();
+      });
+    }
+    return <>{loading ?? <MinimalLoading />}</>;
   }
+  if (destination === "loading") return <>{loading ?? <MinimalLoading />}</>;
   if (destinationAllows(destination, surface)) return <>{children}</>;
 
   // El destino resuelto es otro: se navega ahí.

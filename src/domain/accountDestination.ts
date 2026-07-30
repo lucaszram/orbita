@@ -17,6 +17,17 @@
 export type AccountDestination =
   | "loading"
   | "sign-in"
+  /**
+   * Hay cuenta completa en el backend pero el perfil local todavía no es de
+   * ella (navegador nuevo, storage vacío, o el perfil es de OTRA cuenta). Hay
+   * que hidratar antes de entrar.
+   *
+   * Sin este estado se producía un loop: el gate mandaba a Home, el guard de
+   * perfil de Home mandaba a onboarding, y el gate del onboarding devolvía a
+   * Home porque el remoto estaba completo. La sesión que teníamos en el
+   * navegador no lo mostraba porque ya tenía un perfil local.
+   */
+  | "bootstrap"
   | "onboarding"
   | "app-home"
   | "retry";
@@ -32,6 +43,11 @@ export type AccountState = {
   birthDataResolved: boolean;
   /** Existe `birthData` remoto para esta identidad. */
   hasBirthData: boolean;
+  /**
+   * Existe perfil local Y pertenece a la cuenta activa. `undefined` mientras el
+   * storage local todavía no se leyó.
+   */
+  localProfileReady?: boolean;
   /** La recuperación de la cuenta falló y hay que ofrecer reintento. */
   recoveryFailed?: boolean;
 };
@@ -51,7 +67,10 @@ export function resolveAccountDestination(s: AccountState): AccountDestination {
   // landing, a un perfil local ni al onboarding "por si acaso": montar el
   // onboarding para una cuenta completa es lo que permitía sobrescribir.
   if (!s.birthDataResolved) return "loading";
-  return s.hasBirthData ? "app-home" : "onboarding";
+  if (!s.hasBirthData) return "onboarding";
+  // Cuenta completa: recién se entra cuando el perfil local es de ESTA cuenta.
+  if (s.localProfileReady === undefined) return "loading";
+  return s.localProfileReady ? "app-home" : "bootstrap";
 }
 
 /**

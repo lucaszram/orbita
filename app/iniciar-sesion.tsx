@@ -2,13 +2,9 @@ import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { Redirect, useRouter } from "expo-router";
 
-import { HOME_ROUTE, ONBOARDING_ROUTE } from "@/domain/appRoutes";
-import { backendConfig } from "@/services/backendProviders";
-import {
-  isAccountSwitch,
-  onboardingInputFromBirthData,
-  resolveSignInDestination
-} from "@/domain/sessionStart";
+import { ONBOARDING_ROUTE, SIGN_UP_ROUTE } from "@/domain/appRoutes";
+import { AccountGate } from "@/components/orbita/AccountGate";
+import { useAccountBootstrap } from "@/hooks/useAccountBootstrap";
 import { useAppState } from "@/hooks/useAppState";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
 import { CTA } from "@/onboarding/components/CTA";
@@ -25,20 +21,29 @@ import { useSignInFlow, useSignInHydrate } from "@/onboarding/useAccount";
  * Con datos en Convex se entra derecho a la Home con esos datos; una cuenta
  * sin datos continúa el alta desde los datos con la sesión activa.
  */
+/**
+ * Un usuario ya autenticado NUNCA debe montar la pantalla de login: veía
+ * "Tu sesión ya está activa" con un botón `Entrar`. El gate resuelve el destino
+ * autoritativo (Home si la cuenta está completa, onboarding si no) antes de
+ * renderizar cualquier UI de ingreso.
+ */
 export default function IniciarSesionRoute() {
+  return (
+    <AccountGate surface="auth">
+      <SignInSurface />
+    </AccountGate>
+  );
+}
+
+function SignInSurface() {
   const router = useRouter();
   const fontsLoaded = useOrbitaFonts();
-  const {
-    profile,
-    profileOwner,
-    createProfile,
-    adoptLocalProfile,
-    restoreAccountData,
-    archiveAccountData,
-    resetApp
-  } = useAppState();
+  // El archivado/restauración/hidratación vive en `useAccountBootstrap`, no acá:
+  // es el mismo camino que usa la entrada con sesión ya activa.
+  const { profileOwner, archiveAccountData, resetApp } = useAppState();
   const flow = useSignInFlow();
   const hydrate = useSignInHydrate();
+  const bootstrap = useAccountBootstrap();
   const [hydrateFailed, setHydrateFailed] = useState(false);
   const [retrying, setRetrying] = useState(false);
 
@@ -48,72 +53,17 @@ export default function IniciarSesionRoute() {
 
   const enter = async () => {
     setHydrateFailed(false);
-    const result = await hydrate();
-    if (result.status === "error") {
+    // Mismo bootstrap que la entrada con sesión ya activa: traer lo remoto,
+    // separar los datos si entra otra cuenta, restaurar lo archivado e hidratar
+    // el perfil local. Antes esta lógica vivía SÓLO acá, y por eso un navegador
+    // nuevo con sesión activa entraba a Home sin perfil local y rebotaba.
+    const ok = await bootstrap.run();
+    if (!ok) {
       setHydrateFailed(true);
       return;
     }
-    // CAMBIO DE CUENTA en el mismo teléfono. Lo local pertenece a OTRO usuario
-    // (su sesión se perdió sin logout explícito, así que nada se archivó): sin
-    // esto, su diario y sus guardadas quedarían mezclados en la sesión de quien
-    // entra ahora (mergeAccountLists conserva lo "actual"). Se archiva bajo su
-    // dueño — no se destruye: si vuelve a entrar, lo recupera intacto — y
-    // recién ahí se limpia lo local.
-    const switchingAccount = isAccountSwitch({
-      localProfileOwner: profileOwner,
-      incomingUserId: result.clerkUserId
-    });
-    if (switchingAccount) {
-      try {
-        await archiveAccountData(profileOwner);
-        await resetApp();
-      } catch {
-        // Falla cerrado: si no se pudo archivar, NO se entra — antes que
-        // arriesgar mezclar los datos de dos cuentas, se ofrece reintentar.
-        setHydrateFailed(true);
-        return;
-      }
-    }
-    // Tras el reset, el `profile` de este closure es el del usuario anterior:
-    // para decidir no existe más.
-    const localProfile = switchingAccount ? null : profile;
-
-    // Si esta cuenta ya usó este teléfono, volver su diario y sus lecturas
-    // guardadas (archivados al cerrar sesión; no viven en Convex). El id sale
-    // del backend (hydrate), no de useAuth: React puede no haber re-renderizado
-    // el estado de Clerk todavía en este punto.
-    const { profileRestored } = result.clerkUserId
-      ? await restoreAccountData(result.clerkUserId)
-      : { profileRestored: false };
-
-    switch (
-      resolveSignInDestination({
-        hasRemoteBirthData: !!result.birthData,
-        backendConfigured: backendConfig.isConfigured,
-        hasLocalProfile: !!localProfile,
-        profileRestored
-      })
-    ) {
-      case "home-remote":
-        // El perfil/carta remotos ganan; el snapshot solo aporta diario/lecturas.
-        // Queda marcado con su dueño para que el arranque confíe en él.
-        await createProfile(onboardingInputFromBirthData(result.birthData!), result.clerkUserId);
-        router.replace(HOME_ROUTE);
-        break;
-      case "home-local":
-        // La cuenta no tiene datos en Convex pero este teléfono sí: entrar con
-        // lo local (se persiste al backend la próxima vez que se editen datos).
-        // Guest-upgrade: la cuenta ADOPTA explícitamente el perfil local acá
-        // (el arranque nunca confía en un perfil sin dueño con sesión activa).
-        if (localProfile && !profileRestored && result.clerkUserId) {
-          await adoptLocalProfile(result.clerkUserId);
-        }
-        router.replace(HOME_ROUTE);
-        break;
-      case "resume-onboarding":
-        router.replace({ pathname: ONBOARDING_ROUTE, params: { resume: "datos" } });
-        break;
-    }
+    // El destino lo decide el resolver en el próximo render: con `birthData`
+    // remoto va a Home, sin él al onboarding. No se navega a mano.
   };
 
   /**
@@ -149,14 +99,14 @@ export default function IniciarSesionRoute() {
       else router.replace(ONBOARDING_ROUTE);
     });
 
-  // "Crear una cuenta": el alta, sin repetir la entrada (el usuario ya la
-  // pasó) y con el email que venía tipeando ya cargado.
+  // "Crear una cuenta" va a la PUERTA de alta, no al onboarding: quien no tiene
+  // sesión no puede pasar por una ruta protegida, que lo rebotaría al login.
   const createAccount = (email: string) =>
     void leaveWithoutSignIn(() =>
       router.replace({
-        pathname: "/onboarding",
-        params: email ? { nuevo: "1", email } : { nuevo: "1" }
-      })
+        pathname: SIGN_UP_ROUTE,
+        params: email ? { email } : undefined
+      } as never)
     );
 
   if (hydrateFailed) {

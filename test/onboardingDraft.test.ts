@@ -22,8 +22,7 @@ const FULL: OnboardingDraft = {
     timezone: "America/Argentina/Cordoba"
   },
   birthTime: { hour: 10, minute: 40 },
-  timeUnknown: false,
-  email: "alguien@example.com"
+  timeUnknown: false
 };
 
 // La regresión que motiva esto: crear la cuenta hace que Clerk vuelva a
@@ -34,6 +33,16 @@ test("un borrador completo sobrevive el ida y vuelta", () => {
   assert.deepEqual(parseDraft(serializeDraft(FULL), STEPS), FULL);
 });
 
+test("un borrador GUARDADO con la forma anterior sigue leyéndose", () => {
+  // Compatibilidad: el paso de cuenta salió del onboarding, así que el borrador
+  // ya no guarda `email`. Uno viejo que lo trae no puede invalidarse.
+  const viejo = JSON.stringify({ ...FULL, email: "alguien@example.com" });
+  const back = parseDraft(viejo, STEPS)!;
+  assert.equal(back.step, FULL.step);
+  assert.deepEqual(back.birthDate, FULL.birthDate);
+  assert.equal(back.email, undefined, "el email viejo se ignora, no rompe");
+});
+
 test("se conservan identidad, fecha, hora, lugar y paso", () => {
   const back = parseDraft(serializeDraft(FULL), STEPS)!;
   assert.equal(back.step, 13);
@@ -42,7 +51,6 @@ test("se conservan identidad, fecha, hora, lugar y paso", () => {
   assert.deepEqual(back.birthTime, { hour: 10, minute: 40 });
   assert.equal(back.birthPlace?.label, "Rosario, Santa Fe, Argentina");
   assert.equal(back.birthPlace?.latitude, -32.95);
-  assert.equal(back.email, "alguien@example.com");
 });
 
 test("la medianoche exacta se conserva: 0 es una hora válida", () => {
@@ -89,16 +97,15 @@ test("un lugar sin etiqueta no se restaura", () => {
 });
 
 test("campos de tipo inesperado no se propagan", () => {
-  const sucio = parseDraft(JSON.stringify({ step: 3, placeQuery: 99, timeUnknown: "sí", email: 5 }), STEPS)!;
+  const sucio = parseDraft(JSON.stringify({ step: 3, placeQuery: 99, timeUnknown: "sí" }), STEPS)!;
   assert.equal(sucio.placeQuery, "");
   assert.equal(sucio.timeUnknown, false);
-  assert.equal(sucio.email, "");
   assert.equal(sucio.step, 3);
 });
 
 // --- Cuándo guardar --------------------------------------------------------
 
-const VACIO: OnboardingDraft = { step: 0, placeQuery: "", timeUnknown: false, email: "" };
+const VACIO: OnboardingDraft = { step: 0, placeQuery: "", timeUnknown: false };
 
 test("no se guarda un borrador vacío en el primer paso", () => {
   assert.equal(isWorthSaving(VACIO), false);
@@ -107,6 +114,5 @@ test("no se guarda un borrador vacío en el primer paso", () => {
 test("se guarda apenas hay avance o algún dato", () => {
   assert.equal(isWorthSaving({ ...VACIO, step: 1 }), true);
   assert.equal(isWorthSaving({ ...VACIO, placeQuery: "Rosario" }), true);
-  assert.equal(isWorthSaving({ ...VACIO, email: "a@b.com" }), true);
   assert.equal(isWorthSaving({ ...VACIO, birthPlace: { label: "Rosario" } }), true);
 });
