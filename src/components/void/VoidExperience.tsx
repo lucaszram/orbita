@@ -253,7 +253,7 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
 
       {phase === "entrada" ? (
         <ContentCanvas variant="immersive" fill>
-        <ReadingBlock fill>
+        <ReadingBlock fill center>
         <View style={styles.entrada}>
           <View style={styles.entradaHead}>
             <Text style={styles.eyebrow}>EL UMBRAL</Text>
@@ -329,7 +329,7 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
 
       {phase === "escuchando" ? (
         <ContentCanvas variant="immersive" fill>
-        <ReadingBlock fill>
+        <ReadingBlock fill center>
         <View style={styles.center}>
           <View style={styles.listenZone}>
             <Animated.View style={[styles.ring, { opacity: pulse }]} />
@@ -346,7 +346,7 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
 
       {phase === "respuesta" && locked ? (
         <ContentCanvas variant="immersive" fill>
-        <ReadingBlock fill>
+        <ReadingBlock fill center>
         <View style={styles.center}>
           <Text style={styles.eyebrow}>EL UMBRAL · POR HOY</Text>
           <View style={{ height: orbita.spacing.xxl }} />
@@ -361,7 +361,7 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
         </ContentCanvas>
       ) : phase === "respuesta" && askFailed ? (
         <ContentCanvas variant="immersive" fill>
-        <ReadingBlock fill>
+        <ReadingBlock fill center>
         <View style={styles.center}>
           <Text style={styles.eyebrow}>EL UMBRAL</Text>
           <View style={{ height: orbita.spacing.xxl }} />
@@ -394,9 +394,11 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
           showsVerticalScrollIndicator={false}
         >
           {/* El párrafo más largo de la app: el lienzo es inmersivo pero el
-              texto queda acotado al ancho de LECTURA. */}
+              texto queda acotado al ancho de LECTURA, y CENTRADO — el fondo es
+              full-bleed y acá no hay composición a la que alinearse, así que
+              pegado a la izquierda quedaba amontonado en un rincón. */}
           <ContentCanvas variant="immersive">
-          <ReadingBlock>
+          <ReadingBlock center>
           <View style={styles.answerColumn}>
           <Text style={styles.eyebrow}>EL UMBRAL · HOY</Text>
           <View style={{ height: orbita.spacing.sm }} />

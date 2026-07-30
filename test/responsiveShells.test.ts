@@ -95,10 +95,57 @@ test("el Umbral es inmersivo, y adentro el texto queda a ancho de lectura", () =
   assert.match(codigo, /from "@\/components\/orbita\/Layout"/, "el bloque de lectura sale de las primitivas");
   // Las cuatro fases con contenido anclado heredan el alto; si no, la barra de
   // preguntar sube al medio de la pantalla.
-  const conFill = codigo.match(/<ReadingBlock fill>/g) ?? [];
+  const conFill = codigo.match(/<ReadingBlock fill center>/g) ?? [];
   assert.equal(conFill.length, 4, `entrada + escuchando + límite + error, hay ${conFill.length}`);
   // Y la respuesta larga, dentro del scroll, también.
-  assert.match(codigo, /<ContentCanvas variant="immersive">\s*<ReadingBlock>/, "la respuesta larga va acotada");
+  assert.match(
+    codigo,
+    /<ContentCanvas variant="immersive">\s*<ReadingBlock center>/,
+    "la respuesta larga va acotada"
+  );
+});
+
+test("la columna del Umbral se centra: el fondo es full-bleed, la experiencia no queda en un rincón", () => {
+  // El bug: `ReadingBlock` tiene `maxWidth` pero ningún centrado propio, así que
+  // dentro de un lienzo `immersive` (sin tope, `width: 100%`) el bloque se
+  // apoyaba en el borde izquierdo. En el Umbral eso amontonaba la experiencia
+  // entera —header, tabs, prompts, barra de preguntar, escuchando y respuesta—
+  // en los primeros 720px de un monitor, con el fondo cósmico corriendo hasta
+  // el otro extremo.
+  const umbral = sinComentarios(leer("src/components/void/VoidExperience.tsx"));
+  const bloques = umbral.match(/<ReadingBlock[^>]*>/g) ?? [];
+  assert.equal(bloques.length, 5, `las cinco fases del Umbral, hay ${bloques.length}`);
+  for (const b of bloques) {
+    assert.match(b, /\bcenter\b/, `una fase del Umbral quedó sin centrar: ${b}`);
+  }
+  // El fondo sigue siendo full-bleed: el centrado es del bloque, no del lienzo.
+  assert.match(umbral, /<ContentCanvas variant="immersive"/, "el lienzo del Umbral no puede volver a tener tope");
+
+  // Y el centrado se implementa con `alignSelf` en el propio bloque: si fuera
+  // `alignItems` en el lienzo afectaría a TODOS sus hijos y a todas las
+  // pantallas.
+  const layout = sinComentarios(leer("src/components/orbita/Layout.tsx"));
+  assert.match(layout, /center: \{ alignSelf: "center" \}/, "el centrado es del bloque, no del padre");
+  assert.match(layout, /center && styles\.center/, "y es opt-in");
+});
+
+test("centrar el bloque de lectura es opt-in: Carta y Tránsitos siguen alineadas a su gutter", () => {
+  // Regresión al revés: si `ReadingBlock` se centrara siempre, la lectura natal
+  // dejaría de alinearse con la columna de la rueda que tiene encima.
+  const layout = sinComentarios(leer("src/components/orbita/Layout.tsx"));
+  assert.doesNotMatch(
+    layout,
+    /reading: \{[^}]*alignSelf/,
+    "el bloque no puede centrarse por defecto: rompe la alineación de Carta"
+  );
+  for (const rel of ["src/screens/CartaScreen.tsx", "src/screens/TransitosScreen.tsx"]) {
+    const codigo = sinComentarios(leer(rel));
+    const bloques = codigo.match(/<ReadingBlock[^>]*>/g) ?? [];
+    assert.ok(bloques.length > 0, `${rel} tiene que seguir acotando su texto largo`);
+    for (const b of bloques) {
+      assert.doesNotMatch(b, /\bcenter\b/, `${rel} no debe centrar: acompaña a una composición en columnas`);
+    }
+  }
 });
 
 test("todas las rutas del producto llegan a un shell que aplica el lienzo", () => {

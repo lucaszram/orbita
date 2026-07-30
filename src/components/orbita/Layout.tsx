@@ -49,6 +49,15 @@ export function Column({ children, weight = 1, style }: { children: ReactNode; w
  * no pueden medir todo el ancho: se vuelven ilegibles. Esto los deja en el
  * ancho de lectura sin tener que anidar otro lienzo.
  *
+ * **Por defecto queda pegado a la izquierda, y es a propósito.** En Carta y en
+ * Tránsitos el bloque arranca en la misma gutter que la composición de arriba;
+ * centrarlo lo desalinearía de las columnas que lo preceden.
+ *
+ * `center`: cuando el bloque ES la pantalla y no acompaña a una composición
+ * —el Umbral, que corre sobre un fondo full-bleed sin columnas—, quedarse a la
+ * izquierda se lee como un error de maquetación: la experiencia entera se
+ * amontona en los primeros 720px de un monitor. Ahí se centra.
+ *
  * `fill`: para las fases que son `flex: 1` con algo anclado abajo (el Umbral).
  * Sin heredar el alto, el bloque colapsa al contenido y la barra de preguntar
  * sube al medio de la pantalla.
@@ -56,13 +65,15 @@ export function Column({ children, weight = 1, style }: { children: ReactNode; w
 export function ReadingBlock({
   children,
   fill,
+  center,
   style
 }: {
   children: ReactNode;
   fill?: boolean;
+  center?: boolean;
   style?: object;
 }) {
-  return <View style={[styles.reading, fill && styles.fill, style]}>{children}</View>;
+  return <View style={[styles.reading, fill && styles.fill, center && styles.center, style]}>{children}</View>;
 }
 
 /** Sólo en escritorio. Para piezas que existen únicamente en la composición ancha. */
@@ -77,5 +88,9 @@ export function MobileOnly({ children }: { children: ReactNode }) {
 
 const styles = StyleSheet.create({
   reading: { maxWidth: CANVAS_MAX_WIDTH.reading, width: "100%" },
-  fill: { flex: 1 }
+  fill: { flex: 1 },
+  // `alignSelf` y no `alignItems` del padre: el que se centra es ESTE bloque
+  // dentro del lienzo, sin tocar cómo se alinean los hijos ni el resto de los
+  // consumidores del lienzo.
+  center: { alignSelf: "center" }
 });

@@ -39,6 +39,8 @@ Follow-up evidence, captured in the same authenticated Chrome session:
 - Home desktop after header/scroll correction — `/private/tmp/orbita-pr4-review/home-desktop-after.jpg`
 - Perfil desktop after removing the desktop-only hero slab — `/private/tmp/orbita-pr4-review/profile-desktop-after.jpg`
 - Perfil mobile at 400×774, proving the hero and bottom navigation remain intact — `/private/tmp/orbita-pr4-review/profile-mobile-400x774-after.jpg`
+- Umbral desktop before the centering correction — `/var/folders/3y/ds_dx47n3pn8bnq3cpvvpypm0000gn/T/TemporaryItems/NSIRD_screencaptureui_WYXwdU/Screenshot 2026-07-30 at 3.06.44 PM.png`
+- Umbral desktop after centering the interactive reading column — `/private/tmp/orbita-pr4-review/umbral-after.png`
 
 ## Focused checks
 
@@ -54,6 +56,7 @@ Follow-up evidence, captured in the same authenticated Chrome session:
 - The desktop header is a conventional two-ended composition: brand left, primary navigation right, with no empty balancing cell and no duplicate account shortcut.
 - Perfil no longer renders its 720 px hero slab on desktop. Mobile web and native still render the same 240 px hero; complete birth data remains visible in desktop content.
 - Desktop route changes reset both the document and internal React Native Web scrollers. A live check scrolled Home to “Lectura larga”, opened Perfil, returned to Home, and confirmed the destination began at the calendar strip.
+- Umbral keeps its cosmic background full-bleed while all five interactive/readable phases opt into a centered 720 px reading block. Carta and Tránsitos retain their existing left-aligned reading blocks.
 
 ## Comparison and iteration
 
@@ -61,10 +64,12 @@ The implementation keeps the reference direction—dark cosmic field, copper acc
 
 The follow-up comparison put the reported Home and Perfil screenshots beside the new Chrome captures in one review input. The visible regressions were resolved: the real app icon replaces the generic mark; primary navigation is right-aligned; Perfil begins directly with its editorial content instead of a cropped rectangular image; and returning through the desktop navigation no longer restores a stale mid-page offset. At 400×774, Perfil still has its full-width hero and safe bottom navigation, so the desktop fix does not regress mobile/native composition.
 
+The Umbral follow-up was reviewed by placing Lucas's reported desktop screenshot and the loaded implementation capture in the same comparison input. The header, category tabs, prompt list and ask bar now share the viewport center; only the reading block moved, so the full-bleed scene, mobile width and native behavior remain unchanged.
+
 ## Verification
 
 - `pnpm typecheck` — pass
-- `pnpm test` — 703/703
+- `pnpm test` — 705/705
 - `npx expo export --platform web --output-dir /private/tmp/orbita-pr4-export-review-2` — pass, 5.3 MB web bundle; the real app icon is included in the export
 - `git diff --check` — pass
 
