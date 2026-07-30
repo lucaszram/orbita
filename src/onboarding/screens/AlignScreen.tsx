@@ -82,6 +82,10 @@ function TileGrid() {
 function Tile({ img, label, h }: { img: ImageSourcePropType; label: string; h: number }) {
   return (
     <View style={[styles.tile, { height: h }]}>
+      {/* `imageStyle` propio PISA el sizing por defecto de react-native-web: sin
+          width/height/resizeMode explícitos el <img> se va a su tamaño
+          intrínseco (1024px) y arrastra la columna con él. Es el mismo bug que
+          ya está documentado en `components/Screen.tsx` para el fondo. */}
       <ImageBackground source={img} style={StyleSheet.absoluteFill} imageStyle={styles.tileImg} resizeMode="cover" />
       <View style={styles.pill}>
         <Text style={styles.pillTxt}>{label}</Text>
@@ -92,7 +96,11 @@ function Tile({ img, label, h }: { img: ImageSourcePropType; label: string; h: n
 
 const styles = StyleSheet.create({
   body: { flex: 1, paddingHorizontal: GUTTER, paddingTop: 20 },
-  col: { flex: 1 },
+  // `minWidth: 0` no es decorativo: en CSS un item flex arranca con
+  // `min-width: auto`, o sea que NO baja de la medida intrínseca de su
+  // contenido. Con una imagen de 1024px adentro, la columna se negaba a
+  // encogerse y la grilla se salía por la derecha del lienzo de 480.
+  col: { flex: 1, minWidth: 0 },
   footer: { paddingBottom: 12, paddingTop: 12 },
   grid: { flexDirection: "row", gap: 14 },
   gridMeasure: { flex: 1, justifyContent: "center" },
@@ -111,7 +119,9 @@ const styles = StyleSheet.create({
   },
   pillTxt: { color: orbita.bone, fontFamily: font.sansMed, fontSize: 12.5 },
   sub: { marginTop: 10, textAlign: "center" },
-  tile: { borderRadius: 16 },
-  tileImg: { borderRadius: 16 },
+  // `overflow: "hidden"` recorta lo que la imagen quiera desbordar, y
+  // `width: "100%"` la ata al ancho de SU columna en vez de al del asset.
+  tile: { borderRadius: 16, overflow: "hidden", width: "100%" },
+  tileImg: { borderRadius: 16, height: "100%", resizeMode: "cover", width: "100%" },
   title: { fontSize: 29, lineHeight: 34, textAlign: "center" },
 });

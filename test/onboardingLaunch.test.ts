@@ -168,6 +168,25 @@ test("Splash y Align componen sin leer el viewport", () => {
   }
 });
 
+test("los mosaicos de Align se encogen con su columna y recortan la imagen", () => {
+  // Regresión de escritorio: a 1224px el lienzo del alta quedaba centrado en
+  // 480, pero la columna derecha crecía hasta el ancho INTRÍNSECO del asset
+  // (1024px) y se salía por el borde derecho de la ventana.
+  const align = sinComentarios(leer("src/onboarding/screens/AlignScreen.tsx"));
+
+  // En CSS un item flex arranca con `min-width: auto`: no baja de la medida
+  // intrínseca de su contenido. Sin esto la columna no puede encogerse.
+  assert.match(align, /col: \{ flex: 1, minWidth: 0 \}/, "las columnas tienen que poder encogerse");
+
+  // El mosaico se ata al ancho de SU columna y recorta lo que sobre.
+  assert.match(align, /tile: \{ borderRadius: 16, overflow: "hidden", width: "100%" \}/);
+
+  // Y el `imageStyle` propio pisa el sizing por defecto de react-native-web:
+  // sin width/height/resizeMode explícitos el <img> se va a su tamaño natural.
+  // Es el mismo bug ya documentado en `components/Screen.tsx` para el fondo.
+  assert.match(align, /tileImg: \{ borderRadius: 16, height: "100%", resizeMode: "cover", width: "100%" \}/);
+});
+
 test("la grilla de Align se adapta al alto disponible y nunca pasa su alto natural", () => {
   // Con altos fijos (188/202/208/182) la columna medía ~426px y no entraba en
   // un viewport bajo: se comía el pie y el CTA quedaba fuera.
@@ -217,9 +236,24 @@ test("«Ya tengo cuenta · Iniciar sesión» se ve y se alcanza en las dos super
     "src/onboarding/screens/SignUpGateScreen.tsx"
   ]) {
     const codigo = sinComentarios(leer(rel));
-    // Color con contraste suficiente + subrayado: no depende sólo del color.
-    assert.match(codigo, /color: orbita\.copperSoft/, `${rel}: el enlace necesita el cobre suave`);
-    assert.match(codigo, /textDecorationLine: "underline"/, `${rel}: y subrayado`);
+
+    // El estilo va en la LÍNEA COMPLETA, en un solo bloque: color legible, peso
+    // y subrayado juntos. En react-native-web un `Text` con hijos `Text` se
+    // renderiza como div + spans y el color en línea del padre no llega a los
+    // hijos — la fila entera terminaba casi negra sobre el fondo casi negro.
+    assert.match(
+      codigo,
+      /signInText: \{\s*color: orbita\.copperSoft,\s*fontFamily: font\.sansBold,\s*fontSize: 15,\s*textAlign: "center",\s*textDecorationLine: "underline"\s*\}/,
+      `${rel}: la línea entera tiene que llevar color, peso y subrayado`
+    );
+    // Una sola línea de texto plano: nada anidado que se pueda perder.
+    assert.match(
+      codigo,
+      /style=\{styles\.signInText\}>Ya tengo cuenta · Iniciar sesión</,
+      `${rel}: el enlace es una línea plana, sin Text anidados`
+    );
+    assert.doesNotMatch(codigo, /signInStrong|signInDot/, `${rel}: los tramos anidados no pueden volver`);
+
     // Objetivo táctil real: `hitSlop` no existe en web.
     assert.match(codigo, /minHeight: 44/, `${rel}: 44px de alto real`);
     // Nombre y rol accesibles.
@@ -244,6 +278,29 @@ test("Antes/Después scrollea y deja el CTA anclado con respiro seguro", () => {
   assert.match(codigo, /useSafeAreaInsets/);
   // Y el espaciador rígido que lo empujaba fuera de pantalla ya no está.
   assert.doesNotMatch(codigo, /spacer: \{ flex: 1/, "el spacer rígido empujaba el CTA fuera del viewport");
+});
+
+test("el cierre del alta muestra que está guardando, no una pantalla vacía", () => {
+  // Con `PAYWALL_ENABLED=false` el último paso persiste la carta y entra a la
+  // app. Mientras tanto se renderizaba un `View` negro y vacío: parecía que la
+  // app se había colgado justo en el momento más frágil del alta.
+  const flow = sinComentarios(leer("src/onboarding/OnboardingFlow.tsx"));
+  assert.match(flow, /function SavingChart\(\)/, "hace falta un estado de guardado con marca");
+  assert.match(flow, /<SavingChart \/>/, "y el cierre tiene que montarlo");
+  assert.match(flow, /Guardando tu carta…/, "con copy en español");
+  assert.match(flow, /<ActivityIndicator color=\{orbita\.copper\} \/>/, "y señal de actividad");
+  // Anunciado: rol de progreso + región viva para un lector de pantalla.
+  assert.match(flow, /accessibilityRole="progressbar"/);
+  assert.match(flow, /accessibilityLabel="Guardando tu carta"/);
+  assert.match(flow, /accessibilityLiveRegion="polite"/);
+
+  // Y el relleno negro vacío ya no se monta en ninguna rama del switch.
+  const cierre = flow.slice(flow.indexOf("case FINAL_STEP:"), flow.indexOf("function SavingChart"));
+  assert.doesNotMatch(cierre, /<View style=\{styles\.fill\} \/>/, "el relleno vacío no puede volver al cierre");
+
+  // El envío y el paywall no cambian: sólo lo que se dibuja mientras tanto.
+  assert.match(flow, /if \(step === FINAL_STEP && !PAYWALL_ENABLED\) void submit\(\);/);
+  assert.match(flow, /screen = PAYWALL_ENABLED \? \(/);
 });
 
 // --- 6. La inspección interna sigue siendo de sólo lectura ------------------

@@ -67,10 +67,12 @@ function EntryDoors({ onNext, onSignIn }: Props) {
               accessibilityRole="link"
               accessibilityLabel="Ya tengo cuenta: iniciar sesión"
             >
-              <Text style={styles.signInText}>
-                Ya tengo cuenta <Text style={styles.signInDot}>·</Text>{" "}
-                <Text style={styles.signInLink}>Iniciar sesión</Text>
-              </Text>
+              {/* UNA sola línea, sin `Text` anidados. En react-native-web un
+                  `Text` con hijos `Text` se renderiza como div + spans y el
+                  color en línea del padre no llega a los hijos: la fila entera
+                  terminaba casi negra sobre el fondo casi negro. El estilo va
+                  en el nodo que tiene el texto, así no hay nada que perder. */}
+              <Text style={styles.signInText}>Ya tengo cuenta · Iniciar sesión</Text>
             </Pressable>
           ) : null}
         </View>
@@ -127,24 +129,20 @@ const styles = StyleSheet.create({
   doors: { paddingBottom: 18 },
   hero: { alignItems: "center", flex: 1, justifyContent: "center" },
   root: { backgroundColor: "#0A0B0E", flex: 1 },
-  signInDot: { color: orbita.muted },
-  // El cobre de marca (#C46A3A) sobre el casi-negro de Órbita da 5,13:1 —
-  // pasa el mínimo, pero justo, y a 14px sin peso ni subrayado el enlace se
-  // perdía en el fondo. Es el único camino de vuelta para alguien que YA tiene
-  // cuenta, así que se sube a `copperSoft` (#D69A6A, 8,14:1) y se lo subraya:
-  // deja de depender del color para leerse como enlace (WCAG 1.4.1).
-  signInLink: {
-    color: orbita.copperSoft,
-    fontFamily: font.sansBold,
-    textDecorationLine: "underline"
-  },
   // 44px de alto real: `hitSlop` no existe en web.
   signInRow: { alignItems: "center", justifyContent: "center", marginTop: 14, minHeight: 44 },
+  // El cobre de marca (#C46A3A) sobre el casi-negro de Órbita da 5,13:1 — pasa
+  // el mínimo, pero justo. `copperSoft` (#D69A6A) da 8,14:1, y el subrayado
+  // hace que se lea como enlace sin depender del color (WCAG 1.4.1). Va en la
+  // LÍNEA COMPLETA, no en un tramo: es el único camino de vuelta para alguien
+  // que ya tiene cuenta y no puede quedar a merced de cómo react-native-web
+  // herede el estilo hacia un `Text` anidado.
   signInText: {
-    color: orbita.bone,
-    fontFamily: font.sans,
+    color: orbita.copperSoft,
+    fontFamily: font.sansBold,
     fontSize: 15,
-    textAlign: "center"
+    textAlign: "center",
+    textDecorationLine: "underline"
   },
   tagline: { marginTop: 10, textAlign: "center" },
   wordmark: {
