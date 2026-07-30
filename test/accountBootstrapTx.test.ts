@@ -7,7 +7,9 @@ import { runAccountBootstrap, type BootstrapDeps } from "../src/domain/accountBo
  * corrió cada una. Antes había un test que sólo miraba que dos archivos
  * mencionaran `useAccountBootstrap`, lo que no probaba ninguna conducta.
  */
-function makeDeps(over: Partial<BootstrapDeps> & { remoteBirthData?: unknown } = {}) {
+function makeDeps(
+  over: Partial<BootstrapDeps> & { remoteBirthData?: unknown; remoteClerkUserId?: string | null } = {}
+) {
   const calls: string[] = [];
   const conteo: Record<string, number> = {};
   const registrar = (nombre: string) => {
@@ -19,7 +21,7 @@ function makeDeps(over: Partial<BootstrapDeps> & { remoteBirthData?: unknown } =
       registrar("hydrate");
       return {
         status: "ok" as const,
-        clerkUserId: "user_B",
+        clerkUserId: "remoteClerkUserId" in over ? over.remoteClerkUserId! : "user_B",
         birthData: (over.remoteBirthData ?? null) as never
       };
     },
@@ -174,4 +176,44 @@ test("sin lock, dos llamadas SÍ duplican: el test anterior mide algo real", asy
   });
   await Promise.all([runAccountBootstrap(deps), runAccountBootstrap(deps)]);
   assert.equal(conteo.archive, 2, "confirma que el lock es lo que evita el duplicado");
+});
+
+// --- Identidad sin confirmar: nada local se toca ----------------------------
+// Con `clerkUserId` nulo, `isAccountSwitch` no detecta cambio de cuenta,
+// `restoreAccountData` se saltea y `createProfile` escribiría los datos remotos
+// en un perfil SIN dueño: el arranque no lo reconocería como propio y quedaría a
+// la vista de quien use el dispositivo después.
+
+test("sin clerkUserId y CON datos remotos → error y cero operaciones locales", async () => {
+  const { deps, calls } = makeDeps({
+    remoteClerkUserId: null,
+    remoteBirthData: BIRTH_DATA,
+    profileOwner: "user_A",
+    hasLocalProfile: true
+  });
+  assert.deepEqual(await runAccountBootstrap(deps), { status: "error" });
+  assert.deepEqual(calls, ["hydrate"], `no debería haber tocado nada local: ${calls.join(", ")}`);
+});
+
+test("sin clerkUserId y SIN datos remotos → error y cero operaciones locales", async () => {
+  const { deps, calls } = makeDeps({
+    remoteClerkUserId: null,
+    profileOwner: "user_A",
+    hasLocalProfile: true
+  });
+  assert.deepEqual(await runAccountBootstrap(deps), { status: "error" });
+  assert.deepEqual(calls, ["hydrate"], `no debería haber tocado nada local: ${calls.join(", ")}`);
+});
+
+test("un clerkUserId vacío o en blanco cuenta como ausente", async () => {
+  for (const remoteClerkUserId of ["", "   "]) {
+    const { deps, calls } = makeDeps({
+      remoteClerkUserId,
+      remoteBirthData: BIRTH_DATA,
+      profileOwner: "user_A",
+      hasLocalProfile: true
+    });
+    assert.deepEqual(await runAccountBootstrap(deps), { status: "error" }, JSON.stringify(remoteClerkUserId));
+    assert.deepEqual(calls, ["hydrate"]);
+  }
 });

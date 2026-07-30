@@ -59,12 +59,20 @@ export async function runAccountBootstrap(deps: BootstrapDeps): Promise<Bootstra
   }
   if (result.status === "error") return { status: "error" };
 
+  // Sin identidad confirmada no se toca NADA local. Con `clerkUserId` nulo,
+  // `isAccountSwitch` no detecta cambio de cuenta, `restoreAccountData` se
+  // saltea y `createProfile` escribiría los datos remotos en un perfil SIN
+  // dueño: el arranque no lo reconocería como propio y quedaría a la vista de
+  // quien use el dispositivo después.
+  const clerkUserId = result.clerkUserId?.trim();
+  if (!clerkUserId) return { status: "error" };
+
   // CAMBIO DE CUENTA: lo local es de OTRA persona (su sesión se perdió sin
   // logout, así que nada se archivó). Se archiva bajo SU dueño —no se destruye,
   // lo recupera al volver a entrar— y recién ahí se limpia.
   const switchingAccount = isAccountSwitch({
     localProfileOwner: deps.profileOwner,
-    incomingUserId: result.clerkUserId
+    incomingUserId: clerkUserId
   });
   if (switchingAccount) {
     try {
@@ -80,25 +88,23 @@ export async function runAccountBootstrap(deps: BootstrapDeps): Promise<Bootstra
   // Si esta cuenta ya usó el dispositivo, volver su diario y sus guardadas
   // (se archivan al cerrar sesión; no viven en Convex).
   let profileRestored = false;
-  if (result.clerkUserId) {
-    try {
-      ({ profileRestored } = await deps.restoreAccountData(result.clerkUserId));
-    } catch {
-      return { status: "error" };
-    }
+  try {
+    ({ profileRestored } = await deps.restoreAccountData(clerkUserId));
+  } catch {
+    return { status: "error" };
   }
 
   try {
     if (result.birthData) {
       // Lo remoto manda; el snapshot sólo aporta diario y guardadas. Queda
       // marcado con su dueño para que el arranque lo reconozca como propio.
-      await deps.createProfile(onboardingInputFromBirthData(result.birthData), result.clerkUserId);
+      await deps.createProfile(onboardingInputFromBirthData(result.birthData), clerkUserId);
       return { status: "ready" };
     }
-    if (hasLocalProfile && !profileRestored && result.clerkUserId) {
+    if (hasLocalProfile && !profileRestored) {
       // Guest-upgrade sin datos remotos: la cuenta ADOPTA el perfil local de
       // forma explícita (el arranque nunca confía en un perfil sin dueño).
-      await deps.adoptLocalProfile(result.clerkUserId);
+      await deps.adoptLocalProfile(clerkUserId);
     }
   } catch {
     return { status: "error" };
