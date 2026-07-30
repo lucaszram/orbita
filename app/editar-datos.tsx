@@ -1,4 +1,3 @@
-import DateTimePicker from "@react-native-community/datetimepicker";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
@@ -27,6 +26,7 @@ import {
 import { useAppState } from "@/hooks/useAppState";
 import { useLiveApp, useLiveAppDocs } from "@/hooks/useLiveApp";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
+import { BirthDateField, BirthTimeField } from "@/onboarding/components/BirthDateTimeField";
 import { CTA } from "@/onboarding/components/CTA";
 import { Screen } from "@/onboarding/components/Screen";
 import { Body, Label, Title } from "@/onboarding/components/Type";
@@ -210,16 +210,9 @@ export default function EditarDatosRoute() {
         <Title>Tus datos{"\n"}de nacimiento.</Title>
         <Body style={styles.sub}>Afinan toda la lectura. Guardá solo si cambiaste algo.</Body>
 
-        <Label style={styles.fieldLabel}>Fecha</Label>
-        <DateTimePicker
-          value={date}
-          mode="date"
-          display="spinner"
-          themeVariant="dark"
-          maximumDate={new Date()}
-          onChange={(_, next) => next && setDate(next)}
-          style={styles.picker}
-        />
+        {/* Una interfaz, dos implementaciones: rueda nativa y control del
+            navegador en web. Las dos escriben el MISMO `date`. */}
+        <BirthDateField value={date} onChange={setDate} />
 
         <View style={styles.timeRow}>
           <Label>Hora</Label>
@@ -236,18 +229,10 @@ export default function EditarDatosRoute() {
             </View>
           </Pressable>
         </View>
-        {!timeUnknown ? (
-          <DateTimePicker
-            value={time}
-            mode="time"
-            display="spinner"
-            themeVariant="dark"
-            onChange={(_, next) => next && setTime(next)}
-            style={styles.picker}
-          />
-        ) : (
+        <BirthTimeField value={time} onChange={setTime} disabled={timeUnknown} />
+        {timeUnknown ? (
           <Body style={styles.noTimeNote}>Usamos una carta aproximada, sin Ascendente exacto.</Body>
-        )}
+        ) : null}
 
         <Label style={styles.fieldLabel}>Lugar</Label>
         <Body style={styles.placeCurrent}>{edits.place.label || "Sin especificar"}</Body>
@@ -278,9 +263,20 @@ export default function EditarDatosRoute() {
 
         <View style={styles.spacer} />
 
-        {saveError !== null ? <Body style={styles.saveError}>{saveError}</Body> : null}
+        {/* `alert` + región viva: un lector de pantalla anuncia el fallo sin que
+            la persona tenga que ir a buscarlo. Los valores tipeados quedan tal
+            cual y no se navega: el error es recuperable en el mismo lugar. */}
+        {saveError !== null ? (
+          <Body
+            accessibilityRole="alert"
+            accessibilityLiveRegion="polite"
+            style={styles.saveError}
+          >
+            {saveError}
+          </Body>
+        ) : null}
         {syncState === "retry" ? (
-          <Body style={styles.saveError}>
+          <Body accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.saveError}>
             No pudimos sincronizar los datos de tu cuenta. No cambiamos nada; podés reintentar o
             cancelar.
           </Body>
