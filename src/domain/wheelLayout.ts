@@ -12,7 +12,7 @@
  * arriba, DSC derecha, IC abajo (ver `wheelGeometry`).
  */
 import { arcBetween, norm360, wheelAngle } from "@/components/orbita/wheelGeometry";
-import { bodyCode, isWheelBody, signCode } from "@/domain/astroSymbols";
+import { bodyCode, isWheelBody, signGlyph } from "@/domain/astroSymbols";
 import type { NatalChartPayload } from "@/services/appRefs";
 
 export const WHEEL_VIEWBOX = 640;
@@ -30,8 +30,13 @@ const COLLISION_STEP = 22;
 
 export type WheelSignSector = {
   index: number;
-  /** Código monocromo del signo (nunca un glifo dependiente de plataforma). */
-  code: string;
+  /**
+   * Glifo del signo en el font EMPAQUETADO (MaterialCommunityIcons, vía
+   * `domain/astroSymbols`). `null` sólo si el paquete dejara de traerlo: en ese
+   * caso el sector se dibuja sin rótulo, nunca con un carácter del font de
+   * emoji.
+   */
+  glyph: string | null;
   /** Ángulo de la línea divisoria (inicio del signo). */
   boundaryDeg: number;
   /** Ángulo del centro del sector, donde va el código. */
@@ -79,20 +84,20 @@ export type WheelLayout = {
 
 export function buildWheelLayout(payload: NatalChartPayload): WheelLayout {
   const ascLon = payload.ascendantDegree;
-  const hasAscendant = typeof ascLon === "number";
+  const hasAscendant = Number.isFinite(ascLon);
   const anchor = hasAscendant ? (ascLon as number) : 0;
   const screenDeg = (lon: number) => wheelAngle(anchor, lon);
 
   const signs: WheelSignSector[] = Array.from({ length: 12 }, (_, index) => ({
     index,
-    code: signCode(index),
+    glyph: signGlyph(index),
     boundaryDeg: screenDeg(index * 30),
     labelDeg: screenDeg(index * 30 + 15)
   }));
 
   // Planetas con longitud real. Asc/MC quedan afuera: son ejes, no puntos.
   const planets: WheelPlanet[] = (payload.placements ?? [])
-    .filter((p) => typeof p.fullDegree === "number" && isWheelBody(p.key))
+    .filter((p) => Number.isFinite(p.fullDegree) && isWheelBody(p.key))
     .map((p) => ({
       key: p.key as string,
       label: p.planet,
@@ -129,24 +134,56 @@ export function buildWheelLayout(payload: NatalChartPayload): WheelLayout {
       harmony: a.harmony === "tension" ? "tension" : "harmony"
     }));
 
-  // Sin Ascendente las cúspides no son fiables: no se dibujan.
-  const cusps = hasAscendant
-    ? (payload.houses ?? []).filter((h) => typeof h.cusp === "number").slice().sort((a, b) => a.house - b.house)
-    : [];
-  const houses: WheelHouseCusp[] = cusps.map((h, i) => {
-    const deg = screenDeg(h.cusp as number);
-    const next = cusps[(i + 1) % cusps.length];
-    const numeralDeg = norm360(deg + norm360(screenDeg(next.cusp as number) - deg) / 2);
-    return {
-      house: h.house,
-      numeral: HOUSE_NUMERALS[h.house - 1] ?? String(h.house),
-      deg,
-      numeralDeg,
-      angular: h.house === 1 || h.house === 4 || h.house === 7 || h.house === 10
-    };
-  });
+  const houses = hasAscendant ? buildHouses(payload.houses, screenDeg) : [];
 
   return { anchor, hasAscendant, signs, houses, planets, aspects };
+}
+
+/**
+ * Cúspides SÓLO si el payload trae un juego de doce coherente.
+ *
+ * Cada numeral se ubica en el punto medio del arco hacia la cúspide SIGUIENTE, o
+ * sea que cada casa depende de su vecina. Con un array parcial o malformado
+ * —menos de doce casas, números repetidos, casas fuera de 1–12, cúspides `null`,
+ * `NaN` o no numéricas— ese "siguiente" no existe o no significa nada, y los
+ * numerales caen en cualquier lado. Antes se dibujaba lo que hubiera; ahora se
+ * exige el juego completo y, si no está, se devuelve vacío: la rueda conserva
+ * planetas y aspectos y omite las casas en vez de mostrar una rejilla falsa.
+ *
+ * Nunca se desreferencia una cúspide ausente: si el juego no es coherente, no se
+ * entra al `map`.
+ */
+function buildHouses(
+  input: NatalChartPayload["houses"],
+  screenDeg: (lon: number) => number
+): WheelHouseCusp[] {
+  if (!Array.isArray(input)) return [];
+
+  const byHouse = new Map<number, number>();
+  for (const h of input) {
+    const house = h?.house;
+    const cusp = h?.cusp;
+    // Casa válida (entero 1–12, sin repetir) y cúspide numérica finita.
+    if (!Number.isInteger(house) || (house as number) < 1 || (house as number) > 12) continue;
+    if (!Number.isFinite(cusp)) continue;
+    if (byHouse.has(house as number)) continue;
+    byHouse.set(house as number, cusp as number);
+  }
+  if (byHouse.size !== 12) return [];
+
+  const cusps = Array.from({ length: 12 }, (_, i) => byHouse.get(i + 1) as number);
+  return cusps.map((cusp, i) => {
+    const deg = screenDeg(cusp);
+    const next = screenDeg(cusps[(i + 1) % 12]);
+    const house = i + 1;
+    return {
+      house,
+      numeral: HOUSE_NUMERALS[i],
+      deg,
+      numeralDeg: norm360(deg + norm360(next - deg) / 2),
+      angular: house === 1 || house === 4 || house === 7 || house === 10
+    };
+  });
 }
 
 /** Nombre visible del planeta seleccionado (los aspectos se referencian por nombre). */

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import {
@@ -9,14 +9,32 @@ import {
   bodyCodeForName,
   isWheelBody,
   RETROGRADE_CODE,
-  SIGN_CODES,
-  signCode,
-  signCodeForName
+  SIGN_GLYPH_NAMES,
+  SIGN_GLYPHS_COMPLETE,
+  signGlyph,
+  signGlyphCodepoint,
+  signGlyphForName,
+  signGlyphName,
+  signIndexForName
 } from "../src/domain/astroSymbols";
 
 const ROOT = join(import.meta.dirname, "..");
 /** Los comentarios NOMBRAN los glifos viejos a propósito (documentan el bug). */
 const sinComentarios = (x: string) => x.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+
+/**
+ * El paquete real, leído por su cuenta (no a través del dominio): así el test
+ * compara el mapeo contra la fuente empaquetada en vez de contra sí mismo. Si
+ * `@expo/vector-icons` cambiara de glifos o de familia, esto falla.
+ */
+const VECTOR_ICONS = join(ROOT, "node_modules/@expo/vector-icons");
+const BUNDLED_GLYPH_MAP: Record<string, number> = JSON.parse(
+  readFileSync(join(VECTOR_ICONS, "build/vendor/react-native-vector-icons/glyphmaps/MaterialCommunityIcons.json"), "utf8")
+);
+/** La familia que el paquete registra: `createIconSet(glyphMap, 'material-community', font)`. */
+const BUNDLED_FAMILY = readFileSync(join(VECTOR_ICONS, "build/MaterialCommunityIcons.js"), "utf8").match(
+  /createIconSet\(\s*glyphMap\s*,\s*'([^']+)'/
+)?.[1];
 
 /**
  * Superficies de la carta natal que este bloque deja sin presentación
@@ -44,6 +62,10 @@ const SUPERFICIES = [
  * (U+211E), `⊕` (U+2295) y el selector de variación U+FE0E, que era el parche
  * que pedía —sin garantía— presentación de texto. También cualquier emoji
  * pictográfico y los modificadores de emoji.
+ *
+ * Los glifos que sí se usan viven en el Área de Uso Privado del plano 15
+ * (U+F0A7D…U+F0A88) y NUNCA aparecen como literal en el código: salen del glyph
+ * map del paquete en tiempo de ejecución.
  */
 const PROHIBIDOS =
   /[☀-⛿♈-♓℞⊕︎️\u{1F000}-\u{1FAFF}\u{1F300}-\u{1F5FF}\u{1F900}-\u{1F9FF}\u{200D}]/u;
@@ -63,18 +85,106 @@ test("ninguna superficie de la carta presenta signos, planetas ni emoji dependie
   }
 });
 
-test("los símbolos de la rueda se dibujan con la mono EMPAQUETADA", () => {
+// --- Los doce signos, contra el font EMPAQUETADO ------------------------------
+
+test("los doce signos mapean a glifos del font empaquetado, no a abreviaturas", () => {
+  assert.equal(SIGN_GLYPH_NAMES.length, 12);
+  assert.equal(SIGN_GLYPHS_COMPLETE, true, "MaterialCommunityIcons trae los doce glifos");
+
+  const vistos = new Map<number, string>();
+  for (let index = 0; index < 12; index++) {
+    const nombre = signGlyphName(index);
+    // El nombre existe en el glyph map REAL del paquete.
+    const esperado = BUNDLED_GLYPH_MAP[nombre];
+    assert.equal(typeof esperado, "number", `${nombre} no está en el glyph map empaquetado`);
+
+    // El codepoint que resuelve el dominio es exactamente ése.
+    const cp = signGlyphCodepoint(index);
+    assert.equal(cp, esperado, `${nombre} tiene que resolver al codepoint del paquete`);
+
+    // Y es un glifo (un solo carácter), no un código de letras.
+    const glifo = signGlyph(index);
+    assert.equal(glifo, String.fromCodePoint(esperado as number));
+    assert.equal([...(glifo as string)].length, 1, `${nombre} tiene que ser UN glifo`);
+    assert.doesNotMatch(glifo as string, /[A-Za-z]/, `${nombre} no puede ser una abreviatura`);
+
+    // Distinto de todos los demás: doce signos, doce glifos.
+    assert.equal(vistos.has(cp as number), false, `${nombre} repite el codepoint de ${vistos.get(cp as number)}`);
+    vistos.set(cp as number, nombre);
+  }
+  assert.equal(vistos.size, 12, "doce codepoints distintos");
+});
+
+test("los nombres de glifo son los doce del zodíaco, en orden de longitud eclíptica", () => {
+  assert.deepEqual([...SIGN_GLYPH_NAMES], [
+    "zodiac-aries",
+    "zodiac-taurus",
+    "zodiac-gemini",
+    "zodiac-cancer",
+    "zodiac-leo",
+    "zodiac-virgo",
+    "zodiac-libra",
+    "zodiac-scorpio",
+    "zodiac-sagittarius",
+    "zodiac-capricorn",
+    "zodiac-aquarius",
+    "zodiac-pisces"
+  ]);
+  // Índice fuera de rango: se normaliza, no se rompe.
+  assert.equal(signGlyphName(12), "zodiac-aries");
+  assert.equal(signGlyphName(-1), "zodiac-pisces");
+  assert.equal(signGlyph(12), signGlyph(0));
+  assert.equal(signGlyph(-1), signGlyph(11));
+});
+
+test("los nombres de signo se reconocen con y sin acento, en es y en", () => {
+  assert.equal(signIndexForName("Géminis"), 2);
+  assert.equal(signIndexForName("geminis"), 2);
+  assert.equal(signIndexForName("Gemini"), 2);
+  assert.equal(signIndexForName("Escorpio"), 7);
+  assert.equal(signIndexForName("Scorpio"), 7);
+  assert.equal(signIndexForName("Capricornio"), 9);
+  assert.equal(signIndexForName("—"), null);
+  assert.equal(signIndexForName(undefined), null);
+  // Y el glifo que sale del nombre es el del font empaquetado.
+  assert.equal(signGlyphForName("Capricornio"), String.fromCodePoint(BUNDLED_GLYPH_MAP["zodiac-capricorn"]));
+  assert.equal(signGlyphForName("Piscis"), String.fromCodePoint(BUNDLED_GLYPH_MAP["zodiac-pisces"]));
+  assert.equal(signGlyphForName("no es un signo"), null);
+});
+
+// --- El font: familia empaquetada, cargada y usada ---------------------------
+
+test("la familia de símbolos es la que registra el paquete, y se toma de su API", () => {
+  assert.equal(BUNDLED_FAMILY, "material-community", "el paquete registra esta familia");
+  const glyphFont = readFileSync(join(ROOT, "src/theme/glyphFont.ts"), "utf8");
+  // La familia y el asset NO se escriben a mano: salen de la API del paquete.
+  assert.match(glyphFont, /MaterialCommunityIcons\.getFontFamily\(\)/);
+  assert.match(glyphFont, /MaterialCommunityIcons\.font/);
+  assert.doesNotMatch(sinComentarios(glyphFont), /"material-community"/, "la familia no se hardcodea");
+});
+
+test("el font de símbolos se carga por el camino de fuentes que ya existía", () => {
+  const hook = readFileSync(join(ROOT, "src/hooks/useOrbitaFonts.ts"), "utf8");
+  assert.match(hook, /GLYPH_FONT/, "useOrbitaFonts carga el font de símbolos");
+  assert.match(hook, /useFonts\(/);
+  // Y sigue cargando la mono, que es la que dibuja planetas y numerales.
+  assert.ok(/RobotoMono_400Regular/.test(hook) && /RobotoMono_500Medium/.test(hook));
+});
+
+test("cada texto de la rueda declara una familia empaquetada", () => {
   const wheel = readFileSync(join(ROOT, "src/components/orbita/NatalWheel.tsx"), "utf8");
-  // Cada `SvgText` de la rueda declara familia: sin `fontFamily` el render cae
-  // al font del sistema, que es exactamente el problema que se elimina.
   const textos = wheel.match(/<SvgText[\s\S]*?>/g) ?? [];
   assert.ok(textos.length >= 4, "la rueda dibuja signos, casas, planetas y retro");
   for (const t of textos) {
-    assert.ok(/fontFamily=\{orbita\.fonts\.(mono|monoMedium)\}/.test(t), `SvgText sin la mono: ${t.slice(0, 60)}`);
+    // Sin `fontFamily` el render cae al font del sistema: el bug original.
+    assert.ok(
+      /fontFamily=\{(orbita\.fonts\.(mono|monoMedium)|GLYPH_FONT_FAMILY)\}/.test(t),
+      `SvgText sin familia empaquetada: ${t.slice(0, 80)}`
+    );
   }
-  // Y las familias empaquetadas son las tres del sistema Órbita.
-  const hook = readFileSync(join(ROOT, "src/hooks/useOrbitaFonts.ts"), "utf8");
-  assert.ok(/RobotoMono_400Regular/.test(hook) && /RobotoMono_500Medium/.test(hook));
+  // Los signos, específicamente, con el font de símbolos.
+  assert.match(wheel, /fontFamily=\{GLYPH_FONT_FAMILY\}/);
+  assert.match(wheel, /from "@\/theme\/glyphFont"/);
 });
 
 test("no queda ninguna tabla de glifos Unicode en las pantallas de la carta", () => {
@@ -84,30 +194,7 @@ test("no queda ninguna tabla de glifos Unicode en las pantallas de la carta", ()
   }
 });
 
-// --- El mapeo -----------------------------------------------------------------
-
-test("los doce signos tienen código, en orden de longitud eclíptica", () => {
-  assert.equal(SIGN_CODES.length, 12);
-  assert.equal(new Set(SIGN_CODES).size, 12, "sin códigos repetidos");
-  assert.equal(signCode(0), "ARI");
-  assert.equal(signCode(4), "LEO");
-  assert.equal(signCode(11), "PIS");
-  // Índice fuera de rango: se normaliza, no se rompe.
-  assert.equal(signCode(12), "ARI");
-  assert.equal(signCode(-1), "PIS");
-  for (const c of SIGN_CODES) assert.match(c, /^[A-Z]{3}$/, `${c} tiene que ser ASCII`);
-});
-
-test("los nombres de signo se reconocen con y sin acento, en es y en", () => {
-  assert.equal(signCodeForName("Géminis"), "GEM");
-  assert.equal(signCodeForName("geminis"), "GEM");
-  assert.equal(signCodeForName("Gemini"), "GEM");
-  assert.equal(signCodeForName("Escorpio"), "ESC");
-  assert.equal(signCodeForName("Scorpio"), "ESC");
-  assert.equal(signCodeForName("Capricornio"), "CAP");
-  assert.equal(signCodeForName("—"), null);
-  assert.equal(signCodeForName(undefined), null);
-});
+// --- Planetas: códigos, con la limitación documentada ------------------------
 
 test("cada cuerpo del payload tiene código ASCII y los ejes no se dibujan", () => {
   for (const [key, code] of Object.entries(BODY_CODES)) {
@@ -142,8 +229,37 @@ test("la marca de retrogradación es ASCII", () => {
   assert.ok(!PROHIBIDOS.test(RETROGRADE_CODE));
 });
 
-test("la limitación aceptada queda documentada en el módulo", () => {
+/**
+ * Los planetas siguen siendo abreviaturas porque NINGÚN glyph map empaquetado
+ * los cubre. El test lo comprueba contra el paquete real, así que la limitación
+ * documentada es verificable y no una afirmación de buena fe.
+ */
+test("ningún font empaquetado cubre los planetas: la limitación es real y precisa", () => {
+  const dir = join(VECTOR_ICONS, "build/vendor/react-native-vector-icons/glyphmaps");
+  const maps = readdirSync(dir).filter((f) => f.endsWith(".json") && !f.includes("_meta"));
+  assert.equal(maps.length, 17, "se revisan los diecisiete glyph maps del paquete");
+
+  // Sin glifo en NINGÚN set: por eso estos puntos no pueden dejar de ser código.
+  const SIN_GLIFO = ["jupiter", "saturn", "uranus", "neptune", "pluto", "chiron", "part_of_fortune"];
+  for (const f of maps) {
+    const nombres = Object.keys(JSON.parse(readFileSync(join(dir, f), "utf8")));
+    for (const planeta of SIN_GLIFO) {
+      assert.equal(nombres.includes(planeta), false, `${f} sí trae "${planeta}": revisar la limitación documentada`);
+    }
+  }
+
+  // Y MaterialCommunityIcons —el set que sí trae los signos— no trae ninguno.
+  const mci = Object.keys(BUNDLED_GLYPH_MAP);
+  assert.equal(mci.filter((k) => k.startsWith("zodiac-")).length, 12, "12/12 signos");
+  for (const planeta of ["mercury", "venus", "mars", ...SIN_GLIFO]) {
+    assert.equal(mci.includes(planeta), false, `MaterialCommunityIcons no tiene "${planeta}"`);
+  }
+});
+
+test("la limitación de los planetas queda documentada en el módulo", () => {
   const src = readFileSync(join(ROOT, "src/domain/astroSymbols.ts"), "utf8");
   assert.match(src, /Limitación aceptada/);
-  assert.match(src, /assets\//, "se documenta que no hay tipografía de símbolos empaquetada");
+  // Y se nombra el font que SÍ está empaquetado, en vez de negar que exista.
+  assert.match(src, /MaterialCommunityIcons/);
+  assert.match(src, /@expo\/vector-icons/);
 });

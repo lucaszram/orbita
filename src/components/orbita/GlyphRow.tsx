@@ -10,8 +10,10 @@ import { orbita } from "@/theme/orbita";
 
 /**
  * Código monocromo del cuerpo del título. Antes devolvía glifos Unicode
- * (`☉ ☽ ☿ ♀ ♂ ♃ ♄`) que ninguna familia empaquetada tiene: en web y Android
- * caían al font de emoji. Ver `domain/astroSymbols`.
+ * (`☉ ☽ ☿ ♀ ♂ ♃ ♄`) que en web y Android caían al font de emoji. Los signos ya
+ * usan sus glifos reales del font empaquetado, pero los PLANETAS no tienen glifo
+ * en ninguna tipografía que el proyecto empaquete: siguen siendo códigos de dos
+ * letras en la mono. La limitación está documentada en `domain/astroSymbols`.
  */
 export function glyphFor(title: string): string {
   return bodyCodeForName(title) ?? "SO";

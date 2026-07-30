@@ -1,84 +1,141 @@
 /**
- * Símbolos astrológicos SIN emoji ni dependencia de plataforma.
+ * Símbolos astrológicos SIN emoji y sin depender del font del sistema.
  *
- * La rueda y la tabla usaban los caracteres Unicode de signos y planetas
+ * El bug: la rueda y la tabla usaban los caracteres Unicode de signos y planetas
  * (`♈`–`♓` U+2648–U+2653, `☉ ☽ ☿ ♀ ♂ ♃ ♄ ♅ ♆ ♇ ☊ ⚷ ⊕`, `℞`). Ninguna de las
- * familias que Órbita empaqueta —Newsreader, Inter, Roboto Mono— tiene esos
- * glifos, así que el render caía al font del sistema: en la web y en Android eso
- * es la fuente de EMOJI, que los dibuja a color, con caja cuadrada y ancho
- * doble, ignorando el `fill` cobre (los "cuadrados violetas"). El truco del
- * selector de variación U+FE0E que había en la rueda pide presentación de texto,
- * pero es exactamente eso: un pedido. Chrome/Windows y varias versiones de
- * Android lo ignoran, y en SVG el resultado es todavía menos predecible. O sea
- * que la carta natal se veía distinta —y a veces rota— según el aparato.
+ * familias de TEXTO que Órbita empaqueta —Newsreader, Inter, Roboto Mono— tiene
+ * esos glifos, así que el render caía al font del sistema: en la web y en
+ * Android eso es la fuente de EMOJI, que los dibuja a color, con caja cuadrada y
+ * ancho doble, ignorando el `fill` cobre. El selector U+FE0E que había pide
+ * presentación de texto, pero es exactamente eso: un pedido.
  *
- * Se buscó un asset propio antes de decidir: no hay ninguna tipografía de
- * símbolos empaquetada en el repo (`assets/` no tiene `.ttf`/`.otf`; las
- * familias vienen de `@expo-google-fonts`) y los emblemas de
- * `assets/orbita/optimized/emblems/` son JPG de cobre por signo —raster,
- * ~cientos de KB, fondo oscuro, once de doce signos (falta Capricornio)—: no
- * sirven como glifo monocromo dentro de la rueda.
+ * ## Signos: glifos reales, de una tipografía ya empaquetada
  *
- * Sin descargar un asset nuevo, el patrón más seguro que YA existe en el
- * proyecto es texto en la mono empaquetada: es exactamente lo que hacen los
- * numerales romanos de las casas en la rueda (`orbita.fonts.mono`). Roboto Mono
- * cubre el alfabeto latino, se ve idéntica en web, iOS y Android, y respeta el
- * color. Así que los símbolos pasan a ser códigos de tres/dos letras.
+ * `@expo/vector-icons` es dependencia directa del proyecto (`15.1.1`, ya se usa
+ * para `Ionicons`) y su `MaterialCommunityIcons.ttf` trae los DOCE glifos del
+ * zodíaco: `zodiac-aries` … `zodiac-pisces`. Es un asset que ya viaja en el
+ * bundle, con su `LICENSE` en el paquete: no hay que descargar nada ni agregar
+ * una dependencia. Los doce signos se dibujan con esos glifos, iguales en web,
+ * iOS y Android, monocromos y respetando el `fill`.
  *
- * **Limitación aceptada:** son abreviaturas, no los glifos astrológicos
- * clásicos. Es menos icónico que `♈`. Se elige porque un glifo que se dibuja
- * distinto —o a color, o no se dibuja— en cada plataforma es peor que una
- * abreviatura que se dibuja igual en todas. Recuperar los glifos reales exige
- * empaquetar una tipografía de símbolos con licencia (o dibujarlos como paths
- * SVG), y eso es traer un asset nuevo: queda como decisión de diseño aparte.
+ * El codepoint sale del glyph map REAL del paquete (el mismo objeto que devuelve
+ * `MaterialCommunityIcons.getRawGlyphMap()`), no de una tabla copiada a mano; la
+ * familia sale de `MaterialCommunityIcons.getFontFamily()` en
+ * `theme/glyphFont`. El font se carga en `hooks/useOrbitaFonts`, que es lo que
+ * ya gatea el render de todas las pantallas.
+ *
+ * ## Planetas: limitación precisa
+ *
+ * Ninguna tipografía empaquetada cubre los planetas. Concretamente, en los 17
+ * glyph maps que trae `@expo/vector-icons`:
+ *
+ * - MaterialCommunityIcons: 12/12 signos, **cero** glifos planetarios.
+ * - FontAwesome 4/5/6 y Fontisto: sólo `mercury`, `venus` y `mars` (esos sí son
+ *   los glifos astrológicos ☿ ♀ ♂), más un `sun`/`moon` PICTÓRICO (sol con
+ *   rayos, luna creciente), que no es ☉ ni ☽.
+ * - No existe en ningún set `jupiter`, `saturn`, `uranus`, `neptune`, `pluto`,
+ *   `chiron`, `node` ni `part_of_fortune`.
+ *
+ * O sea: 3 de los 10 planetas clásicos, en OTRA familia y con otro peso de
+ * trazo. Cambiar sólo esos tres pondría dos vocabularios de símbolos y dos
+ * tipografías de iconos en la misma rueda de trece puntos. Por eso **todos** los
+ * puntos planetarios siguen siendo códigos de dos letras en la mono empaquetada
+ * —el patrón que ya usaban los numerales romanos de las casas—: deterministas,
+ * monocromos e idénticos en las tres plataformas.
+ *
+ * **Limitación aceptada:** los planetas son abreviaturas, no glifos. Recuperar
+ * ☉ ☽ ☿ ♀ ♂ ♃ ♄ ♅ ♆ ♇ exige empaquetar una tipografía astrológica con licencia
+ * o dibujarlos como paths SVG, y eso es traer un asset nuevo: queda como
+ * decisión de diseño aparte. Los signos ya NO tienen esta limitación.
  */
+import GLYPH_MAP from "@expo/vector-icons/build/vendor/react-native-vector-icons/glyphmaps/MaterialCommunityIcons.json";
 
-/** Códigos de signo por índice de longitud eclíptica (0 = Aries). */
-export const SIGN_CODES = [
-  "ARI",
-  "TAU",
-  "GEM",
-  "CAN",
-  "LEO",
-  "VIR",
-  "LIB",
-  "ESC",
-  "SAG",
-  "CAP",
-  "ACU",
-  "PIS"
+/** Codepoints del glyph map empaquetado, por nombre de icono. */
+const BUNDLED_GLYPHS = GLYPH_MAP as unknown as Record<string, number>;
+
+/**
+ * Nombre del glifo de MaterialCommunityIcons por índice de longitud eclíptica
+ * (0 = Aries). Son los nombres que el paquete expone en su glyph map.
+ */
+export const SIGN_GLYPH_NAMES = [
+  "zodiac-aries",
+  "zodiac-taurus",
+  "zodiac-gemini",
+  "zodiac-cancer",
+  "zodiac-leo",
+  "zodiac-virgo",
+  "zodiac-libra",
+  "zodiac-scorpio",
+  "zodiac-sagittarius",
+  "zodiac-capricorn",
+  "zodiac-aquarius",
+  "zodiac-pisces"
 ] as const;
 
-/** Código del signo por índice (se normaliza el índice para no romper nunca). */
-export function signCode(index: number): string {
-  return SIGN_CODES[((index % 12) + 12) % 12];
+/** Índice normalizado (nunca rompe con un índice fuera de rango). */
+const wrap12 = (index: number) => ((Math.trunc(index) % 12) + 12) % 12;
+
+/** Nombre del glifo del signo por índice. */
+export function signGlyphName(index: number): string {
+  return SIGN_GLYPH_NAMES[wrap12(index)];
 }
 
-/** Nombre del signo (es/en, con o sin acento) → código. `null` si no se reconoce. */
-export function signCodeForName(name: string | undefined | null): string | null {
+/**
+ * Codepoint del signo en el font empaquetado, o `null` si el paquete dejara de
+ * traerlo (deriva de versión). Nunca se inventa un reemplazo.
+ */
+export function signGlyphCodepoint(index: number): number | null {
+  const cp = BUNDLED_GLYPHS[signGlyphName(index)];
+  return typeof cp === "number" && Number.isFinite(cp) ? cp : null;
+}
+
+/**
+ * Carácter del signo, listo para dibujar con `GLYPH_FONT_FAMILY`. `null` si el
+ * glifo no está en el font: en ese caso la banda de signos NO se rotula, en vez
+ * de caer a una abreviatura o a un cuadrado del font de emoji.
+ */
+export function signGlyph(index: number): string | null {
+  const cp = signGlyphCodepoint(index);
+  return cp === null ? null : String.fromCodePoint(cp);
+}
+
+/** ¿El font empaquetado cubre los doce signos? (con `15.1.1`: sí). */
+export const SIGN_GLYPHS_COMPLETE: boolean = SIGN_GLYPH_NAMES.every(
+  (_, index) => signGlyphCodepoint(index) !== null
+);
+
+/** Nombre del signo (es/en, con o sin acento) → índice eclíptico. `null` si no se reconoce. */
+export function signIndexForName(name: string | undefined | null): number | null {
   if (!name) return null;
   const k = deacento(name);
-  const hit = SIGN_NAMES.find(([re]) => re.test(k));
-  return hit ? hit[1] : null;
+  const hit = SIGN_NAMES.findIndex(([re]) => re.test(k));
+  return hit === -1 ? null : SIGN_NAMES[hit][1];
 }
 
-const SIGN_NAMES: Array<[RegExp, string]> = [
-  [/^aries/, "ARI"],
-  [/^tauro|^taurus/, "TAU"],
-  [/^geminis|^gemini/, "GEM"],
-  [/^cancer/, "CAN"],
-  [/^leo/, "LEO"],
-  [/^virgo/, "VIR"],
-  [/^libra/, "LIB"],
-  [/^escorpio|^scorpio/, "ESC"],
-  [/^sagitario|^sagittarius/, "SAG"],
-  [/^capricornio|^capricorn/, "CAP"],
-  [/^acuario|^aquarius/, "ACU"],
-  [/^piscis|^pisces/, "PIS"]
+/** Carácter del signo a partir de su nombre. `null` si no se reconoce el nombre. */
+export function signGlyphForName(name: string | undefined | null): string | null {
+  const index = signIndexForName(name);
+  return index === null ? null : signGlyph(index);
+}
+
+const SIGN_NAMES: Array<[RegExp, number]> = [
+  [/^aries/, 0],
+  [/^tauro|^taurus/, 1],
+  [/^geminis|^gemini/, 2],
+  [/^cancer/, 3],
+  [/^leo/, 4],
+  [/^virgo/, 5],
+  [/^libra/, 6],
+  [/^escorpio|^scorpio/, 7],
+  [/^sagitario|^sagittarius/, 8],
+  [/^capricornio|^capricorn/, 9],
+  [/^acuario|^aquarius/, 10],
+  [/^piscis|^pisces/, 11]
 ];
 
 /**
- * Códigos de cuerpo/punto por `key` del payload de `charts.current`.
+ * Códigos de cuerpo/punto por `key` del payload de `charts.current`. Dos letras
+ * en la mono empaquetada: ver la limitación documentada arriba.
  * `AC`/`MC` son EJES (no puntos): la rueda no los dibuja como planeta, pero la
  * tabla y la tríada sí los nombran.
  */

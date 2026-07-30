@@ -4,9 +4,11 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { mapNatalChart } from "../src/domain/natalChart";
+import { signGlyph } from "../src/domain/astroSymbols";
 import {
   aspectIsActive,
   buildWheelLayout,
+  HOUSE_NUMERALS,
   selectedLabel,
   wheelPoint,
   WHEEL_CENTER,
@@ -92,12 +94,84 @@ test("la rueda dibuja TODO lo que trae el payload completo", () => {
   assert.equal(layout.planets.find((p) => p.key === "mercury")?.retrograde, true);
 });
 
-test("una casa sin cúspide no se inventa", () => {
+// --- Casas: sólo un juego de doce coherente ---------------------------------
+
+/**
+ * Cada numeral se ubica a mitad de camino de la cúspide SIGUIENTE, así que una
+ * casa sin su vecina no tiene ubicación posible. Con un juego incompleto se
+ * omiten TODAS las casas: la rueda conserva planetas y aspectos y no dibuja una
+ * rejilla que no se puede sostener.
+ */
+test("una casa sin cúspide invalida el juego: no se dibuja ninguna", () => {
   const doc = structuredClone(DOC);
   doc.payload.houses[4].degree = null as unknown as number;
   const layout = buildWheelLayout(mapNatalChart(doc));
-  assert.equal(layout.houses.length, 11);
-  assert.ok(!layout.houses.some((h) => h.house === 5));
+  assert.equal(layout.houses.length, 0, "once casas no son un juego coherente");
+  // Lo demás sigue en pie.
+  assert.equal(layout.planets.length, 5);
+  assert.equal(layout.aspects.length, 2);
+  assert.equal(layout.signs.length, 12);
+});
+
+test("un array de casas parcial o malformado no rompe ni dibuja casas", () => {
+  const base = mapNatalChart(DOC);
+  const casos: Array<[string, unknown]> = [
+    ["array vacío", []],
+    ["una sola casa", [{ house: 1, cusp: 185 }]],
+    ["tres casas", [1, 2, 3].map((house) => ({ house, cusp: 185 + house }))],
+    ["sin la casa 12", Array.from({ length: 11 }, (_, i) => ({ house: i + 1, cusp: (185 + i * 30) % 360 }))],
+    ["números repetidos", Array.from({ length: 12 }, () => ({ house: 1, cusp: 185 }))],
+    ["casa fuera de rango", Array.from({ length: 12 }, (_, i) => ({ house: i, cusp: (185 + i * 30) % 360 }))],
+    ["cúspide NaN", Array.from({ length: 12 }, (_, i) => ({ house: i + 1, cusp: NaN }))],
+    ["cúspide Infinity", Array.from({ length: 12 }, (_, i) => ({ house: i + 1, cusp: Infinity }))],
+    ["cúspide de texto", Array.from({ length: 12 }, (_, i) => ({ house: i + 1, cusp: "185" }))],
+    ["cúspide undefined", Array.from({ length: 12 }, (_, i) => ({ house: i + 1 }))],
+    ["entradas nulas", Array.from({ length: 12 }, () => null)],
+    ["casa no entera", Array.from({ length: 12 }, (_, i) => ({ house: i + 1.5, cusp: 185 }))],
+    ["no es un array", { house: 1, cusp: 185 }],
+    ["undefined", undefined],
+    ["null", null]
+  ];
+
+  for (const [nombre, houses] of casos) {
+    const payload = { ...base, houses } as typeof base;
+    const layout = buildWheelLayout(payload);
+    assert.equal(layout.houses.length, 0, `"${nombre}" no puede producir casas`);
+    // Y nunca se pierde el resto de la rueda.
+    assert.equal(layout.planets.length, 5, `"${nombre}" tiene que conservar los planetas`);
+    assert.equal(layout.aspects.length, 2, `"${nombre}" tiene que conservar los aspectos`);
+    assert.equal(layout.signs.length, 12);
+  }
+});
+
+test("un juego de doce desordenado sí se dibuja, ordenado por número de casa", () => {
+  const base = mapNatalChart(DOC);
+  const desordenadas = [...base.houses].reverse();
+  const layout = buildWheelLayout({ ...base, houses: desordenadas });
+  assert.equal(layout.houses.length, 12);
+  assert.deepEqual(
+    layout.houses.map((h) => h.house),
+    Array.from({ length: 12 }, (_, i) => i + 1)
+  );
+  // Y el numeral de la 1 sigue apuntando al arco hacia la 2 (no hacia la 12).
+  assert.deepEqual(layout.houses.map((h) => h.numeral), HOUSE_NUMERALS);
+});
+
+test("una casa repetida no desplaza a las demás: gana la primera aparición", () => {
+  const base = mapNatalChart(DOC);
+  const conRepetida = [...base.houses, { ...base.houses[0], cusp: 300 }];
+  const layout = buildWheelLayout({ ...base, houses: conRepetida });
+  assert.equal(layout.houses.length, 12, "trece entradas con doce casas distintas siguen siendo un juego");
+  assert.equal(layout.houses[0].deg, 180, "la cúspide válida es la primera, no la duplicada");
+});
+
+test("los doce sectores se rotulan con los doce glifos del zodíaco", () => {
+  const layout = buildWheelLayout(mapNatalChart(DOC));
+  const glifos = layout.signs.map((s) => s.glyph);
+  assert.equal(glifos.filter((g) => typeof g === "string").length, 12, "los doce tienen glifo");
+  assert.equal(new Set(glifos).size, 12, "y son distintos entre sí");
+  for (const g of glifos) assert.doesNotMatch(g as string, /[A-Za-z]/, "nunca una abreviatura");
+  assert.deepEqual(glifos, Array.from({ length: 12 }, (_, i) => signGlyph(i)));
 });
 
 // --- Rotación al Ascendente -------------------------------------------------
@@ -119,7 +193,7 @@ test("cada planeta cae en el arco de su signo real", () => {
   // Venus a 128° (8° de Leo, 120–150) con Asc en 185.
   assert.equal(venus.deg, wheelAngle(185, 128));
   const leo = layout.signs[4];
-  assert.equal(leo.code, "LEO");
+  assert.equal(leo.glyph, signGlyph(4), "el sector 4 rotula Leo con su glifo empaquetado");
   const lo = Math.min(leo.boundaryDeg, wheelAngle(185, 150));
   const hi = Math.max(leo.boundaryDeg, wheelAngle(185, 150));
   assert.ok(venus.deg >= lo && venus.deg <= hi, `Venus ${venus.deg} fuera del arco de Leo`);
