@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  ANNUAL_TRIAL_DAYS,
   buildStripeCheckoutForm,
   buildStripeCustomerForm,
   buildStripePortalForm,
   createStripeApi,
   encodeStripeForm,
-  requireStripeString
+  requireStripeString,
+  trialDaysForPlan
 } from "../convex/lib/stripeApi";
 
 test("Stripe form encoding preserves nested Stripe keys and omits absent values", () => {
@@ -71,6 +73,9 @@ test("Stripe customer, checkout and portal forms preserve the existing contract"
   });
   assert.equal(subscription.mode, "subscription");
   assert.equal(subscription["subscription_data[metadata][plan]"], "yearly");
+  assert.equal(ANNUAL_TRIAL_DAYS, 3);
+  assert.equal(trialDaysForPlan("yearly"), 3);
+  assert.equal(subscription["subscription_data[trial_period_days]"], 3);
   assert.equal(subscription["payment_intent_data[metadata][plan]"], undefined);
   assert.equal(subscription.success_url, "https://orbita.example/checkout/success?session_id={CHECKOUT_SESSION_ID}");
   assert.equal(subscription.cancel_url, "https://orbita.example/paywall");
@@ -85,6 +90,16 @@ test("Stripe customer, checkout and portal forms preserve the existing contract"
   assert.equal(lifetime.mode, "payment");
   assert.equal(lifetime["payment_intent_data[metadata][plan]"], "lifetime");
   assert.equal(lifetime["subscription_data[metadata][plan]"], undefined);
+
+  const weekly = buildStripeCheckoutForm({
+    plan: "weekly",
+    customerId: "cus_123",
+    priceId: "price_weekly",
+    clerkUserId: "user_123",
+    webUrl: "https://orbita.example"
+  });
+  assert.equal(trialDaysForPlan("weekly"), 0);
+  assert.equal(weekly["subscription_data[trial_period_days]"], undefined);
 
   assert.deepEqual(buildStripePortalForm({ customerId: "cus_123", webUrl: "https://orbita.example" }), {
     customer: "cus_123",
