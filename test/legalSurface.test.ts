@@ -142,3 +142,19 @@ test("el pie legal lleva a las tres páginas públicas", () => {
     assert.match(legal, new RegExp(`href="${href}"`), `el pie legal no lleva a ${href}`);
   }
 });
+
+// --- Nav de escritorio en las páginas legales standalone --------------------
+
+test("Soporte/Privacidad/Términos montan WebLayoutProvider alrededor de WebNav", () => {
+  // Estas páginas montan WebNav fuera de WebAppShell (no hay sesión ni layout
+  // autenticado detrás). Sin WebLayoutProvider, useIsDesktop() cae al default
+  // del contexto ("mobile") y la barra de navegación de escritorio nunca
+  // aparece, aunque la ventana sea ancha.
+  assert.match(legal, /from "@\/components\/web\/web-layout-provider"/);
+  assert.match(legal, /<WebLayoutProvider>\s*<View style=\{styles\.page\}>\s*<WebNav/);
+});
+
+test("el pie legal no monta WebNav dos veces por fuera del provider", () => {
+  const aperturas = legal.match(/<WebLayoutProvider>/g) ?? [];
+  assert.equal(aperturas.length, 1, "un solo shell legal, un solo provider");
+});

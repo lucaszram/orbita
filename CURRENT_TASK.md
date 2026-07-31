@@ -1,6 +1,14 @@
 # Current Task
 
-## Lanzamiento web — autoridad de prueba anual Plus (2026-07-31, Codex)
+## Web standalone — nav de escritorio en Paywall y páginas legales (2026-07-31, Claude)
+
+**Objetivo:** que `/paywall`, `/support`, `/privacy` y `/terminos` muestren la barra de navegación de escritorio en viewports anchos, igual que el resto de la app y que `/iniciar-sesion`/`/editar-datos`. Estas cuatro pantallas montan `WebNav` fuera de `WebAppShell` (son standalone), y `WebNav` decide topbar vs. barra inferior con `useIsDesktop()`, que lee `LayoutModeContext` — cuyo default es `"mobile"` cuando no hay ningún `WebLayoutProvider` en el árbol. Sin el provider, esas cuatro pantallas quedaban condenadas a la barra móvil sin importar el ancho de la ventana.
+
+**Ficha:** owner Claude (frontend); territorio `src/components/web/orbita-paywall.tsx`, `src/components/web/orbita-legal.tsx`, `test/paywall.test.ts`, `test/legalSurface.test.ts`, `CURRENT_TASK.md`; rama `feature/web-standalone-nav-responsive`; riesgo bajo (un solo wrapper de contexto, sin tocar lógica, copy, precios ni rutas); pruebas: tests estructurales focalizados + typecheck + suite completa + `pnpm build:web`; rollout: PR aislado, sin deploy; rollback: revertir el PR; fuera de alcance `convex/**`, comportamiento de pagos/precios, rutas, copy, onboarding, pantallas autenticadas, assets y conducta nativa.
+
+**Qué cambió:** ambos archivos ya traían el fix aplicado al retomar esta tarea — se revisó por correctividad y minimalidad, no se reescribió. `OrbitaPaywall` envuelve `<RequireSession><PaywallWithBackend /></RequireSession>` en `<WebLayoutProvider>`; `LegalShell` (el shell común de Soporte/Privacidad/Términos) envuelve su `<View style={styles.page}>` en el mismo provider, después del gate de fuentes cargadas. Mismo patrón exacto que `/iniciar-sesion` y `/editar-datos`, incluido el comentario que explica el motivo. Se agregaron tests estructurales en `test/paywall.test.ts` y `test/legalSurface.test.ts` que verifican que el provider envuelve el árbol que monta `WebNav` y que hay exactamente un `WebLayoutProvider` por pantalla (evita duplicarlo si alguien vuelve a tocar el archivo).
+
+**Estado:** cambios completos y validados en el worktree, sin commitear. `pnpm typecheck` pasó sin errores; la suite completa pasó 799/799; `pnpm build:web` exportó correctamente; y `pnpm check:web-export` confirmó 35,87 MB totales, imagen máxima de 479,3 KB y JavaScript de aplicación de 1,09 MB gzip, todos dentro de los límites. Verificación visual completada en 390×844 y 1440×900: Paywall y Términos usan barra inferior mobile por debajo de 900 px, barra superior desktop desde 900 px, no tienen desborde horizontal y conservan contenido, precios y enlaces legales. Listo para commit y PR.
 
 **Objetivo:** alinear la oferta web y Stripe Checkout sobre una única prueba anual de tres días; el plan semanal no ofrece prueba.
 
