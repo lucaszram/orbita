@@ -108,7 +108,7 @@ export function OrbitaLanding() {
               Tu día con contexto astrológico. Carta natal, tránsitos y guía diaria con tono editorial, sin promesas raras.
             </Text>
             <View style={[styles.ctaRow, isNarrow && styles.ctaRowNarrow]}>
-              <WebLinkButton href="/crear-cuenta" icon={ArrowRight} label="Empezar" />
+              <WebLinkButton href="/empezar" icon={ArrowRight} label="Empezar" />
               <WebLinkButton href="/iniciar-sesion" icon={LogIn} label="Ya tengo cuenta" variant="secondary" />
             </View>
           </View>
@@ -188,7 +188,7 @@ function WebLinkButton({
   label,
   variant = "primary"
 }: {
-  href: "/crear-cuenta" | "/onboarding" | "/iniciar-sesion";
+  href: "/empezar" | "/crear-cuenta" | "/onboarding" | "/iniciar-sesion";
   icon: IconComponent;
   label: string;
   variant?: "primary" | "secondary";

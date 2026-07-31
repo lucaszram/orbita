@@ -37,9 +37,13 @@ export type OnboardingDraft = {
   birthTime?: DraftBirthTime;
   timeUnknown: boolean;
   /**
-   * Quedó del paso de cuenta, que salió del onboarding (auth es la puerta
-   * anterior). Se mantiene OPCIONAL para no invalidar borradores guardados con
-   * la forma anterior: un borrador viejo se sigue leyendo y su email se ignora.
+   * Email tipeado en el paso de cuenta (índice 13) o traído del login por
+   * `?email=`. Se conserva porque es justo el dato que la vuelta de Clerk hacía
+   * perder: se tipea, el navegador remonta `/empezar` y había que tipearlo de
+   * nuevo.
+   *
+   * OPCIONAL: un borrador guardado por una versión sin paso de cuenta no lo
+   * trae, y eso no puede invalidarlo — simplemente queda sin email.
    */
   email?: string;
 };
@@ -102,7 +106,12 @@ export function parseDraft(raw: string | null, stepCount: number): OnboardingDra
     placeQuery: str(d.placeQuery),
     birthPlace: parsePlace(d.birthPlace),
     birthTime: parseBirthTime(d.birthTime),
-    timeUnknown: d.timeUnknown === true
+    timeUnknown: d.timeUnknown === true,
+    // `optStr`: un email que no sea un string no vacío queda en `undefined`,
+    // igual que el resto de los campos opcionales. `writeDraft` ya lo serializa
+    // y `OnboardingFlow` ya lo lee — sin esta línea el ida y vuelta lo
+    // descartaba en silencio y `saved?.email` era código muerto.
+    email: optStr(d.email)
   };
 }
 

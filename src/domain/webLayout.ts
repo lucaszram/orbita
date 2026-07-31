@@ -15,11 +15,12 @@
  *    (`hooks/useLayoutMode`). Ninguna pantalla vuelve a mirar la ventana: el
  *    tamaño de la rueda, del radar y de los heros sigue saliendo del CONTENEDOR
  *    medido (`MeasuredSquare`), no del viewport.
- * 2. `variant` del lienzo (`wide` | `reading` | `form` | `immersive`), que es
- *    una propiedad de la PANTALLA, no del dispositivo: la Carta quiere lienzo
- *    ancho para poner rueda e interpretación en dos columnas, el Perfil quiere
- *    una columna de lectura, el alta quiere una columna de formulario, y la
- *    rueda a pantalla completa no quiere ningún tope.
+ * 2. `variant` del lienzo (`wide` | `reading` | `immersive`), que es una
+ *    propiedad de la PANTALLA, no del dispositivo: la Carta quiere lienzo ancho
+ *    para poner rueda e interpretación en dos columnas, el Perfil quiere una
+ *    columna de lectura, y la rueda a pantalla completa no quiere ningún tope.
+ *    El alta no usa el lienzo: compone su propio escenario cinematográfico
+ *    (`src/onboarding/components/Screen.tsx`).
  *
  * En un teléfono ninguno de los topes llega a aplicar (siempre son mayores que
  * el ancho de pantalla) y `mode` es `mobile`, que es el valor por defecto del
@@ -34,17 +35,12 @@ export type LayoutMode = "mobile" | "desktop";
 /**
  * `wide` — lienzo de composición (Home, Tránsitos, Carta, Valores, Diario).
  * `reading` — columna de lectura (Perfil, detalles de texto largo).
- * `form` — columna de FORMULARIO: los quince pasos del alta, el login, la
- *   recuperación. Es una sola pregunta por pantalla con un CTA al pie; a 720 el
- *   botón medía media ventana y el paso leía como una pantalla de teléfono
- *   estirada. A 480 es una columna centrada deliberada sobre el fondo cósmico
- *   full-bleed, que es como se compone un alta en la web.
  * `immersive` — sin tope: la superficie ES la pieza (el Umbral, la rueda a
  *   pantalla completa). Un lienzo inmersivo no deja el texto suelto: adentro se
  *   acota lo que se lee con `ReadingBlock` (720), y lo que no es texto —chrome,
  *   fondos, la propia pieza— ocupa la superficie entera.
  */
-export type CanvasVariant = "wide" | "reading" | "form" | "immersive";
+export type CanvasVariant = "wide" | "reading" | "immersive";
 
 /** Topes fijos, en píxeles. Nada de porcentajes del viewport: el cuerpo de texto
  *  de Órbita mide lo mismo en un teléfono que en un monitor de 27".
@@ -54,7 +50,6 @@ export type CanvasVariant = "wide" | "reading" | "form" | "immersive";
 export const CANVAS_MAX_WIDTH: Record<CanvasVariant, number | null> = {
   wide: 1200,
   reading: 720,
-  form: 480,
   immersive: null
 };
 

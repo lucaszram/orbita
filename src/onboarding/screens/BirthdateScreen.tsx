@@ -1,12 +1,12 @@
 import { StyleSheet, View } from "react-native";
 
-import { isRealDateParts } from "@/domain/birthInput";
+import { isFutureDateParts, isRealDateParts } from "@/domain/birthInput";
 
 import { A } from "../assets";
 import { BirthDatePicker } from "../components/BirthPicker";
 import { CTA } from "../components/CTA";
 import { Header } from "../components/Header";
-import { Screen } from "../components/Screen";
+import { Screen, useSplitSlot } from "../components/Screen";
 import { Body, Caption, Title } from "../components/Type";
 import { GUTTER } from "../theme";
 
@@ -33,27 +33,36 @@ export function BirthdateScreen({ step, value, onChange, onNext, onBack }: Props
   // Un día que no existe (31 de febrero) se puede armar con la rueda nativa.
   // No se confirma: se avisa y "Continuar" queda bloqueado.
   const real = isRealDateParts(value);
+  // El `max` del control nativo se fue con el control nativo: la regla sigue.
+  const future = isFutureDateParts(value, new Date());
+  const usable = real && !future;
+  // El control se monta UNA vez: en móvil en su lugar del flujo, en escritorio
+  // en la segunda columna. Nunca los dos: serían dos fuentes de verdad para la
+  // misma fecha.
+  const { inline, aside } = useSplitSlot(<BirthDatePicker value={value} onChange={onChange} />);
   return (
-    <Screen bg={A.dailyTexture} wash={0.52}>
+    <Screen bg={A.dailyTexture} wash={0.52} layout="split" aside={aside}>
       <Header step={step} total={15} onBack={onBack} />
       <View style={styles.body}>
         <Title>¿Cuándo naciste?</Title>
         <Body style={styles.sub}>Tu fecha ubica el Sol en tu carta.</Body>
 
-        <BirthDatePicker value={value} onChange={onChange} />
-
-        {real ? null : (
+        {usable ? null : (
           <Body accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.invalid}>
-            Ese día no existe en el mes que elegiste. Ajustá la fecha para continuar.
+            {future
+              ? "Esa fecha todavía no llegó. Elegí tu fecha de nacimiento."
+              : "Ese día no existe en el mes que elegiste. Ajustá la fecha para continuar."}
           </Body>
         )}
+
+        {inline}
 
         <View style={styles.spacer} />
         <Caption style={styles.privacy}>
           La usamos para armar tu carta. Nunca vendemos ni compartimos tus datos.
         </Caption>
         <View style={styles.footer}>
-          <CTA label="Continuar" onPress={onNext} disabled={!real} />
+          <CTA label="Continuar" onPress={onNext} disabled={!usable} />
         </View>
       </View>
     </Screen>

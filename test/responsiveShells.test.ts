@@ -43,7 +43,6 @@ const RUTAS = archivos("app");
 const SHELLS = [
   "src/components/orbita/kit.tsx", // OrbitaScreen — Carta, Perfil, Tránsitos, Vínculo
   "src/components/home/DetailScreen.tsx", // detalles de la Home — Valores, Diario, lecturas
-  "src/onboarding/components/Screen.tsx", // alta, login, recuperación, editar datos
   "src/components/void/VoidExperience.tsx", // el Umbral
   "src/screens/HomeScreen.tsx", // Inicio: shell propio (fondo full-bleed + ritual)
   "app/recepcion.tsx", // la ceremonia del día 1
@@ -59,7 +58,6 @@ const ENVOLTORIO: Record<(typeof SHELLS)[number], RegExp> = {
   "src/components/orbita/kit.tsx": /<ContentCanvas variant=\{canvas\}>\{children\}<\/ContentCanvas>/,
   "src/components/home/DetailScreen.tsx":
     /<ContentCanvas variant=\{canvas\}>\s*<View style=\{styles\.body\}>\{children\}<\/View>/,
-  "src/onboarding/components/Screen.tsx": /<ContentCanvas fill variant="form">\{children\}<\/ContentCanvas>/,
   "src/components/void/VoidExperience.tsx": /<ContentCanvas variant="immersive" fill>/,
   "src/screens/HomeScreen.tsx": /<ContentCanvas variant="wide">/,
   "app/recepcion.tsx": /<ContentCanvas>/,
@@ -76,6 +74,30 @@ test("cada shell envuelve su contenido con el lienzo compartido", () => {
     );
     assert.match(codigo, ENVOLTORIO[shell], `${shell} importa el lienzo pero no envuelve su contenido`);
   }
+});
+
+/**
+ * El alta NO usa el lienzo: tiene composición propia. Es la excepción
+ * deliberada — sus quince pasos son pantallas cinematográficas, no columnas de
+ * texto, así que en escritorio montan una escena centrada o dos columnas en vez
+ * de una columna de ancho fijo. Sigue siendo un shell: ninguna de sus pantallas
+ * dibuja su propio marco.
+ */
+test("el alta compone con su propio escenario, no con el lienzo de la app", () => {
+  const shell = sinComentarios(leer("src/onboarding/components/Screen.tsx"));
+  assert.doesNotMatch(shell, /ContentCanvas/, "el alta no monta la columna de la app");
+  assert.match(shell, /const desktop = useIsDesktop\(\);/, "consume el modo por contexto");
+  // Las dos composiciones de escritorio.
+  assert.match(shell, /layout === "split" && aside/, "dos columnas cuando hay una pieza visual");
+  assert.match(shell, /stageDesktop: \{ alignSelf: "center", maxWidth: STAGE_MAX/, "escena centrada con tope propio");
+  assert.match(shell, /columnDesktop: \{ justifyContent: "center", maxWidth: COPY_COLUMN \}/, "copy en medida legible");
+  assert.match(shell, /columnCentered: \{ alignSelf: "center", maxWidth: STAGE_COLUMN \}/, "y en escena centrada, centrada de verdad");
+  // El escenario de escritorio NO puede ser una columna de teléfono.
+  assert.match(shell, /const STAGE_MAX = 1200;/);
+  assert.match(shell, /const COPY_COLUMN = 520;/);
+  assert.ok(1200 > 900, "el escenario supera el breakpoint: es una composición ancha de verdad");
+  // `minWidth: 0` en la columna de la escena: sin eso una imagen desborda la fila.
+  assert.match(shell, /aside: \{ flex: 1, justifyContent: "center", minHeight: 0, minWidth: 0 \}/);
 });
 
 test("el Umbral envuelve TODAS sus fases, no sólo la de entrada", () => {
@@ -164,7 +186,7 @@ test("todas las rutas del producto llegan a un shell que aplica el lienzo", () =
     "app/reading/_layout.tsx"
   ]);
 
-  const shells = new Set<string>(SHELLS);
+  const shells = new Set<string>([...SHELLS, "src/onboarding/components/Screen.tsx"]);
   const sinLienzo: string[] = [];
   for (const ruta of RUTAS) {
     if (FUERA.has(ruta)) continue;
@@ -493,8 +515,8 @@ test("en la app autenticada el viewport lo lee UN solo archivo: el shell web", (
     .filter((rel) => !FUERA_DEL_CONTRATO.has(rel));
   assert.deepEqual(
     lectores.sort(),
-    ["src/components/web/web-app-shell.tsx"],
-    "sólo el shell web puede mirar la ventana: el resto consume `useLayoutMode()`"
+    ["src/components/web/web-layout-provider.tsx"],
+    "sólo el provider compartido mira la ventana: el resto consume `useLayoutMode()`"
   );
 });
 

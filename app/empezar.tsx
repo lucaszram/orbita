@@ -7,10 +7,12 @@ import { backendConfig } from "@/services/backendProviders";
  * Alta en la web: el MISMO onboarding que el nativo (`OnboardingFlow`, quince
  * pasos). No hay una máquina de estados web aparte.
  *
- * El paso de cuenta usa `useAccountFlow` (hooks clásicos de Clerk: email +
- * contraseña + código), que funcionan igual en web; el login social está
- * apagado, que era lo único atado a `expo-auth-session`. El paywall sigue la
- * conducta canónica (`PAYWALL_ENABLED = false`): al terminar va a recepción.
+ * El paso de cuenta (índice 13, `14 / Create Account` en V4.4) usa
+ * `useAccountFlow` (hooks clásicos de Clerk: email + contraseña + código), que
+ * funcionan igual en web. "Continuar con Google" se suma SÓLO en web y sólo con
+ * `EXPO_PUBLIC_ORBITA_GOOGLE_AUTH=true`; sin esa variable el alta por email
+ * queda entera igual. El paywall sigue la conducta canónica
+ * (`PAYWALL_ENABLED = false`): al terminar va a recepción.
  */
 export default function EmpezarRoute() {
   if (process.env.EXPO_OS !== "web") {

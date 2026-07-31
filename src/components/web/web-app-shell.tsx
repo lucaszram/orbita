@@ -1,16 +1,16 @@
 import { useEffect, useRef, type ReactNode } from "react";
-import { StyleSheet, useWindowDimensions, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { usePathname } from "expo-router";
 import { RequireSession } from "@/components/web/require-session";
+import { WebLayoutProvider } from "@/components/web/web-layout-provider";
 import { WebNav, type NavKey } from "@/components/web/web-nav";
 import {
-  layoutModeFor,
   reservesBottomNav,
   resetsScrollOnRoute,
   WEB_BOTTOM_NAV_HEIGHT,
   WEB_SHELL_BACKGROUND
 } from "@/domain/webLayout";
-import { LayoutModeProvider } from "@/hooks/useLayoutMode";
+import { useLayoutMode } from "@/hooks/useLayoutMode";
 
 /**
  * Chrome de la app en web.
@@ -27,8 +27,15 @@ import { LayoutModeProvider } from "@/hooks/useLayoutMode";
  * radar y heros siguen saliendo del contenedor medido.
  */
 export function WebAppShell({ active, children }: { active: NavKey; children: ReactNode }) {
-  const { width } = useWindowDimensions();
-  const mode = layoutModeFor(width);
+  return (
+    <WebLayoutProvider>
+      <WebAppShellInner active={active}>{children}</WebAppShellInner>
+    </WebLayoutProvider>
+  );
+}
+
+function WebAppShellInner({ active, children }: { active: NavKey; children: ReactNode }) {
+  const mode = useLayoutMode();
   const pathname = usePathname();
   // La barra inferior es `position: fixed`. El espacio se reserva como PADDING
   // del contenido, no con un `View` suelto al final: ese View no tenía fondo y
@@ -39,16 +46,14 @@ export function WebAppShell({ active, children }: { active: NavKey; children: Re
   useRouteScrollTop({ pathname, enabled: resetsScrollOnRoute({ web: true, mode }), containerRef: contentRef });
 
   return (
-    <LayoutModeProvider mode={mode}>
-      <RequireSession>
-        <View style={styles.root}>
-          <WebNav active={active} />
-          <View ref={contentRef} style={[styles.content, reserve && styles.contentSafeBottom]}>
-            {children}
-          </View>
+    <RequireSession>
+      <View style={styles.root}>
+        <WebNav active={active} />
+        <View ref={contentRef} style={[styles.content, reserve && styles.contentSafeBottom]}>
+          {children}
         </View>
-      </RequireSession>
-    </LayoutModeProvider>
+      </View>
+    </RequireSession>
   );
 }
 

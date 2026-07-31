@@ -8,10 +8,11 @@ import { A } from "../assets";
 import { CodeHelp } from "../components/CodeHelp";
 import { CodeInput } from "../components/CodeInput";
 import { CTA } from "../components/CTA";
+import { EmailDivider, GoogleButton } from "../components/GoogleButton";
 import { Screen } from "../components/Screen";
 import { Body, Label, Title } from "../components/Type";
 import { font, GUTTER, orbita } from "../theme";
-import { SOCIAL_LOGIN_ENABLED, type OAuthProvider, type SignInFlow } from "../useAccount";
+import { GOOGLE_AUTH_ENABLED, type OAuthProvider, type SignInFlow } from "../useAccount";
 
 type Props = {
   flow: SignInFlow;
@@ -95,7 +96,7 @@ export function SignInScreen({ flow, onSignedIn, onCreateAccount, onBack }: Prop
   };
 
   return (
-    <Screen bg={A.splashBg} bgOpacity={0.9} wash={0.55}>
+    <Screen bg={A.splashBg} bgOpacity={0.9} wash={0.55} scroll>
       <View style={styles.header}>
         <Pressable onPress={onBack} hitSlop={12} style={styles.backBtn} accessibilityRole="button" accessibilityLabel="Volver">
           <Text style={styles.chev}>‹</Text>
@@ -104,6 +105,18 @@ export function SignInScreen({ flow, onSignedIn, onCreateAccount, onBack }: Prop
       <View style={styles.body}>
         <Title>Bienvenido{"\n"}de nuevo.</Title>
         <Body style={styles.sub}>{subtitle}</Body>
+
+        {/* El camino corto primero; el email queda completo debajo. */}
+        {GOOGLE_AUTH_ENABLED && !flow.isSignedIn && flow.phase === "email" ? (
+          <>
+            <GoogleButton
+              busy={flow.oauthBusy === "google"}
+              onPress={() => void oauth("google")}
+              style={styles.googleTop}
+            />
+            <EmailDivider />
+          </>
+        ) : null}
 
         {!flow.isSignedIn ? (
           <>
@@ -180,25 +193,6 @@ export function SignInScreen({ flow, onSignedIn, onCreateAccount, onBack }: Prop
           </View>
         ) : null}
 
-        {SOCIAL_LOGIN_ENABLED && !flow.isSignedIn && flow.phase === "email" ? (
-          <>
-            <Text style={styles.divider}>O seguir con</Text>
-            <View style={styles.socials}>
-              <CTA
-                label={flow.oauthBusy === "apple" ? "Un momento…" : "Continuar con Apple"}
-                variant="secondary"
-                onPress={() => void oauth("apple")}
-              />
-              <View style={styles.gap} />
-              <CTA
-                label={flow.oauthBusy === "google" ? "Un momento…" : "Continuar con Google"}
-                variant="secondary"
-                onPress={() => void oauth("google")}
-              />
-            </View>
-          </>
-        ) : null}
-
         {codePhase || passwordPhase ? (
           <View style={styles.linksZone}>
             {/* La contraseña nunca es un callejón: siempre se puede entrar por
@@ -263,5 +257,6 @@ const styles = StyleSheet.create({
   secondary: { marginTop: 12 },
   socials: { marginTop: 22 },
   spacer: { flex: 1 },
+  googleTop: { marginTop: 24 },
   sub: { marginTop: 10 },
 });

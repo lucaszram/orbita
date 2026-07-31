@@ -17,7 +17,6 @@ import {
   partsToTimeValue,
   timeValueToParts
 } from "../src/domain/birthInput";
-import { CANVAS_MAX_WIDTH } from "../src/domain/webLayout";
 
 const ROOT = join(import.meta.dirname, "..");
 const leer = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
@@ -85,19 +84,56 @@ test("una hora imposible tampoco produce valor", () => {
 
 // --- 2. El cableado de los dos pasos ----------------------------------------
 
-test("web usa controles del navegador y dibuja EXACTAMENTE el valor del estado", () => {
+test("la web usa una rueda propia y branded, nunca el popup del sistema", () => {
   const web = sinComentarios(leer("src/onboarding/components/BirthPicker.web.tsx"));
-  assert.match(web, /type: "date"/, "fecha con el control nativo del navegador");
-  assert.match(web, /type: "time"/, "hora con el control nativo del navegador");
-  // LA aserción de esta tanda: el valor mostrado sale de las mismas partes que
-  // usa el resto del flujo. Si esto se rompe, vuelve el bug de integridad.
-  assert.match(web, /value: partsToDateValue\(args\.value\) \?\? ""/);
-  assert.match(web, /value: partsToTimeValue\(args\.value\) \?\? ""/);
-  // Y lo que se emite son partes parseadas del control, no un índice de rueda.
-  assert.match(web, /dateValueToParts\(event\.currentTarget\.value\)/);
-  assert.match(web, /timeValueToParts\(event\.currentTarget\.value\)/);
-  // Nadie nació mañana.
-  assert.match(web, /max: isoDateFrom\(args\.today\)/);
+  // Ningún control nativo: `<input type="date">` abre el calendario gris del
+  // sistema operativo en el medio de una pantalla cósmica.
+  assert.doesNotMatch(web, /type: "date"/, "no puede volver el popup del sistema");
+  assert.doesNotMatch(web, /type: "time"/, "no puede volver el popup del sistema");
+  assert.doesNotMatch(web, /"input"/, "el alta no monta inputs nativos de fecha/hora");
+  // Semántica de listbox: es lo que hace la rueda accesible.
+  assert.match(web, /role: "listbox"/);
+  assert.match(web, /role: "option"/);
+  assert.match(web, /"aria-selected": i === clamped/);
+  assert.match(web, /"aria-activedescendant"/);
+  assert.match(web, /tabIndex: 0/, "cada columna entra en el orden de tabulación");
+  assert.match(web, /"aria-label": label/, "y tiene nombre accesible");
+});
+
+test("la rueda web no depende de eventos que el navegador no emite", () => {
+  const web = sinComentarios(leer("src/onboarding/components/BirthPicker.web.tsx"));
+  // El bug original: `contentOffset` (inexistente en RNW) y momentum events
+  // (que el navegador no emite). Acá la posición se CALCULA desde el índice.
+  assert.doesNotMatch(web, /contentOffset|onMomentumScrollEnd|onScrollEndDrag/);
+  assert.match(web, /const target = clamped \* ROW_H;/, "la posición sale del índice");
+  assert.match(web, /node\.scrollTop = target/);
+  // Y al frenar el scroll se confirma la fila más cercana: rueda de verdad,
+  // con dedo y con mouse, sin depender de momentum.
+  assert.match(web, /Math\.round\(node\.scrollTop \/ ROW_H\)/);
+  assert.match(web, /setTimeout\(commitFromScroll, SETTLE_MS\)/);
+});
+
+test("teclado: flechas, Home/End y PageUp/PageDown mueven la rueda", () => {
+  const web = sinComentarios(leer("src/onboarding/components/BirthPicker.web.tsx"));
+  for (const key of ["ArrowDown", "ArrowUp", "PageDown", "PageUp", "Home", "End"]) {
+    assert.match(web, new RegExp(`${key}:`), `falta el manejo de ${key}`);
+  }
+  assert.match(web, /e\.preventDefault\(\);/, "las flechas no pueden scrollear la página");
+});
+
+test("todo camino de entrada emite las MISMAS partes del alta", () => {
+  const web = sinComentarios(leer("src/onboarding/components/BirthPicker.web.tsx"));
+  // Click, teclado y scroll pasan por el mismo `onChange(i)` de la columna, y
+  // la pantalla lo traduce a las partes que usa el resto del flujo. Es lo que
+  // garantiza que lo que se ve sea lo que se guarda.
+  assert.match(web, /onChange\(\{ \.\.\.value, day: i \+ 1 \}\)/);
+  assert.match(web, /onChange\(\{ \.\.\.value, month: i \+ 1 \}\)/);
+  assert.match(web, /onChange\(\{ \.\.\.value, year: Number\(years\[i\]\) \}\)/);
+  assert.match(web, /onChange\(\{ \.\.\.value, hour: i \}\)/);
+  assert.match(web, /onChange\(\{ \.\.\.value, minute: i \}\)/);
+  // El índice SIEMPRE viene del estado, nunca de la posición del scroll.
+  assert.match(web, /index: value\.day - 1/);
+  assert.match(web, /index: value\.hour/);
 });
 
 test("la rueda ya no se monta en web, y en nativo queda intacta", () => {
@@ -132,20 +168,30 @@ test("«No sé la hora» no deja una hora visible que nadie eligió", () => {
   assert.match(paso, /accessibilityLabel="No sé la hora"/);
 });
 
-test("una fecha imposible bloquea Continuar y se dice por qué", () => {
+test("una fecha imposible o futura bloquea Continuar y se dice por qué", () => {
   const paso = sinComentarios(leer("src/onboarding/screens/BirthdateScreen.tsx"));
   assert.match(paso, /const real = isRealDateParts\(value\);/);
-  assert.match(paso, /disabled=\{!real\}/, "no se puede confirmar un día que no existe");
+  // El `max` del control nativo se fue con el control nativo: la regla sigue.
+  assert.match(paso, /const future = isFutureDateParts\(value, new Date\(\)\);/);
+  assert.match(paso, /const usable = real && !future;/);
+  assert.match(paso, /disabled=\{!usable\}/, "no se confirma un día que no existe ni uno que no llegó");
   assert.match(paso, /accessibilityRole="alert"/, "y se anuncia");
+  // La columna de años tampoco ofrece el futuro.
+  const web = sinComentarios(leer("src/onboarding/components/BirthPicker.web.tsx"));
+  assert.match(web, /const top = today\.getFullYear\(\);/, "los años cortan en el año actual");
 });
 
 // --- 3. Composición responsive del alta -------------------------------------
 
-test("el alta tiene su propia columna de formulario, más angosta que la de lectura", () => {
-  assert.equal(CANVAS_MAX_WIDTH.form, 480);
-  assert.ok(CANVAS_MAX_WIDTH.form < (CANVAS_MAX_WIDTH.reading ?? Infinity), "más angosta que la lectura");
+test("el alta compone su propio escenario, no una columna de la app", () => {
+  // El alta dejó de usar el lienzo: sus quince pasos son pantallas
+  // cinematográficas, no columnas de texto. En escritorio montan una escena
+  // centrada o dos columnas; en móvil las dos colapsan a la columna de siempre.
   const shell = sinComentarios(leer("src/onboarding/components/Screen.tsx"));
-  assert.match(shell, /<ContentCanvas fill variant="form">\{children\}<\/ContentCanvas>/);
+  assert.doesNotMatch(shell, /ContentCanvas/, "el alta no monta el lienzo de la app");
+  assert.match(shell, /export type ScreenLayout =/);
+  assert.match(shell, /const STAGE_MAX = 1200;/, "el escenario de escritorio es ancho de verdad");
+  assert.match(shell, /const COPY_COLUMN = 520;/, "y el copy queda en medida legible");
 });
 
 test("el tope del lienzo se centra con alignSelf, no con alignItems del padre", () => {
@@ -164,7 +210,7 @@ test("Splash y Align componen sin leer el viewport", () => {
   for (const rel of ["src/onboarding/screens/SplashScreen.tsx", "src/onboarding/screens/AlignScreen.tsx"]) {
     const codigo = sinComentarios(leer(rel));
     assert.doesNotMatch(codigo, /useWindowDimensions|Dimensions\.get|window\.inner/, `${rel} no puede medir la ventana`);
-    assert.match(codigo, /<Screen /, `${rel} monta el shell que aplica el lienzo`);
+    assert.match(codigo, /<Screen[\s>]/, `${rel} monta el shell que aplica el lienzo`);
   }
 });
 
@@ -180,6 +226,13 @@ test("los mosaicos de Align se encogen con su columna y recortan la imagen", () 
 
   // El mosaico se ata al ancho de SU columna y recorta lo que sobre.
   assert.match(align, /tile: \{ borderRadius: 16, overflow: "hidden", width: "100%" \}/);
+  // Grilla PAREJA: cuatro mosaicos del mismo alto, sin escalonado accidental.
+  assert.match(align, /const TILE_H = 190;/, "un solo alto para los cuatro");
+  assert.doesNotMatch(align, /COL_OFFSET/, "el desfase que leía como error no puede volver");
+  // Y la etiqueta va ADENTRO, no en una píldora colgando del borde.
+  assert.doesNotMatch(align, /pill:|pillTxt:/, "las píldoras flotantes no pueden volver");
+  assert.match(align, /tileLabel: \{[\s\S]*?position: "absolute"/, "la etiqueta vive dentro del mosaico");
+  assert.match(align, /<LinearGradient/, "con degradé de legibilidad debajo");
 
   // Y el `imageStyle` propio pisa el sizing por defecto de react-native-web:
   // sin width/height/resizeMode explícitos el <img> se va a su tamaño natural.
@@ -195,6 +248,306 @@ test("la grilla de Align se adapta al alto disponible y nunca pasa su alto natur
   assert.match(align, /Math\.min\(available, NATURAL_H\)/, "con espacio de sobra no se estira");
   assert.match(align, /const scale = h \/ NATURAL_H;/, "el escalonado del Figma se mantiene como proporción");
   assert.doesNotMatch(align, /h=\{188\}/, "los altos ya no son píxeles fijos");
+});
+
+const SPLIT_SCREENS = [
+  "src/onboarding/screens/AlignScreen.tsx",
+  "src/onboarding/screens/BirthdateScreen.tsx",
+  "src/onboarding/screens/BirthTimeScreen.tsx"
+];
+
+test("la pieza visual se monta UNA vez, y en móvil en su lugar del flujo", () => {
+  // El bug: el shell renderizaba `{column}{aside}`, así que en móvil la grilla
+  // de Align y los pickers caían DESPUÉS de la nota y del CTA, dejando un hueco
+  // vacío donde tenían que estar. Y montar la pieza dos veces —una inline y
+  // otra en el aside— sería peor: dos controles con el mismo nombre accesible
+  // para el mismo dato.
+  const shell = sinComentarios(leer("src/onboarding/components/Screen.tsx"));
+  assert.match(shell, /export function useSplitSlot/, "hace falta el slot que garantiza un solo montaje");
+  assert.match(
+    shell,
+    /return desktop \? \{ inline: null, aside: node \} : \{ inline: node, aside: undefined \};/,
+    "inline y aside son mutuamente excluyentes"
+  );
+  // Fuera de la composición de dos columnas el shell IGNORA `aside`: no puede
+  // volver a colgarlo al final de la columna.
+  assert.doesNotMatch(shell, /asideStacked/, "el aside apilado al final es exactamente el bug");
+  assert.match(shell, /\) : \(\s*column\s*\)/, "sin split, sólo la columna");
+
+  for (const rel of SPLIT_SCREENS) {
+    const codigo = sinComentarios(leer(rel));
+    assert.match(codigo, /const \{ inline, aside \} = useSplitSlot\(/, `${rel} tiene que usar el slot`);
+    assert.match(codigo, /aside=\{aside\}/, `${rel} pasa el aside del slot, no un nodo suelto`);
+    assert.match(codigo, /\{inline\}|\{inline \?/, `${rel} tiene que renderizar la pieza en el flujo`);
+  }
+});
+
+test("el orden móvil de cada paso es el original", () => {
+  // El orden del DOM ES el orden de lectura y de tabulación: se verifica por
+  // posición en el archivo, no por estilos.
+  const orden = (rel: string, hitos: string[]) => {
+    const codigo = sinComentarios(leer(rel));
+    let prev = -1;
+    for (const hito of hitos) {
+      const i = codigo.indexOf(hito);
+      assert.ok(i > 0, `${rel}: falta ${hito}`);
+      assert.ok(i > prev, `${rel}: ${hito} quedó fuera de orden`);
+      prev = i;
+    }
+  };
+  // Align: header → título → subtítulo → grilla → nota → CTA.
+  orden("src/onboarding/screens/AlignScreen.tsx", [
+    "<Header step={1}", "<Title", "<Body", "<View style={styles.gridZone}>{inline}", "<Caption", "<CTA"
+  ]);
+  // Fecha: header → título → subtítulo → error → picker → privacidad → CTA.
+  orden("src/onboarding/screens/BirthdateScreen.tsx", [
+    "<Header step={step}", "<Title", "<Body style={styles.sub}", "accessibilityRole=\"alert\"", "{inline}", "<Caption", "<CTA"
+  ]);
+  // Hora: header → título → subtítulo → picker → "No sé la hora" → nota → CTA.
+  orden("src/onboarding/screens/BirthTimeScreen.tsx", [
+    "<Header step={step}", "<Title", "<Body style={styles.sub}", "{inline}", "<Pressable", "<Caption", "<CTA"
+  ]);
+});
+
+test("la escena centrada se CENTRA; la de dos columnas no", () => {
+  // El defecto: `columnDesktop` sólo tenía `maxWidth`, así que la columna de
+  // 520 quedaba pegada al borde izquierdo de los 1240 y dejaba media pantalla
+  // muerta. Medido a 1440: la columna quedaba en x=172 en vez de centrada.
+  const shell = sinComentarios(leer("src/onboarding/components/Screen.tsx"));
+  assert.match(shell, /desktop && layout === "stage" && styles\.columnCentered/, "la escena centrada se centra");
+  assert.match(shell, /columnCentered: \{ alignSelf: "center", maxWidth: STAGE_COLUMN \}/);
+  // Y en `split` NO se centra: ahí la columna es la mitad izquierda.
+  assert.doesNotMatch(shell, /columnDesktop: \{[^}]*alignSelf/, "la columna de dos columnas no puede centrarse");
+});
+
+test("los contenedores flex pueden encogerse para acotar un scroll interno", () => {
+  // En CSS un item flex arranca en `min-height: auto` y no baja de su
+  // contenido: con un ScrollView adentro, el contenedor crecía en vez de
+  // acotarlo y el CTA anclado al pie quedaba fuera del viewport.
+  const shell = sinComentarios(leer("src/onboarding/components/Screen.tsx"));
+  assert.match(shell, /stage: \{ flex: 1, minHeight: 0, width: "100%" \}/);
+  assert.match(shell, /column: \{ flex: 1, minHeight: 0, width: "100%" \}/);
+  const denso = sinComentarios(leer("src/onboarding/screens/BeforeAfterScreen.tsx"));
+  assert.match(denso, /body: \{ flex: 1, minHeight: 0/);
+  assert.match(denso, /scroll: \{ flex: 1, minHeight: 0 \}/);
+});
+
+test("la entrada compone de verdad en escritorio", () => {
+  // El defecto: post-intro, a 1440x900 la marca quedaba diminuta y centrada con
+  // media pantalla muerta — una captura de teléfono en un monitor.
+  const splash = sinComentarios(leer("src/onboarding/screens/SplashScreen.tsx"));
+  assert.match(splash, /layout=\{desktop \? "scene" : "stage"\}/, "en escritorio la pantalla compone el escenario entero");
+  assert.match(splash, /bodyDesktop: \{ justifyContent: "flex-end"/, "hero anclado abajo");
+  assert.match(splash, /doorsDesktop: \{ alignItems: "flex-start", maxWidth: 340/, "CTA con ancho de botón, no de columna");
+  // Y el móvil no cambia: sigue centrado con las puertas al pie.
+  assert.match(splash, /hero: \{ alignItems: "center", flex: 1, justifyContent: "center" \}/);
+});
+
+test("la tipografía de la entrada no puede perder contra Tailwind", () => {
+  // `StyleSheet.create` de react-native-web compila a CLASES atómicas, y el
+  // `Text` compartido agrega `text-base` (16px/24px). Clase contra clase ganaba
+  // Tailwind: el wordmark se dibujaba a 16px —no a 46 ni a 96— mientras
+  // `textAlign`, que `text-base` no toca, sí se aplicaba. Un literal viaja en
+  // el atributo `style` y gana siempre.
+  const splash = sinComentarios(leer("src/onboarding/screens/SplashScreen.tsx"));
+  assert.match(splash, /const WORDMARK = \{[\s\S]*?fontSize: 46/, "la marca es un literal, no una hoja registrada");
+  assert.match(splash, /const WORDMARK_DESKTOP = \{ \.\.\.WORDMARK, fontSize: 96/);
+  assert.match(splash, /style=\{desktop \? WORDMARK_DESKTOP : WORDMARK\}/);
+  assert.match(splash, /style=\{desktop \? TAGLINE_DESKTOP : TAGLINE\}/);
+  // Y ya no quedan en la hoja registrada, donde volverían a perder.
+  assert.doesNotMatch(splash, /\n  wordmark: \{/, "el wordmark no puede volver a StyleSheet.create");
+  assert.doesNotMatch(splash, /\n  tagline: \{/);
+});
+
+test("el intro del splash no puede desbordar el viewport", () => {
+  // En web `expo-video` monta un `<video>` que se va a su tamaño intrínseco si
+  // no se lo acota: a 1440x900 el intro tapaba las dos puertas y estiraba el
+  // documento a 1216px de alto.
+  const splash = sinComentarios(leer("src/onboarding/screens/SplashScreen.tsx"));
+  assert.match(splash, /intro: \{ overflow: "hidden" \}/, "el overlay tiene que recortar");
+  assert.match(splash, /introVideo: \{ height: "100%", left: 0, position: "absolute", top: 0, width: "100%" \}/);
+  assert.match(splash, /style=\{styles\.introVideo\}/, "el video usa el estilo acotado, no sólo absoluteFill");
+});
+
+test("cada paso declara su composición de escritorio", () => {
+  for (const rel of SPLIT_SCREENS) {
+    assert.match(sinComentarios(leer(rel)), /layout="split"/, `${rel} no declara dos columnas`);
+  }
+  // Los pasos densos scrollean: sin eso un viewport de 320x568 esconde el CTA.
+  for (const rel of [
+    "src/onboarding/screens/BirthplaceSearchScreen.tsx",
+    "src/onboarding/screens/BaseChartScreen.tsx",
+    "src/onboarding/screens/SignInScreen.tsx",
+    "src/onboarding/screens/SignUpGateScreen.tsx"
+  ]) {
+    assert.match(sinComentarios(leer(rel)), /<Screen[^>]*\sscroll/s, `${rel} tiene que poder scrollear`);
+  }
+  // Y las que YA tienen scroll propio no pueden recibir el del shell: anidar
+  // los dos colapsa las alturas y manda el CTA fuera del viewport — medido a
+  // 320x568, el CTA de Antes/Después terminaba 412px por debajo del pliegue.
+  for (const rel of [
+    "src/onboarding/screens/BeforeAfterScreen.tsx",
+    "src/onboarding/screens/AccountScreen.tsx",
+    "src/onboarding/screens/PaywallScreen.tsx"
+  ]) {
+    const codigo = sinComentarios(leer(rel));
+    assert.match(codigo, /<ScrollView/, `${rel} maneja su propio scroll`);
+    assert.doesNotMatch(codigo, /<Screen[^>]*\sscroll/s, `${rel} no puede anidar el scroll del shell`);
+  }
+});
+
+test("la vista combinada es interna y de sólo lectura", () => {
+  const preview = sinComentarios(leer("app/preview-alta.tsx"));
+  // Cerrada en producción, como /studio, /lab y /backoffice.
+  assert.match(preview, /if \(!INTERNAL_TOOLS_ENABLED\) return <Redirect href="\/" \/>;/);
+  // Monta el alta REAL, no una copia que pueda divergir.
+  assert.match(preview, /from "@\/onboarding\/OnboardingFlow"/);
+  // Y entra por el MISMO camino de inspección que `debugStep`, que ya bloquea
+  // borrador, cálculo, cuenta y persistencia.
+  assert.match(preview, /inspectStep=\{step\}/);
+  const flow = sinComentarios(leer("src/onboarding/OnboardingFlow.tsx"));
+  assert.match(
+    flow,
+    /raw: inspectStep != null \? String\(inspectStep\) : params\.debugStep/,
+    "la inspección no puede tener una segunda puerta sin los guards"
+  );
+  // El marco manda sobre el viewport: si no, un marco de 400 en una ventana de
+  // 1440 mostraría escritorio y la revisión mentiría.
+  assert.match(preview, /inspectWidth=\{size\.w\}/);
+  const provider = sinComentarios(leer("src/components/web/web-layout-provider.tsx"));
+  assert.match(provider, /const effective = width \?\? win\.width;/);
+  // Y cubre la matriz de aceptación completa.
+  for (const w of [320, 390, 400, 768, 900, 1024, 1440, 1920]) {
+    assert.match(preview, new RegExp(`w: ${w},`), `falta el tamaño ${w} en la matriz`);
+  }
+});
+
+test("«Guardá tu carta»: el sello es una pieza y el formulario tiene superficie propia", () => {
+  const cuenta = sinComentarios(leer("src/onboarding/screens/AccountScreen.tsx"));
+  // Escritorio: el sello en su propia columna.
+  assert.match(cuenta, /layout=\{desktop \? "split" : "stage"\}/);
+  assert.match(cuenta, /aside=\{desktop \? <View style=\{styles\.seal\}>/, "en escritorio el sello es la pieza");
+  // Móvil: el arte del sobre baja a atmósfera y el sello sube como pieza
+  // compacta arriba del título. A 0.9 era el FONDO del formulario.
+  assert.match(cuenta, /bgOpacity=\{desktop \? 0\.55 : 0\.32\}/);
+  assert.match(cuenta, /wash=\{desktop \? 0\.5 : 0\.74\}/);
+  assert.match(cuenta, /\{desktop \? null : \(\s*<View style=\{styles\.sealMobile\}>/, "sello compacto en móvil");
+  assert.match(cuenta, /sealMobile: \{[\s\S]*?height: 88,/, "compacto, no un fondo");
+  // Los campos en una superficie propia, oscura y con borde.
+  assert.match(cuenta, /<View style=\{desktop \? undefined : styles\.panel\}>/, "panel del formulario en móvil");
+  assert.match(cuenta, /panel: \{\s*backgroundColor: "rgba\(10,11,15,0\.86\)"/, "superficie oscura translúcida");
+  assert.match(cuenta, /borderColor: orbita\.lineStrong/);
+  // Contraste de campo: la línea del input se perdía contra la textura.
+  assert.match(cuenta, /inputLine: \{ backgroundColor: "rgba\(214,154,106,0\.55\)"/);
+  // Y el flujo Clerk no cambia.
+  assert.match(cuenta, /codePhase/);
+  assert.match(cuenta, /Guardar mi carta/);
+  assert.match(cuenta, /account\?\.resetToEmail\(\)/, "el camino de cuenta existente sigue igual");
+});
+
+test("el login social es SÓLO Google, y se enciende por configuración", () => {
+  const cuenta = sinComentarios(leer("src/onboarding/useAccount.ts"));
+  // Una sola estrategia en todo el flujo.
+  assert.match(cuenta, /export type OAuthProvider = "google";/);
+  assert.match(cuenta, /const strategy = "oauth_google" as const;/);
+  assert.doesNotMatch(cuenta, /oauth_apple/, "Apple salió del flujo");
+  // El flag sale del entorno: un deploy sin la variable queda cerrado, no roto.
+  // Dos condiciones: sólo web, y sólo con la variable puesta. En nativo el SSO
+  // vuelve por deep link y arrastra credenciales y reglas de tienda no resueltas.
+  assert.match(
+    cuenta,
+    /export const GOOGLE_AUTH_ENABLED =\s*Platform\.OS === "web" && process\.env\.EXPO_PUBLIC_ORBITA_GOOGLE_AUTH === "true";/
+  );
+  assert.match(cuenta, /import \{ Platform \} from "react-native";/);
+  assert.doesNotMatch(cuenta, /SOCIAL_LOGIN_ENABLED/, "el flag viejo no puede quedar colgando");
+
+  // Ninguna superficie del alta ofrece Apple.
+  for (const rel of [
+    "src/onboarding/screens/AccountScreen.tsx",
+    "src/onboarding/screens/SignInScreen.tsx",
+    "src/onboarding/OnboardingFlow.tsx"
+  ]) {
+    assert.doesNotMatch(sinComentarios(leer(rel)), /"apple"|Continuar con Apple/, `${rel} todavía ofrece Apple`);
+  }
+});
+
+test("«Continuar con Google» va arriba del divisor, con marca real y accesible", () => {
+  const btn = sinComentarios(leer("src/onboarding/components/GoogleButton.tsx"));
+  // Marca real de un paquete de íconos que ya está en el proyecto: ni dibujo
+  // a mano ni emoji.
+  assert.match(btn, /from "@expo\/vector-icons"/);
+  assert.match(btn, /<FontAwesome name="google"/);
+  // Accesible y tocable.
+  assert.match(btn, /accessibilityRole="button"/);
+  assert.match(btn, /accessibilityLabel=\{label\}/);
+  assert.match(btn, /accessibilityState=\{\{ busy, disabled: busy \}\}/);
+  assert.match(btn, /height: 54,/, "muy por encima del mínimo táctil");
+  // Literales, no StyleSheet: si no, pierde el color contra las clases.
+  assert.doesNotMatch(btn, /StyleSheet/);
+  assert.match(btn, /o continuar con email/, "el divisor nombra el camino largo");
+
+  // Las dos superficies lo montan ANTES del formulario de email.
+  for (const rel of [
+    "src/onboarding/screens/AccountScreen.tsx",
+    "src/onboarding/screens/SignInScreen.tsx"
+  ]) {
+    const codigo = sinComentarios(leer(rel));
+    assert.match(codigo, /GOOGLE_AUTH_ENABLED/, `${rel} respeta el flag`);
+    assert.match(codigo, /<GoogleButton/, `${rel} monta el botón`);
+    assert.match(codigo, /<EmailDivider \/>/, `${rel} monta el divisor`);
+    const g = codigo.indexOf("<GoogleButton");
+    const d = codigo.indexOf("<EmailDivider");
+    assert.ok(g < d, `${rel}: Google va ARRIBA del divisor`);
+  }
+});
+
+test("la escena centrada usa una columna de lectura ancha, no una tira", () => {
+  const shell = sinComentarios(leer("src/onboarding/components/Screen.tsx"));
+  assert.match(shell, /const STAGE_COLUMN = 720;/, "la escena centrada lee a 720, no a 520");
+  assert.match(shell, /const STAGE_MAX = 1200;/);
+  assert.match(shell, /columnCentered: \{ alignSelf: "center", maxWidth: STAGE_COLUMN \}/);
+  // `split` mantiene su columna de media composición.
+  assert.match(shell, /columnDesktop: \{ justifyContent: "center", maxWidth: COPY_COLUMN \}/);
+  assert.match(shell, /const COPY_COLUMN = 520;/);
+});
+
+test("el cierre del alta usa la pieza orbital y respeta reducir movimiento", () => {
+  const flow = sinComentarios(leer("src/onboarding/OnboardingFlow.tsx"));
+  // Ya no es un spinner sobre negro.
+  assert.doesNotMatch(flow, /<ActivityIndicator/, "el spinner sobre negro no puede volver");
+  assert.match(flow, /source=\{A\.heroEclipse\}/, "el orbe del alta es la pieza del cierre");
+  assert.match(flow, /const reduced = useReducedMotion\(\);/);
+  assert.match(flow, /if \(reduced\) return;/, "con movimiento reducido no se anima");
+  assert.match(flow, /!reduced && \{ transform: \[\{ rotate \}\] \}/, "y la pieza queda quieta");
+  // El texto de estado sigue anunciado.
+  assert.match(flow, /Guardando tu carta…/);
+  assert.match(flow, /accessibilityRole="progressbar"/);
+  assert.match(flow, /accessibilityLiveRegion="polite"/);
+});
+
+test("el vacío de la búsqueda de ciudad guía en vez de dejar un hueco", () => {
+  const paso = sinComentarios(leer("src/onboarding/screens/BirthplaceSearchScreen.tsx"));
+  assert.match(paso, /showEmpty \? \(\s*<View style=\{styles\.emptyZone\}>/, "el vacío tiene composición propia");
+  assert.match(paso, /<Emblem source=\{A\.rings\}/, "con una pieza del sistema orbital ya existente");
+  assert.match(paso, /agregá el país/, "y ayuda concreta");
+  // El autocomplete no cambia.
+  assert.match(paso, /results\.map\(\(place\)/);
+  assert.match(paso, /Sin resultados\./);
+});
+
+test("Antes/Después respira y conserva el guardrail de producto", () => {
+  const paso = sinComentarios(leer("src/onboarding/screens/BeforeAfterScreen.tsx"));
+  const antes = paso.slice(paso.indexOf("const ANTES"), paso.indexOf("const DESPUES"));
+  const despues = paso.slice(paso.indexOf("const DESPUES"), paso.indexOf("type Props"));
+  assert.equal((antes.match(/"/g) ?? []).length / 2, 3, "tres líneas por lado, no cinco");
+  assert.equal((despues.match(/"/g) ?? []).length / 2, 3);
+  // Jerarquía y aire.
+  assert.match(paso, /cardTitle: \{ color: orbita\.bone, fontFamily: font\.serif, fontSize: 22/);
+  assert.match(paso, /gap: 18,/, "más aire entre filas");
+  // El guardrail de producto se conserva, palabra por palabra.
+  assert.match(paso, /No resuelve por vos\. Te devuelve contexto\./);
+  // Y no aparece lenguaje de destino ni de resultado garantizado.
+  assert.doesNotMatch(paso, /destino|garantiz|asegura|predice/i);
 });
 
 // --- 4. El enlace de vuelta se ve y se alcanza ------------------------------
@@ -231,36 +584,41 @@ test("el color del enlace secundario pasa el contraste de texto chico", () => {
 });
 
 test("«Ya tengo cuenta · Iniciar sesión» se ve y se alcanza en las dos superficies", () => {
+  // El estilo del enlace es un objeto LITERAL compartido, no una hoja
+  // registrada: `StyleSheet.create` se compila a una clase atómica y pierde
+  // contra `text-foreground`/`text-base` del `Text` compartido. Por eso el
+  // enlace salía casi negro y a 16px mientras el subrayado —que esas clases no
+  // tocan— sí se aplicaba. Ya rompió dos veces por este mismo motivo.
+  const tema = sinComentarios(leer("src/onboarding/theme.ts"));
+  assert.match(
+    tema,
+    /export const SIGN_IN_LINK_TEXT = \{\s*color: orbita\.copperSoft,\s*fontFamily: font\.sansBold,\s*fontSize: 15,\s*lineHeight: 22,\s*textAlign: "center",\s*textDecorationLine: "underline",\s*\} as const;/,
+    "el enlace necesita color, peso y subrayado en un literal compartido"
+  );
+  assert.match(tema, /export const SIGN_IN_LINK_ROW = \{[\s\S]*?minHeight: 44,/, "44px de alto real");
+  // No puede volver a ser una hoja registrada.
+  assert.doesNotMatch(tema, /StyleSheet/, "el literal no puede pasar por StyleSheet.create");
+
   for (const rel of [
     "src/onboarding/screens/SplashScreen.tsx",
     "src/onboarding/screens/SignUpGateScreen.tsx"
   ]) {
     const codigo = sinComentarios(leer(rel));
-
-    // El estilo va en la LÍNEA COMPLETA, en un solo bloque: color legible, peso
-    // y subrayado juntos. En react-native-web un `Text` con hijos `Text` se
-    // renderiza como div + spans y el color en línea del padre no llega a los
-    // hijos — la fila entera terminaba casi negra sobre el fondo casi negro.
+    // Las dos superficies usan EL MISMO literal: no pueden divergir.
     assert.match(
       codigo,
-      /signInText: \{\s*color: orbita\.copperSoft,\s*fontFamily: font\.sansBold,\s*fontSize: 15,\s*textAlign: "center",\s*textDecorationLine: "underline"\s*\}/,
-      `${rel}: la línea entera tiene que llevar color, peso y subrayado`
+      /<Text style=\{SIGN_IN_LINK_TEXT\}>Ya tengo cuenta · Iniciar sesión<\/Text>/,
+      `${rel}: línea plana con el literal compartido`
     );
-    // Una sola línea de texto plano: nada anidado que se pueda perder.
-    assert.match(
-      codigo,
-      /style=\{styles\.signInText\}>Ya tengo cuenta · Iniciar sesión</,
-      `${rel}: el enlace es una línea plana, sin Text anidados`
-    );
+    assert.match(codigo, /SIGN_IN_LINK_ROW/, `${rel}: y el objetivo táctil compartido`);
+    // Nada anidado ni ninguna hoja registrada que pueda perder contra Tailwind.
     assert.doesNotMatch(codigo, /signInStrong|signInDot/, `${rel}: los tramos anidados no pueden volver`);
-
-    // Objetivo táctil real: `hitSlop` no existe en web.
-    assert.match(codigo, /minHeight: 44/, `${rel}: 44px de alto real`);
+    assert.doesNotMatch(codigo, /signInText:|signInLink:|signInRow:/, `${rel}: el enlace no puede volver a StyleSheet.create`);
+    // `Body` aplica su propio color en línea y le ganaría al del enlace.
+    assert.doesNotMatch(codigo, /<Body style=\{SIGN_IN_LINK_TEXT\}/, `${rel}: Body pisaría el color del enlace`);
     // Nombre y rol accesibles.
     assert.match(codigo, /accessibilityRole="link"/, `${rel}: es un enlace`);
     assert.match(codigo, /accessibilityLabel="Ya tengo cuenta: iniciar sesión"/, `${rel}: con nombre`);
-    // Y ya no es gris apagado sobre casi-negro.
-    assert.doesNotMatch(codigo, /signInText: \{ color: orbita\.muted \}/, `${rel}: el gris apagado no puede volver`);
   }
 });
 
@@ -288,7 +646,7 @@ test("el cierre del alta muestra que está guardando, no una pantalla vacía", (
   assert.match(flow, /function SavingChart\(\)/, "hace falta un estado de guardado con marca");
   assert.match(flow, /<SavingChart \/>/, "y el cierre tiene que montarlo");
   assert.match(flow, /Guardando tu carta…/, "con copy en español");
-  assert.match(flow, /<ActivityIndicator color=\{orbita\.copper\} \/>/, "y señal de actividad");
+  assert.match(flow, /source=\{A\.heroEclipse\}/, "y la pieza orbital como señal de actividad");
   // Anunciado: rol de progreso + región viva para un lector de pantalla.
   assert.match(flow, /accessibilityRole="progressbar"/);
   assert.match(flow, /accessibilityLabel="Guardando tu carta"/);

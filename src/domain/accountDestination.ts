@@ -1,6 +1,11 @@
 /**
- * Único resolver de destino de cuenta. Auth-first: primero se entra o se crea
- * una cuenta, y después el estado REMOTO de esa cuenta decide adónde va.
+ * Único resolver de destino de cuenta. El estado REMOTO de la cuenta decide
+ * adónde va cada superficie.
+ *
+ * La cuenta se crea DENTRO del alta, en su paso original (V4.4
+ * `14 / Create Account`): la experiencia inmersiva va primero y recién se pide
+ * cuenta cuando ya hay una carta que guardar. Hasta entonces todo vive en el
+ * borrador local. Ver `destinationAllows`.
  *
  * Existe uno solo a propósito. Antes la decisión estaba repartida entre
  * `app/index.tsx`, `app/iniciar-sesion.tsx`, `RequireSession`, `app/empezar.tsx`
@@ -101,7 +106,15 @@ export function destinationAllows(
       // Login y alta: se permiten justo cuando todavía no hay sesión.
       return destination === "sign-in";
     case "onboarding":
-      return destination === "onboarding";
+      // El alta empieza SIN sesión: los pasos inmersivos y los datos de
+      // nacimiento se juntan en el borrador local, y la cuenta se crea en su
+      // paso original de la secuencia V4.4. Por eso `sign-in` —que acá
+      // significa "todavía no hay sesión"— también puede montar el onboarding.
+      //
+      // Lo que NO cambia es la protección que motivó todo esto: una cuenta ya
+      // COMPLETA resuelve `app-home`, no entra acá, y por lo tanto no puede
+      // sobrescribir sus datos natales desde el alta.
+      return destination === "onboarding" || destination === "sign-in";
     case "app":
       return destination === "app-home";
   }

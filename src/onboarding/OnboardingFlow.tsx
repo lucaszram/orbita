@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, StyleSheet, View } from "react-native";
+import { Animated, Easing, Image, StyleSheet, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
@@ -9,15 +9,19 @@ import type { Topic, ZodiacSign } from "@/domain/types";
 import { useAppState } from "@/hooks/useAppState";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
+import { WebLayoutProvider } from "@/components/web/web-layout-provider";
 import { backendConfig } from "@/services/backendProviders";
 import { clearDraft, readDraft, writeDraft } from "@/domain/onboardingDraft";
 import { resolveDebugStep } from "@/domain/onboardingDebug";
 import { INTERNAL_TOOLS_ENABLED } from "@/services/internalTools";
 
 import { BirthPayloadError, birthPayloadMessage } from "@/domain/birthPayload";
+import { A } from "./assets";
 import { CTA } from "./components/CTA";
 import { Screen } from "./components/Screen";
 import { Body, Title } from "./components/Type";
+import { AccountScreen } from "./screens/AccountScreen";
 import { AlignScreen } from "./screens/AlignScreen";
 import { BaseChartScreen } from "./screens/BaseChartScreen";
 import { BeforeAfterScreen } from "./screens/BeforeAfterScreen";
@@ -33,16 +37,25 @@ import { type Identity, IdentifyScreen } from "./screens/IdentifyScreen";
 import { PaywallScreen, type PlanId } from "./screens/PaywallScreen";
 import { PersonalizingScreen } from "./screens/PersonalizingScreen";
 import { SplashScreen } from "./screens/SplashScreen";
+import { validateSignupPassword } from "./signup";
 import { orbita } from "./theme";
-import { useOnboardingBirthDataPersist, useOnboardingChart, useOnboardingComputeTriad } from "./useAccount";
+import {
+  useAccountFlow,
+  useOnboardingBirthDataPersist,
+  useOnboardingChart,
+  useOnboardingComputeTriad
+} from "./useAccount";
 import type { OnboardingChart } from "./useAccount";
 
-// El alta de cuenta salió del onboarding (es la puerta anterior), así que hay
-// un paso menos. Los índices se nombran a propósito: el camino de escritura
-// depende del último paso y un renumerado silencioso ya costó datos.
-const TOTAL = 14;
+// El alta de cuenta vuelve a su lugar en la secuencia V4.4 (`14 / Create
+// Account`): la experiencia inmersiva engancha primero y la cuenta se pide
+// cuando ya hay algo que guardar. Los índices se nombran a propósito: el camino
+// de escritura depende de ellos y un renumerado silencioso ya costó datos.
+const TOTAL = 15;
 /** Primer paso que ya puede calcular la tríada real (necesita lugar). */
 const STEP_COMPUTE_TRIAD = 11;
+/** Paso de cuenta: penúltimo. Antes de él NADA sale del dispositivo. */
+const STEP_ACCOUNT = 13;
 /** Último paso: cierra el onboarding (paywall si estuviera activo). */
 const FINAL_STEP = TOTAL - 1;
 
@@ -81,7 +94,10 @@ function to24hFromParts(t: BirthTime): string {
 }
 
 /** Onboarding container — owns flow state and navigation, dispatches screens. */
-export function OnboardingFlow() {
+export function OnboardingFlow({
+  inspectStep,
+  inspectWidth
+}: { inspectStep?: number; inspectWidth?: number } = {}) {
   const fontsLoaded = useOrbitaFonts();
   const router = useRouter();
   const { createProfile } = useAppState();
@@ -89,6 +105,7 @@ export function OnboardingFlow() {
   const params = useLocalSearchParams<{
     debugStep?: string;
     resume?: string;
+    email?: string;
   }>();
 
   // `resume=datos`: sesión activa sin datos de nacimiento → continuar el alta
@@ -114,8 +131,18 @@ export function OnboardingFlow() {
   );
   const [birthTime, setBirthTime] = useState<BirthTime>(saved?.birthTime ?? { hour: 12, minute: 0 });
   const [timeUnknown, setTimeUnknown] = useState(saved?.timeUnknown ?? false);
+  // Email tipeado en el login y traído por "Crear una cuenta" (`?email=`): el
+  // usuario no lo vuelve a escribir; llega ya cargado al paso de cuenta.
+  const [email, setEmail] = useState(() =>
+    typeof params.email === "string" && params.email ? params.email : saved?.email ?? ""
+  );
   // Clerk Producción exige contraseña en el alta: se pide + confirmación.
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [accountFormError, setAccountFormError] = useState<string | null>(null);
+  const [accountCode, setAccountCode] = useState("");
   const [plan, setPlan] = useState<PlanId>("annual");
+  const account = useAccountFlow();
   // Persistencia ESTRICTA: propaga el error. Con el wrapper anterior el catch
   // de `submit` era inalcanzable y el alta navegaba sin haber escrito.
   const persistBackend = useOnboardingBirthDataPersist();
@@ -133,12 +160,19 @@ export function OnboardingFlow() {
   // navegamos fuera del flujo).
   const submitLock = useRef(false);
   const computedSig = useRef<string | null>(null);
+  // La sesión se activó EN este flujo (verify/oauth ok): fuente de verdad
+  // inmediata, porque `useAuth` puede seguir stale en el render siguiente.
+  const sessionActivated = useRef(false);
 
   // Salto de paso SÓLO con herramientas internas encendidas. En producción el
   // param se ignora y el onboarding arranca normal: era un control de
   // desarrollo servido en público, igual que el viejo `?live=1`.
   const debugStep = resolveDebugStep({
-    raw: params.debugStep,
+    // `inspectStep` es la vista combinada de revisión (`/preview-alta`). Entra
+    // por el MISMO camino que `debugStep`: pasa por `resolveDebugStep` —que ya
+    // exige herramientas internas— y activa `inspeccion`, así que hereda tal
+    // cual la regla de sólo lectura. No hay una segunda puerta que auditar.
+    raw: inspectStep != null ? String(inspectStep) : params.debugStep,
     total: TOTAL,
     internalToolsEnabled: INTERNAL_TOOLS_ENABLED
   });
@@ -162,14 +196,29 @@ export function OnboardingFlow() {
     if (params.resume === "datos") setStep((s) => (s === 0 ? STEP_BIRTHDATE : s));
   }, [params.resume]);
 
+  // Cuenta con sesión y SIN datos natales que abre el alta: se continúa desde la
+  // fecha, no desde la entrada. El arranque nativo ya lo hacía con
+  // `resume=datos`, pero en web el gate redirige a `/empezar` SIN ese param, así
+  // que una cuenta incompleta volvía al splash a mirar el tramo inmersivo otra
+  // vez. El destino ya está resuelto cuando el flujo se monta: si hubiera datos
+  // natales, el gate habría mandado a Home y esto no correría.
+  //
+  // Sólo desde la entrada: nunca pisa un paso ya avanzado ni un borrador, y por
+  // eso tampoco afecta a quien acaba de crear su cuenta en el paso 13.
+  const sesionActiva = !!auth?.isSignedIn || !!account?.isSignedIn;
+  useEffect(() => {
+    if (inspeccion || !sesionActiva) return;
+    setStep((s) => (s === 0 ? STEP_BIRTHDATE : s));
+  }, [sesionActiva, inspeccion]);
+
 
 
   useEffect(() => {
     // En inspección no se guarda: un salto arranca con los valores por defecto
     // y sobrescribiría el borrador real de la persona.
     if (inspeccion) return;
-    writeDraft({ step, identity, birthDate, placeQuery, birthPlace, birthTime, timeUnknown });
-  }, [step, identity, birthDate, placeQuery, birthPlace, birthTime, timeUnknown, inspeccion]);
+    writeDraft({ step, identity, birthDate, placeQuery, birthPlace, birthTime, timeUnknown, email });
+  }, [step, identity, birthDate, placeQuery, birthPlace, birthTime, timeUnknown, email, inspeccion]);
 
   const next = () => setStep((s) => Math.min(TOTAL - 1, s + 1));
   const back = () => setStep((s) => Math.max(0, s - 1));
@@ -219,6 +268,59 @@ export function OnboardingFlow() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, computeTriad, birthPlace, birthDateISO, timeUnknown, birthTime.hour, birthTime.minute, retryTick, inspeccion]);
 
+  // `codeOverride`: la auto-verificación del CodeInput pasa el código recién
+  // completado directo (el estado `accountCode` todavía no re-renderizó).
+  const accountNext = async (codeOverride?: string) => {
+    // Inspección: nunca se crea una cuenta ni se avanza.
+    if (inspeccion) return;
+    if (!account || account.isSignedIn) {
+      next();
+      return;
+    }
+    const trimmed = email.trim().toLowerCase();
+    if (account.phase === "email") {
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(trimmed)) {
+        setAccountFormError("Revisá el email.");
+        return;
+      }
+      const pwError = validateSignupPassword(password, confirmPassword);
+      if (pwError) {
+        setAccountFormError(pwError);
+        return;
+      }
+      setAccountFormError(null);
+      await account.start(trimmed, password);
+      return;
+    }
+    const ok = await account.verify((codeOverride ?? accountCode).trim());
+    if (ok) {
+      sessionActivated.current = true;
+      next();
+    }
+  };
+
+  const accountOAuth = async (provider: "google") => {
+    // Inspección: no se abre un flujo de OAuth ni se activa sesión.
+    if (inspeccion) return;
+    if (!account) {
+      next();
+      return;
+    }
+    const ok = await account.oauth(provider);
+    if (ok) {
+      sessionActivated.current = true;
+      next();
+    }
+  };
+
+  // Llegar al paso de cuenta con la sesión YA activa (volvió del alta web, o
+  // entró por login y sigue el alta): no se pide una segunda cuenta.
+  useEffect(() => {
+    if (inspeccion) return;
+    if (step === STEP_ACCOUNT && account?.isSignedIn) next();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, account?.isSignedIn, inspeccion]);
+
   const submit = async () => {
     // Inspección visual: ninguna escritura, ni siquiera desde un CTA.
     if (inspeccion) return;
@@ -226,6 +328,21 @@ export function OnboardingFlow() {
     if (submitLock.current) return;
     submitLock.current = true;
     const birthTimeValue = timeUnknown ? undefined : timeLabel;
+
+    // NADA sale del dispositivo sin una cuenta confirmada.
+    //
+    // Hasta el paso de cuenta el alta vive entera en el borrador local: es lo
+    // que permite que la experiencia inmersiva enganche antes de pedir nada.
+    // El precio es que este cierre es el ÚNICO punto donde eso se vuelve un
+    // dato remoto, y sólo puede hacerlo si hay un usuario Clerk activo. Sin él
+    // se vuelve al paso de cuenta con el borrador intacto — jamás se escribe
+    // "por si acaso" ni se pierde lo cargado.
+    const cuentaActiva = sessionActivated.current || !!auth?.isSignedIn || !!account?.isSignedIn;
+    if (persistBackend && !cuentaActiva) {
+      submitLock.current = false;
+      setStep(STEP_ACCOUNT);
+      return;
+    }
 
     // ÚNICA ruta de persistencia del onboarding, y se ESPERA. Antes había dos:
     // un efecto al montar el paso 14 (con `void`, sin manejo de error) y otra
@@ -267,9 +384,11 @@ export function OnboardingFlow() {
     // perfil se crea sin dueño con ADOPCIÓN PENDIENTE y se marca solo apenas
     // aparece el userId (resolveProfileOwnerAtCreation + AppState).
     const owner = resolveProfileOwnerAtCreation({
-      // El onboarding arranca con sesión activa (auth es la puerta anterior),
-      // así que basta con lo que reporta Clerk.
-      sessionActive: !!auth?.isSignedIn,
+      // La sesión se activa DENTRO del flujo (paso de cuenta), así que
+      // `useAuth` puede seguir stale en este render: el ref que setea
+      // verify/oauth es la señal inmediata. Sin esto el perfil quedaba sin
+      // dueño y el próximo arranque lo mandaba a reconciliar.
+      sessionActive: sessionActivated.current || !!auth?.isSignedIn || !!account?.isSignedIn,
       knownUserId: auth?.userId ?? null,
     });
     await createProfile(
@@ -407,6 +526,26 @@ export function OnboardingFlow() {
     case 12:
       screen = <BeforeAfterScreen step={step} onNext={next} onBack={back} />;
       break;
+    case STEP_ACCOUNT:
+      screen = (
+        <AccountScreen
+          step={step}
+          email={email}
+          onEmail={setEmail}
+          password={password}
+          onPassword={setPassword}
+          confirmPassword={confirmPassword}
+          onConfirmPassword={setConfirmPassword}
+          formError={accountFormError}
+          code={accountCode}
+          onCode={setAccountCode}
+          account={account}
+          onNext={accountNext}
+          onOAuth={accountOAuth}
+          onBack={back}
+        />
+      );
+      break;
     case FINAL_STEP:
     default:
       // Paso 14 = paywall único. La tríada real va arriba como gancho (antes era
@@ -451,10 +590,14 @@ export function OnboardingFlow() {
   }
 
   return (
-    <View className="dark" style={styles.fill}>
-      <StatusBar style="light" />
-      {screen}
-    </View>
+    // El provider va en la RAÍZ del alta: los quince pasos comparten un solo
+    // modo responsive, igual que el shell de la app autenticada.
+    <WebLayoutProvider width={inspectWidth}>
+      <View className="dark" style={styles.fill}>
+        <StatusBar style="light" />
+        {screen}
+      </View>
+    </WebLayoutProvider>
   );
 }
 
@@ -466,14 +609,34 @@ export function OnboardingFlow() {
  * que está pasando algo y anunciarlo también a un lector de pantalla.
  */
 function SavingChart() {
+  const reduced = useReducedMotion();
+  const spin = useRef(new Animated.Value(0)).current;
+
+  // El sello gira despacio mientras se guarda. Con "reducir movimiento" queda
+  // quieto: la pieza sigue estando, sólo deja de moverse.
+  useEffect(() => {
+    if (reduced) return;
+    const loop = Animated.loop(
+      Animated.timing(spin, { toValue: 1, duration: 9000, easing: Easing.linear, useNativeDriver: true })
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [reduced, spin]);
+
+  const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] });
+
   return (
-    <Screen bg={undefined}>
+    <Screen bg={A.accountBg} bgOpacity={0.4} wash={0.72}>
       <View
         accessibilityRole="progressbar"
         accessibilityLabel="Guardando tu carta"
         style={styles.saving}
       >
-        <ActivityIndicator color={orbita.copper} />
+        {/* El orbe del alta, no un spinner sobre negro: el cierre es el momento
+            en que la carta se guarda, y merece la misma pieza que el resto. */}
+        <Animated.View style={[styles.savingSeal, !reduced && { transform: [{ rotate }] }]}>
+          <Image source={A.heroEclipse} style={styles.savingSealImg} resizeMode="cover" />
+        </Animated.View>
         <Body accessibilityLiveRegion="polite" style={styles.savingText}>
           Guardando tu carta…
         </Body>
@@ -485,6 +648,15 @@ function SavingChart() {
 const styles = StyleSheet.create({
   fill: { backgroundColor: orbita.bg, flex: 1 },
   closeError: { flex: 1, gap: 16, justifyContent: "center", paddingHorizontal: 24 },
-  saving: { alignItems: "center", flex: 1, gap: 14, justifyContent: "center", paddingHorizontal: 24 },
+  saving: { alignItems: "center", flex: 1, gap: 22, justifyContent: "center", paddingHorizontal: 24 },
+  savingSeal: {
+    borderColor: "rgba(214,154,106,0.45)",
+    borderRadius: 74,
+    borderWidth: 1,
+    height: 148,
+    overflow: "hidden",
+    width: 148,
+  },
+  savingSealImg: { height: "100%", width: "100%" },
   savingText: { textAlign: "center" },
 });

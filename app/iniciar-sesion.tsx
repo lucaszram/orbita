@@ -2,8 +2,9 @@ import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { Redirect, useRouter } from "expo-router";
 
-import { ONBOARDING_ROUTE, SIGN_UP_ROUTE } from "@/domain/appRoutes";
+import { ONBOARDING_ROUTE } from "@/domain/appRoutes";
 import { AccountGate } from "@/components/orbita/AccountGate";
+import { WebLayoutProvider } from "@/components/web/web-layout-provider";
 import { useAppState } from "@/hooks/useAppState";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
 import { CTA } from "@/onboarding/components/CTA";
@@ -28,9 +29,15 @@ import { useSignInFlow, useSignInHydrate } from "@/onboarding/useAccount";
  */
 export default function IniciarSesionRoute() {
   return (
-    <AccountGate surface="auth">
-      <SignInSurface />
-    </AccountGate>
+    // El provider va acá porque esta ruta monta el shell del alta SIN pasar por
+    // `OnboardingFlow`: sin él `useIsDesktop()` es siempre false y en
+    // escritorio la columna nunca se acota — el botón de Google llegaba a medir
+    // 1392px de ancho a 1440.
+    <WebLayoutProvider>
+      <AccountGate surface="auth">
+        <SignInSurface />
+      </AccountGate>
+    </WebLayoutProvider>
   );
 }
 
@@ -94,12 +101,14 @@ function SignInSurface() {
       else router.replace(ONBOARDING_ROUTE);
     });
 
-  // "Crear una cuenta" va a la PUERTA de alta, no al onboarding: quien no tiene
-  // sesión no puede pasar por una ruta protegida, que lo rebotaría al login.
+  // "Crear una cuenta" entra al alta completa, no a un formulario suelto: la
+  // cuenta se crea DENTRO de la secuencia, en su paso original. El email
+  // tipeado viaja para no pedirlo dos veces. La ruta ya no rebota a login:
+  // el onboarding se monta sin sesión y junta todo en el borrador local.
   const createAccount = (email: string) =>
     void leaveWithoutSignIn(() =>
       router.replace({
-        pathname: SIGN_UP_ROUTE,
+        pathname: ONBOARDING_ROUTE,
         params: email ? { email } : undefined
       } as never)
     );

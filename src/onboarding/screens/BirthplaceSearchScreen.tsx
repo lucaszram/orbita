@@ -95,7 +95,7 @@ export function BirthplaceSearchScreen({ step, query, onQuery, onSelect, onBack 
   const showNoResults = !showEmpty && !searching && results.length === 0;
 
   return (
-    <Screen bg={A.dailyTexture} wash={0.52}>
+    <Screen bg={A.dailyTexture} wash={0.52} scroll>
       <Header step={step} total={15} onBack={onBack} />
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -122,7 +122,15 @@ export function BirthplaceSearchScreen({ step, query, onQuery, onSelect, onBack 
           <View style={styles.inputLine} />
 
           {showEmpty ? (
-            <Caption style={styles.hint}>Empezá a escribir para ver ciudades.</Caption>
+            /* Vacío guiado: en vez de un hueco muerto debajo del campo, la
+               pieza orbital del paso y una ayuda concreta. El autocomplete no
+               cambia — esto sólo ocupa el lugar mientras no hay qué listar. */
+            <View style={styles.emptyZone}>
+              <Emblem source={A.rings} size={116} opacity={0.4} glow={false} />
+              <Caption style={styles.emptyHint}>
+                Escribí las primeras letras de tu ciudad.{"\n"}Si hay varias con el mismo nombre, agregá el país.
+              </Caption>
+            </View>
           ) : searching && results.length === 0 ? (
             <Caption style={styles.hint}>Buscando…</Caption>
           ) : showNoResults ? (
@@ -151,6 +159,8 @@ const styles = StyleSheet.create({
   fieldLabel: { marginTop: 40 },
   fill: { flex: 1 },
   globe: { position: "absolute", right: -50, top: 40 },
+  emptyZone: { alignItems: "center", gap: 16, paddingTop: 26 },
+  emptyHint: { textAlign: "center" },
   hint: { marginTop: 22 },
   input: {
     color: orbita.bone,

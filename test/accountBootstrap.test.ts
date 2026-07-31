@@ -125,30 +125,27 @@ test("el orden y la concurrencia del bootstrap se prueban ejecutándolo", () => 
 
 // --- "Crear una cuenta" ------------------------------------------------------
 
-test('"Crear una cuenta" va a /crear-cuenta, nunca al onboarding', () => {
+test('"Crear una cuenta" entra al alta completa, con el email ya cargado', () => {
+  // La cuenta se crea DENTRO de la secuencia, en su paso original: mandar a un
+  // formulario suelto se saltea la experiencia inmersiva entera.
   const login = sinComentarios(readFileSync(join(ROOT, "app/iniciar-sesion.tsx"), "utf8"));
   const bloque = login.slice(login.indexOf("const createAccount"), login.indexOf("const createAccount") + 400);
-  assert.ok(/SIGN_UP_ROUTE/.test(bloque), "debe ir a la puerta de alta");
-  assert.ok(!/nuevo/.test(bloque), "la dependencia de nuevo=1 quedó obsoleta");
-  assert.ok(!/onboarding/i.test(bloque), "sin sesión, el onboarding lo rebotaría al login");
-  const rutas = readFileSync(join(ROOT, "src/domain/appRoutes.ts"), "utf8");
-  assert.match(rutas, /SIGN_UP_ROUTE = "\/crear-cuenta"/);
+  assert.ok(/ONBOARDING_ROUTE/.test(bloque), "debe abrir el alta completa");
+  assert.ok(!/SIGN_UP_ROUTE/.test(bloque), "el formulario suelto no es la entrada del alta");
+  assert.ok(/params: email \? \{ email \}/.test(bloque), "el email tipeado viaja: no se pide dos veces");
 });
 
 // --- El onboarding sin restos de autenticación -------------------------------
 
-test("el onboarding no conserva restos del alta", () => {
+test("el alta vive dentro del onboarding, en su paso original", () => {
   const flow = sinComentarios(readFileSync(join(ROOT, "src/onboarding/OnboardingFlow.tsx"), "utf8"));
-  for (const resto of [
-    "AccountScreen",
-    "useAccountFlow",
-    "STEP_ALTA",
-    "sessionActivated",
-    "validateSignupPassword",
-    "accountFormError",
-    "accountCode",
-    "params.nuevo"
-  ]) {
-    assert.ok(!new RegExp(resto.replace(".", "\\.")).test(flow), `resto de auth en el onboarding: ${resto}`);
+  // Secuencia V4.4: la cuenta es el penúltimo paso, después del before/after y
+  // antes del cierre. La experiencia inmersiva va primero.
+  assert.match(flow, /const TOTAL = 15;/);
+  assert.match(flow, /const STEP_ACCOUNT = 13;/);
+  assert.match(flow, /const FINAL_STEP = TOTAL - 1;/);
+  assert.match(flow, /case STEP_ACCOUNT:\s*screen = \(\s*<AccountScreen/);
+  for (const pieza of ["useAccountFlow", "sessionActivated", "validateSignupPassword", "accountCode"]) {
+    assert.match(flow, new RegExp(pieza), `falta el cableado del paso de cuenta: ${pieza}`);
   }
 });

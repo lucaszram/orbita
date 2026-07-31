@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { Redirect } from "expo-router";
 import { destinationAllows } from "@/domain/accountDestination";
 import { HOME_ROUTE, ONBOARDING_ROUTE, SIGN_IN_ROUTE } from "@/domain/appRoutes";
@@ -18,16 +18,38 @@ export function AccountGate({
   surface,
   children,
   loading,
-  error
+  error,
+  sticky = false
 }: {
   surface: "landing" | "auth" | "onboarding" | "app";
   children: ReactNode;
   /** Carga propia de la superficie (la web usa su spinner sobre fondo oscuro). */
   loading?: ReactNode;
   error?: (retry: () => void) => ReactNode;
+  /**
+   * La superficie tiene ESTADO PROPIO que no se puede perder: una vez montada,
+   * un `loading` transitorio no la desmonta. Lo usa el alta.
+   *
+   * Por qué hace falta: la cuenta se crea DENTRO del alta (paso 13). Al
+   * activarse la sesión, `users` pasa a `pending` y `birthData` vuelve a
+   * `undefined`, así que el resolver dice `loading` por un instante y el gate
+   * desmontaba el flujo entero justo en el paso más caro. En web el borrador de
+   * `sessionStorage` lo disimulaba; en nativo no hay borrador y se perdía TODO
+   * lo cargado (identidad, fecha, lugar, hora).
+   *
+   * No debilita la protección: `sticky` sólo sostiene el estado `loading`, que
+   * es "todavía no se sabe". Un destino RESUELTO distinto sigue redirigiendo, y
+   * una cuenta completa sigue sin poder montar el alta.
+   */
+  sticky?: boolean;
 }) {
   const { destination, retry } = useAccountDestination();
   const bootstrap = useAccountBootstrap();
+  // ¿Esta superficie llegó a renderizarse alguna vez? Escritura idempotente en
+  // render: no dispara re-render y sobrevive al parpadeo de `loading`.
+  const montado = useRef(false);
+  const permitido = destinationAllows(destination, surface);
+  if (permitido) montado.current = true;
 
   // Cuenta completa sin perfil local propio: se hidrata ANTES de entrar. Sin
   // esto, Home rebotaba a onboarding y el onboarding devolvía a Home.
@@ -56,8 +78,12 @@ export function AccountGate({
     }
     return <>{loading ?? <MinimalLoading />}</>;
   }
-  if (destination === "loading") return <>{loading ?? <MinimalLoading />}</>;
-  if (destinationAllows(destination, surface)) return <>{children}</>;
+  if (destination === "loading") {
+    // Ver `sticky`: el alta ya montada se sostiene, no se desmonta y se remonta.
+    if (sticky && montado.current) return <>{children}</>;
+    return <>{loading ?? <MinimalLoading />}</>;
+  }
+  if (permitido) return <>{children}</>;
 
   // El destino resuelto es otro: se navega ahí.
   switch (destination) {

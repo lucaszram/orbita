@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -25,12 +26,23 @@ import { publicLabApi } from "@/services/publicLabRefs";
 // Necesario para que el browser de OAuth devuelva el control a la app.
 WebBrowser.maybeCompleteAuthSession();
 
-export type OAuthProvider = "google" | "apple";
+/** Único proveedor social del producto. */
+export type OAuthProvider = "google";
 
-// Lanzamiento v1 sin login social: Clerk prod exige credenciales OAuth propias
-// de Google y la guideline 4.8 de Apple obliga a Sign in with Apple si hay
-// Google. Reactivar cuando ambas estén configuradas (decisión Lucas 2026-07-14).
-export const SOCIAL_LOGIN_ENABLED = false;
+/**
+ * Login con Google — SÓLO WEB, y sólo si la conexión está habilitada.
+ *
+ * Dos condiciones, las dos necesarias:
+ *
+ * 1. `Platform.OS === "web"`. En iOS/Android el SSO abre un navegador externo
+ *    y vuelve por deep link: exige credenciales propias y arrastra reglas de
+ *    las tiendas que no están resueltas. El botón no existe en nativo.
+ * 2. `EXPO_PUBLIC_ORBITA_GOOGLE_AUTH`. Un deploy que se olvida de setearla
+ *    queda cerrado, no roto: el alta por email sigue entera debajo.
+ */
+export const GOOGLE_AUTH_ENABLED =
+  Platform.OS === "web" && process.env.EXPO_PUBLIC_ORBITA_GOOGLE_AUTH === "true";
+
 
 /**
  * Cuenta Clerk (email + código) y persistencia Convex para el onboarding
@@ -72,7 +84,7 @@ export function useAccountFlow(): AccountFlow | null {
   return useAccountFlowInner();
 }
 
-/** OAuth SSO (Apple/Google) compartido entre alta de cuenta y sign-in. */
+/** OAuth SSO con Google, compartido entre el alta de cuenta y el sign-in. */
 function useSSOOauth(
   setError: (v: string | null) => void,
   setOauthBusy: (v: OAuthProvider | null) => void,
@@ -84,7 +96,10 @@ function useSSOOauth(
       setError(null);
       setOauthBusy(provider);
       try {
-        const strategy = provider === "google" ? "oauth_google" : "oauth_apple";
+        // Única estrategia del producto. `provider` se mantiene en la firma
+        // para no cambiar el contrato de `AccountFlow`.
+        void provider;
+        const strategy = "oauth_google" as const;
         const { createdSessionId, setActive } = await startSSOFlow({
           strategy,
           redirectUrl: AuthSession.makeRedirectUri()
@@ -265,7 +280,7 @@ export type SignInFlow = {
   oauthBusy: OAuthProvider | null;
   /** Identifica el email y enruta al factor que ESA cuenta soporta. */
   start: (email: string) => Promise<void>;
-  /** Contraseña (cuentas con password, p. ej. la de revisión de Apple). */
+  /** Contraseña (cuentas con password, p. ej. la de revisión de la tienda). */
   verifyPassword: (password: string) => Promise<boolean>;
   /** Cambiar a código por email desde la pantalla de contraseña. */
   sendEmailCode: () => Promise<void>;
