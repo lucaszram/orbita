@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
   CHECKOUT_POLL_TIMEOUT_MS,
   checkoutPollDecision,
+  checkoutStartErrorKind,
   formatPlanPrice,
   manageSubscription,
   offerPhase,
@@ -157,6 +158,34 @@ test("sólo se aceptan session ids con forma de Stripe", () => {
   assert.equal(readCheckoutSessionId(""), null);
   assert.equal(readCheckoutSessionId(undefined), null);
   assert.equal(readCheckoutSessionId("cs_test_" + "a".repeat(300)), null);
+});
+
+// --- Inicio del checkout ----------------------------------------------------
+
+test("el mensaje exacto del backend se reconoce como cuenta ya Plus", () => {
+  assert.equal(
+    checkoutStartErrorKind(new Error("This account already has Plus access")),
+    "ya_plus"
+  );
+});
+
+test("el mismo texto envuelto por Convex en un mensaje más largo también se reconoce", () => {
+  const wrapped = new Error(
+    '[Request ID: abc123] Server Error\nUncaught Error: This account already has Plus access\n    at handler (../convex/payments/stripeActions.ts:196:11)'
+  );
+  assert.equal(checkoutStartErrorKind(wrapped), "ya_plus");
+});
+
+test("un error desconocido o de red usa el mensaje genérico", () => {
+  assert.equal(checkoutStartErrorKind(new Error("Network request failed")), "generico");
+  assert.equal(checkoutStartErrorKind(new Error("Complete account setup before starting checkout")), "generico");
+});
+
+test("un valor que no es un Error usa el mensaje genérico", () => {
+  assert.equal(checkoutStartErrorKind("This account already has Plus access"), "generico");
+  assert.equal(checkoutStartErrorKind(undefined), "generico");
+  assert.equal(checkoutStartErrorKind(null), "generico");
+  assert.equal(checkoutStartErrorKind({ message: "This account already has Plus access" }), "generico");
 });
 
 // --- Rutas -----------------------------------------------------------------

@@ -1,5 +1,15 @@
 # Current Task
 
+## Web Plus — mensaje preciso al bloquear una compra repetida (2026-07-31, Claude + Codex)
+
+**Objetivo:** cuando Stripe Checkout no se abre porque la cuenta ya tiene Órbita Plus, mostrar una explicación accionable y enviar a Perfil; conservar el mensaje genérico para fallas de red o errores desconocidos.
+
+**Ficha:** owner Claude (frontend), revisión/release Codex; rama `feature/web-plus-checkout-errors`; territorio `src/components/web/orbita-paywall.tsx`, `src/domain/paywall.ts`, `test/paywall.test.ts` y este handoff; riesgo bajo porque no cambia contratos, precios, Stripe, backend ni el estado de la suscripción; rollout por PR aislado, sin deploy; rollback por revert; fuera de alcance producción, Convex, configuración de Stripe, onboarding y rediseño del paywall.
+
+**Qué cambió:** `checkoutStartErrorKind` reconoce tanto el error exacto `This account already has Plus access` como el mismo texto envuelto por Convex. El paywall muestra “Ya tenés Órbita Plus. Podés gestionar tu suscripción desde Perfil.” y enlaza Perfil. Cualquier otro valor mantiene “No pudimos abrir el pago. Probá de nuevo.” Cuatro pruebas cubren el error exacto, el envuelto, errores desconocidos y valores que no son `Error`.
+
+**Validación:** `git diff --check` limpio; `pnpm typecheck` en verde; suite completa **803/803**; `pnpm build:web` correcto; `pnpm check:web-export` en verde — 35,87 MB totales, imagen máxima 479,3 KB y JavaScript de aplicación 1,09 MB gzip. Sin commit, push, PR, deploy ni cambios de producción al momento de este handoff.
+
 ## Web standalone — nav de escritorio en Paywall y páginas legales (2026-07-31, Claude)
 
 **Objetivo:** que `/paywall`, `/support`, `/privacy` y `/terminos` muestren la barra de navegación de escritorio en viewports anchos, igual que el resto de la app y que `/iniciar-sesion`/`/editar-datos`. Estas cuatro pantallas montan `WebNav` fuera de `WebAppShell` (son standalone), y `WebNav` decide topbar vs. barra inferior con `useIsDesktop()`, que lee `LayoutModeContext` — cuyo default es `"mobile"` cuando no hay ningún `WebLayoutProvider` en el árbol. Sin el provider, esas cuatro pantallas quedaban condenadas a la barra móvil sin importar el ancho de la ventana.
