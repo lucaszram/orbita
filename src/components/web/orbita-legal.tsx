@@ -1,10 +1,10 @@
-// Páginas legales/soporte para App Store (Support URL + Privacy Policy URL).
+// Páginas legales/soporte públicas (Support URL + Privacy Policy URL + Términos).
 // Contenido en español (voseo), sobrio, alineado a los guardrails de Órbita:
 // entretenimiento + autoconocimiento, sin claims de destino/salud/dinero/legal.
-// NOTA: la política de privacidad es una base honesta sobre lo que hace la app hoy
-// (Clerk auth, Convex backend, datos de nacimiento, push, ping de instalación).
-// Revisar con criterio legal antes del release público y actualizar si se agregan
-// analytics/crash reporting o se activa el paywall (suscripciones).
+// NOTA: la política de privacidad nombra a los proveedores reales que hoy tocan
+// datos (Clerk + Google para autenticación, Convex para backend, Stripe para el
+// pago web, Apple para la distribución de la app). Revisar con criterio legal
+// antes del release público y actualizar si se agregan analytics/crash reporting.
 import { Inter_400Regular, Inter_500Medium, Inter_700Bold } from "@expo-google-fonts/inter";
 import { Newsreader_500Medium } from "@expo-google-fonts/newsreader";
 import { useFonts } from "expo-font";
@@ -12,10 +12,10 @@ import { Link } from "expo-router";
 import type { StyleProp, TextStyle } from "react-native";
 import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { WebNav } from "@/components/web/web-nav";
+import { SUPPORT_EMAIL, SUPPORT_MAILTO } from "@/domain/support";
 
-const SUPPORT_EMAIL = "lucaszramos11@gmail.com";
 const LEGAL_NAME = "Lucas Ramos";
-const UPDATED = "10 de julio de 2026";
+const UPDATED = "31 de julio de 2026";
 
 const colors = {
   black: "#07080A",
@@ -70,6 +70,12 @@ function LegalFooter() {
             <Text style={styles.footerLink}>Privacidad</Text>
           </Pressable>
         </Link>
+        <Text style={styles.footerDot}>·</Text>
+        <Link href="/terminos" asChild>
+          <Pressable>
+            <Text style={styles.footerLink}>Términos</Text>
+          </Pressable>
+        </Link>
       </View>
     </View>
   );
@@ -99,9 +105,18 @@ function Bullet({ children }: { children: React.ReactNode }) {
 
 function MailLink() {
   return (
-    <Text style={styles.mail} onPress={() => Linking.openURL(`mailto:${SUPPORT_EMAIL}`)}>
+    <Text style={styles.mail} onPress={() => Linking.openURL(SUPPORT_MAILTO)}>
       {SUPPORT_EMAIL}
     </Text>
+  );
+}
+
+/** Referencia en línea a los Términos, dentro del mismo sistema legal. */
+function TermsLink() {
+  return (
+    <Link href="/terminos" asChild>
+      <Text style={styles.mail}>los Términos y condiciones</Text>
+    </Link>
   );
 }
 
@@ -113,31 +128,39 @@ export function OrbitaSupport() {
       <Section heading="Contacto">
         <P>
           ¿Necesitás ayuda con Órbita? Escribinos a <MailLink /> y te respondemos lo antes posible,
-          normalmente dentro de las 48 horas hábiles.
+          normalmente dentro de las 48 horas hábiles. Ese correo es una vía de ayuda: las acciones sobre
+          tu cuenta —incluida la eliminación— las hacés vos desde tu perfil.
         </P>
         <P>Responsable: {LEGAL_NAME}.</P>
       </Section>
 
       <Section heading="Preguntas frecuentes">
+        <P style={styles.q}>¿Necesito una cuenta para usar Órbita?</P>
+        <P>
+          Sí. Órbita se arma con tu fecha, hora y lugar de nacimiento, así que hace falta una cuenta para
+          calcular y guardar tu carta y tus lecturas. Podés crearla antes de terminar el recorrido de alta.
+        </P>
         <P style={styles.q}>¿Cómo cambio mis datos de nacimiento?</P>
         <P>
-          Podés revisarlos y ajustarlos desde tu perfil dentro de la app. Tu carta natal se recalcula
-          con los datos corregidos.
+          Podés revisarlos y ajustarlos desde tu perfil. Tu carta natal se recalcula con los datos
+          corregidos.
         </P>
-        <P style={styles.q}>¿Cómo borro mi cuenta y mis datos?</P>
+        <P style={styles.q}>¿Cómo elimino mi cuenta y mis datos?</P>
         <P>
-          Escribinos a <MailLink /> desde el email de tu cuenta pidiendo la baja. Eliminamos tu cuenta y
-          los datos asociados. También podés cerrar sesión desde la app cuando quieras.
+          Desde tu perfil, con la opción “Eliminar mi cuenta”. Se borran tu cuenta y los datos asociados
+          —carta, lecturas e historial— sin que tengas que pedírnoslo por mail. Si algo falla o no podés
+          entrar a tu cuenta, escribinos a <MailLink /> desde el email de tu cuenta y te ayudamos.
+        </P>
+        <P style={styles.q}>¿Cómo cancelo mi suscripción?</P>
+        <P>
+          También desde tu perfil. La suscripción se renueva sola hasta que la cancelés, y al cancelar
+          conservás el acceso hasta el final del período que ya pagaste. Ver{" "}
+          <TermsLink />.
         </P>
         <P style={styles.q}>¿Órbita predice el futuro?</P>
         <P>
           No. Órbita usa la astrología como entretenimiento, autoconocimiento y contexto diario. No damos
           consejo médico, psicológico, legal ni financiero, ni predicciones garantizadas.
-        </P>
-        <P style={styles.q}>¿Necesito crear una cuenta para usar la app?</P>
-        <P>
-          No es obligatorio. Podés explorar el contenido sin registrarte; crear una cuenta sirve para
-          guardar tu carta y tus lecturas entre dispositivos.
         </P>
       </Section>
     </LegalShell>
@@ -179,12 +202,32 @@ export function OrbitaPrivacy() {
 
       <Section heading="Con quién los compartimos">
         <P>
-          Compartimos datos únicamente con proveedores que nos ayudan a operar la app, y solo lo necesario
-          para ese fin:
+          Compartimos datos únicamente con los proveedores que nos ayudan a operar Órbita, y solo lo
+          necesario para ese fin:
         </P>
-        <Bullet>Un proveedor de autenticación, para gestionar tu cuenta e inicio de sesión.</Bullet>
-        <Bullet>Un proveedor de backend, para guardar y procesar tus datos de forma segura.</Bullet>
-        <Bullet>Apple, para la distribución de la app y, si corresponde, las compras.</Bullet>
+        <Bullet>
+          <Text style={styles.provider}>Clerk</Text> — autenticación y gestión de tu cuenta (email y
+          datos de sesión).
+        </Bullet>
+        <Bullet>
+          <Text style={styles.provider}>Google</Text> — solo si elegís entrar con tu cuenta de Google:
+          recibimos de Google tu email y el identificador de esa cuenta para crear o vincular la tuya.
+        </Bullet>
+        <Bullet>
+          <Text style={styles.provider}>Convex</Text> — backend y base de datos: ahí se guardan y
+          procesan tus datos de nacimiento, tu carta y tus lecturas.
+        </Bullet>
+        <Bullet>
+          <Text style={styles.provider}>Stripe</Text> — pagos en la web, si contratás una suscripción.
+          Los datos de tu tarjeta los procesa Stripe; Órbita no los ve ni los guarda.
+        </Bullet>
+        <Bullet>
+          <Text style={styles.provider}>Apple</Text> — distribución de la app y, si corresponde, las
+          compras hechas dentro de la app.
+        </Bullet>
+        <P>
+          Cada uno trata los datos según sus propias políticas y puede procesarlos fuera de tu país.
+        </P>
       </Section>
 
       <Section heading="Conservación">
@@ -196,8 +239,12 @@ export function OrbitaPrivacy() {
 
       <Section heading="Tus derechos">
         <P>
-          Podés pedir acceso, corrección o eliminación de tus datos, o retirar tu consentimiento, en
-          cualquier momento. Para ejercerlos, escribinos a <MailLink /> desde el email de tu cuenta.
+          Podés eliminar tu cuenta y los datos asociados vos mismo, desde tu perfil, con la opción
+          “Eliminar mi cuenta”. También podés corregir tus datos de nacimiento desde ahí.
+        </P>
+        <P>
+          Para cualquier otro pedido —acceso, portabilidad o retirar tu consentimiento— escribinos a{" "}
+          <MailLink /> desde el email de tu cuenta.
         </P>
       </Section>
 
@@ -219,6 +266,115 @@ export function OrbitaPrivacy() {
         <P>
           Órbita usa la astrología como entretenimiento, autoconocimiento y contexto diario. No reemplaza
           asesoramiento profesional médico, psicológico, legal ni financiero.
+        </P>
+      </Section>
+    </LegalShell>
+  );
+}
+
+// ─── Términos y condiciones ───────────────────────────────────────────────────
+
+export function OrbitaTerms() {
+  return (
+    <LegalShell eyebrow="Órbita" title="Términos y condiciones">
+      <Section heading="Qué es Órbita">
+        <P>
+          Órbita es una app de astrología pensada como entretenimiento, autoconocimiento y contexto
+          diario. Calculamos tu carta natal y tus tránsitos a partir de tu fecha, hora y lugar de
+          nacimiento, y los usamos para darte una lectura escrita.
+        </P>
+        <P>
+          Usar Órbita implica aceptar estos términos. El responsable del servicio es {LEGAL_NAME}.
+        </P>
+      </Section>
+
+      <Section heading="Tu cuenta">
+        <P>
+          Para usar Órbita necesitás una cuenta: sin tus datos de nacimiento no hay carta que leer.
+          Sos responsable de la veracidad de esos datos y del cuidado de tus credenciales. Podés
+          eliminar tu cuenta cuando quieras desde tu perfil.
+        </P>
+      </Section>
+
+      <Section heading="Suscripción a Órbita Plus">
+        <P>
+          Órbita tiene una parte gratuita y una suscripción paga, Órbita Plus. Los precios, la moneda y
+          la duración de cada plan se muestran antes de confirmar la compra, y son los que rigen.
+        </P>
+        <Bullet>
+          Las suscripciones se <Text style={styles.provider}>renuevan automáticamente</Text> al final de
+          cada período —semana o año, según el plan— hasta que las canceles.
+        </Bullet>
+        <Bullet>
+          El plan anual incluye <Text style={styles.provider}>tres días de prueba</Text> gratis. Si no
+          cancelás antes de que termine la prueba, se cobra el primer año.
+        </Bullet>
+        <Bullet>
+          El plan semanal <Text style={styles.provider}>no tiene período de prueba</Text>: se cobra al
+          contratarlo.
+        </Bullet>
+        <P>
+          En la web el pago lo procesa Stripe. Si contratás desde la app, el cobro y la renovación los
+          gestiona la tienda correspondiente según sus propias reglas.
+        </P>
+      </Section>
+
+      <Section heading="Cancelación">
+        <P>
+          Podés cancelar cuando quieras <Text style={styles.provider}>desde tu perfil</Text>, en
+          “Gestionar suscripción”. No hace falta escribirnos ni dar explicaciones.
+        </P>
+        <P>
+          Al cancelar, la renovación se detiene y{" "}
+          <Text style={styles.provider}>conservás el acceso a Órbita Plus hasta el final del período
+          que ya pagaste</Text>. Después de esa fecha tu cuenta sigue existiendo con las funciones
+          gratuitas.
+        </P>
+      </Section>
+
+      <Section heading="Reembolsos">
+        <P>
+          Los reembolsos se rigen por la normativa aplicable, incluidos los derechos que te da la ley de
+          defensa del consumidor de tu jurisdicción. Si creés que corresponde uno, escribinos a{" "}
+          <MailLink /> desde el email de tu cuenta y lo revisamos. Las compras hechas dentro de la app se
+          reembolsan según las políticas de la tienda que las procesó.
+        </P>
+      </Section>
+
+      <Section heading="Naturaleza del servicio">
+        <P>
+          Órbita es entretenimiento, autoconocimiento y contexto diario.{" "}
+          <Text style={styles.provider}>No es asesoramiento médico, psicológico, legal ni financiero, ni
+          una predicción garantizada</Text>. No tomes decisiones de salud, dinero o vida legal basándote
+          en lo que leas acá: para eso consultá a un profesional.
+        </P>
+        <P>
+          El contenido se genera de forma automática a partir de tu carta y puede contener errores.
+          Ofrecemos el servicio tal como está y hacemos lo posible por mantenerlo disponible, sin
+          garantizar que esté libre de interrupciones.
+        </P>
+      </Section>
+
+      <Section heading="Uso del servicio">
+        <P>
+          Órbita es para tu uso personal. No se puede revender, redistribuir masivamente ni usar de forma
+          automatizada su contenido, ni intentar vulnerar la seguridad del servicio o las cuentas de
+          otras personas.
+        </P>
+      </Section>
+
+      <Section heading="Cambios en estos términos">
+        <P>
+          Podemos actualizar estos términos. Cuando el cambio sea relevante actualizamos la fecha de
+          arriba y, si corresponde, te avisamos dentro de la app. Los cambios de precio no afectan un
+          período ya pagado.
+        </P>
+      </Section>
+
+      <Section heading="Contacto">
+        <P>
+          Escribinos a <MailLink /> por cualquier consulta sobre estos términos, tu suscripción o tu
+          cuenta.
         </P>
       </Section>
     </LegalShell>
@@ -249,6 +405,9 @@ const styles = StyleSheet.create({
   bulletDot: { color: colors.copperSoft, fontFamily: "Inter_700Bold", fontSize: 16, lineHeight: 25 },
   bulletText: { color: colors.boneMuted, flex: 1, fontFamily: "Inter_400Regular", fontSize: 16, lineHeight: 25 },
   mail: { color: colors.copperSoft, fontFamily: "Inter_500Medium" },
+  // Énfasis dentro de un párrafo legal: hereda color/tamaño del bloque y sólo
+  // sube el peso. Un color distinto acá leería como link y no lo es.
+  provider: { color: colors.bone, fontFamily: "Inter_500Medium" },
   footer: { borderTopColor: colors.line, borderTopWidth: 1, marginTop: 56, paddingTop: 24 },
   footerBrand: { color: colors.boneDim, fontFamily: "Inter_500Medium", fontSize: 14 },
   footerLinks: { alignItems: "center", flexDirection: "row", gap: 12, marginTop: 10 },

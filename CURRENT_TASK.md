@@ -1,5 +1,32 @@
 # Current Task
 
+## Web launch — public preparation and validation CI (2026-07-31, Codex + Claude)
+
+**Objective:** make the public web surface truthful and launch-ready, and add validation-only CI, without changing payment behavior, backend contracts, native behavior, or production state.
+
+**Acceptance criteria:** Support states that an account is required and that account deletion is available from Profile; `soporte@orbitaastrologia.xyz` is the support contact across Support, Privacy, Terms, and the paywall; `/terminos` covers automatic renewal, yearly three-day trial, weekly without trial, cancellation from Profile, access through the paid period, applicable-law refunds, and entertainment framing; Privacy explicitly identifies Clerk/Google, Convex, and Stripe; the paywall visibly links to Privacy, Terms, and support; web metadata uses Spanish, the production canonical, and an accurate description; `.env.example` documents Google Auth, Clerk/Convex web configuration, and disabled internal tools; CI performs a frozen install, typecheck, at least 745 tests, web export, and export-size validation without deploying anything.
+
+**Task brief:** Claude owns public frontend/copy and web metadata; Codex owns CI/release review, validation, PR, and merge. Allowed territory: `app/terminos.tsx`, `app/+html.tsx` or the smallest equivalent metadata surface, `src/components/web/orbita-legal.tsx`, `src/components/web/orbita-paywall.tsx`, `.env.example`, `.github/workflows/**`, focused scripts/tests, package scripts, and this handoff. Base is clean `origin/main` at `26ce5bc` on `codex/web-public-prep`. Risk is medium because legal copy, metadata, and CI gates are launch-critical. Tests: typecheck, full suite with a 745-test minimum, web export, export budgets, diff check, and browser review of Support, Privacy, Terms, and paywall links at mobile and desktop widths. Rollout: one isolated PR and branch preview only; production promotion remains manual and forbidden in this task. Rollback: revert the PR. Out of scope: `convex/**`, Stripe/commerce behavior, enabling the onboarding paywall, changing prices, Clerk dashboard configuration, Figma, redesign, native publication, environment mutation, deployment, or production promotion.
+
+**Status:** implemented in the worktree, uncommitted. Production, Convex, Stripe, Clerk, and Vercel remain untouched.
+
+**Implemented:**
+1. **Support** (`src/components/web/orbita-legal.tsx`) now states that an account is required, sends account deletion to Profile (“Eliminar mi cuenta”), and frames the mailbox as a help path rather than the deletion mechanism. A cancellation FAQ links to the new Terms.
+2. **One published support address.** `src/domain/support.ts` holds `soporte@orbitaastrologia.xyz`; Support, Privacy, Terms, and the paywall all read it. The personal Gmail is gone from the public surface (it remains, correctly, in the backoffice allowlist).
+3. **`/terminos`** (`app/terminos.tsx` + `OrbitaTerms`) reuses the existing legal shell and covers automatic renewal, the yearly three-day trial, the weekly plan without trial, cancellation from Profile, access through the end of the paid period, refunds under applicable law, and the entertainment/self-knowledge framing with no guaranteed prediction. It was already whitelisted in `PUBLIC_WEB_ROUTES`.
+4. **Privacy** names Clerk (auth), Google (only if you sign in with Google), Convex (backend/data), Stripe (web payments), and Apple (distribution), and states that deletion happens from Profile.
+5. **Paywall** shows a legal block —Privacidad · Términos y condiciones + the support address— inside `Shell`, so it renders in every phase, including the current “próximamente” state with commerce off. Prices, plan selection, and checkout are untouched.
+6. **`.env.example`** documents the public web Convex/Clerk variables, `EXPO_PUBLIC_ORBITA_GOOGLE_AUTH`, and that internal tools stay absent/disabled in public production.
+7. **Web document**: `expo.web.lang/name/description` in `app.json` plus `public/index.html` (Expo's own template plus a canonical link). With `output: single`, `app/+html.tsx` is dead code — Expo builds `index.html` from the config template, so this is the smallest implementation that works. Native is untouched (`public/` is web-only).
+
+**CI:** `.github/workflows/validate.yml` runs frozen install → typecheck → suite → test-count floor → web export → export budgets. No Vercel, EAS, Convex, or production step. The suite runs once and `scripts/check-test-count.mjs` judges its output (≥745 passing, zero failures, and a missing summary counts as failure).
+
+**Gotcha found while implementing:** Expo fills the HTML template with one `String.replace` per placeholder, so naming a placeholder in a comment eats the substitution and the site ships with the literal in `<html lang>`/`<title>`. It happened; `test/webDocument.test.ts` now guards it.
+
+**Open decision (blocks charging, not this PR):** the Terms announce a **three-day** yearly trial per the brief, but `convex/lib/stripeApi.ts:56` sends `trial_period_days: 7`. Either the backend or the copy has to change before commerce is enabled.
+
+**Validation:** `pnpm typecheck` green; suite **793/793** (764 before this task; 29 new across `test/legalSurface.test.ts`, `test/webDocument.test.ts`, and `test/testCountGate.test.ts`); `pnpm check:test-count` green; `pnpm build:web` green; `pnpm check:web-export` green (35.87 MB, largest image 479.3 KB, app JS 1.09 MB gzip); `git diff --check` clean. Browser pass over the built export at 375 and 1440: Support, Privacy, and Terms render with no horizontal overflow and no console errors. The paywall legal block was **not** verified with a live session (the local export has no Convex/Clerk) — it needs Lucas's manual pass.
+
 ## Web launch — runtime asset optimization (2026-07-31, Codex + Claude)
 
 **Objective:** reduce the production web export below 50 MB by replacing every heavyweight runtime image with a visually equivalent optimized derivative, without changing product behavior, copy, layouts, backend contracts, or native source assets.
