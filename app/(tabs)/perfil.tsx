@@ -7,6 +7,8 @@ import { ManageSubscriptionBlock } from "@/components/orbita/ManageSubscription"
 import { useConfirm } from "@/components/orbita/ConfirmHost";
 import { FullBleedHero } from "@/components/orbita/ImmersiveHero";
 import { CartaCard } from "@/components/home/CartaCard";
+import { useQuery } from "convex/react";
+import { resolveBirthInfo } from "@/domain/birthInfo";
 import { useAppData } from "@/domain/appData";
 import { requestAccountDeletion } from "@/domain/accountDeletion";
 import { useAppState } from "@/hooks/useAppState";
@@ -26,23 +28,36 @@ const SUPPORT_URL = "https://orbitaastrologia.xyz/support";
 
 export default function PerfilScreen() {
   const { perfil } = useAppData();
-  const { profile } = useAppState();
   const { auth, isAuthLoading, userError, retryUser } = useLiveApp();
+  const isLive = !!auth?.isSignedIn;
+  // La autoridad de los datos natales es el documento REMOTO, no el perfil
+  // local: `useAppData` cae a `createFallbackProfile()` y así se llegó a mostrar
+  // "12 Abr 1994" —una fecha inventada— como si fuera de la persona.
+  const remote = useQuery(appApi.birthData.getCurrent, isLive ? {} : "skip");
+  const birth = resolveBirthInfo({ doc: remote ?? null, resolved: !isLive || remote !== undefined });
 
   return (
     <OrbitaScreen>
       <FullBleedHero kind="perfil">
-        {/* Sin perfil real no se muestra ninguna fecha. `useAppData` cae a
-            `createFallbackProfile()`, que trae un `birthDate` hardcodeado
-            ("12 Abr 1994"): en la web, cualquiera sin sesión abría /perfil y
-            veía esa fecha inventada presentada como propia. */}
-        {profile ? <MonoLine>{perfil.birthLine}</MonoLine> : null}
+        {/* Sólo se muestra la línea con datos remotos COMPLETOS y verificados. */}
+        {birth.status === "complete" ? <MonoLine>{birth.line}</MonoLine> : null}
       </FullBleedHero>
-      <CartaCard />
+      {/* Con datos incompletos no se dibuja rueda ni se afirma que hay carta. */}
+      {birth.status === "complete" ? <CartaCard /> : null}
       <Section style={{ paddingTop: orbita.spacing.lg }}>
         <Eyebrow>PERFIL</Eyebrow>
         <H2>Tu carta,{"\n"}tus datos.</H2>
-        <Body>Tus datos de nacimiento afinan toda la lectura. Editá tu cuenta y tus datos cuando quieras.</Body>
+        {birth.status === "incomplete" ? (
+          <Body bone>{birth.message}</Body>
+        ) : (
+          <Body>Tus datos de nacimiento afinan toda la lectura. Editá tu cuenta y tus datos cuando quieras.</Body>
+        )}
+        {/* Un ÚNICO `EDITAR DATOS`, acá arriba: con datos incompletos es la
+            acción a tomar, y con datos completos sigue siendo su lugar natural.
+            Antes vivía al final de la pantalla, lejos del estado que lo pide. */}
+        <View style={{ height: orbita.spacing.md }} />
+        <Pill label="EDITAR DATOS" onPress={() => router.push("/editar-datos")} />
+        <View style={{ height: orbita.spacing.md }} />
         <Note>{perfil.privacy}</Note>
         <Divider />
         <Eyebrow>CUENTA</Eyebrow>
@@ -85,8 +100,6 @@ export default function PerfilScreen() {
         >
           <Body bone>Soporte</Body>
         </Pressable>
-        <View style={{ height: orbita.spacing.xl }} />
-        <Pill label="EDITAR DATOS" onPress={() => router.push("/editar-datos")} />
       </Section>
     </OrbitaScreen>
   );

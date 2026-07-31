@@ -101,29 +101,9 @@ export function birthSyncUx(gate: BirthSaveGate, timedOut: boolean): BirthSyncUx
   return timedOut ? "retry" : "waiting";
 }
 
-// --- Helpers fecha/hora del editor (Date nativo ↔ strings del perfil) ---
-
-/** "YYYY-MM-DD" → Date local a mediodía (evita corrimientos de timezone). */
-export function isoToDate(iso: string): Date {
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(y || 1996, (m || 1) - 1, d || 1, 12, 0, 0);
-}
-
-export function dateToIso(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
-/** "HH:MM" → Date de hoy con esa hora (para el picker de hora). */
-export function timeToDate(hhmm: string | undefined): Date {
-  const [h, m] = (hhmm ?? "12:00").split(":").map(Number);
-  const date = new Date();
-  date.setHours(Number.isFinite(h) ? h : 12, Number.isFinite(m) ? m : 0, 0, 0);
-  return date;
-}
-
-export function dateToTime(date: Date): string {
-  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
-}
+// Los helpers `Date` ↔ string vivían acá y rellenaban lo que faltaba:
+// `isoToDate` caía al año 1996 y `timeToDate(undefined)` devolvía las 12:00.
+// El editor los usaba como semilla, así que un documento sin hora se abría
+// mostrando un mediodía que nadie eligió. La conversión vive ahora en
+// `@/domain/birthInput`, donde la ausencia se representa con `null` y no se
+// completa nada.

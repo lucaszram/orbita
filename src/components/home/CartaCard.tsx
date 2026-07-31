@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 import { router } from "expo-router";
 import { useQuery } from "convex/react";
 import { NatalWheel } from "@/components/orbita/NatalWheel";
+import { resolveBirthInfo } from "@/domain/birthInfo";
 import { mapNatalChart } from "@/domain/natalChart";
 import { dataPhase, sessionPhase } from "@/domain/screenPhase";
 import { useLiveApp } from "@/hooks/useLiveApp";
@@ -20,6 +21,15 @@ export function CartaCard({ variant = "card" }: { variant?: "card" | "hero" }) {
   const live = useLiveApp();
   const phase = sessionPhase(live);
   const doc = useQuery(appApi.charts.current, phase === "live" ? {} : "skip");
+  // Los datos natales REMOTOS mandan sobre la existencia de una carta: una carta
+  // calculada sobre datos incompletos no es válida y no se dibuja. Sin esto, un
+  // documento legado (lugar "Sin especificar", sin coordenadas) igual producía
+  // una rueda que se leía como propia.
+  const remoteBirth = useQuery(appApi.birthData.getCurrent, phase === "live" ? {} : "skip");
+  const birth = resolveBirthInfo({
+    doc: remoteBirth ?? null,
+    resolved: phase !== "live" || remoteBirth !== undefined
+  });
   const hero = variant === "hero";
 
   if (phase === "cargando") {
@@ -44,6 +54,23 @@ export function CartaCard({ variant = "card" }: { variant?: "card" | "hero" }) {
         <Text style={styles.stateText}>
           Tu carta se calcula con tu cuenta, con tu fecha, hora y lugar de nacimiento reales.
         </Text>
+      </CardFrame>
+    );
+  }
+
+  if (phase === "live" && birth.status === "loading") {
+    return (
+      <CardFrame hero={hero}>
+        <View style={[styles.wheelWrap, styles.stateZone]}>
+          <ActivityIndicator color={orbita.colors.copper} />
+        </View>
+      </CardFrame>
+    );
+  }
+  if (phase === "live" && birth.status === "incomplete") {
+    return (
+      <CardFrame hero={hero} onPress={() => router.push("/editar-datos")} ctaLabel="EDITAR DATOS">
+        <Text style={styles.stateText}>{birth.message}</Text>
       </CardFrame>
     );
   }
