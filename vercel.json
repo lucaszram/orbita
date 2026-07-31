@@ -3,5 +3,10 @@
   "installCommand": "pnpm install",
   "buildCommand": "npx expo export --platform web",
   "outputDirectory": "dist",
+  "git": {
+    "deploymentEnabled": {
+      "main": false
+    }
+  },
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
 }

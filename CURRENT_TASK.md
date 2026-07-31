@@ -1,5 +1,15 @@
 # Current Task
 
+## Web launch — manual production promotion guard (2026-07-31, Codex)
+
+**Objective:** prevent merges to `main` from publishing Órbita automatically while keeping branch previews available, so production receives exactly the clean deployment that passed integrated QA.
+
+**Acceptance criteria:** pushes and PR branches can still create Vercel previews; `main` does not trigger a Git deployment; production changes only through an explicit promotion of the validated deployment; no application, backend, payment, domain, or environment behavior changes in this PR.
+
+**Task brief:** owner Codex (release); allowed territory `vercel.json` and this handoff; risk low but release-critical because the current Vercel project automatically targets `main` deployments as production; tests are JSON/config validation plus a green Vercel preview; rollout is merge this guard before the backend/frontend stack, then verify that the merge creates no production deployment; rollback is revert the config and re-enable Git deployments; out of scope product code, Convex, Stripe, Clerk, assets, and production promotion.
+
+**Decision:** `git.deploymentEnabled.main = false`. Unspecified feature branches remain enabled for preview deployments. Production will later use Vercel's promote workflow, which changes traffic to the exact tested deployment without rebuilding it.
+
 ## Analytics — eventos de producto + resumen diario por Telegram (2026-07-20, Codex)
 
 **Objetivo:** registrar hechos puntuales del funnel de Órbita y enviar cada mañana un resumen del día anterior con aperturas únicas, nuevos/recurrentes, onboarding completado, cartas reveladas y retención.
