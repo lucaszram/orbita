@@ -40,6 +40,38 @@
 
 **Bloqueo móvil posterior:** `src/domain/appData.ts` todavía construye tránsitos nativos hardcodeados mediante `buildTransitos` y `chartMock`. No afecta Gate A web y queda fuera de este PR backend, pero debe eliminarse antes de cualquier nueva publicación móvil.
 
+## P6 — secuencia de alta y cuenta, web + nativo (2026-07-31, Claude)
+
+**Objetivo:** cerrar la secuencia canónica del alta: el onboarding inmersivo va primero, la cuenta se crea en su paso original de la V4.4 (`14 / Create Account`, índice 13), y recién ahí algo sale del dispositivo. Que funcione limpio en web móvil (390×844) y escritorio (1440×900) sin cambiar la conducta nativa.
+
+**Corrección de rumbo:** la entrada anterior de este archivo describía un flujo **auth-first** (cuenta ANTES del onboarding, alta como ruta propia `/crear-cuenta`, `AccountScreen` fuera del flujo). Esa dirección quedó sin efecto y el documento `docs/handoff-auth-first-entry.md` está corregido con la conducta real. El `/crear-cuenta` sigue existiendo como ruta directa, pero ninguna superficie manda ahí: la landing y el login abren el onboarding completo.
+
+**Qué cambió (diff P6 existente):**
+1. **`TOTAL = 15`, `STEP_ACCOUNT = 13`.** `AccountScreen` vuelve al flujo; el login pasa el email tipeado por params. `destinationAllows` acepta `sign-in` en la superficie `onboarding`: el alta empieza sin cuenta y junta todo en el borrador local.
+2. **Una sola persistencia, esperada, con guard de cuenta.** Sin usuario Clerk activo el cierre vuelve al paso 13 con el borrador intacto; nunca escribe defaults. El error del cierre es visible y reintentable, y no navega a Recepción fingiendo éxito.
+3. **Google sólo web y sólo con flag.** `GOOGLE_AUTH_ENABLED = Platform.OS === "web" && EXPO_PUBLIC_ORBITA_GOOGLE_AUTH === "true"`. Apple salió del flujo. Sin la variable, el alta por email queda entera.
+4. **Composición de escritorio real** (`Screen` con `stage` / `split` / `scene` + `useSplitSlot`), no un teléfono centrado. `WebLayoutProvider` es el único lector del viewport; en nativo el modo es siempre `mobile`.
+5. **Rueda propia de fecha/hora en web** con semántica de listbox, sin el popover del sistema y sin depender de eventos de momentum que el navegador no emite.
+6. **`/preview-alta`**: vista combinada de los 15 pasos en la matriz de tamaños. Sólo con herramientas internas y de sólo lectura — entra por el mismo camino que `debugStep`.
+
+**Correcciones aplicadas al cerrar la tarea:**
+- **`AccountGate` con `sticky` (bug serio).** Al crear la cuenta en el paso 13, `users` pasa a `pending` y `birthData` vuelve a `undefined`, así que el resolver decía `loading` y el gate **desmontaba el alta entera** justo ahí. En web el borrador de `sessionStorage` lo disimulaba; **en nativo no hay borrador y se perdía todo lo cargado**. `sticky` sostiene sólo el estado `loading`: un destino resuelto distinto sigue redirigiendo y una cuenta completa sigue sin poder montar el alta.
+- **Cuenta incompleta continúa desde la fecha también en web.** El arranque nativo ya mandaba `resume=datos`, pero el gate web redirige a `/empezar` sin ese param y la cuenta incompleta volvía al splash.
+- **Banda de selección de la rueda web alineada.** Se posicionaba con `8 + PAD`, ignorando el alto de la leyenda: quedaba ~14px por encima de la fila que decía marcar. Ahora la leyenda tiene alto y `line-height` explícitos y el offset es aritmética.
+- **Texto obsoleto corregido** en `docs/handoff-auth-first-entry.md`, `src/domain/appRoutes.ts`, `app/crear-cuenta.tsx` y `app/empezar.tsx`.
+- **El borrador conserva el email.** `parseDraft` reconstruye el objeto campo por campo y nunca copiaba `email`, así que `writeDraft` lo guardaba, `readDraft` lo descartaba en silencio y `saved?.email` era código muerto: la vuelta de Clerk hacía retipear el email recién tipeado. Ahora sale por `optStr` —igual que `identity`—, así que un valor que no sea string no vacío queda en `undefined`. `test/onboardingDraft.test.ts` **afirmaba** ese descarte; ahora afirma la conservación, mantiene la compatibilidad con borradores viejos sin `email` y suma el rechazo de valores inválidos.
+
+**Paywall:** sigue **desactivado** (`PAYWALL_ENABLED = false`). El producto es freemium; no se implementaron pagos en esta tarea.
+
+**Validación: en verde.** `git diff --check` limpio, `pnpm typecheck` en verde, suite completa **747/747**, `pnpm build:web` correcto y pasada de navegador a 320, 390 y 1440 sin desborde horizontal ni errores de consola.
+
+**Hallazgos reportados y NO corregidos** (quedan como follow-up, ninguno bloquea el PR):
+- `yearOptions` cubre 100 años: un `value.year` fuera de rango cae a `Math.max(0, -1)` y la rueda **muestra el año actual mientras el estado guarda otro** — la misma clase de bug de integridad que ese archivo existe para evitar. Improbable en la práctica (el valor por defecto es 1996), pero es el defecto que el archivo promete no tener.
+- Estilos muertos tras sacar Apple: `divider`, `socials`, `gap` en `AccountScreen.tsx` y `SignInScreen.tsx`.
+- El enlace "Ya tengo cuenta" perdió su `marginTop: 14` de móvil al pasar a `SIGN_IN_LINK_ROW` (el literal compartido no lo trae).
+
+**Fuera de alcance:** endurecer `onboarding.completeBirthData` para rechazar sobrescrituras — follow-up backend separado, después de que Perfil use la mutación explícita de edición.
+
 ## Órbita Web P0 — alta de cuenta dentro de Órbita (2026-07-28, Claude)
 
 **Objetivo:** que crear cuenta ocurra dentro del producto, en español, sin perder el onboarding cargado.

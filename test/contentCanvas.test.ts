@@ -160,15 +160,13 @@ test("el lienzo es ancho completo en móvil y columna centrada en escritorio", (
   assert.ok(/alignSelf: "center"/.test(codigo), "en escritorio se centra");
 });
 
-test("el lienzo tiene cuatro variantes y ninguna depende del viewport", () => {
+test("el lienzo tiene tres variantes y ninguna depende del viewport", () => {
   // El bug que se arregla: TODAS las pantallas estaban clavadas en 720, así que
   // el escritorio era una pantalla de teléfono centrada en un monitor.
   assert.equal(CANVAS_MAX_WIDTH.wide, 1200);
   assert.equal(CANVAS_MAX_WIDTH.reading, 720);
-  assert.equal(CANVAS_MAX_WIDTH.form, 480, "el alta es una columna de formulario, no de lectura");
   assert.equal(CANVAS_MAX_WIDTH.immersive, null, "inmersivo = sin tope");
   assert.equal(canvasMaxWidth("wide"), 1200);
-  assert.equal(canvasMaxWidth("form"), 480);
   assert.equal(canvasMaxWidth("immersive"), null);
 });
 
@@ -212,14 +210,23 @@ test("la Carta pasa por un solo shell: ningún estado se queda fuera del lienzo"
   assert.equal(directos.length, 1, "OrbitaScreen se monta sólo dentro del shell");
 });
 
-test("el shell de la app web es el dueño del modo responsive", () => {
+test("el shell de la app web monta el provider del modo responsive", () => {
   // El lienzo va ADENTRO del contenido; no reemplaza ni duplica el chrome.
   const shell = sinComentarios(leer("src/components/web/web-app-shell.tsx"));
   assert.ok(/RequireSession/.test(shell), "la sesión sigue siendo requisito");
   assert.ok(/<WebNav active=\{active\} \/>/.test(shell));
   assert.ok(!/ContentCanvas/.test(shell), "el lienzo es del contenido, no del chrome");
-  // Y es el ÚNICO que lee el viewport, publicándolo por contexto.
-  assert.ok(/useWindowDimensions/.test(shell), "el shell mide la ventana");
-  assert.ok(/layoutModeFor\(width\)/.test(shell), "y la traduce con el contrato");
-  assert.ok(/<LayoutModeProvider mode=\{mode\}>/.test(shell), "y la reparte por contexto");
+  // El shell ya no mide la ventana por su cuenta: la mide el provider, que
+  // también monta el alta. Un solo lector para los dos árboles.
+  assert.ok(!/useWindowDimensions/.test(shell), "el shell ya no mide: lo hace el provider");
+  assert.ok(/<WebLayoutProvider>/.test(shell), "monta el provider compartido");
+  assert.ok(/const mode = useLayoutMode\(\)/.test(shell), "y consume el modo como todos");
+
+  const provider = sinComentarios(leer("src/components/web/web-layout-provider.tsx"));
+  assert.ok(/useWindowDimensions/.test(provider), "el provider mide la ventana");
+  assert.ok(/layoutModeFor\(effective\)/.test(provider), "y la traduce con el contrato");
+  assert.ok(/IS_WEB \? layoutModeFor\(effective\) : "mobile"/.test(provider), "en nativo el modo es siempre móvil");
+  // El ancho sólo se puede forzar desde la vista combinada de revisión; sin
+  // override manda el viewport real.
+  assert.ok(/const effective = width \?\? win\.width;/.test(provider));
 });

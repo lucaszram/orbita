@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Text } from "@/components/ui/text";
 import { CodeInput } from "@/onboarding/components/CodeInput";
 import { CTA } from "@/onboarding/components/CTA";
 import { Screen } from "@/onboarding/components/Screen";
 import { Body, Label, Title } from "@/onboarding/components/Type";
 import { validateSignupPassword } from "@/onboarding/signup";
-import { font, GUTTER, orbita } from "@/onboarding/theme";
+import { font, GUTTER, orbita, SIGN_IN_LINK_ROW, SIGN_IN_LINK_TEXT } from "@/onboarding/theme";
 import type { AccountFlow } from "@/onboarding/useAccount";
 
 /**
@@ -66,7 +67,7 @@ export function SignUpGateScreen({
   };
 
   return (
-    <Screen wash={0.62}>
+    <Screen wash={0.62} scroll>
       <View style={styles.body}>
         <Title>Creá tu cuenta.</Title>
         <Body>
@@ -145,12 +146,14 @@ export function SignUpGateScreen({
           hitSlop={10}
           accessibilityRole="link"
           accessibilityLabel="Ya tengo cuenta: iniciar sesión"
-          style={styles.signInLink}
+          style={SIGN_IN_LINK_ROW}
         >
           {/* UNA sola línea, sin `Text` anidados: en react-native-web el color
               en línea del padre no llega a los hijos `Text` y la fila entera
               quedaba casi negra sobre el fondo casi negro. */}
-          <Body style={styles.signInText}>Ya tengo cuenta · Iniciar sesión</Body>
+          {/* `Text` de la librería con estilo LITERAL, no `Body`: `Body` aplica
+              su propio color en línea (muted), que le ganaría al del enlace. */}
+          <Text style={SIGN_IN_LINK_TEXT}>Ya tengo cuenta · Iniciar sesión</Text>
         </Pressable>
       </View>
     </Screen>
@@ -170,18 +173,5 @@ const styles = StyleSheet.create({
   },
   error: { color: "#D07A5A" },
   notice: { color: orbita.muted },
-  spacer: { height: 8 },
-  // 44px reales de objetivo táctil: `hitSlop` no existe en web.
-  signInLink: { alignItems: "center", alignSelf: "center", justifyContent: "center", minHeight: 44, paddingHorizontal: 12 },
-  // Era `orbita.muted` entero, sin subrayado y sin peso: leía como una nota al
-  // pie y no como el camino de vuelta que es. `copperSoft` da 8,14:1 sobre el
-  // fondo, y el subrayado lo hace reconocible como enlace sin depender del
-  // color. En la LÍNEA COMPLETA, por el mismo motivo que en el splash.
-  signInText: {
-    color: orbita.copperSoft,
-    fontFamily: font.sansBold,
-    fontSize: 15,
-    textAlign: "center",
-    textDecorationLine: "underline"
-  }
+  spacer: { height: 8 }
 });

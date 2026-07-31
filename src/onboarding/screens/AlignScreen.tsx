@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { ImageBackground, type ImageSourcePropType, StyleSheet, View } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 
 import { Text } from "@/components/ui/text";
 
 import { A } from "../assets";
 import { CTA } from "../components/CTA";
 import { Header } from "../components/Header";
-import { Screen } from "../components/Screen";
+import { Screen, useSplitSlot } from "../components/Screen";
 import { Body, Caption, Title } from "../components/Type";
 import { font, GUTTER, orbita } from "../theme";
 
@@ -22,16 +23,21 @@ import { font, GUTTER, orbita } from "../theme";
  * grilla se queda en su alto natural: no crece hasta deformarse.
  */
 export function AlignScreen({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
+  // La grilla se monta UNA vez: en móvil acá, entre el subtítulo y la nota;
+  // en escritorio, en la segunda columna.
+  const { inline, aside } = useSplitSlot(<TileGrid />);
   return (
-    <Screen bg={A.dailyTexture} wash={0.44}>
+    <Screen bg={A.dailyTexture} wash={0.44} layout="split" aside={aside}>
       <Header step={1} total={15} onBack={onBack} />
       <View style={styles.body}>
         <Title style={styles.title}>Alineate con el ritmo del universo</Title>
         <Body style={styles.sub}>Descifrá amor, trabajo y camino personal desde tu carta.</Body>
 
-        <View style={styles.gridZone}>
-          <TileGrid />
-        </View>
+        {/* La zona se monta SIEMPRE. En móvil contiene la grilla; en escritorio
+            queda vacía y su `flex: 1` es el resorte que reparte el aire de la
+            columna, para que la nota y el CTA se apoyen abajo en vez de
+            amontonarse contra el título. */}
+        <View style={styles.gridZone}>{inline}</View>
 
         <Caption style={styles.note}>Órbita ordena señales, no dicta destino.</Caption>
         <View style={styles.footer}>
@@ -42,12 +48,18 @@ export function AlignScreen({ onNext, onBack }: { onNext: () => void; onBack: ()
   );
 }
 
-/** Alturas de referencia del Figma; se usan como PROPORCIÓN, no como píxeles. */
-const TILE_H = { lunar: 188, practice: 202, guide: 208, decisions: 182 } as const;
-const COL_GAP = 14;
-const COL_OFFSET = 22;
-/** Alto natural de la columna más alta (la de la derecha, con su desfase). */
-const NATURAL_H = COL_OFFSET + TILE_H.guide + COL_GAP + TILE_H.decisions;
+/**
+ * Cuatro mosaicos del MISMO alto, en una grilla pareja de 2x2.
+ *
+ * El escalonado con cuatro alturas distintas y las píldoras colgando fuera del
+ * borde leía como una maqueta a medio terminar. Una grilla pareja con la
+ * etiqueta adentro es lo mismo que ya hace la app en Home y en el Diario: se
+ * ve deliberada, y aguanta cualquier ancho sin dejar huecos.
+ */
+const TILE_H = 190;
+const COL_GAP = 12;
+/** Alto natural de la grilla (dos filas + el aire entre ellas). */
+const NATURAL_H = TILE_H * 2 + COL_GAP;
 
 function TileGrid() {
   const [available, setAvailable] = useState<number | null>(null);
@@ -56,6 +68,7 @@ function TileGrid() {
   const h = available === null ? NATURAL_H : Math.min(available, NATURAL_H);
   const scale = h / NATURAL_H;
   const px = (n: number) => Math.max(1, Math.round(n * scale));
+  const tile = px(TILE_H);
 
   return (
     <View
@@ -65,14 +78,14 @@ function TileGrid() {
         setAvailable((prev) => (next > 0 && (prev === null || Math.abs(prev - next) >= 1) ? next : prev));
       }}
     >
-      <View style={[styles.grid, { height: h }]}>
+      <View style={[styles.grid, { gap: px(COL_GAP), height: h }]}>
         <View style={[styles.col, { gap: px(COL_GAP) }]}>
-          <Tile img={A.tileLunar} label="☾  Influencia lunar" h={px(TILE_H.lunar)} />
-          <Tile img={A.tilePractice} label="◇  Práctica diaria" h={px(TILE_H.practice)} />
+          <Tile img={A.tileLunar} label="☾  Influencia lunar" h={tile} />
+          <Tile img={A.tilePractice} label="◇  Práctica diaria" h={tile} />
         </View>
-        <View style={[styles.col, { gap: px(COL_GAP), marginTop: px(COL_OFFSET) }]}>
-          <Tile img={A.tileGuide} label="✦  Guía personal" h={px(TILE_H.guide)} />
-          <Tile img={A.tileDecisions} label="◈  Decisiones" h={px(TILE_H.decisions)} />
+        <View style={[styles.col, { gap: px(COL_GAP) }]}>
+          <Tile img={A.tileGuide} label="✦  Guía personal" h={tile} />
+          <Tile img={A.tileDecisions} label="◈  Decisiones" h={tile} />
         </View>
       </View>
     </View>
@@ -87,9 +100,16 @@ function Tile({ img, label, h }: { img: ImageSourcePropType; label: string; h: n
           intrínseco (1024px) y arrastra la columna con él. Es el mismo bug que
           ya está documentado en `components/Screen.tsx` para el fondo. */}
       <ImageBackground source={img} style={StyleSheet.absoluteFill} imageStyle={styles.tileImg} resizeMode="cover" />
-      <View style={styles.pill}>
-        <Text style={styles.pillTxt}>{label}</Text>
-      </View>
+      {/* La etiqueta vive ADENTRO del mosaico, al pie, sobre un degradé de
+          legibilidad. Antes era una píldora flotando fuera del borde superior:
+          se cruzaba con el mosaico de al lado y leía como un accidente. */}
+      <LinearGradient
+        colors={["rgba(10,11,14,0)", "rgba(10,11,14,0.82)"]}
+        locations={[0.45, 1]}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
+      <Text style={styles.tileLabel}>{label}</Text>
     </View>
   );
 }
@@ -102,22 +122,19 @@ const styles = StyleSheet.create({
   // encogerse y la grilla se salía por la derecha del lienzo de 480.
   col: { flex: 1, minWidth: 0 },
   footer: { paddingBottom: 12, paddingTop: 12 },
-  grid: { flexDirection: "row", gap: 14 },
+  grid: { flexDirection: "row" },
   gridMeasure: { flex: 1, justifyContent: "center" },
   gridZone: { flex: 1, justifyContent: "center", minHeight: 180 },
   note: { color: orbita.faint, marginBottom: 6, textAlign: "center" },
-  pill: {
-    backgroundColor: "rgba(10,11,14,0.72)",
-    borderColor: orbita.line,
-    borderRadius: 14,
-    borderWidth: 1,
-    left: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+  tileLabel: {
+    bottom: 12,
+    color: orbita.bone,
+    fontFamily: font.sansMed,
+    fontSize: 13,
+    left: 12,
     position: "absolute",
-    top: -14,
+    right: 12,
   },
-  pillTxt: { color: orbita.bone, fontFamily: font.sansMed, fontSize: 12.5 },
   sub: { marginTop: 10, textAlign: "center" },
   // `overflow: "hidden"` recorta lo que la imagen quiera desbordar, y
   // `width: "100%"` la ata al ancho de SU columna en vez de al del asset.

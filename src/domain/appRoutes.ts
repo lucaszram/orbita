@@ -22,5 +22,16 @@ export const ONBOARDING_ROUTE = IS_WEB ? "/empezar" : "/onboarding";
 /** Login canónico (`/iniciar-sesion`), igual en las dos plataformas. */
 export const SIGN_IN_ROUTE = "/iniciar-sesion";
 
-/** Alta: la puerta ANTES del onboarding, no un paso interno. */
+/**
+ * Formulario de alta suelto.
+ *
+ * NO es la entrada del alta: la cuenta se crea DENTRO del onboarding, en su
+ * paso canónico de la secuencia V4.4 (`14 / Create Account`, índice 13), cuando
+ * ya hay una carta que guardar. Ni la landing ni el login mandan acá — los dos
+ * abren `ONBOARDING_ROUTE`.
+ *
+ * Queda como ruta directa para quien ya tiene el link: al verificar el email el
+ * resolver reevalúa y `AccountGate` manda al onboarding (o a Home si la cuenta
+ * ya estuviera completa).
+ */
 export const SIGN_UP_ROUTE = "/crear-cuenta";

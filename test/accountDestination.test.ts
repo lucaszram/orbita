@@ -22,12 +22,15 @@ const BASE: AccountState = {
 
 // --- El resolver: una sola decisión -----------------------------------------
 
-test("sin sesión → login (la landing es la única superficie pública)", () => {
+test("sin sesión: landing, login y el ALTA; nunca la app", () => {
   assert.equal(resolveAccountDestination(BASE), "sign-in");
   assert.ok(destinationAllows("sign-in", "landing"));
   assert.ok(destinationAllows("sign-in", "auth"));
+  // El alta se monta sin sesión: junta todo en el borrador local y pide cuenta
+  // en su paso original. Es lo que permite que la experiencia enganche primero.
+  assert.ok(destinationAllows("sign-in", "onboarding"), "el alta empieza sin cuenta");
+  // La app sigue cerrada: sin sesión no se entra a ninguna Home.
   assert.ok(!destinationAllows("sign-in", "app"));
-  assert.ok(!destinationAllows("sign-in", "onboarding"));
 });
 
 test("cuenta completa CON perfil local propio → Home de la app", () => {
@@ -134,14 +137,21 @@ test("home-local sólo vale sin backend configurado", () => {
 
 // --- El alta salió del onboarding ------------------------------------------
 
-test("crear cuenta es una ruta propia, no un paso del onboarding", () => {
-  const flow = sinComentarios(readFileSync(join(ROOT, "src/onboarding/OnboardingFlow.tsx"), "utf8"));
-  assert.ok(!/AccountScreen/.test(flow));
-  const alta = readFileSync(join(ROOT, "app/crear-cuenta.tsx"), "utf8");
-  assert.ok(/SignUpGateScreen/.test(alta));
-  // La landing manda ahí.
+test("una cuenta COMPLETA no puede entrar al alta, con o sin sesión", () => {
+  // La protección que motivó el gate sigue intacta: es lo único que impide
+  // sobrescribir datos natales desde el onboarding.
+  const completa = { ...BASE, signedIn: true, birthDataResolved: true, hasBirthData: true, localProfileReady: true };
+  assert.equal(resolveAccountDestination(completa), "app-home");
+  assert.ok(!destinationAllows("app-home", "onboarding"), "una cuenta completa NUNCA monta el alta");
+});
+
+test('"Empezar" abre la experiencia inmersiva, no un formulario suelto', () => {
   const landing = readFileSync(join(ROOT, "src/components/web/orbita-landing.tsx"), "utf8");
-  assert.ok(/href="\/crear-cuenta"/.test(landing), 'la landing debe abrir el alta desde "Empezar"');
+  assert.ok(/href="\/empezar"/.test(landing), '"Empezar" tiene que abrir el alta completa');
+  assert.ok(
+    !/<WebLinkButton href="\/crear-cuenta"/.test(landing),
+    "la landing no puede abrir el formulario de cuenta como primera pantalla"
+  );
 });
 
 test("la copy del alta es la del handoff", () => {

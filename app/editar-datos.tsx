@@ -32,6 +32,7 @@ import { useLiveApp, useLiveAppDocs } from "@/hooks/useLiveApp";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
 import { BirthDateField, BirthTimeField } from "@/onboarding/components/BirthDateTimeField";
 import { CTA } from "@/onboarding/components/CTA";
+import { WebLayoutProvider } from "@/components/web/web-layout-provider";
 import { Screen } from "@/onboarding/components/Screen";
 import { Body, Label, Title } from "@/onboarding/components/Type";
 import { font, GUTTER, orbita } from "@/onboarding/theme";
@@ -57,6 +58,16 @@ import { searchPlaces, type PlaceHit } from "@/services/geocoding";
 const SYNC_REMOTE_TIMEOUT_MS = 10000;
 
 export default function EditarDatosRoute() {
+  // Misma razón que en `/iniciar-sesion`: esta ruta monta el shell del alta
+  // fuera de `OnboardingFlow` y necesita el modo responsive.
+  return (
+    <WebLayoutProvider>
+      <EditarDatosSurface />
+    </WebLayoutProvider>
+  );
+}
+
+function EditarDatosSurface() {
   const router = useRouter();
   const fontsLoaded = useOrbitaFonts();
   const { isReady, profile, updateProfile } = useAppState();

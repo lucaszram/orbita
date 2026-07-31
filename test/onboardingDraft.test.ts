@@ -22,25 +22,50 @@ const FULL: OnboardingDraft = {
     timezone: "America/Argentina/Cordoba"
   },
   birthTime: { hour: 10, minute: 40 },
-  timeUnknown: false
+  timeUnknown: false,
+  email: "alguien@example.com"
 };
 
 // La regresión que motiva esto: crear la cuenta hace que Clerk vuelva a
-// /empezar; sin borrador, el remonte perdía identidad, fecha, lugar, hora y
-// paso, y la persona volvía a empezar de cero justo después de registrarse.
+// /empezar; sin borrador, el remonte perdía identidad, fecha, lugar, hora,
+// paso y email, y la persona volvía a empezar de cero justo después de
+// registrarse.
 
 test("un borrador completo sobrevive el ida y vuelta", () => {
   assert.deepEqual(parseDraft(serializeDraft(FULL), STEPS), FULL);
 });
 
-test("un borrador GUARDADO con la forma anterior sigue leyéndose", () => {
-  // Compatibilidad: el paso de cuenta salió del onboarding, así que el borrador
-  // ya no guarda `email`. Uno viejo que lo trae no puede invalidarse.
-  const viejo = JSON.stringify({ ...FULL, email: "alguien@example.com" });
+test("el email sobrevive la vuelta de Clerk", () => {
+  // El paso de cuenta (índice 13) escribe el email en el borrador y el remonte
+  // lo lee. `parseDraft` lo descartaba en silencio: la persona tenía que volver
+  // a tipear el email que acababa de tipear, justo en el paso más caro del alta.
+  const back = parseDraft(serializeDraft(FULL), STEPS)!;
+  assert.equal(back.email, "alguien@example.com");
+});
+
+test("un borrador GUARDADO sin email sigue leyéndose", () => {
+  // Compatibilidad hacia atrás: un borrador de una versión sin paso de cuenta no
+  // trae `email`. No puede invalidarse — sólo queda sin email.
+  // `JSON.stringify` descarta las claves `undefined`, así que esto reproduce
+  // exactamente la forma vieja.
+  const viejo = JSON.stringify({ ...FULL, email: undefined });
+  assert.ok(!/email/.test(viejo), "la forma vieja no trae la clave");
   const back = parseDraft(viejo, STEPS)!;
   assert.equal(back.step, FULL.step);
   assert.deepEqual(back.birthDate, FULL.birthDate);
-  assert.equal(back.email, undefined, "el email viejo se ignora, no rompe");
+  assert.equal(back.email, undefined, "sin email guardado no se inventa uno");
+});
+
+test("un email vacío o de tipo inesperado no se propaga", () => {
+  // Misma lectura defensiva que el resto de los campos opcionales: ante
+  // cualquier duda, `undefined`, nunca un valor a medias.
+  for (const email of [99, "", null, {}, [], true]) {
+    assert.equal(
+      parseDraft(JSON.stringify({ ...FULL, email }), STEPS)?.email,
+      undefined,
+      JSON.stringify(email)
+    );
+  }
 });
 
 test("se conservan identidad, fecha, hora, lugar y paso", () => {

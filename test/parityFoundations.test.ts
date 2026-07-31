@@ -38,9 +38,9 @@ test("ninguna ruta importa una pantalla web duplicada", () => {
 
 test("web y nativo montan el MISMO onboarding canónico", () => {
   const canonico = readFileSync(join(ROOT, "src/onboarding/OnboardingFlow.tsx"), "utf8");
-  // 14 pasos desde que el alta salió del flujo: auth es la puerta anterior y no
-  // cuenta en el progreso del onboarding.
-  assert.match(canonico, /const TOTAL = 14;/, "el flujo canónico debe tener 14 pasos");
+  // 15 pasos: la secuencia V4.4 completa, con la cuenta en su lugar original
+  // (`14 / Create Account`) y el cierre al final.
+  assert.match(canonico, /const TOTAL = 15;/, "el flujo canónico debe tener 15 pasos");
   // Las dos rutas llegan al flujo canónico A TRAVÉS del gate compartido, que es
   // el que impide que una cuenta con datos natales vuelva al alta.
   const gate = readFileSync(join(ROOT, "src/onboarding/OnboardingGate.tsx"), "utf8");

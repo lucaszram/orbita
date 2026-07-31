@@ -149,3 +149,17 @@ export function timeValueToParts(raw: string): BirthTimePartsValue | null {
   if (!parsed) return null;
   return { hour: parsed.h, minute: parsed.m };
 }
+
+/**
+ * ¿Estas partes caen DESPUÉS de hoy?
+ *
+ * Lo hacía el atributo `max` del `<input type="date">`. Al reemplazarlo por la
+ * rueda propia hay que seguir sosteniéndolo: la columna de años ya corta en el
+ * año actual, pero dentro de ese año todavía se podría elegir un mes o un día
+ * que no llegó. Nadie nació mañana.
+ */
+export function isFutureDateParts(parts: BirthDatePartsValue, today: Date): boolean {
+  const value = partsToDateValue(parts);
+  if (value === null) return false;
+  return value > isoDateFrom(today);
+}

@@ -10,21 +10,18 @@ import { Screen } from "../components/Screen";
 import { Body, Caption, Title } from "../components/Type";
 import { font, GUTTER, orbita } from "../theme";
 
-const ANTES = [
-  "Vivía en automático",
-  "No sabía qué priorizar",
-  "Dudaba de lo que quería",
-  "Me sentía agotada",
-  "Vínculos poco claros",
-];
+/**
+ * Tres líneas por lado, no cinco.
+ *
+ * Con cinco ítems de dos renglones cada uno las tarjetas eran dos listas
+ * apretadas y el paso se leía como un checklist. Tres frases con aire alrededor
+ * se leen; el contenido es el mismo material del Figma, recortado a lo que
+ * sostiene la idea. Sin lenguaje de destino ni de resultado garantizado: dice
+ * cómo se mira el día, no lo que va a pasar.
+ */
+const ANTES = ["Vivía en automático", "No sabía qué priorizar", "Vínculos poco claros"];
 
-const DESPUES = [
-  "Con calma y confianza",
-  "Conozco mis fortalezas y límites",
-  "Centrada y enfocada en lo importante",
-  "Confío más en mi intuición",
-  "Me vinculo con más claridad",
-];
+const DESPUES = ["Con calma y confianza", "Enfocada en lo que importa", "Me vinculo con más claridad"];
 
 type Props = { step: number; onNext: () => void; onBack: () => void };
 
@@ -100,8 +97,10 @@ function Column({
 }
 
 const styles = StyleSheet.create({
-  body: { flex: 1, paddingHorizontal: GUTTER, paddingTop: 22 },
-  scroll: { flex: 1 },
+  // `minHeight: 0` en los dos: sin eso el ScrollView crece con su contenido en
+  // vez de acotarse, y el CTA anclado al pie queda fuera del viewport.
+  body: { flex: 1, minHeight: 0, paddingHorizontal: GUTTER, paddingTop: 22 },
+  scroll: { flex: 1, minHeight: 0 },
   scrollContent: { paddingBottom: 8 },
   card: {
     alignItems: "center",
@@ -110,12 +109,14 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     borderWidth: 1,
     flex: 1,
-    gap: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 18,
+    // Más aire entre filas: es lo que separa un checklist de una pieza editorial.
+    gap: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 24,
   },
   cardAfter: { borderColor: "rgba(196,106,58,0.55)" },
-  cardTitle: { color: orbita.bone, fontFamily: font.sansBold, fontSize: 18 },
+  // El título de cada lado es la jerarquía: serif, más grande, con su propio aire.
+  cardTitle: { color: orbita.bone, fontFamily: font.serif, fontSize: 22, marginTop: 2 },
   chip: {
     alignItems: "center",
     borderRadius: 11,
@@ -133,7 +134,7 @@ const styles = StyleSheet.create({
   mark: { fontFamily: font.sansBold, fontSize: 11 },
   note: { marginTop: 16, textAlign: "center" },
   row: { alignSelf: "stretch", flexDirection: "row", gap: 8 },
-  rowTxt: { color: orbita.bone, flex: 1, fontFamily: font.sansMed, fontSize: 12.5, lineHeight: 17 },
+  rowTxt: { color: orbita.bone, flex: 1, fontFamily: font.sans, fontSize: 13.5, lineHeight: 19 },
   sub: { marginTop: 10, textAlign: "center" },
   title: { textAlign: "center" },
 });

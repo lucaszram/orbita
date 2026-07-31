@@ -56,15 +56,33 @@ test("montar el ÚLTIMO paso por debugStep no escribe nada", () => {
   assert.ok(/if \(inspeccion\) return;/.test(primerasLineas), "submit debe cortar en la primera línea");
 });
 
-test("el alta ya no vive dentro del onboarding", () => {
-  // Auth es la puerta ANTERIOR: no hay pantalla de cuenta ni OAuth adentro del
-  // flujo, así que tampoco hay nada que guardar contra la inspección.
-  assert.ok(!/AccountScreen/.test(FLOW_CODE), "AccountScreen no puede ser un paso del onboarding");
-  assert.ok(!/accountOAuth/.test(FLOW_CODE), "el OAuth del alta salió del flujo");
-  assert.ok(!/STEP_ACCOUNT/.test(FLOW_CODE), "no queda un índice de paso de cuenta");
-  // Y el alta existe como ruta propia.
-  const alta = readFileSync(join(ROOT, "app/crear-cuenta.tsx"), "utf8");
-  assert.ok(/SignUpGateScreen/.test(alta), "la puerta de alta debe montar su pantalla");
+test("el alta vive en el flujo, y la inspección nunca crea una cuenta", () => {
+  assert.ok(/AccountScreen/.test(FLOW_CODE), "la cuenta es un paso del onboarding");
+  assert.ok(/accountOAuth/.test(FLOW_CODE), "y su OAuth también");
+  // Los dos caminos que activan sesión cortan en su primera línea bajo
+  // inspección: `debugStep` puede DIBUJAR el paso de cuenta, nunca crearla.
+  for (const handler of ["const accountNext = async (codeOverride?: string) => {", "const accountOAuth = async (provider: \"google\") => {"]) {
+    const i = FLOW_CODE.indexOf(handler);
+    assert.ok(i > 0, `falta el handler: ${handler}`);
+    const primeras = FLOW_CODE.slice(i, i + 220);
+    assert.ok(/if \(inspeccion\) return;/.test(primeras), `${handler} debe cortar en inspección`);
+  }
+});
+
+test("nada sale del dispositivo antes de que haya una cuenta activa", () => {
+  // El alta junta TODO en el borrador local. El cierre es el único punto que
+  // convierte eso en dato remoto, y sólo con un usuario Clerk confirmado: si no
+  // hay cuenta vuelve al paso de cuenta con el borrador intacto.
+  const guard = FLOW_CODE.slice(FLOW_CODE.indexOf("const cuentaActiva"), FLOW_CODE.indexOf("const cuentaActiva") + 320);
+  assert.ok(guard.length > 0, "falta el guard de cuenta activa antes de persistir");
+  assert.match(guard, /if \(persistBackend && !cuentaActiva\) \{/);
+  assert.match(guard, /setStep\(STEP_ACCOUNT\);/, "sin cuenta se vuelve al paso de cuenta");
+  assert.match(guard, /submitLock\.current = false;/, "y se libera el lock para poder reintentar");
+  // El guard va ANTES de cualquier llamada a persistBackend.
+  assert.ok(
+    FLOW_CODE.indexOf("const cuentaActiva") < FLOW_CODE.indexOf("await persistBackend("),
+    "el guard tiene que preceder a la escritura"
+  );
 });
 
 test("en inspección no se calcula carta ni se pisa el borrador", () => {

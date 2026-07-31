@@ -6,11 +6,17 @@ import { SignUpGateScreen } from "@/onboarding/screens/SignUpGateScreen";
 import { useAccountFlow } from "@/onboarding/useAccount";
 
 /**
- * Alta de cuenta: la PUERTA anterior al onboarding, no un paso interno.
+ * Formulario de alta suelto. NO es la entrada del alta.
  *
- * Tras verificar el email queda sesión activa y el resolver decide el destino
- * (una cuenta nueva normalmente va al onboarding). Si alguien con sesión abre
- * esta ruta, `AccountGate` lo manda a donde le corresponde.
+ * El camino canónico crea la cuenta DENTRO del onboarding, en su paso original
+ * (índice 13): la experiencia inmersiva engancha primero y la cuenta se pide
+ * cuando ya hay una carta que guardar. "Empezar" en la landing y "Crear una
+ * cuenta" en el login abren el onboarding completo, no esta ruta.
+ *
+ * Sigue existiendo para quien llegue con el link directo: tras verificar el
+ * email queda sesión activa y el resolver decide el destino (una cuenta nueva
+ * va al onboarding). Si alguien con sesión abre esta ruta, `AccountGate` lo
+ * manda a donde le corresponde.
  */
 export default function CrearCuentaRoute() {
   return (
