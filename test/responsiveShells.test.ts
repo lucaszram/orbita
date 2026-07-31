@@ -372,13 +372,20 @@ test("la navegación de escritorio es opaca, ancha y con estado activo visible",
 
 test("el header usa el ícono REAL de la app, no un glifo de librería", () => {
   const nav = sinComentarios(leer("src/components/web/web-nav.tsx"));
-  // El binario que se firma en iOS, no un anillo dibujado por lucide.
-  assert.match(nav, /require\("\.\.\/\.\.\/\.\.\/assets\/icon\.png"\)/, "la marca sale del ícono real");
+  // El mismo arte que se firma en iOS, no un anillo dibujado por lucide. Se
+  // monta el derivado web: el master de 1024px pesa 1,72 MB y entraba entero al
+  // export para dibujarse a 28px.
+  assert.match(
+    nav,
+    /require\("\.\.\/\.\.\/\.\.\/assets\/orbita\/optimized\/brand\/orbita_app_icon_web\.png"\)/,
+    "la marca sale del derivado web del ícono real"
+  );
+  assert.doesNotMatch(nav, /require\("\.\.\/\.\.\/\.\.\/assets\/icon\.png"\)/, "el master de 1,72 MB no puede volver al runtime web");
   assert.match(nav, /<Image source=\{APP_ICON\}/, "y se dibuja como imagen");
   assert.doesNotMatch(nav, /lucide-react-native/, "no puede volver el ícono genérico");
   assert.doesNotMatch(nav, /<Orbit\b/, "no puede volver el ícono genérico");
   // Tratamiento de ícono de app: cuadrado redondeado con recorte, y tamaño
-  // chico contra un PNG de 1024 (baja limpio en cualquier densidad).
+  // chico contra un PNG de 192 (baja limpio en cualquier densidad).
   assert.match(nav, /markFrame: \{[^}]*borderRadius: \d+[^}]*overflow: "hidden"/s, "marco de ícono redondeado y recortado");
   assert.match(nav, /mark: \{ height: 2\d, width: 2\d \}/, "el ícono es chico: nunca se agranda por encima de su fuente");
   // Y la marca sigue siendo ícono + wordmark, con objetivo táctil accesible.
@@ -386,10 +393,19 @@ test("el header usa el ícono REAL de la app, no un glifo de librería", () => {
   assert.match(nav, /brand: \{[^}]*minHeight: 44/, "44px de objetivo táctil");
 });
 
-test("el ícono de la app existe y es el mismo que declara app.json", () => {
-  assert.ok(statSync(join(ROOT, "assets/icon.png")).size > 0, "el header apunta a un archivo real");
+test("el ícono nativo sigue intacto y el header monta su derivado web", () => {
+  // El master no se toca: es el que declara `app.json` y el que se firma.
+  assert.ok(statSync(join(ROOT, "assets/icon.png")).size > 0, "el ícono nativo sigue existiendo");
   const appJson = JSON.parse(leer("app.json"));
-  assert.equal(appJson.expo.icon, "./assets/icon.png", "el header y el build tienen que usar el mismo ícono");
+  assert.equal(appJson.expo.icon, "./assets/icon.png", "el build nativo sigue usando el ícono original");
+
+  // Y el header web usa un derivado real del mismo arte, chico de verdad.
+  const derivado = statSync(join(ROOT, "assets/orbita/optimized/brand/orbita_app_icon_web.png"));
+  assert.ok(derivado.size > 0, "el header apunta a un archivo real");
+  assert.ok(
+    derivado.size < 500 * 1024,
+    `el derivado web tiene que entrar en el límite de imagen del export (mide ${derivado.size} bytes)`
+  );
 });
 
 test("la navegación de escritorio va arriba a la derecha, sin celda vacía", () => {

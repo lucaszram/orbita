@@ -15,11 +15,17 @@ const colors = {
 };
 
 /**
- * El ícono REAL de la app (el mismo binario que se firma en iOS), no un glifo
+ * El ícono REAL de la app (la misma arte que se firma en iOS), no un glifo
  * genérico de librería. Antes acá había un `Orbit` de lucide: un anillo dibujado
  * que no es la marca y que en la barra leía como un ícono de sistema.
+ *
+ * Se importa el derivado web, no `assets/icon.png`. El original es el master de
+ * 1024px que declara `app.json` y pesa 1,72 MB: montarlo acá lo metía tal cual
+ * en el export web para dibujarlo a 28px. El derivado es el mismo arte a 192px
+ * (61 KB), que a 28 sigue bajando limpio hasta 6x de densidad. El ícono nativo
+ * no se toca.
  */
-const APP_ICON = require("../../../assets/icon.png");
+const APP_ICON = require("../../../assets/orbita/optimized/brand/orbita_app_icon_web.png");
 
 export type NavKey = "inicio" | "transitos" | "umbral" | "perfil" | "carta" | "diario";
 
@@ -61,8 +67,8 @@ export function WebNav({ active, meta }: { active: NavKey; meta?: string }) {
         <Link href="/home" asChild>
           <Pressable style={styles.brand} accessibilityRole="link" accessibilityLabel="Órbita · Inicio">
             {/* Tratamiento de ícono de app: cuadrado redondeado chico con
-                hairline, como se ve en una barra de tareas. El PNG es de
-                1024px, así que a 28 baja limpio en cualquier densidad. */}
+                hairline, como se ve en una barra de tareas. El derivado web es
+                de 192px, así que a 28 baja limpio en cualquier densidad. */}
             <View style={styles.markFrame}>
               <Image source={APP_ICON} style={styles.mark} resizeMode="cover" />
             </View>

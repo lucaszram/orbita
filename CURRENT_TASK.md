@@ -1,5 +1,23 @@
 # Current Task
 
+## Web launch — runtime asset optimization (2026-07-31, Codex + Claude)
+
+**Objective:** reduce the production web export below 50 MB by replacing every heavyweight runtime image with a visually equivalent optimized derivative, without changing product behavior, copy, layouts, backend contracts, or native source assets.
+
+**Acceptance criteria:** all raw PNG inputs remain untouched; the 13 heavyweight product images still imported from `assets/orbita/core/**` and `assets/orbita/higgsfield/archive-10/**` use derivatives under `assets/orbita/optimized/**`; the web icon is also emitted below the runtime image limit without overwriting the native icon; no emitted runtime image exceeds 500 KB; the complete `dist` export is at most 50 MB; the compressed application JavaScript remains at most 1.25 MB; a reproducible check enforces those limits; typecheck, the full test suite, web export, and visual checks of onboarding, Home, Carta, Tránsitos, and the landing are green on mobile and desktop.
+
+**Task brief:** Claude owns frontend and assets (`app/**`, `src/**`, `assets/orbita/optimized/**`, and only indispensable web/config/test scripts); Codex owns scope, review, validation, PR, and merge. Allowed territory is optimized derivatives, runtime asset maps/imports, web-specific icon configuration, package scripts, size-check code/tests, and this handoff. Risk is medium because compression or import mistakes can cause visible regressions or missing images. Rollout is one isolated PR merged to `main` with production auto-deploy still disabled; rollback is reverting that PR. Out of scope: `convex/**`, payments, legal copy, authentication changes, Figma edits, redesign, native publication, Vercel production promotion, and deleting or overwriting source assets.
+
+**Branch:** `codex/web-assets-optimization`, based on integrated `main` at `37f77c5`.
+
+**Implemented:** the six heavyweight core slots now reuse the existing optimized JPGs; the six Archive 10 slots use new 1024×1024 JPG derivatives under `assets/orbita/optimized/archive-10/`; desktop navigation uses a dedicated 192×192 web icon under `assets/orbita/optimized/brand/`; all source PNGs and the native `assets/icon.png` are unchanged. `scripts/check-web-export.mjs` and `pnpm check:web-export` enforce the export, emitted-image, and compressed application-JavaScript budgets. Focused tests cover the budget decision logic and the web/native icon split.
+
+**Measured result:** the production web export is **35.86 MB**, down from the 84 MB baseline (48.14 MB / about 57% smaller). The largest emitted image is **479.3 KB**, compressed application JavaScript is **1.09 MB**, and the export contains 200 files. The six new Archive 10 derivatives range from 149,840 to 221,015 bytes; the web icon is 62,858 bytes. No heavyweight core/Archive 10 master or native icon is emitted.
+
+**Validation:** `pnpm typecheck` passed; the full suite passed **764/764** across 64 suites; `pnpm build:web` passed; `pnpm check:web-export` passed; `git diff --check` passed. Visual QA passed for landing and onboarding at 390×844 and 1440×900, plus authenticated Home, Carta, and Tránsitos at the same sizes: no horizontal overflow, missing/broken imagery, distorted crops, or layout regression. Browser warnings remain the known local-only Expo notifications warning and Clerk development-key warning. Carta also logs the existing expected Convex rejection when a Free account requests the gated Plus personality reading; that behavior predates and is outside this asset-only PR.
+
+**Rollout state:** ready for review/PR. Production remains untouched and Git production deployment from `main` remains disabled. Rollback is a single revert of this PR.
+
 ## Web launch — manual production promotion guard (2026-07-31, Codex)
 
 **Objective:** prevent merges to `main` from publishing Órbita automatically while keeping branch previews available, so production receives exactly the clean deployment that passed integrated QA.
