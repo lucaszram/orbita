@@ -11,6 +11,7 @@ import { useQuery } from "convex/react";
 import { resolveBirthInfo } from "@/domain/birthInfo";
 import { requestAccountDeletion } from "@/domain/accountDeletion";
 import { useAppState } from "@/hooks/useAppState";
+import { useIsDesktop } from "@/hooks/useLayoutMode";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import type { OrbitaAuth } from "@/hooks/useOrbitaAuth";
 import { appApi } from "@/services/appRefs";
@@ -34,6 +35,9 @@ const PRIVACY_NOTE = "Se usan solo para calcular tu carta. No los compartimos co
 
 export default function PerfilScreen() {
   const { auth, isAuthLoading, userError, retryUser } = useLiveApp();
+  // `useIsDesktop` sólo puede ser true bajo el shell web: en nativo el contexto
+  // no está montado y vale siempre "mobile".
+  const desktop = useIsDesktop();
   const isLive = !!auth?.isSignedIn;
   // La autoridad de los datos natales es el documento REMOTO, no el perfil
   // local: el perfil local cae a `createFallbackProfile()` y así se llegó a
@@ -42,20 +46,42 @@ export default function PerfilScreen() {
   const birth = resolveBirthInfo({ doc: remote ?? null, resolved: !isLive || remote !== undefined });
 
   return (
-    <OrbitaScreen>
-      {/* El lienzo (ancho completo con gutters nativas en móvil, columna
-          centrada en escritorio) lo monta `OrbitaScreen` para todas sus
-          pantallas: acá ya no se repite. */}
+    // El Perfil es una columna de LECTURA, no una pantalla de composición: son
+    // datos, ajustes y links, no una pieza visual que quiera 1200px. El lienzo
+    // lo monta `OrbitaScreen` (y en escritorio web se queda sin el header
+    // interno, que duplicaba la marca de la navegación).
+    <OrbitaScreen canvas="reading">
       <>
-        <FullBleedHero kind="perfil">
-          {/* Sólo se muestra la línea con datos remotos COMPLETOS y verificados. */}
-          {birth.status === "complete" ? <MonoLine>{birth.line}</MonoLine> : null}
-        </FullBleedHero>
+        {/* Hero medido: alto fijo y ancho real del contenedor. Antes se
+            dimensionaba en porcentaje y en web podía quedar un rectángulo
+            negro del alto del hero, sin imagen.
+
+            En escritorio NO se dibuja. El Perfil es una columna de lectura de
+            720 sobre un fondo cósmico full-bleed: la banda quedaba como una
+            lámina rectangular con los bordes duros cortados contra ese fondo, y
+            leía como un error de maquetación más que como una portada. Sin
+            ella, el contenido editorial arranca limpio debajo de la
+            navegación. En móvil web y en nativo el hero sigue igual: ahí ocupa
+            el ancho completo y es el arranque de la pantalla. */}
+        {desktop ? null : (
+          <FullBleedHero kind="perfil" height={240}>
+            {/* Sólo se muestra la línea con datos remotos COMPLETOS y verificados. */}
+            {birth.status === "complete" ? <MonoLine>{birth.line}</MonoLine> : null}
+          </FullBleedHero>
+        )}
         {/* Con datos incompletos no se dibuja rueda ni se afirma que hay carta. */}
         {birth.status === "complete" ? <CartaCard /> : null}
         <Section style={{ paddingTop: orbita.spacing.lg }}>
           <Eyebrow>PERFIL</Eyebrow>
           <H2>Tu carta,{"\n"}tus datos.</H2>
+          {/* La línea de nacimiento vivía SOLO dentro del hero. Al sacarlo del
+              escritorio hay que conservar el dato acá — y sólo acá, para no
+              repetirlo en móvil, donde ya se lee al pie del hero. */}
+          {desktop && birth.status === "complete" ? (
+            <View style={styles.birthLine}>
+              <MonoLine>{birth.line}</MonoLine>
+            </View>
+          ) : null}
           {birth.status === "incomplete" ? (
             <Body bone>{birth.message}</Body>
           ) : (
@@ -284,6 +310,8 @@ function AccountSignedIn({
 }
 
 const styles = StyleSheet.create({
+  // Escritorio: la línea de nacimiento que en móvil va al pie del hero.
+  birthLine: { marginTop: orbita.spacing.md },
   deleteBtn: {
     alignSelf: "flex-start",
     borderColor: orbita.colors.danger,

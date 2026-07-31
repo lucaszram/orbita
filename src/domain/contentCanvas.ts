@@ -18,8 +18,17 @@
  * teléfono y en un monitor de 27".
  */
 
-/** Ancho máximo de la columna de contenido autenticado (escritorio). */
-export const CONTENT_CANVAS_MAX_WIDTH = 720;
+import { CANVAS_MAX_WIDTH } from "@/domain/webLayout";
+
+/**
+ * Ancho máximo de la COLUMNA DE LECTURA (escritorio).
+ *
+ * Ya no es el único tope del producto: las variantes del lienzo viven en
+ * `domain/webLayout` (`wide` 1200 · `reading` 720 · `immersive` sin tope). Este
+ * alias existe porque `reading` sigue siendo el default de todas las pantallas
+ * de texto y de todo el nativo.
+ */
+export const CONTENT_CANVAS_MAX_WIDTH = CANVAS_MAX_WIDTH.reading as 720;
 
 /**
  * Lado de un cuadrado (rueda, radar) a partir del ancho MEDIDO de su contenedor.

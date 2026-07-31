@@ -147,8 +147,12 @@ describe("carta.tsx — cableado anti-bloqueo", () => {
   });
 
   it("los siete capítulos largos se muestran intactos cuando la lectura está lista", () => {
-    assert.match(CARTA, /sectionsA\.map\(\(s, i\) => \(\s*<SectorBlock/);
-    assert.match(CARTA, /sectionsB\.map\(\(s, i\) => \(\s*<SectorBlock/);
+    // Los capítulos se dibujan desde una sola función (`explicada`), montada
+    // con la primera y la segunda mitad. Antes eran dos bloques duplicados; el
+    // contenido y el corte son los mismos.
+    assert.match(CARTA, /chapters\.map\(\(s, i\) => \(\s*<SectorBlock key=\{s\.key\} s=\{s\} n=\{from \+ i\} \/>/);
+    assert.match(CARTA, /\{explicada\(sectionsA, 1, true\)\}/);
+    assert.match(CARTA, /\{explicada\(sectionsB, mid \+ 1, false\)\}/);
     assert.match(CARTA, /reading\?\.sections \?\? \[\]/);
   });
 });

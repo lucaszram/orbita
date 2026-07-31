@@ -9,10 +9,12 @@ import { useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useAction } from "convex/react";
 import { Body, Divider, Eyebrow, H2, H3, MonoLine, Note, OrbitaScreen, Section } from "@/components/orbita/kit";
+import { Column, Columns, ReadingBlock } from "@/components/orbita/Layout";
 import { FullBleedHero } from "@/components/orbita/ImmersiveHero";
 import { GuestState } from "@/components/orbita/GuestState";
 import { ErrorState, MinimalLoading } from "@/components/orbita/states";
 import { sessionPhase } from "@/domain/screenPhase";
+import { useIsDesktop } from "@/hooks/useLayoutMode";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { useCanonicalLocalDate } from "@/hooks/useDailyContext";
 import { proposedApi, type TransitDetailPayload } from "@/services/appRefs";
@@ -44,30 +46,40 @@ export function TransitosScreen() {
   // carga mínima; sesión rota → error real.
   if (phase === "cargando") {
     return (
-      <OrbitaScreen>
+      <TransitosShell>
         <MinimalLoading />
-      </OrbitaScreen>
+      </TransitosShell>
     );
   }
   if (phase === "error") {
     return (
-      <OrbitaScreen>
+      <TransitosShell>
         <ErrorState onRetry={live.retryUser} />
-      </OrbitaScreen>
+      </TransitosShell>
     );
   }
   if (phase === "invitado") {
     return (
-      <OrbitaScreen>
+      <TransitosShell>
         <GuestState
           eyebrow="TRÁNSITOS"
           title={"El cielo se lee\nsobre tu carta."}
           body="Los tránsitos de hoy se cruzan con tu carta natal real. Creá tu cuenta o entrá para leer el cielo sobre tus datos."
         />
-      </OrbitaScreen>
+      </TransitosShell>
     );
   }
   return <TransitosLive />;
+}
+
+/**
+ * Shell único de la pantalla: TODOS los estados (carga, error, invitado, cielo
+ * real) pasan por acá, así que ninguno se queda fuera del lienzo. El lienzo es
+ * `wide`: en escritorio la escena va full-bleed y la lectura se compone en dos
+ * columnas (Figma `271:70`).
+ */
+function TransitosShell({ children }: { children: React.ReactNode }) {
+  return <OrbitaScreen canvas="wide">{children}</OrbitaScreen>;
 }
 
 /**
@@ -104,16 +116,16 @@ function TransitosLive() {
 
   if (!localDate || state.kind === "loading") {
     return (
-      <OrbitaScreen>
+      <TransitosShell>
         <MinimalLoading />
-      </OrbitaScreen>
+      </TransitosShell>
     );
   }
   if (state.kind === "error") {
     return (
-      <OrbitaScreen>
+      <TransitosShell>
         <ErrorState onRetry={() => setAttempt((a) => a + 1)} />
-      </OrbitaScreen>
+      </TransitosShell>
     );
   }
   return <TransitosView data={state.data} />;
@@ -126,73 +138,113 @@ function TransitosLive() {
  * se oculta. Antes esta pantalla cortaba en DESTACADO y quedaba a medio terminar.
  */
 function TransitosView({ data }: { data: TransitDetailPayload }) {
+  const desktop = useIsDesktop();
   const porArea = data.porArea ?? [];
   const cadenceCaption = humanCopy(data.frequency.label);
   const windowNote = humanCopy(data.window.note);
+
+  // El mismo contenido, una sola vez. Lo único que cambia entre móvil y
+  // escritorio es CÓMO se reparte: en móvil las cuatro piezas van una debajo de
+  // otra (idéntico a hoy y al nativo); en escritorio la lectura + la cadencia
+  // quedan enfrentadas a la Tierra + la ventana (Figma `271:70`).
+  const lectura = (
+    <ReadingBlock>
+      <Body>{data.reading.plain}</Body>
+      <Note>Basado en tus datos de nacimiento y el cielo de hoy.</Note>
+    </ReadingBlock>
+  );
+
+  const cadencia = (
+    <>
+      <Divider />
+      <Eyebrow>CADA CUÁNTO PASA</Eyebrow>
+      <View style={styles.timeline}>
+        <View style={styles.timelineTrack} />
+        {data.frequency.timeline.map((p) => (
+          <View key={p.label} style={styles.timelineStop}>
+            <View style={[styles.timelineDot, p.current && styles.timelineDotCurrent]} />
+            <Text style={[styles.timelineLabel, p.current && styles.timelineLabelCurrent]}>
+              {cleanLabel(p.label)}
+            </Text>
+          </View>
+        ))}
+      </View>
+      {cadenceCaption ? <Note>{cadenceCaption}</Note> : null}
+    </>
+  );
+
+  const tierra = (
+    <>
+      <Divider />
+      <Eyebrow>CÓMO SE JUEGA EN LA TIERRA</Eyebrow>
+      <H3>{data.earth.headline}</H3>
+      <View style={{ height: orbita.spacing.md }} />
+      {data.earth.suggestions.map((s) => (
+        <View key={s} style={styles.suggestion}>
+          <Text style={styles.check}>✓</Text>
+          <Text style={styles.suggestionText}>{s}</Text>
+        </View>
+      ))}
+    </>
+  );
+
+  const ventana = (
+    <>
+      {porArea.length > 0 ? (
+        <>
+          <Divider />
+          <Eyebrow>POR ÁREA</Eyebrow>
+          {porArea.map((a) => (
+            <View key={a.title} style={styles.areaRow}>
+              <Text style={styles.areaTitle}>{a.title}</Text>
+              <Body>{a.body}</Body>
+            </View>
+          ))}
+        </>
+      ) : null}
+
+      {windowNote ? (
+        <>
+          <View style={{ height: orbita.spacing.xl }} />
+          <Note>{`Ventana ${cleanLabel(data.window.label)} · ${windowNote}`}</Note>
+        </>
+      ) : null}
+    </>
+  );
+
   return (
-    <OrbitaScreen>
-      <FullBleedHero kind="transitos">
-        <Text style={styles.skyLabel}>HOY EN EL CIELO</Text>
-        <MonoLine>{`${data.scene.transitingBody.label}  ·  ${data.aspect.type}  ·  ${data.scene.natalPoint.label}`}</MonoLine>
-      </FullBleedHero>
+    <TransitosShell>
+      {/* La escena: banda full-bleed en móvil, tarjeta contenida en escritorio
+          (como el frame). El asset se dibuja con ancho y alto MEDIDOS. */}
+      <View style={desktop ? styles.sceneWrap : undefined}>
+        <FullBleedHero kind="transitos" rounded={desktop}>
+          <Text style={styles.skyLabel}>HOY EN EL CIELO</Text>
+          <MonoLine>{`${data.scene.transitingBody.label}  ·  ${data.aspect.type}  ·  ${data.scene.natalPoint.label}`}</MonoLine>
+        </FullBleedHero>
+      </View>
 
       <Section style={{ paddingTop: orbita.spacing.lg }}>
         <Eyebrow>TRÁNSITOS DE HOY</Eyebrow>
         <H2>{data.title}</H2>
-        <Body>{data.reading.plain}</Body>
-        <Note>Basado en tus datos de nacimiento y el cielo de hoy.</Note>
-
-        <Divider />
-        <Eyebrow>CADA CUÁNTO PASA</Eyebrow>
-        <View style={styles.timeline}>
-          <View style={styles.timelineTrack} />
-          {data.frequency.timeline.map((p) => (
-            <View key={p.label} style={styles.timelineStop}>
-              <View style={[styles.timelineDot, p.current && styles.timelineDotCurrent]} />
-              <Text style={[styles.timelineLabel, p.current && styles.timelineLabelCurrent]}>
-                {cleanLabel(p.label)}
-              </Text>
-            </View>
-          ))}
-        </View>
-        {cadenceCaption ? <Note>{cadenceCaption}</Note> : null}
-
-        <Divider />
-        <Eyebrow>CÓMO SE JUEGA EN LA TIERRA</Eyebrow>
-        <H3>{data.earth.headline}</H3>
-        <View style={{ height: orbita.spacing.md }} />
-        {data.earth.suggestions.map((s) => (
-          <View key={s} style={styles.suggestion}>
-            <Text style={styles.check}>✓</Text>
-            <Text style={styles.suggestionText}>{s}</Text>
-          </View>
-        ))}
-
-        {porArea.length > 0 ? (
-          <>
-            <Divider />
-            <Eyebrow>POR ÁREA</Eyebrow>
-            {porArea.map((a) => (
-              <View key={a.title} style={styles.areaRow}>
-                <Text style={styles.areaTitle}>{a.title}</Text>
-                <Body>{a.body}</Body>
-              </View>
-            ))}
-          </>
-        ) : null}
-
-        {windowNote ? (
-          <>
-            <View style={{ height: orbita.spacing.xl }} />
-            <Note>{`Ventana ${cleanLabel(data.window.label)} · ${windowNote}`}</Note>
-          </>
-        ) : null}
+        <Columns>
+          <Column>
+            {lectura}
+            {cadencia}
+          </Column>
+          <Column>
+            {tierra}
+            {ventana}
+          </Column>
+        </Columns>
       </Section>
-    </OrbitaScreen>
+    </TransitosShell>
   );
 }
 
 const styles = StyleSheet.create({
+  // En escritorio la escena es una tarjeta contenida (Figma `271:70`), con las
+  // mismas gutters que el texto que la rodea.
+  sceneWrap: { paddingHorizontal: orbita.spacing.gutter, paddingTop: orbita.spacing.xl },
   skyLabel: {
     color: orbita.colors.copper,
     fontFamily: orbita.fonts.monoMedium,

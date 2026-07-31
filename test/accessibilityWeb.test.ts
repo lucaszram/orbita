@@ -156,12 +156,15 @@ test("el error de cada formulario se anuncia solo", () => {
 
 // --- El contenido no queda debajo de la barra inferior ----------------------
 
-test("el shell web reserva el alto de la barra fija", () => {
-  // La barra inferior es `position: fixed`: sin el colchón tapaba el final del
-  // contenido en móvil. Es una invariante de PR 1 y sigue vigente.
+test("el shell web reserva el alto de la barra fija como PADDING del contenido", () => {
+  // La barra inferior es `position: fixed`: sin reservar espacio tapaba el
+  // final del contenido en móvil. Antes la reserva era un `View` suelto al
+  // final SIN fondo, así que dejaba una banda blanca del documento justo
+  // encima de la barra. Ahora es padding del contenido, que hereda el negro.
   const shell = sinComentarios(leer("src/components/web/web-app-shell.tsx"));
   assert.match(shell, /WEB_BOTTOM_NAV_HEIGHT/);
-  assert.match(shell, /bottomSpacer: \{ height: WEB_BOTTOM_NAV_HEIGHT \}/);
+  assert.match(shell, /paddingBottom: `calc\(\$\{WEB_BOTTOM_NAV_HEIGHT\}px \+ env\(safe-area-inset-bottom\)\)`/);
+  assert.doesNotMatch(shell, /bottomSpacer/, "el colchón suelto sin fondo no puede volver");
   const nav = sinComentarios(leer("src/components/web/web-nav.tsx"));
   assert.match(nav, /paddingBottom: "env\(safe-area-inset-bottom\)"/, "falta el área segura del iPhone");
 });

@@ -4,11 +4,13 @@
  * Vivía dentro de `app/reading/valores.tsx`, así que la web mantenía su propia
  * versión en paralelo y las dos derivaban.
  */
+import type { ReactNode } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { useQuery } from "convex/react";
 import { DetailScreen } from "@/components/home/DetailScreen";
 import { MeasuredSquare } from "@/components/orbita/ContentCanvas";
+import { Column, Columns } from "@/components/orbita/Layout";
 import { H2, Note } from "@/components/orbita/kit";
 import { GuestState } from "@/components/orbita/GuestState";
 import { EmptyState, ErrorState, LoadingState, MinimalLoading } from "@/components/orbita/states";
@@ -29,52 +31,66 @@ export function ValoresScreen() {
   // Sin mocks: invitado confirmado → estado honesto; sesión resolviendo → carga mínima.
   if (phase === "cargando") {
     return (
-      <DetailScreen eyebrow="Mapa de valores">
+      <ValoresShell>
         <MinimalLoading />
-      </DetailScreen>
+      </ValoresShell>
     );
   }
   if (phase === "error") {
     return (
-      <DetailScreen eyebrow="Mapa de valores">
+      <ValoresShell>
         <ErrorState onRetry={live.retryUser} />
-      </DetailScreen>
+      </ValoresShell>
     );
   }
   if (phase === "invitado") {
     // Sin mocks: estado honesto de invitado, nunca el radar demo como si fuera tuyo.
     return (
-      <DetailScreen eyebrow="Mapa de valores">
+      <ValoresShell>
         <GuestState
           eyebrow="MAPA DE VALORES"
           title={"Tu mapa sale\nde tu carta."}
           body="Qué te impulsa y qué te pesa se deriva de tu carta natal real. Se calcula con tu cuenta."
         />
-      </DetailScreen>
+      </ValoresShell>
     );
   }
   return <ValoresLive />;
+}
+
+/**
+ * Shell único de la pantalla: TODOS los estados (carga, error, invitado, vacío,
+ * mapa real) pasan por acá, así que ninguno se queda con un lienzo distinto al
+ * de la pantalla. La variante es `wide`: en escritorio el radar queda a la
+ * izquierda y las referencias a la derecha (Figma `260:2`).
+ */
+function ValoresShell({ children }: { children: ReactNode }) {
+  return (
+    <DetailScreen eyebrow="Mapa de valores" canvas="wide">
+      {children}
+    </DetailScreen>
+  );
 }
 
 function ValoresLive() {
   const values = useQuery(appApi.charts.valuesMap, {});
   if (values === undefined) {
     return (
-      <DetailScreen eyebrow="Mapa de valores">
+      <ValoresShell>
         <LoadingState />
-      </DetailScreen>
+      </ValoresShell>
     );
   }
   if (values === null) {
     return (
-      <DetailScreen eyebrow="Mapa de valores">
+      <ValoresShell>
         <EmptyState
           title="Todavía no hay mapa"
           body="Completá tu fecha, hora y lugar de nacimiento para calcular tu mapa de valores."
           cta="COMPLETAR MIS DATOS"
           onCta={() => router.push("/(tabs)/perfil")}
         />
-      </DetailScreen>
+      </ValoresShell>
     );
   }
   return <ValoresView payload={values} />;
@@ -93,47 +109,54 @@ function MiniBar({ value, color }: { value: number; color: string }) {
 
 function ValoresView({ payload }: { payload: ValuesMapPayload }) {
   return (
-    <DetailScreen eyebrow="Mapa de valores">
+    // En móvil `Columns` no hace nada y todo apila en el mismo orden de hoy.
+    <ValoresShell>
       <H2>Qué te impulsa,{"\n"}qué te pesa.</H2>
 
-      {/* El lado sale del contenedor MEDIDO, no de `useWindowDimensions()`: en
-          web el ancho de la ventana no es el ancho de esta columna, así que el
-          radar salía enorme a 700px y clavado en el tope a 1400px. */}
-      <View style={styles.radarWrap}>
-        <MeasuredSquare max={345}>{(size) => <Radar payload={payload} size={size} />}</MeasuredSquare>
-      </View>
+      <Columns>
+        <Column>
+          {/* El lado sale del contenedor MEDIDO, no de `useWindowDimensions()`:
+              en web el ancho de la ventana no es el ancho de esta columna, así
+              que el radar salía enorme a 700px y clavado en el tope a 1400px. */}
+          <View style={styles.radarWrap}>
+            <MeasuredSquare max={345}>{(size) => <Radar payload={payload} size={size} />}</MeasuredSquare>
+          </View>
+        </Column>
 
-      <View style={styles.legend}>
-        <View style={[styles.swatch, { backgroundColor: COPPER }]} />
-        <Text style={styles.legendLabel}>ARMONÍA</Text>
-        <View style={{ width: orbita.spacing.xl }} />
-        <View style={[styles.swatch, { backgroundColor: BLUE }]} />
-        <Text style={styles.legendLabel}>TENSIÓN</Text>
-      </View>
+        <Column>
+          <View style={styles.legend}>
+            <View style={[styles.swatch, { backgroundColor: COPPER }]} />
+            <Text style={styles.legendLabel}>ARMONÍA</Text>
+            <View style={{ width: orbita.spacing.xl }} />
+            <View style={[styles.swatch, { backgroundColor: BLUE }]} />
+            <Text style={styles.legendLabel}>TENSIÓN</Text>
+          </View>
 
-      <View style={styles.cards}>
-        <View style={styles.card}>
-          <Text style={styles.cardLabel}>TE IMPULSA</Text>
-          {payload.topDrivers.map((d) => (
-            <View key={d.label} style={styles.cardRow}>
-              <Text style={styles.cardItem}>{d.label}</Text>
-              <MiniBar value={d.value} color={COPPER} />
+          <View style={styles.cards}>
+            <View style={styles.card}>
+              <Text style={styles.cardLabel}>TE IMPULSA</Text>
+              {payload.topDrivers.map((d) => (
+                <View key={d.label} style={styles.cardRow}>
+                  <Text style={styles.cardItem}>{d.label}</Text>
+                  <MiniBar value={d.value} color={COPPER} />
+                </View>
+              ))}
             </View>
-          ))}
-        </View>
-        <View style={styles.card}>
-          <Text style={styles.cardLabel}>TE PESA</Text>
-          {payload.topStressors.map((d) => (
-            <View key={d.label} style={styles.cardRow}>
-              <Text style={styles.cardItem}>{d.label}</Text>
-              <MiniBar value={d.value} color={BLUE} />
+            <View style={styles.card}>
+              <Text style={styles.cardLabel}>TE PESA</Text>
+              {payload.topStressors.map((d) => (
+                <View key={d.label} style={styles.cardRow}>
+                  <Text style={styles.cardItem}>{d.label}</Text>
+                  <MiniBar value={d.value} color={BLUE} />
+                </View>
+              ))}
             </View>
-          ))}
-        </View>
-      </View>
+          </View>
 
-      <Note>{payload.note}</Note>
-    </DetailScreen>
+          <Note>{payload.note}</Note>
+        </Column>
+      </Columns>
+    </ValoresShell>
   );
 }
 

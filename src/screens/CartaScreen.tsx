@@ -11,6 +11,7 @@ import { router } from "expo-router";
 import { useAction, useQuery } from "convex/react";
 
 import { Body, Divider, Eyebrow, H2, Note, OrbitaScreen, Pill, Section, TabStrip } from "@/components/orbita/kit";
+import { Column, Columns, ReadingBlock } from "@/components/orbita/Layout";
 import { MeasuredSquare } from "@/components/orbita/ContentCanvas";
 import { GuestState } from "@/components/orbita/GuestState";
 import { NatalWheel } from "@/components/orbita/NatalWheel";
@@ -21,6 +22,7 @@ import { personalChartGate } from "@/domain/natalChartGate";
 import { Radar } from "@/components/orbita/Radar";
 import { cartaGate, readingBlockPhase, type ReadingBlockPhase } from "@/domain/cartaNatalCarga";
 import { sessionPhase } from "@/domain/screenPhase";
+import { useIsDesktop } from "@/hooks/useLayoutMode";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import {
   appApi,
@@ -74,11 +76,16 @@ export function CartaScreen() {
 
 /**
  * Shell de la pantalla. El lienzo de contenido lo monta `OrbitaScreen` para
- * TODAS sus pantallas (ancho completo con las gutters nativas en móvil, columna
- * centrada con ancho máximo en escritorio), así que acá ya no se repite.
+ * TODAS sus pantallas, así que acá ya no se repite. Variante `wide`: en
+ * escritorio la rueda y la interpretación se enfrentan en dos columnas
+ * (Figma `252:2`); en móvil apilan igual que hoy.
  */
 function CartaShell({ children }: { children: ReactNode }) {
-  return <OrbitaScreen right="Carta">{children}</OrbitaScreen>;
+  return (
+    <OrbitaScreen right="Carta" canvas="wide">
+      {children}
+    </OrbitaScreen>
+  );
 }
 
 function CartaLive() {
@@ -257,27 +264,34 @@ function CartaView({
   onRetryReading: () => void;
   values: ValuesMapPayload | null;
 }) {
+  const desktop = useIsDesktop();
   const [view, setView] = useState<"circulo" | "tabla">("circulo");
   const [selected, setSelected] = useState<string | undefined>();
   const sel = payload.placements.find((p) => p.key === selected);
   const aspects = payload.mainAspects ?? payload.aspects ?? [];
   const angular = payload.houses.filter((h) => [1, 4, 7, 10].includes(h.house)).sort((a, b) => a.house - b.house);
-  // La explicación completa va VISIBLE abajo (sector por sector). El mapa de valores
-  // se intercala en el medio.
+  // La explicación completa va VISIBLE (sector por sector). En móvil el mapa de
+  // valores se intercala en el medio, como hasta ahora.
   const sections = reading?.sections ?? [];
   const mid = Math.ceil(sections.length / 2);
   const sectionsA = sections.slice(0, mid);
   const sectionsB = sections.slice(mid);
 
-  return (
-    <CartaShell>
-      <Section style={{ paddingBottom: orbita.spacing.lg }}>
-        <Eyebrow>Tu carta natal</Eyebrow>
-        <H2>Tu mapa de origen.</H2>
-      </Section>
+  // --- Piezas -------------------------------------------------------------
+  // Las mismas en las dos composiciones: no hay una Carta de web y otra de
+  // teléfono, hay una sola carta repartida de dos maneras.
 
-      <CartaTriad triad={payload.triad} />
+  const encabezado = (
+    <Section style={{ paddingBottom: orbita.spacing.lg }}>
+      <Eyebrow>Tu carta natal</Eyebrow>
+      <H2>Tu mapa de origen.</H2>
+    </Section>
+  );
 
+  const triada = <CartaTriad triad={payload.triad} />;
+
+  const rueda = (
+    <>
       <Section style={{ paddingTop: orbita.spacing.lg, paddingBottom: 0 }}>
         <TabStrip
           tabs={[{ key: "circulo", label: "CÍRCULO" }, { key: "tabla", label: "TABLA" }]}
@@ -288,7 +302,8 @@ function CartaView({
 
       {view === "circulo" ? (
         <View style={styles.wheelWrap}>
-          {/* El lado sale del CONTENEDOR medido, no del ancho de la ventana. */}
+          {/* El lado sale del CONTENEDOR medido, nunca del ancho de la ventana:
+              en escritorio ese contenedor es esta columna, no el lienzo. */}
           <MeasuredSquare max={360}>
             {(size) => (
               <NatalWheel
@@ -314,11 +329,25 @@ function CartaView({
           ))}
         </Section>
       )}
+    </>
+  );
 
-      {/* Toda la explicación, VISIBLE (sector por sector). Mientras el LLM
-          genera (40–61 s) o si falló, el bloque resuelve INLINE: la carta
-          nunca desaparece por la lectura. */}
-      {readingPhase !== "listo" ? (
+  const mapaDeValores = values ? (
+    <Section style={{ paddingTop: orbita.spacing.xl }}>
+      <Eyebrow>Mapa de valores</Eyebrow>
+      <Body>Qué te impulsa y qué te pesa, leído desde tu carta.</Body>
+      <View style={styles.radarWrap}>
+        <MeasuredSquare max={340}>{(size) => <Radar payload={values} size={size} />}</MeasuredSquare>
+      </View>
+      <Body>{values.note}</Body>
+    </Section>
+  ) : null;
+
+  /** "Tu carta, explicada": estado inline (carga / plan / error) o los capítulos. */
+  const explicada = (chapters: PersonalitySection[], from: number, titled: boolean) => {
+    if (readingPhase !== "listo") {
+      if (!titled) return null;
+      return (
         <Section style={{ paddingTop: orbita.spacing.xxl }}>
           <Eyebrow>Tu carta, explicada</Eyebrow>
           {readingPhase === "cargando" ? (
@@ -347,70 +376,102 @@ function CartaView({
             </View>
           )}
         </Section>
-      ) : sectionsA.length > 0 ? (
-        <Section style={{ paddingTop: orbita.spacing.xxl }}>
-          <Eyebrow>Tu carta, explicada</Eyebrow>
-          {sectionsA.map((s, i) => (
-            <SectorBlock key={s.key} s={s} n={i + 1} />
-          ))}
-        </Section>
-      ) : null}
-
-      {/* Mapa de valores — en el medio de la explicación. */}
-      {values ? (
-        <Section style={{ paddingTop: orbita.spacing.xl }}>
-          <Eyebrow>Mapa de valores</Eyebrow>
-          <Body>Qué te impulsa y qué te pesa, leído desde tu carta.</Body>
-          <View style={styles.radarWrap}>
-            <MeasuredSquare max={340}>{(size) => <Radar payload={values} size={size} />}</MeasuredSquare>
-          </View>
-          <Body>{values.note}</Body>
-        </Section>
-      ) : null}
-
-      {sectionsB.length > 0 ? (
-        <Section style={{ paddingTop: orbita.spacing.xl }}>
-          {sectionsB.map((s, i) => (
-            <SectorBlock key={s.key} s={s} n={mid + i + 1} />
-          ))}
-        </Section>
-      ) : null}
-
-      {aspects.length > 0 ? (
-        <Section style={{ paddingTop: orbita.spacing.xxl }}>
-          <Eyebrow>Aspectos principales</Eyebrow>
-          {aspects.map((a, i) => (
-            <AspectRow key={i} a={a} />
-          ))}
-        </Section>
-      ) : null}
-
-      {angular.length > 0 ? (
-        <Section style={{ paddingTop: orbita.spacing.xxl }}>
-          <Eyebrow>Casas angulares</Eyebrow>
-          {angular.map((h) => (
-            <View key={h.house} style={styles.houseRow}>
-              <Text style={styles.houseNum}>{`Casa ${h.house}`}</Text>
-              <View style={styles.houseBody}>
-                <Text style={styles.houseSign}>{h.sign}</Text>
-                {h.theme ? <Text style={styles.houseTheme}>{h.theme}</Text> : null}
-              </View>
-            </View>
-          ))}
-        </Section>
-      ) : null}
-
-      <Section style={{ paddingTop: orbita.spacing.xxl }}>
-        <Divider style={{ marginTop: 0 }} />
-        <View style={styles.links}>
-          <LinkRow label="TRÁNSITOS DE HOY" onPress={() => router.push("/(tabs)/transitos")} />
-        </View>
-        <Note>{payload.accuracy}</Note>
-        {payload.limitations.map((l) => (
-          <Note key={l}>{l}</Note>
+      );
+    }
+    if (chapters.length === 0) return null;
+    return (
+      <Section style={{ paddingTop: titled ? orbita.spacing.xxl : orbita.spacing.xl }}>
+        {titled ? <Eyebrow>Tu carta, explicada</Eyebrow> : null}
+        {chapters.map((s, i) => (
+          <SectorBlock key={s.key} s={s} n={from + i} />
         ))}
-        {reading ? <Note>{reading.disclaimer}</Note> : null}
       </Section>
+    );
+  };
+
+  const aspectos =
+    aspects.length > 0 ? (
+      <Section style={{ paddingTop: orbita.spacing.xxl }}>
+        <Eyebrow>Aspectos principales</Eyebrow>
+        {aspects.map((a, i) => (
+          <AspectRow key={i} a={a} />
+        ))}
+      </Section>
+    ) : null;
+
+  const casas =
+    angular.length > 0 ? (
+      <Section style={{ paddingTop: orbita.spacing.xxl }}>
+        <Eyebrow>Casas angulares</Eyebrow>
+        {angular.map((h) => (
+          <View key={h.house} style={styles.houseRow}>
+            <Text style={styles.houseNum}>{`Casa ${h.house}`}</Text>
+            <View style={styles.houseBody}>
+              <Text style={styles.houseSign}>{h.sign}</Text>
+              {h.theme ? <Text style={styles.houseTheme}>{h.theme}</Text> : null}
+            </View>
+          </View>
+        ))}
+      </Section>
+    ) : null;
+
+  const cierre = (
+    <Section style={{ paddingTop: orbita.spacing.xxl }}>
+      <Divider style={{ marginTop: 0 }} />
+      <View style={styles.links}>
+        <LinkRow label="TRÁNSITOS DE HOY" onPress={() => router.push("/(tabs)/transitos")} />
+      </View>
+      <Note>{payload.accuracy}</Note>
+      {payload.limitations.map((l) => (
+        <Note key={l}>{l}</Note>
+      ))}
+      {reading ? <Note>{reading.disclaimer}</Note> : null}
+    </Section>
+  );
+
+  // --- Composición --------------------------------------------------------
+
+  if (!desktop) {
+    // Móvil y nativo: EXACTAMENTE el mismo orden de siempre. La composición de
+    // escritorio no reordena la pantalla aprobada del teléfono.
+    return (
+      <CartaShell>
+        {encabezado}
+        {triada}
+        {rueda}
+        {explicada(sectionsA, 1, true)}
+        {mapaDeValores}
+        {explicada(sectionsB, mid + 1, false)}
+        {aspectos}
+        {casas}
+        {cierre}
+      </CartaShell>
+    );
+  }
+
+  // Escritorio (Figma `252:2`): la carta dibujada a la izquierda —rueda/tabla y
+  // radar, las dos piezas medidas por su contenedor—, la interpretación a la
+  // derecha. Los capítulos largos van abajo, a ancho de LECTURA: a 1200px de
+  // ancho un párrafo de siete líneas no se lee.
+  return (
+    <CartaShell>
+      {encabezado}
+      <Columns gap={0}>
+        <Column>
+          {rueda}
+          {mapaDeValores}
+        </Column>
+        <Column>
+          {triada}
+          {aspectos}
+          {casas}
+          {cierre}
+        </Column>
+      </Columns>
+      <ReadingBlock>
+        {explicada(sectionsA, 1, true)}
+        {explicada(sectionsB, mid + 1, false)}
+      </ReadingBlock>
     </CartaShell>
   );
 }

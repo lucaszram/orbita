@@ -21,6 +21,7 @@ import {
 } from "@/components/home/sections";
 import { useMutation, useQuery } from "convex/react";
 import { ContentCanvas } from "@/components/orbita/ContentCanvas";
+import { Column, Columns } from "@/components/orbita/Layout";
 import { Eyebrow, InsightRow, Section } from "@/components/orbita/kit";
 import { GuestState } from "@/components/orbita/GuestState";
 import { useNotify } from "@/components/orbita/ConfirmHost";
@@ -29,6 +30,7 @@ import { bodyCode } from "@/domain/astroSymbols";
 import { mapNatalChart } from "@/domain/natalChart";
 import { lastNDaysFrom } from "@/domain/dateStrip";
 import { useCanonicalLocalDate } from "@/hooks/useDailyContext";
+import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { useDailyGuide } from "@/services/dailyGuideStore";
 import { markFirstRun, useFirstRun } from "@/services/firstRun";
 import { CartaDelDia } from "@/components/home/CartaDelDia";
@@ -37,12 +39,15 @@ import { useAppState } from "@/hooks/useAppState";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
 import { useRequireProfile } from "@/hooks/useRequireProfile";
+import { showsScreenHeader } from "@/domain/webLayout";
 import { HomeTopic, Topic, Triad } from "@/domain/types";
 import { appApi, proposedApi, type DailyGuidePayload, type NatalChartPayload } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
 
 // Códigos monocromos (ver `domain/astroSymbols`): los glifos Unicode caían al
 // font de emoji en web y Android.
+const IS_WEB = process.env.EXPO_OS === "web";
+
 const TRIAD_GLYPH = {
   sol: bodyCode({ key: "sun" }),
   luna: bodyCode({ key: "moon" }),
@@ -84,6 +89,11 @@ export function HomeScreen() {
   const knownChartDoc = chartDoc !== undefined ? chartDoc : chartDocRef.current;
   const fontsLoaded = useOrbitaFonts();
   const insets = useSafeAreaInsets();
+  const mode = useLayoutMode();
+  const desktop = mode === "desktop";
+  // En escritorio web la navegación del shell ya pone la marca: el header
+  // interno era una segunda barra ÓRBITA debajo de la primera.
+  const showHeader = showsScreenHeader({ web: IS_WEB, mode });
   const [activeTopic, setActiveTopic] = useState<Topic | null>("amor");
 
   // Guía diaria real, deduplicada por (usuario, fecha) FUERA del componente: un
@@ -199,6 +209,25 @@ export function HomeScreen() {
   const sessionPending = isAuthLoading;
   const dayReady = dailyState.status === "ready" && chartReady;
 
+  // ¿Se llegó a montar el bloque compuesto (hero + guía + áreas + lectura
+  // larga)? En cualquier otro caso —invitado, carga, error, día incompleto—
+  // "También hoy" va al final, que es su lugar de siempre.
+  const composed = !sessionPending && !userError && !guest && dayReady && heroTriad !== null;
+
+  // "También hoy" sólo viaja en la columna de escritorio DESPUÉS del reveal.
+  //
+  // El bloque compuesto se monta igual antes de sacar la carta, pero atenuado:
+  // vive dentro del velo (`styles.veiled`, opacidad 0.12 y `pointerEvents:
+  // "none"`). Meter ahí los destinos secundarios los dejaba casi invisibles y
+  // sin poder tocarse hasta hacer el ritual, mientras que en móvil se ven y se
+  // tocan normalmente porque están al final, fuera del velo. Antes del reveal
+  // la sección va al cierre en las dos superficies.
+  //
+  // Es UNA sola condición y las dos ramas la usan invertida: así la sección no
+  // puede duplicarse (se renderizaba en la columna Y al final, porque en móvil
+  // `Column` es transparente) ni desaparecer.
+  const tambienHoyEnColumna = desktop && composed && revealed;
+
   if (!isReady || !profile || !fontsLoaded) {
     return <View style={styles.screen} />;
   }
@@ -214,6 +243,25 @@ export function HomeScreen() {
     notify("Guardado", "Tu lectura de hoy quedó en guardadas.");
   }
 
+  // Destinos secundarios. Es una pieza, no un bloque suelto al final: en
+  // escritorio acompaña a la lectura larga en la segunda columna.
+  const tambienHoy = (
+    <Section style={styles.more}>
+      <Eyebrow>TAMBIÉN HOY</Eyebrow>
+      <InsightRow title="Fase lunar y calendario" body="El calendario lunar · el clima del mes, día a día" onPress={() => router.push("/reading/luna")} />
+      <InsightRow
+        title="Tu carta, leída como carácter"
+        body="Tu carta natal · qué significa cada planeta"
+        onPress={() => router.push("/(tabs)/carta")}
+      />
+      <InsightRow
+        title="Qué te impulsa, qué te pesa"
+        body="Mapa de valores · una foto, no una sentencia"
+        onPress={() => router.push("/reading/valores")}
+      />
+    </Section>
+  );
+
   return (
     <View style={styles.screen}>
       <HomeBackdrop />
@@ -225,8 +273,8 @@ export function HomeScreen() {
         {/* Mismo lienzo que el resto de la app autenticada: ancho completo con
             las gutters nativas en móvil, columna centrada de 720 en escritorio.
             El fondo (`HomeBackdrop`) queda full-bleed detrás. */}
-        <ContentCanvas>
-        <HomeHeader />
+        <ContentCanvas variant="wide">
+        {showHeader ? <HomeHeader /> : null}
         {/* La recepción de la carta natal ya no es un banner acá: es la ceremonia
             full-screen (/recepcion) a la que el onboarding entra antes de la Home. */}
 
@@ -341,22 +389,40 @@ export function HomeScreen() {
           />
           {/* Guía, áreas y lectura larga salen de la MISMA generación que el hero (una tesis
               del día, cuatro ángulos). Si el LLM no respondió, `daily` viene sin esos bloques
-              y cada sección cae al engine local — la Home nunca queda a medio llenar. */}
-          <DailyGuide reading={homeReading} guia={daily?.guia} />
-          <TopicsSection
-            reading={homeReading}
-            activeTopic={activeTopic}
-            onSelectTab={selectTab}
-            topics={daily?.topics}
-          />
-          <LongReadEnd
-            reading={homeReading}
-            onLeerAnalisis={() => router.push("/reading/long-read")}
-            onGuardar={guardar}
-            onHistorial={() => router.push("/reading/saved")}
-            lecturaLarga={daily?.lecturaLarga}
-            cierre={daily?.cierre}
-          />
+              y cada sección cae al engine local — la Home nunca queda a medio llenar.
+
+              La composición: en escritorio la guía queda enfrentada a las áreas y
+              la lectura larga a los destinos secundarios (Figma `225:10`). En
+              móvil `Columns` no hace nada y las cuatro secciones caen una debajo
+              de otra EN ESTE MISMO ORDEN: la Home de teléfono no cambia. */}
+          <Columns gap={0}>
+            <Column>
+              <DailyGuide reading={homeReading} guia={daily?.guia} />
+            </Column>
+            <Column>
+              <TopicsSection
+                reading={homeReading}
+                activeTopic={activeTopic}
+                onSelectTab={selectTab}
+                topics={daily?.topics}
+              />
+            </Column>
+          </Columns>
+          <Columns gap={0}>
+            <Column weight={3}>
+              <LongReadEnd
+                reading={homeReading}
+                onLeerAnalisis={() => router.push("/reading/long-read")}
+                onGuardar={guardar}
+                onHistorial={() => router.push("/reading/saved")}
+                lecturaLarga={daily?.lecturaLarga}
+                cierre={daily?.cierre}
+              />
+            </Column>
+            {/* En móvil `Column` es transparente: si esto no fuera condicional,
+                la sección saldría acá Y otra vez al final del scroll. */}
+            <Column weight={2}>{tambienHoyEnColumna ? tambienHoy : null}</Column>
+          </Columns>
           {/* Sintonía: OCULTA hasta que el backend derive la sintonía real de
               chart × tránsitos (hoy el componente solo tiene mock tipado y la
               app no muestra mocks — decisión de producto 2026-07-16). */}
@@ -366,20 +432,9 @@ export function HomeScreen() {
           </>
         )}
 
-        <Section style={styles.more}>
-          <Eyebrow>TAMBIÉN HOY</Eyebrow>
-          <InsightRow title="Fase lunar y calendario" body="El calendario lunar · el clima del mes, día a día" onPress={() => router.push("/reading/luna")} />
-          <InsightRow
-            title="Tu carta, leída como carácter"
-            body="Tu carta natal · qué significa cada planeta"
-            onPress={() => router.push("/(tabs)/carta")}
-          />
-          <InsightRow
-            title="Qué te impulsa, qué te pesa"
-            body="Mapa de valores · una foto, no una sentencia"
-            onPress={() => router.push("/reading/valores")}
-          />
-        </Section>
+        {/* Cierre del scroll. Exactamente la negación de la condición de la
+            columna: la sección se monta una sola vez, siempre. */}
+        {tambienHoyEnColumna ? null : tambienHoy}
         </ContentCanvas>
       </ScrollView>
     </View>
