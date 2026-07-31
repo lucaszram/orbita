@@ -54,3 +54,11 @@ export function requireWebAppUrl(mode = commerceMode()): string {
 export function automaticTaxEnabled(): boolean {
   return process.env.STRIPE_AUTOMATIC_TAX === "true";
 }
+
+export function requireStripeCheckoutDisplayName(): string {
+  const displayName = process.env.STRIPE_CHECKOUT_DISPLAY_NAME?.trim();
+  if (!displayName) {
+    throw new Error("STRIPE_CHECKOUT_DISPLAY_NAME not configured");
+  }
+  return displayName;
+}

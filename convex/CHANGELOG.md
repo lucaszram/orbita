@@ -1,5 +1,13 @@
 # Contrato — CHANGELOG
 
+## 2026-07-31 — Stripe Checkout: marca configurable por producto web
+
+- **Marca por despliegue:** la creación de Checkout envía `branding_settings.display_name` desde `STRIPE_CHECKOUT_DISPLAY_NAME`, una variable exclusiva del servidor. Para Órbita debe configurarse como `Órbita`; otra app que comparta la misma cuenta Stripe puede usar su propia marca sin cambiar la razón social global.
+- **Seguridad:** el cliente no puede enviar ni sobrescribir la marca. Si la variable falta, Checkout falla antes de crear una sesión.
+- **Compatibilidad:** no cambian schema, argumentos, retornos, precios, webhooks ni entitlement. Sólo la llamada `POST /checkout/sessions` fija la versión Stripe mínima que entiende el campo de branding; el resto de la integración conserva la versión de la cuenta.
+- **Descriptor de cobro:** el texto del extracto se configura en cada Product de Stripe (`statement_descriptor`), no se toma del frontend ni se modifica por sesión.
+- **Rollout:** configurar y verificar primero `STRIPE_CHECKOUT_DISPLAY_NAME=Órbita` y el descriptor `ORBITA` en Stripe test. Producción permanece en `COMMERCE_MODE=off` hasta el gate de lanzamiento.
+
 ## 2026-07-31 — Oferta Plus web: tres días de prueba anual
 
 - **Autoridad única:** `ANNUAL_TRIAL_DAYS = 3` gobierna tanto `payments.getWebOffer({})` como la creación de Stripe Checkout. El plan semanal conserva cero días de prueba.

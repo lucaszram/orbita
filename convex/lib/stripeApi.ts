@@ -1,9 +1,14 @@
 const STRIPE_API_BASE_URL = "https://api.stripe.com/v1";
 
+export const STRIPE_CHECKOUT_API_VERSION = "2025-09-30.clover";
+
 export type StripeFormValue = string | number | boolean | null | undefined;
 export type StripeForm = Record<string, StripeFormValue>;
 export type StripeFetch = (input: string, init: RequestInit) => Promise<Response>;
 export type StripePlan = "weekly" | "yearly";
+export type StripeRequestOptions = {
+  stripeVersion?: string;
+};
 
 export const ANNUAL_TRIAL_DAYS = 3;
 
@@ -39,6 +44,7 @@ export function buildStripeCheckoutForm(args: {
   priceId: string;
   clerkUserId: string;
   webUrl: string;
+  displayName: string;
   automaticTax?: boolean;
 }): StripeForm {
   // `lifetime` remains accepted only so old isolated unit tests and snapshots
@@ -54,6 +60,7 @@ export function buildStripeCheckoutForm(args: {
     client_reference_id: args.clerkUserId,
     "metadata[clerkUserId]": args.clerkUserId,
     "metadata[plan]": args.plan,
+    "branding_settings[display_name]": args.displayName,
     "automatic_tax[enabled]": args.automaticTax,
     ...(mode === "subscription"
       ? {
@@ -93,7 +100,11 @@ async function readJson(response: Response): Promise<unknown> {
 }
 
 export function createStripeApi(secretKey: string, fetchImpl: StripeFetch = fetch): {
-  post: <T>(path: string, fields: StripeForm) => Promise<T>;
+  post: <T>(
+    path: string,
+    fields: StripeForm,
+    options?: StripeRequestOptions
+  ) => Promise<T>;
   get: <T>(path: string) => Promise<T>;
 } {
   if (!secretKey.trim()) throw new Error("STRIPE_SECRET_KEY not configured");
@@ -101,39 +112,48 @@ export function createStripeApi(secretKey: string, fetchImpl: StripeFetch = fetc
   const request = async <T>(
     method: "GET" | "POST",
     path: string,
-    fields?: StripeForm
+    fields?: StripeForm,
+    options?: StripeRequestOptions
   ): Promise<T> => {
-      const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-      let response: Response;
-      try {
-        response = await fetchImpl(`${STRIPE_API_BASE_URL}${normalizedPath}`, {
-          method,
-          headers: {
-            Authorization: `Bearer ${secretKey}`,
-            ...(method === "POST"
-              ? { "Content-Type": "application/x-www-form-urlencoded" }
-              : {})
-          },
-          body: method === "POST" ? encodeStripeForm(fields ?? {}) : undefined
-        });
-      } catch {
-        throw new Error("Stripe API request failed");
-      }
+    const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+    let response: Response;
+    try {
+      response = await fetchImpl(`${STRIPE_API_BASE_URL}${normalizedPath}`, {
+        method,
+        headers: {
+          Authorization: `Bearer ${secretKey}`,
+          ...(method === "POST"
+            ? { "Content-Type": "application/x-www-form-urlencoded" }
+            : {}),
+          ...(options?.stripeVersion
+            ? { "Stripe-Version": options.stripeVersion }
+            : {})
+        },
+        body: method === "POST" ? encodeStripeForm(fields ?? {}) : undefined
+      });
+    } catch {
+      throw new Error("Stripe API request failed");
+    }
 
-      const payload = await readJson(response);
-      if (!response.ok) {
-        const detail = (stripeErrorMessage(payload) ?? response.statusText) || "Unknown Stripe error";
-        throw new Error(`Stripe API error (${response.status}): ${detail}`);
-      }
-      if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-        throw new Error("Stripe API returned an invalid response");
-      }
-      return payload as T;
+    const payload = await readJson(response);
+    if (!response.ok) {
+      const detail =
+        (stripeErrorMessage(payload) ?? response.statusText) ||
+        "Unknown Stripe error";
+      throw new Error(`Stripe API error (${response.status}): ${detail}`);
+    }
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      throw new Error("Stripe API returned an invalid response");
+    }
+    return payload as T;
   };
 
   return {
-    post: async <T>(path: string, fields: StripeForm): Promise<T> =>
-      await request<T>("POST", path, fields),
+    post: async <T>(
+      path: string,
+      fields: StripeForm,
+      options?: StripeRequestOptions
+    ): Promise<T> => await request<T>("POST", path, fields, options),
     get: async <T>(path: string): Promise<T> => await request<T>("GET", path)
   };
 }
