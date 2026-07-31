@@ -14,6 +14,7 @@ import {
   buildStripePortalForm,
   createStripeApi,
   requireStripeString,
+  trialDaysForPlan,
   type StripePlan
 } from "../lib/stripeApi";
 
@@ -115,7 +116,7 @@ function validatePrice(
     currency: payload.currency.toUpperCase(),
     unitAmount: payload.unit_amount,
     interval: args.interval,
-    trialDays: args.id === "yearly" ? 7 : 0
+    trialDays: trialDaysForPlan(args.id)
   };
 }
 
