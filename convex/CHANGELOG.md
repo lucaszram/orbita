@@ -1,5 +1,11 @@
 # Contrato — CHANGELOG
 
+## 2026-07-31 — Oferta Plus web: tres días de prueba anual
+
+- **Autoridad única:** `ANNUAL_TRIAL_DAYS = 3` gobierna tanto `payments.getWebOffer({})` como la creación de Stripe Checkout. El plan semanal conserva cero días de prueba.
+- **Compatibilidad:** no cambian schema, argumentos, retornos ni ids de planes; únicamente cambia el valor anual publicado y enviado a Stripe de siete a tres días.
+- **Rollout:** validar primero con precios y webhook Stripe test. Producción permanece con `COMMERCE_MODE=off` hasta completar el preview integrado, 24 horas estables y la aprobación explícita de Lucas.
+
 ## 2026-07-29 — Integridad natal: onboarding create-only y caches ligados a la carta vigente
 
 - **Onboarding:** `onboarding.completeBirthData(...)` conserva la misma firma, pero pasa a ser create-only e idempotente. Si la cuenta ya tiene datos natales distintos, falla con `ONBOARDING_BIRTH_DATA_CONFLICT`; las ediciones intencionales deben usar `birthData.upsertForCurrentUser({ ..., source: "profile" })`.

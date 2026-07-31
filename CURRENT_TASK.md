@@ -1,5 +1,15 @@
 # Current Task
 
+## Lanzamiento web — autoridad de prueba anual Plus (2026-07-31, Codex)
+
+**Objetivo:** alinear la oferta web y Stripe Checkout sobre una única prueba anual de tres días; el plan semanal no ofrece prueba.
+
+**Criterios de aceptación:** `getWebOffer` devuelve `trialDays: 3` para anual y `0` para semanal; Checkout envía `trial_period_days=3` sólo para anual; una sola constante evita divergencias; no cambian schema ni firmas públicas.
+
+**Ficha:** owner Codex; rama `codex/web-plus-trial`; territorio `convex/**`, tests y documentación contractual; base `origin/main` en `791d867`; cambio de contrato: no; riesgo alto por tocar la oferta y la creación de pagos; pruebas unitarias, suite completa, typecheck y diff check; rollout únicamente con Stripe test y preview integrado, manteniendo producción en `COMMERCE_MODE=off`; rollback por revert del PR o comercio apagado; fuera de alcance frontend, precios hardcodeados, credenciales, deploy y activación live.
+
+**Estado:** implementación backend completa. `ANNUAL_TRIAL_DAYS = 3` alimenta tanto la oferta como Checkout; semanal permanece sin prueba. La auditoría confirmó que el backend ya bloquea compras repetidas, valida sesión/customer, espera el webhook para confirmar Plus y deduplica eventos. Typecheck, prueba Stripe 6/6, suite completa 793/793 y `git diff --check` están verdes. Sin codegen porque no cambian schema, bindings ni firmas públicas. Producción no fue tocada. Follow-up frontend separado: Carta recibe `personalityReadingState.status="locked"` pero todavía no presenta la entrada a `/paywall`.
+
 ## Web launch — public preparation and validation CI (2026-07-31, Codex + Claude)
 
 **Objective:** make the public web surface truthful and launch-ready, and add validation-only CI, without changing payment behavior, backend contracts, native behavior, or production state.
