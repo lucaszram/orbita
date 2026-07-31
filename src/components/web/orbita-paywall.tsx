@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAction } from "convex/react";
-import { Link } from "expo-router";
+import { Link, useRouter } from "expo-router";
 import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { ImmersiveScreen } from "@/components/web/immersive-bg";
 import { RequireSession, WebNotice } from "@/components/web/require-session";
 import { WebLayoutProvider } from "@/components/web/web-layout-provider";
 import { WebNav } from "@/components/web/web-nav";
 import {
+  checkoutStartErrorKind,
   formatPlanPrice,
   offerPhase,
   planIntervalLabel,
@@ -114,9 +115,10 @@ function PaywallWithBackend() {
 
 function PlanPicker({ plans }: { plans: OfferPlan[] }) {
   const createCheckout = useAction(proposedApi.createCheckoutSession);
+  const router = useRouter();
   // El anual va preseleccionado (decisión de producto vigente).
   const [selected, setSelected] = useState<OfferPlan["id"]>(plans[0]?.id ?? "yearly");
-  const [state, setState] = useState<"idle" | "abriendo" | "error">("idle");
+  const [state, setState] = useState<"idle" | "abriendo" | "error" | "ya_plus">("idle");
 
   const start = useCallback(async () => {
     if (state === "abriendo") return;
@@ -124,8 +126,8 @@ function PlanPicker({ plans }: { plans: OfferPlan[] }) {
     try {
       const { url } = await createCheckout({ plan: selected });
       if (typeof window !== "undefined") window.location.assign(url);
-    } catch {
-      setState("error");
+    } catch (err) {
+      setState(checkoutStartErrorKind(err) === "ya_plus" ? "ya_plus" : "error");
     }
   }, [createCheckout, selected, state]);
 
@@ -164,6 +166,19 @@ function PlanPicker({ plans }: { plans: OfferPlan[] }) {
       </Pressable>
       {state === "error" ? (
         <Text selectable style={styles.error}>No pudimos abrir el pago. Probá de nuevo.</Text>
+      ) : null}
+      {state === "ya_plus" ? (
+        <Text selectable style={styles.error}>
+          Ya tenés Órbita Plus. Podés gestionar tu suscripción desde{" "}
+          <Text
+            style={styles.legalLink}
+            accessibilityRole="link"
+            onPress={() => router.push("/perfil")}
+          >
+            Perfil
+          </Text>
+          .
+        </Text>
       ) : null}
       <Text selectable style={styles.legal}>
         La suscripción se renueva sola hasta que la cancelés. Podés gestionarla desde tu perfil.

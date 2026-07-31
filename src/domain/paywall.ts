@@ -140,6 +140,28 @@ export function manageSubscription(input: {
   return input.commerceEnabled ? "portal" : "soporte";
 }
 
+// ---------------------------------------------------------------------------
+// Inicio del checkout
+// ---------------------------------------------------------------------------
+
+/** Texto exacto que tira `createCheckoutSession` cuando la cuenta ya es Plus. */
+const ALREADY_PLUS_MARKER = "This account already has Plus access";
+
+export type CheckoutStartErrorKind = "ya_plus" | "generico";
+
+/**
+ * Clasifica el error de `createCheckoutSession` para elegir el mensaje.
+ *
+ * Convex puede envolver el `Error` del backend dentro de un mensaje más largo
+ * (ubicación del servidor, request id, etc.), así que se busca el texto en
+ * vez de comparar igualdad exacta. Cualquier otra cosa —error de red, error
+ * desconocido, o un valor que ni siquiera es un `Error`— cae al genérico.
+ */
+export function checkoutStartErrorKind(error: unknown): CheckoutStartErrorKind {
+  if (!(error instanceof Error)) return "generico";
+  return error.message.includes(ALREADY_PLUS_MARKER) ? "ya_plus" : "generico";
+}
+
 /**
  * Forma mínima de una session id de Stripe. El backend valida en serio; esto
  * evita mandarle basura de la barra de direcciones.
