@@ -17,8 +17,9 @@ import {
   type NormalizedAstroTransit
 } from "./lib/orbita";
 import { recordBackendProductEvent } from "./lib/productAnalytics";
+import { findExactNatalChart } from "./lib/birthDataConsistency";
 import { cardById, drawCard, type TarotDraw } from "./lib/tarot";
-import { findCurrentUser, findUserByTokenIdentifier, requireIdentity, requireUser } from "./lib/users";
+import { findCurrentUser, findUserByTokenIdentifier, omitUndefined, requireIdentity, requireUser } from "./lib/users";
 
 /**
  * Guía diaria personalizada: análisis del día para CADA usuario, calculado sobre los
@@ -147,7 +148,7 @@ type EnrichmentPlan = {
   payload: DailyGuidePayload;
   shouldSchedule: boolean;
   cacheHit: boolean;
-  reason: "created" | "legacy_ready" | "ready" | "in_flight" | "retry";
+  reason: "created" | "identity_changed" | "legacy_ready" | "ready" | "in_flight" | "retry";
 };
 
 /** Un documento diario puede sobrevivir a varias versiones de la app. Solo lo
@@ -195,12 +196,26 @@ export function planFastGuide(args: {
   existing: unknown;
   candidate: DailyGuidePayload;
   now: number;
+  identityChanged?: boolean;
 }): EnrichmentPlan {
   if (!isCurrentDailyGuidePayload(args.existing)) {
     return { payload: args.candidate, shouldSchedule: true, cacheHit: false, reason: "created" };
   }
 
   const existing = args.existing;
+  if (args.identityChanged) {
+    return {
+      payload: {
+        ...args.candidate,
+        // La carta, orientación y ritual ya vistos son identidad del día. Un
+        // cambio natal refresca solo la personalización, nunca vuelve a sortear.
+        carta: existing.carta
+      },
+      shouldSchedule: true,
+      cacheHit: false,
+      reason: "identity_changed"
+    };
+  }
   const enrichment = readEnrichment(existing.enrichment);
   // Payloads v3 anteriores al fast path ya fueron generados de forma completa.
   if (!enrichment) {
@@ -319,6 +334,41 @@ export function localDateForTimezone(timezone?: string, now: Date = new Date()):
   } catch {
     return now.toISOString().slice(0, 10);
   }
+}
+
+type CanonicalDailyContext = {
+  localDate: string;
+  timezone: string;
+};
+
+export function resolveCanonicalDailyContext(args: {
+  birthTimezone?: string;
+  latestGuide?: {
+    localDate?: string;
+    timezone?: string;
+  } | null;
+  now?: Date;
+}): CanonicalDailyContext {
+  const now = args.now ?? new Date();
+  const birthTimezone =
+    args.birthTimezone?.trim() || DEFAULT_TIMEZONE;
+  const latestTimezone = args.latestGuide?.timezone?.trim();
+  const latestLocalDate = args.latestGuide?.localDate;
+
+  // Si el lugar natal se editó durante un ciclo ya abierto, ese ciclo conserva
+  // su timezone original. El cambio empieza cuando el día anterior termina.
+  if (
+    latestTimezone &&
+    latestLocalDate &&
+    localDateForTimezone(latestTimezone, now) === latestLocalDate
+  ) {
+    return { localDate: latestLocalDate, timezone: latestTimezone };
+  }
+
+  return {
+    localDate: localDateForTimezone(birthTimezone, now),
+    timezone: birthTimezone
+  };
 }
 
 /** Aritmética de fecha civil, siempre en UTC para no saltar días por DST. */
@@ -943,11 +993,7 @@ export const getGuideState = internalQuery({
       .withIndex("by_user", (q: any) => q.eq("userId", user._id))
       .order("desc")
       .first();
-    const natalChart = await ctx.db
-      .query("natalCharts")
-      .withIndex("by_user", (q: any) => q.eq("userId", user._id))
-      .order("desc")
-      .first();
+    const natalChart = await findExactNatalChart(ctx, user._id, birthData);
     const existing = await ctx.db
       .query("dailyGuides")
       .withIndex("by_user_date", (q: any) => q.eq("userId", user._id).eq("localDate", args.localDate))
@@ -982,8 +1028,18 @@ export const getFastGuideState = internalQuery({
       .query("dailyGuides")
       .withIndex("by_user_date", (q: any) => q.eq("userId", user._id).eq("localDate", args.localDate))
       .first();
+    const birthData = await ctx.db
+      .query("birthData")
+      .withIndex("by_user", (q: any) => q.eq("userId", user._id))
+      .order("desc")
+      .first();
+    const natalChart = await findExactNatalChart(ctx, user._id, birthData);
+    const personalization = {
+      birthDataUpdatedAt: birthData?.updatedAt ?? 0,
+      natalChartId: natalChart?._id
+    };
     if (isCurrentDailyGuidePayload(existing?.payload)) {
-      return { userId: user._id, existing, recentCardIds: [] as number[] };
+      return { userId: user._id, existing, recentCardIds: [] as number[], ...personalization };
     }
 
     const recentWindowStart = shiftLocalDate(args.localDate, -6);
@@ -998,7 +1054,8 @@ export const getFastGuideState = internalQuery({
     return {
       userId: user._id,
       existing,
-      recentCardIds: recentCardIdsFromPayloads(recentGuides.map((doc: any) => doc.payload))
+      recentCardIds: recentCardIdsFromPayloads(recentGuides.map((doc: any) => doc.payload)),
+      ...personalization
     };
   }
 });
@@ -1015,12 +1072,30 @@ export const getGuideTimezone = internalQuery({
       .withIndex("by_user", (q: any) => q.eq("userId", user._id))
       .order("desc")
       .first();
-    return birthData?.timezone ?? DEFAULT_TIMEZONE;
+    const latestGuide = await ctx.db
+      .query("dailyGuides")
+      .withIndex("by_user_date", (q: any) => q.eq("userId", user._id))
+      .order("desc")
+      .first();
+    return {
+      birthTimezone: birthData?.timezone ?? DEFAULT_TIMEZONE,
+      latestGuide: latestGuide
+        ? {
+            localDate: latestGuide.localDate,
+            timezone: latestGuide.timezone
+          }
+        : null
+    };
   }
 });
 
 export const ensureFastGuide = internalMutation({
-  args: { tokenIdentifier: v.string(), localDate: v.string(), payload: v.any() },
+  args: {
+    tokenIdentifier: v.string(),
+    localDate: v.string(),
+    timezone: v.string(),
+    payload: v.any()
+  },
   handler: async (ctx, args) => {
     const user = await findUserByTokenIdentifier(ctx, args.tokenIdentifier);
     if (!user) throw new Error("User record not found");
@@ -1029,18 +1104,51 @@ export const ensureFastGuide = internalMutation({
       .query("dailyGuides")
       .withIndex("by_user_date", (q: any) => q.eq("userId", user._id).eq("localDate", args.localDate))
       .first();
+    const birthData = await ctx.db
+      .query("birthData")
+      .withIndex("by_user", (q: any) => q.eq("userId", user._id))
+      .order("desc")
+      .first();
+    const natalChart = await findExactNatalChart(ctx, user._id, birthData);
+    const birthDataUpdatedAt = birthData?.updatedAt ?? 0;
+    const natalChartId = natalChart?._id;
+    const identityChanged = Boolean(
+      existing &&
+      (
+        existing.birthDataUpdatedAt !== birthDataUpdatedAt ||
+        existing.natalChartId !== natalChartId
+      )
+    );
     const now = Date.now();
-    const plan = planFastGuide({ existing: existing?.payload, candidate: args.payload as DailyGuidePayload, now });
+    const plan = planFastGuide({
+      existing: existing?.payload,
+      candidate: args.payload as DailyGuidePayload,
+      now,
+      identityChanged
+    });
 
     if (existing) {
-      if (plan.payload !== existing.payload) await ctx.db.patch(existing._id, { payload: plan.payload });
+      if (
+        plan.payload !== existing.payload ||
+        existing.birthDataUpdatedAt !== birthDataUpdatedAt ||
+        existing.natalChartId !== natalChartId
+      ) {
+        await ctx.db.patch(existing._id, {
+          payload: plan.payload,
+          birthDataUpdatedAt,
+          natalChartId
+        });
+      }
     } else {
-      await ctx.db.insert("dailyGuides", {
+      await ctx.db.insert("dailyGuides", omitUndefined({
         userId: user._id,
         localDate: args.localDate,
+        timezone: args.timezone,
+        birthDataUpdatedAt,
+        natalChartId,
         payload: plan.payload,
         createdAt: now
-      });
+      }));
     }
 
     if (plan.shouldSchedule) {
@@ -1065,7 +1173,9 @@ export const persistEnrichedGuide = internalMutation({
     tokenIdentifier: v.string(),
     localDate: v.string(),
     payload: v.any(),
-    status: v.union(v.literal("ready"), v.literal("fallback"), v.literal("error"))
+    status: v.union(v.literal("ready"), v.literal("fallback"), v.literal("error")),
+    birthDataUpdatedAt: v.number(),
+    natalChartId: v.optional(v.id("natalCharts"))
   },
   handler: async (ctx, args) => {
     const user = await findUserByTokenIdentifier(ctx, args.tokenIdentifier);
@@ -1076,6 +1186,20 @@ export const persistEnrichedGuide = internalMutation({
       .first();
     if (!existing || !isCurrentDailyGuidePayload(existing.payload) || !isCurrentDailyGuidePayload(args.payload)) {
       return { updated: false, reason: "guide_missing" };
+    }
+    const birthData = await ctx.db
+      .query("birthData")
+      .withIndex("by_user", (q: any) => q.eq("userId", user._id))
+      .order("desc")
+      .first();
+    const natalChart = await findExactNatalChart(ctx, user._id, birthData);
+    if (
+      (birthData?.updatedAt ?? 0) !== args.birthDataUpdatedAt ||
+      natalChart?._id !== args.natalChartId ||
+      existing.birthDataUpdatedAt !== args.birthDataUpdatedAt ||
+      existing.natalChartId !== args.natalChartId
+    ) {
+      return { updated: false, reason: "identity_changed" };
     }
 
     const currentCard = existing.payload.carta;
@@ -1156,12 +1280,14 @@ export const enrichGuide = internalAction({
     const status = providerOutcome === "success" && generation.source === "llm" ? "ready" : "fallback";
 
     const persistStartedAt = Date.now();
-    const persisted: any = await ctx.runMutation(internalApi.daily.persistEnrichedGuide, {
+    const persisted: any = await ctx.runMutation(internalApi.daily.persistEnrichedGuide, omitUndefined({
       tokenIdentifier: args.tokenIdentifier,
       localDate: args.localDate,
       payload: enriched,
-      status
-    });
+      status,
+      birthDataUpdatedAt: state.birthData?.updatedAt ?? 0,
+      natalChartId: state.natalChart?._id
+    }));
     const persistMs = Date.now() - persistStartedAt;
 
     console.info(
@@ -1191,17 +1317,41 @@ async function runFastGuide(
 ): Promise<{ payload: DailyGuidePayload; revealedAt: number | null }> {
     const startedAt = Date.now();
     const identity = await requireIdentity(ctx as any);
-    const timezone =
-      args.timezone ??
-      (args.localDate
-        ? DEFAULT_TIMEZONE
-        : await ctx.runQuery(internalApi.daily.getGuideTimezone, { tokenIdentifier: identity.tokenIdentifier }));
-    const localDate = args.localDate ?? localDateForTimezone(timezone);
+    const timezoneState: any = await ctx.runQuery(
+      internalApi.daily.getGuideTimezone,
+      { tokenIdentifier: identity.tokenIdentifier }
+    );
+    const canonical = resolveCanonicalDailyContext({
+      birthTimezone: timezoneState.birthTimezone,
+      latestGuide: timezoneState.latestGuide
+    });
+    const requestedDate = args.localDate ?? canonical.localDate;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) {
+      throw new Error("Fecha diaria inválida");
+    }
+    if (requestedDate > canonical.localDate) {
+      throw new Error("Ese día todavía no llegó");
+    }
+    const localDate = requestedDate;
+    const timezone = canonical.timezone;
     const state: any = await ctx.runQuery(internalApi.daily.getFastGuideState, {
       tokenIdentifier: identity.tokenIdentifier,
       localDate
     });
     const stateMs = Date.now() - startedAt;
+
+    if (localDate !== canonical.localDate) {
+      if (!isCurrentDailyGuidePayload(state.existing?.payload)) {
+        throw new Error("No hay una lectura guardada para ese día");
+      }
+      return {
+        payload: state.existing.payload,
+        revealedAt:
+          typeof state.existing.revealedAt === "number"
+            ? state.existing.revealedAt
+            : null
+      };
+    }
 
     const cardStartedAt = Date.now();
     const carta = drawCard({
@@ -1214,7 +1364,19 @@ async function runFastGuide(
 
     // Cache hit puro: evita una mutation/roundtrip. Los casos que necesitan crear
     // o recuperar un job pasan por la mutation transaccional, que vuelve a decidir.
-    const preflight = planFastGuide({ existing: state.existing?.payload, candidate: payload, now: Date.now() });
+    const identityChanged = Boolean(
+      state.existing &&
+      (
+        state.existing.birthDataUpdatedAt !== state.birthDataUpdatedAt ||
+        state.existing.natalChartId !== state.natalChartId
+      )
+    );
+    const preflight = planFastGuide({
+      existing: state.existing?.payload,
+      candidate: payload,
+      now: Date.now(),
+      identityChanged
+    });
     let persisted: any = {
       payload: preflight.payload,
       cacheHit: preflight.cacheHit,
@@ -1227,6 +1389,7 @@ async function runFastGuide(
       persisted = await ctx.runMutation(internalApi.daily.ensureFastGuide, {
         tokenIdentifier: identity.tokenIdentifier,
         localDate,
+        timezone,
         payload
       });
     }
@@ -1267,6 +1430,25 @@ export const getCard = action({
   }
 });
 
+export const getTodayContext = action({
+  args: {},
+  returns: v.object({
+    localDate: v.string(),
+    timezone: v.string()
+  }),
+  handler: async (ctx) => {
+    const identity = await requireIdentity(ctx as any);
+    const state: any = await ctx.runQuery(
+      internalApi.daily.getGuideTimezone,
+      { tokenIdentifier: identity.tokenIdentifier }
+    );
+    return resolveCanonicalDailyContext({
+      birthTimezone: state.birthTimezone,
+      latestGuide: state.latestGuide
+    });
+  }
+});
+
 // --- El ritual: dar vuelta la carta ----------------------------------------
 
 /** Da vuelta la carta de hoy. Idempotente: si ya estaba dada vuelta, no la re-escribe
@@ -1290,8 +1472,6 @@ export const revealCard = mutation({
     if (!isCurrentDailyGuidePayload(doc.payload)) {
       throw new Error("La carta de hoy todavía se está actualizando");
     }
-    if (doc.revealedAt) return doc.revealedAt;
-
     // No se puede sacar la carta de un día que todavía no empezó para esa persona.
     // El día se calcula con la timezone natal persistida, no con la timezone fija del
     // backend: cerca de medianoche pueden ser fechas distintas.
@@ -1300,8 +1480,24 @@ export const revealCard = mutation({
       .withIndex("by_user", (q: any) => q.eq("userId", user._id))
       .order("desc")
       .first();
-    const today = localDateForTimezone(birthData?.timezone);
-    if (args.localDate > today) throw new Error("Ese día todavía no llegó");
+    const latestGuide = await ctx.db
+      .query("dailyGuides")
+      .withIndex("by_user_date", (q: any) => q.eq("userId", user._id))
+      .order("desc")
+      .first();
+    const today = resolveCanonicalDailyContext({
+      birthTimezone: birthData?.timezone,
+      latestGuide: latestGuide
+        ? {
+            localDate: latestGuide.localDate,
+            timezone: latestGuide.timezone
+          }
+        : null
+    }).localDate;
+    if (args.localDate !== today) {
+      throw new Error("Sólo se puede revelar la carta del día actual");
+    }
+    if (doc.revealedAt) return doc.revealedAt;
 
     const revealedAt = Date.now();
     await ctx.db.patch(doc._id, { revealedAt });

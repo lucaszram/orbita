@@ -1,9 +1,12 @@
 import { mutationGeneric as mutation, queryGeneric as query } from "convex/server";
 import { v } from "convex/values";
 import {
+  belongsToNatalChart,
   buildBirthDataHash,
   buildNatalChartCacheKey,
-  dailyReadingNeedsRefresh
+  dailyReadingNeedsRefresh,
+  findCurrentBirthData,
+  findExactNatalChart
 } from "./lib/birthDataConsistency";
 import {
   buildDailyReadingPayload,
@@ -44,16 +47,8 @@ export async function listSavedReadingsForUser(ctx: any, userId: string, limit?:
   return rows.map(savedReadingListItem);
 }
 
-async function getCurrentBirthData(ctx: any, userId: string) {
-  return await ctx.db
-    .query("birthData")
-    .withIndex("by_user", (q: any) => q.eq("userId", userId))
-    .order("desc")
-    .first();
-}
-
 async function ensureChart(ctx: any, userId: string) {
-  const birthData = await getCurrentBirthData(ctx, userId);
+  const birthData = await findCurrentBirthData(ctx, userId);
   if (!birthData) {
     return null;
   }
@@ -93,10 +88,13 @@ export const getToday = query({
   handler: async (ctx, args) => {
     const user = await findCurrentUser(ctx);
     if (!user) return null;
-    return await ctx.db
+    const reading = await ctx.db
       .query("dailyReadings")
       .withIndex("by_user_date", (q: any) => q.eq("userId", user._id).eq("localDate", args.localDate))
       .first();
+    const birthData = await findCurrentBirthData(ctx, user._id);
+    const natalChart = await findExactNatalChart(ctx, user._id, birthData);
+    return belongsToNatalChart(reading, natalChart) ? reading : null;
   }
 });
 

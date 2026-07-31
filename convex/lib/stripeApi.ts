@@ -3,7 +3,7 @@ const STRIPE_API_BASE_URL = "https://api.stripe.com/v1";
 export type StripeFormValue = string | number | boolean | null | undefined;
 export type StripeForm = Record<string, StripeFormValue>;
 export type StripeFetch = (input: string, init: RequestInit) => Promise<Response>;
-export type StripePlan = "weekly" | "yearly" | "lifetime";
+export type StripePlan = "weekly" | "yearly";
 
 type StripeErrorPayload = {
   error?: {
@@ -28,25 +28,32 @@ export function buildStripeCustomerForm(args: { email?: string; clerkUserId: str
 }
 
 export function buildStripeCheckoutForm(args: {
-  plan: StripePlan;
+  plan: StripePlan | "lifetime";
   customerId: string;
   priceId: string;
   clerkUserId: string;
   webUrl: string;
+  automaticTax?: boolean;
 }): StripeForm {
-  const mode = args.plan === "lifetime" ? "payment" : "subscription";
+  // `lifetime` remains accepted only so old isolated unit tests and snapshots
+  // can be read. No public action or price selector can submit it.
+  const legacyLifetime = args.plan === "lifetime";
+  const mode = legacyLifetime ? "payment" : "subscription";
   return {
     mode,
     customer: args.customerId,
+    payment_method_collection: mode === "subscription" ? "always" : undefined,
     "line_items[0][price]": args.priceId,
     "line_items[0][quantity]": 1,
     client_reference_id: args.clerkUserId,
     "metadata[clerkUserId]": args.clerkUserId,
     "metadata[plan]": args.plan,
+    "automatic_tax[enabled]": args.automaticTax,
     ...(mode === "subscription"
       ? {
           "subscription_data[metadata][clerkUserId]": args.clerkUserId,
-          "subscription_data[metadata][plan]": args.plan
+          "subscription_data[metadata][plan]": args.plan,
+          "subscription_data[trial_period_days]": args.plan === "yearly" ? 7 : undefined
         }
       : {
           "payment_intent_data[metadata][clerkUserId]": args.clerkUserId,
@@ -60,7 +67,7 @@ export function buildStripeCheckoutForm(args: {
 export function buildStripePortalForm(args: { customerId: string; webUrl: string }): StripeForm {
   return {
     customer: args.customerId,
-    return_url: `${args.webUrl}/profile`
+    return_url: `${args.webUrl}/perfil`
   };
 }
 
@@ -80,21 +87,27 @@ async function readJson(response: Response): Promise<unknown> {
 
 export function createStripeApi(secretKey: string, fetchImpl: StripeFetch = fetch): {
   post: <T>(path: string, fields: StripeForm) => Promise<T>;
+  get: <T>(path: string) => Promise<T>;
 } {
   if (!secretKey.trim()) throw new Error("STRIPE_SECRET_KEY not configured");
 
-  return {
-    post: async <T>(path: string, fields: StripeForm): Promise<T> => {
+  const request = async <T>(
+    method: "GET" | "POST",
+    path: string,
+    fields?: StripeForm
+  ): Promise<T> => {
       const normalizedPath = path.startsWith("/") ? path : `/${path}`;
       let response: Response;
       try {
         response = await fetchImpl(`${STRIPE_API_BASE_URL}${normalizedPath}`, {
-          method: "POST",
+          method,
           headers: {
             Authorization: `Bearer ${secretKey}`,
-            "Content-Type": "application/x-www-form-urlencoded"
+            ...(method === "POST"
+              ? { "Content-Type": "application/x-www-form-urlencoded" }
+              : {})
           },
-          body: encodeStripeForm(fields)
+          body: method === "POST" ? encodeStripeForm(fields ?? {}) : undefined
         });
       } catch {
         throw new Error("Stripe API request failed");
@@ -109,7 +122,12 @@ export function createStripeApi(secretKey: string, fetchImpl: StripeFetch = fetc
         throw new Error("Stripe API returned an invalid response");
       }
       return payload as T;
-    }
+  };
+
+  return {
+    post: async <T>(path: string, fields: StripeForm): Promise<T> =>
+      await request<T>("POST", path, fields),
+    get: async <T>(path: string): Promise<T> => await request<T>("GET", path)
   };
 }
 

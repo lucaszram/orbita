@@ -1,6 +1,7 @@
 import { mutationGeneric as mutation, queryGeneric as query } from "convex/server";
 import { v } from "convex/values";
 import { normalizeBirthTime } from "./lib/orbita";
+import { decideOnboardingBirthDataWrite } from "./lib/onboardingBirthData";
 import { recordBackendProductEvent } from "./lib/productAnalytics";
 import { findUserByTokenIdentifier, getOrCreateUser, omitUndefined, requireUser } from "./lib/users";
 
@@ -145,18 +146,23 @@ export const completeBirthData = mutation({
       updatedAt: now
     });
 
-    const birthDataId = existingBirthData
-      ? (
-          // En un patch de Convex, `undefined` elimina un campo opcional. No
-          // pasarlo por omitUndefined: "No sé la hora" debe borrar la hora
-          // anterior en vez de dejarla escondida detrás de precision=unknown.
-          await ctx.db.patch(existingBirthData._id, {
-            ...payloadWithoutTime,
-            birthTime: normalizedBirthTime
-          }),
-          existingBirthData._id
-        )
-      : await ctx.db.insert("birthData", {
+    const writeDecision = decideOnboardingBirthDataWrite(
+      existingBirthData,
+      {
+        birthDate: args.birthDate,
+        birthTime: normalizedBirthTime,
+        birthTimePrecision: args.birthTimePrecision,
+        birthPlaceLabel: args.birthPlaceLabel,
+        latitude: args.latitude,
+        longitude: args.longitude,
+        timezone: args.timezone
+      }
+    );
+
+    const birthDataId =
+      writeDecision === "idempotent"
+        ? existingBirthData!._id
+        : await ctx.db.insert("birthData", {
           ...payloadWithoutTime,
           ...omitUndefined({ birthTime: normalizedBirthTime }),
           createdAt: now

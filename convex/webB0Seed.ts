@@ -85,30 +85,6 @@ function inferProviderVersion(chartPayload: unknown) {
   return readString(provider?.providerVersion) ?? inferProvider(chartPayload);
 }
 
-async function upsertSubscription(ctx: any, userId: string) {
-  const now = Date.now();
-  const existing = await ctx.db
-    .query("subscriptions")
-    .withIndex("by_user", (q: any) => q.eq("userId", userId))
-    .first();
-
-  const payload = {
-    userId,
-    entitlement: "plus" as const,
-    status: "active" as const,
-    provider: "stub",
-    productId: "orbita_plus_web_b0_qa",
-    updatedAt: now
-  };
-
-  if (existing) {
-    await ctx.db.patch(existing._id, payload);
-    return existing._id;
-  }
-
-  return await ctx.db.insert("subscriptions", payload);
-}
-
 export const persistCurrentUserSnapshot = mutation({
   args: {
     localDate: v.string(),
@@ -125,8 +101,7 @@ export const persistCurrentUserSnapshot = mutation({
       timezone: v.string()
     }),
     chartPayload: v.any(),
-    dailyReadingPayload: v.any(),
-    markPlus: v.optional(v.boolean())
+    dailyReadingPayload: v.any()
   },
   handler: async (ctx, args) => {
     const user = await requireBackofficeUser(ctx);
@@ -212,15 +187,12 @@ export const persistCurrentUserSnapshot = mutation({
       ? (await ctx.db.patch(existingTransit._id, transitPayload), existingTransit._id)
       : await ctx.db.insert("transitReadings", { ...transitPayload, createdAt: now });
 
-    const subscriptionId = args.markPlus ? await upsertSubscription(ctx, user._id) : null;
-
     return {
       userId: user._id,
       birthDataId,
       natalChartId,
       dailyReadingId,
       transitReadingId,
-      subscriptionId,
       localDate,
       chartCalculationVersion: calculationVersion,
       dailyContentVersion: contentVersion,
