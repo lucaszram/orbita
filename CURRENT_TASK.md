@@ -1,5 +1,27 @@
 # Current Task
 
+## Web landing — nuevo hero "quiet eclipse v2" (2026-07-31, Claude)
+
+**Objetivo:** que la portada pública de Órbita use el asset de runtime seleccionado `assets/orbita/optimized/web/orbita_landing_hero_quiet_eclipse_v2.webp`, con su alt en español, sin tocar copy, layout, rutas ni ninguna otra superficie.
+
+**Ficha:** owner Claude (frontend); rama `codex/web-hero-background-v2`; territorio `src/content/webAssets.ts`, `assets/orbita/optimized/web/**` y este handoff; riesgo bajo (un solo slot de asset, sin lógica); rollout por PR aislado, sin deploy ni commit; rollback por revert; fuera de alcance `convex/**`, Stripe, Clerk, onboarding, pantallas autenticadas, assets viejos y producción.
+
+**Qué cambió:** un único slot. `webAssets.heroOrbital` pasa de `assets/orbita/optimized/core/orbita_home_hero_orbital_b.jpg` a `assets/orbita/optimized/web/orbita_landing_hero_quiet_eclipse_v2.webp`, con `source`, `require` y `alt` actualizados. El master sin pérdida queda como fuente en `assets/orbita/generated/landing-hero-v2/selected/orbita_landing_hero_quiet_eclipse_v2.png` (2,08 MB) y **no** viaja al navegador.
+
+**`orbita-landing.tsx` no se tocó, a propósito.** El hero ya monta `ImageBackground` con `resizeMode="cover"` y `heroImage` con `width/height: "100%"` explícitos (la defensa contra el bug de RNW). El asset viejo era cuadrado 1024×1024 y el nuevo es cuadrado 1254×1254, así que el encuadre efectivo es idéntico: mismo recorte central, mismas alturas mínimas (720 escritorio / 690 móvil), mismo gradiente `rgba(7,8,10,0.26) → 0.78 → #07080A`. No hizo falta ni overlay ni crop nuevo.
+
+**El asset viejo sigue vivo y no se borró.** `orbita_home_hero_orbital_b.jpg` lo siguen usando `src/components/home/sections.tsx`, `src/components/orbita/HeroImage.tsx`, `src/components/orbita/states.tsx` y `app/reading/transito.tsx`. Esta tarea sólo cambia la portada pública.
+
+**Sin efecto colateral en otras pantallas:** `heroOrbital` es el default de `ImmersiveScreen`, pero su único consumidor (`orbita-paywall.tsx`) pasa `asset="ringSystem"` explícito. Y `webAssetSequence` lo lista primero, mientras la tira de miniaturas de la landing renderiza `slice(5)`, así que el hero no aparece ahí.
+
+**Tamaño:** el `.webp` de runtime pesa **192.710 bytes (188,2 KB)**, muy por debajo del límite de 500 KB de `scripts/check-web-export.mjs`. El export suma ~188 KB netos (el JPG viejo sigue emitiéndose porque nativo lo usa), sobre los 35,87 MB medidos contra un techo de 50 MB.
+
+**Validación completa:** `pnpm typecheck` en verde; suite completa **803/803**; `pnpm build:web` correcto; `pnpm check:web-export` en verde — **36,05 MB** totales, imagen máxima **479,3 KB** y JavaScript de aplicación **1,09 MB gzip**; el nuevo hero pesa **192.710 bytes**; `git diff --check` limpio.
+
+**QA visual:** pasada pública sin sesión en Chrome, sin errores de consola. En desktop (1512×805 de viewport efectivo) el cuerpo lunar queda arriba a la derecha y conserva una zona oscura segura para copy y CTAs. En mobile 390×844 conserva textura y filo cobre sin tapar logo, título, copy, botones ni la fila Base/Hoy/Modo. La comparación conjunta contra el master seleccionado está documentada en `design-qa.md`; resultado final `passed`, sin hallazgos P0/P1/P2.
+
+**Estado:** cambio implementado y validado en el worktree, sin commit, sin push y sin deploy.
+
 ## Web Plus — mensaje preciso al bloquear una compra repetida (2026-07-31, Claude + Codex)
 
 **Objetivo:** cuando Stripe Checkout no se abre porque la cuenta ya tiene Órbita Plus, mostrar una explicación accionable y enviar a Perfil; conservar el mensaje genérico para fallas de red o errores desconocidos.

@@ -28,9 +28,9 @@ export const webAssets = {
   heroOrbital: {
     key: "heroOrbital",
     role: "hero",
-    source: "assets/orbita/optimized/core/orbita_home_hero_orbital_b.jpg",
-    require: require("../../assets/orbita/optimized/core/orbita_home_hero_orbital_b.jpg"),
-    alt: "Cuerpo orbital oscuro con línea cobre para la portada de Órbita."
+    source: "assets/orbita/optimized/web/orbita_landing_hero_quiet_eclipse_v2.webp",
+    require: require("../../assets/orbita/optimized/web/orbita_landing_hero_quiet_eclipse_v2.webp"),
+    alt: "Eclipse lunar oscuro con órbitas de cobre para la portada de Órbita."
   },
   dailyTexture: {
     key: "dailyTexture",
