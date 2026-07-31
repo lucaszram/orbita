@@ -157,16 +157,18 @@ test("el lienzo es ancho completo en móvil y columna centrada en escritorio", (
   const codigo = sinComentarios(CANVAS);
   assert.ok(/canvasMaxWidth\(variant\)/.test(codigo), "el tope sale del contrato de layout");
   assert.ok(/width: "100%"/.test(codigo), "en móvil ocupa todo el ancho");
-  assert.ok(/alignItems: "center"/.test(codigo), "en escritorio se centra");
+  assert.ok(/alignSelf: "center"/.test(codigo), "en escritorio se centra");
 });
 
-test("el lienzo tiene tres variantes y ninguna depende del viewport", () => {
+test("el lienzo tiene cuatro variantes y ninguna depende del viewport", () => {
   // El bug que se arregla: TODAS las pantallas estaban clavadas en 720, así que
   // el escritorio era una pantalla de teléfono centrada en un monitor.
   assert.equal(CANVAS_MAX_WIDTH.wide, 1200);
   assert.equal(CANVAS_MAX_WIDTH.reading, 720);
+  assert.equal(CANVAS_MAX_WIDTH.form, 480, "el alta es una columna de formulario, no de lectura");
   assert.equal(CANVAS_MAX_WIDTH.immersive, null, "inmersivo = sin tope");
   assert.equal(canvasMaxWidth("wide"), 1200);
+  assert.equal(canvasMaxWidth("form"), 480);
   assert.equal(canvasMaxWidth("immersive"), null);
 });
 

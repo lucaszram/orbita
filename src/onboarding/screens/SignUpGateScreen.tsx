@@ -140,7 +140,16 @@ export function SignUpGateScreen({
           label={account.busy ? "Un momento…" : codePhase ? "Verificar código" : "Crear mi cuenta"}
           onPress={() => void submit()}
         />
-        <Pressable onPress={onSignIn} hitSlop={10} accessibilityRole="button" style={styles.signInLink}>
+        <Pressable
+          onPress={onSignIn}
+          hitSlop={10}
+          accessibilityRole="link"
+          accessibilityLabel="Ya tengo cuenta: iniciar sesión"
+          style={styles.signInLink}
+        >
+          {/* UNA sola línea, sin `Text` anidados: en react-native-web el color
+              en línea del padre no llega a los hijos `Text` y la fila entera
+              quedaba casi negra sobre el fondo casi negro. */}
           <Body style={styles.signInText}>Ya tengo cuenta · Iniciar sesión</Body>
         </Pressable>
       </View>
@@ -162,6 +171,17 @@ const styles = StyleSheet.create({
   error: { color: "#D07A5A" },
   notice: { color: orbita.muted },
   spacer: { height: 8 },
-  signInLink: { alignSelf: "center", paddingVertical: 10 },
-  signInText: { color: orbita.muted }
+  // 44px reales de objetivo táctil: `hitSlop` no existe en web.
+  signInLink: { alignItems: "center", alignSelf: "center", justifyContent: "center", minHeight: 44, paddingHorizontal: 12 },
+  // Era `orbita.muted` entero, sin subrayado y sin peso: leía como una nota al
+  // pie y no como el camino de vuelta que es. `copperSoft` da 8,14:1 sobre el
+  // fondo, y el subrayado lo hace reconocible como enlace sin depender del
+  // color. En la LÍNEA COMPLETA, por el mismo motivo que en el splash.
+  signInText: {
+    color: orbita.copperSoft,
+    fontFamily: font.sansBold,
+    fontSize: 15,
+    textAlign: "center",
+    textDecorationLine: "underline"
+  }
 });

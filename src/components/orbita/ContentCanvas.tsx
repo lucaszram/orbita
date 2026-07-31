@@ -103,8 +103,15 @@ export function MeasuredBox({
 }
 
 const styles = StyleSheet.create({
-  outer: { alignItems: "center", width: "100%" },
-  canvas: { width: "100%" },
+  outer: { width: "100%" },
+  // El centrado va con `alignSelf` EN LA COLUMNA, no con `alignItems` en el
+  // contenedor. Es la misma formulación que usa `ReadingBlock center`, y es la
+  // robusta: `alignItems: "center"` sobre un hijo que declara `width: "100%"`
+  // deja que el ancho del hijo dependa de cómo el motor resuelva el cruce entre
+  // alineación y porcentaje, y en react-native-web esa combinación podía
+  // colapsar la columna a su contenido — el alta de escritorio aparecía como
+  // una tira angosta con el texto cortado.
+  canvas: { alignSelf: "center", width: "100%" },
   // `fill`: para pantallas cuyo contenido es `flex: 1` con algo anclado abajo
   // (los pasos del alta, el Umbral). Sin heredar el alto, la columna colapsa al
   // contenido y el CTA sube al medio de la pantalla.

@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
@@ -21,7 +21,8 @@ import { Body, Title } from "./components/Type";
 import { AlignScreen } from "./screens/AlignScreen";
 import { BaseChartScreen } from "./screens/BaseChartScreen";
 import { BeforeAfterScreen } from "./screens/BeforeAfterScreen";
-import { type BirthDateParts, BirthdateScreen, MONTHS } from "./screens/BirthdateScreen";
+import { MONTHS } from "./months";
+import { type BirthDateParts, BirthdateScreen } from "./screens/BirthdateScreen";
 import { BirthdateSelectedScreen } from "./screens/BirthdateSelectedScreen";
 import { BirthplaceSearchScreen, type PlaceOption } from "./screens/BirthplaceSearchScreen";
 import { BirthplaceSelectedScreen } from "./screens/BirthplaceSelectedScreen";
@@ -439,8 +440,12 @@ export function OnboardingFlow() {
           </View>
         </Screen>
       ) : (
-        // Cierre en curso (o paywall apagado): carga estable, sin flashear pago.
-        <View style={styles.fill} />
+        // Cierre en curso (o paywall apagado): estado de guardado estable, sin
+        // flashear el pago. Era un `View` negro y vacío — con
+        // `PAYWALL_ENABLED=false` el último paso del alta era una página en
+        // blanco (negro) mientras se persistía la carta, sin ninguna señal de
+        // que algo estuviera pasando.
+        <SavingChart />
       );
       break;
   }
@@ -453,7 +458,33 @@ export function OnboardingFlow() {
   );
 }
 
+/**
+ * Cierre del alta: se está guardando la carta.
+ *
+ * No cambia nada del envío ni del ruteo — sólo deja de ser una pantalla negra
+ * vacía. Es el último paso antes de entrar a la app, así que tiene que decir
+ * que está pasando algo y anunciarlo también a un lector de pantalla.
+ */
+function SavingChart() {
+  return (
+    <Screen bg={undefined}>
+      <View
+        accessibilityRole="progressbar"
+        accessibilityLabel="Guardando tu carta"
+        style={styles.saving}
+      >
+        <ActivityIndicator color={orbita.copper} />
+        <Body accessibilityLiveRegion="polite" style={styles.savingText}>
+          Guardando tu carta…
+        </Body>
+      </View>
+    </Screen>
+  );
+}
+
 const styles = StyleSheet.create({
   fill: { backgroundColor: orbita.bg, flex: 1 },
   closeError: { flex: 1, gap: 16, justifyContent: "center", paddingHorizontal: 24 },
+  saving: { alignItems: "center", flex: 1, gap: 14, justifyContent: "center", paddingHorizontal: 24 },
+  savingText: { textAlign: "center" },
 });

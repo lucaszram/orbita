@@ -95,3 +95,57 @@ export function dateToIsoValue(date: Date): string {
 export function timeToIsoValue(date: Date): string {
   return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
+
+// --- Partes del alta ↔ strings de control -----------------------------------
+//
+// El onboarding guarda la fecha y la hora en PARTES (`{day, month, year}` y
+// `{hour, minute}`) porque así las dibujaba la rueda. Los controles del
+// navegador hablan `YYYY-MM-DD` y `HH:MM`. Estas funciones son el único puente
+// entre las dos formas, y son puras para poder probar la paridad exacta entre
+// lo que se ve y lo que se guarda — que es justo lo que se rompió en web.
+
+export type BirthDatePartsValue = { day: number; month: number; year: number };
+export type BirthTimePartsValue = { hour: number; minute: number };
+
+/** ¿Estas partes son un día que existe? (31 de febrero no lo es.) */
+export function isRealDateParts(parts: BirthDatePartsValue): boolean {
+  const { day, month, year } = parts;
+  if (!Number.isInteger(day) || !Number.isInteger(month) || !Number.isInteger(year)) return false;
+  if (year < 1 || month < 1 || month > 12 || day < 1 || day > 31) return false;
+  const probe = new Date(year, month - 1, day);
+  return probe.getFullYear() === year && probe.getMonth() === month - 1 && probe.getDate() === day;
+}
+
+/**
+ * Partes → `YYYY-MM-DD`, o `null` si el día no existe.
+ *
+ * `null` no es un detalle: un `<input type="date">` con un valor imposible lo
+ * descarta y queda VACÍO. Devolver null hace que la pantalla lo sepa y pueda
+ * bloquear "Continuar" en vez de dejar que se guarde un 31 de febrero.
+ */
+export function partsToDateValue(parts: BirthDatePartsValue): string | null {
+  if (!isRealDateParts(parts)) return null;
+  return `${String(parts.year).padStart(4, "0")}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+}
+
+/** `YYYY-MM-DD` → partes, o `null` si no es una fecha real. */
+export function dateValueToParts(raw: string): BirthDatePartsValue | null {
+  const parsed = parseDateInput(raw);
+  if (!parsed) return null;
+  return { day: parsed.d, month: parsed.m, year: parsed.y };
+}
+
+/** Partes → `HH:MM`, o `null` si la hora no existe. */
+export function partsToTimeValue(parts: BirthTimePartsValue): string | null {
+  const { hour, minute } = parts;
+  if (!Number.isInteger(hour) || !Number.isInteger(minute)) return null;
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+/** `HH:MM` → partes, o `null` si no es una hora real. */
+export function timeValueToParts(raw: string): BirthTimePartsValue | null {
+  const parsed = parseTimeInput(raw);
+  if (!parsed) return null;
+  return { hour: parsed.h, minute: parsed.m };
+}

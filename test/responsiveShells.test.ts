@@ -59,7 +59,7 @@ const ENVOLTORIO: Record<(typeof SHELLS)[number], RegExp> = {
   "src/components/orbita/kit.tsx": /<ContentCanvas variant=\{canvas\}>\{children\}<\/ContentCanvas>/,
   "src/components/home/DetailScreen.tsx":
     /<ContentCanvas variant=\{canvas\}>\s*<View style=\{styles\.body\}>\{children\}<\/View>/,
-  "src/onboarding/components/Screen.tsx": /<ContentCanvas fill>\{children\}<\/ContentCanvas>/,
+  "src/onboarding/components/Screen.tsx": /<ContentCanvas fill variant="form">\{children\}<\/ContentCanvas>/,
   "src/components/void/VoidExperience.tsx": /<ContentCanvas variant="immersive" fill>/,
   "src/screens/HomeScreen.tsx": /<ContentCanvas variant="wide">/,
   "app/recepcion.tsx": /<ContentCanvas>/,
