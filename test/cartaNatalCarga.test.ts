@@ -146,6 +146,34 @@ describe("carta.tsx — cableado anti-bloqueo", () => {
     assert.doesNotMatch(CARTA, /then\([^)]*setGenerateFailed/);
   });
 
+  it("bloqueado (Free) expone una salida a /paywall, no REINTENTAR", () => {
+    // El plan Free rechaza la generación por diseño: no es un error, así que
+    // el bloque bloqueado nunca ofrece REINTENTAR — solo la salida a Plus.
+    const blockedStart = CARTA.indexOf('readingPhase === "bloqueado"');
+    const blockedEnd = CARTA.indexOf(") : (", blockedStart);
+    const blocked = CARTA.slice(blockedStart, blockedEnd);
+    assert.match(blocked, /router\.push\("\/paywall"\)/);
+    // Buscamos el Pill renderizado (label="REINTENTAR"), no la palabra suelta:
+    // el comentario de arriba la menciona a propósito y no debe hacer fallar esto.
+    assert.doesNotMatch(blocked, /label="REINTENTAR"/);
+    // La rueda, la tríada y las posiciones se dibujan antes de "Tu carta,
+    // explicada" y no dependen de readingPhase: siguen visibles bloqueado.
+    assert.ok(CARTA.indexOf("const rueda = (") < blockedStart);
+    assert.ok(CARTA.indexOf("const triada = ") < blockedStart);
+  });
+
+  it("el error real (no bloqueado) sigue ofreciendo REINTENTAR", () => {
+    const blockedStart = CARTA.indexOf('readingPhase === "bloqueado"');
+    const errorStart = CARTA.indexOf(") : (", blockedStart);
+    // El cierre del ternario completo ")}" — buscado desde errorStart, no desde
+    // blockedStart, porque `router.push("/paywall")}` dentro de la rama
+    // bloqueada también matchea ")}" y cortaba este slice vacío.
+    const errorEnd = CARTA.indexOf(")}", errorStart);
+    const errorBranch = CARTA.slice(errorStart, errorEnd);
+    assert.match(errorBranch, /label="REINTENTAR" onPress=\{onRetryReading\}/);
+    assert.doesNotMatch(errorBranch, /router\.push\("\/paywall"\)/);
+  });
+
   it("los siete capítulos largos se muestran intactos cuando la lectura está lista", () => {
     // Los capítulos se dibujan desde una sola función (`explicada`), montada
     // con la primera y la segunda mitad. Antes eran dos bloques duplicados; el

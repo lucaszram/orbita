@@ -358,12 +358,17 @@ function CartaView({
           ) : readingPhase === "bloqueado" ? (
             // El plan no incluye la lectura larga. Sin esto quedaba en
             // "Preparando…" para siempre o pedía REINTENTAR sobre una action
-            // que el backend rechaza por diseño.
+            // que el backend rechaza por diseño. La rueda, la tríada y las
+            // posiciones ya se dibujaron arriba: este bloque solo nombra lo
+            // que falta y da la salida a Plus, nunca REINTENTAR (no es un error).
             <View style={styles.readingStatus}>
               <Text style={styles.readingStatusText}>
                 Los siete capítulos de tu carta son parte de Órbita Plus. Tu rueda, tu tríada y tus
                 posiciones siguen acá.
               </Text>
+              <View style={{ marginTop: orbita.spacing.lg }}>
+                <Pill label="VER ÓRBITA PLUS" onPress={() => router.push("/paywall")} />
+              </View>
             </View>
           ) : (
             <View style={styles.readingStatus}>
