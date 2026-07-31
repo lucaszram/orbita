@@ -8,7 +8,17 @@
 
 **Ficha:** owner Codex; rama `codex/web-plus-trial`; territorio `convex/**`, tests y documentación contractual; base `origin/main` en `791d867`; cambio de contrato: no; riesgo alto por tocar la oferta y la creación de pagos; pruebas unitarias, suite completa, typecheck y diff check; rollout únicamente con Stripe test y preview integrado, manteniendo producción en `COMMERCE_MODE=off`; rollback por revert del PR o comercio apagado; fuera de alcance frontend, precios hardcodeados, credenciales, deploy y activación live.
 
-**Estado:** implementación backend completa. `ANNUAL_TRIAL_DAYS = 3` alimenta tanto la oferta como Checkout; semanal permanece sin prueba. La auditoría confirmó que el backend ya bloquea compras repetidas, valida sesión/customer, espera el webhook para confirmar Plus y deduplica eventos. Typecheck, prueba Stripe 6/6, suite completa 793/793 y `git diff --check` están verdes. Sin codegen porque no cambian schema, bindings ni firmas públicas. Producción no fue tocada. Follow-up frontend separado: Carta recibe `personalityReadingState.status="locked"` pero todavía no presenta la entrada a `/paywall`.
+**Estado:** implementación backend integrada en PR #51. `ANNUAL_TRIAL_DAYS = 3` alimenta tanto la oferta como Checkout; semanal permanece sin prueba. La auditoría confirmó que el backend ya bloquea compras repetidas, valida sesión/customer, espera el webhook para confirmar Plus y deduplica eventos. Typecheck, prueba Stripe 6/6, suite completa 793/793 y `git diff --check` están verdes. Sin codegen porque no cambian schema, bindings ni firmas públicas. Producción no fue tocada.
+
+## Carta — CTA a Plus cuando la lectura de personalidad está bloqueada (2026-07-31, Claude)
+
+**Objetivo:** cuando el `personalityReadingState` autoritativo del backend está `bloqueado` para una cuenta Free, Carta conserva visible la rueda natal Free, la tríada y las posiciones, y agrega un CTA hacia `/paywall`; los errores genuinos de generación siguen ofreciendo REINTENTAR. No confundir un plan bloqueado con un error transitorio, y no ocultar contenido Free de Carta.
+
+**Ficha:** owner Claude (frontend); territorio `src/screens/CartaScreen.tsx`, `test/cartaNatalCarga.test.ts`, `CURRENT_TASK.md`; riesgo: confundir el bloqueo de plan con un error transitorio, u ocultar contenido Free de Carta; rollout: un PR frontend aislado, sin deploy; rollback: revertir ese PR; fuera de alcance `convex/**`/backend, precios, comportamiento de Stripe/checkout, rediseño del paywall, onboarding, otras pantallas, environment/config, deploy y producción.
+
+**Qué cambió:** en `CartaScreen.tsx`, la rama `readingPhase === "bloqueado"` de la lectura de personalidad muestra el CTA `router.push("/paywall")` en vez de REINTENTAR, manteniendo intactas la rueda natal, la tríada y las posiciones Free alrededor. La rama de error real conserva `<Pill label="REINTENTAR" onPress={onRetryReading} />` sin ningún camino a `/paywall`. `test/cartaNatalCarga.test.ts` cubre ambas ramas de forma estructural: confirma el CTA correcto en cada una y confirma la ausencia del otro (ningún `Pill label="REINTENTAR"` en la rama bloqueada, ningún `/paywall` en la rama de error), con slices de texto que delimitan exactamente cada rama JSX sin capturar comentarios ni la rama vecina.
+
+**Validación (Codex):** test focalizado 22/22; `pnpm typecheck` en verde; suite completa **795/795**; `pnpm build:web` en verde; `pnpm check:web-export` en verde — 35.87 MB de export total, imagen más grande 479.3 KB, JS de aplicación 1.09 MB gzip; `git diff --check` limpio. Producción y todos los servicios externos permanecen intactos.
 
 ## Web launch — public preparation and validation CI (2026-07-31, Codex + Claude)
 
