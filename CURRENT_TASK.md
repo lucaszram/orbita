@@ -1,5 +1,21 @@
 # Current Task
 
+## Stripe Checkout — marca configurable por producto web (2026-07-31, Codex)
+
+**Objetivo:** mantener la identidad legal global de la cuenta Stripe y permitir que cada producto/despliegue envíe su propia marca visible a Checkout (Órbita u otra marca autorizada), sin aceptar el nombre desde el navegador.
+
+**Criterios de aceptación:** la sesión de Checkout envía `branding_settings.display_name` desde una variable server-side obligatoria; únicamente esa llamada usa una versión Stripe compatible con el campo; clientes, oferta, portal, precios, webhooks y contratos públicos conservan su comportamiento; el nombre legal de la cuenta no cambia; el descriptor del extracto se configura en el Product correspondiente de Stripe.
+
+**Ficha:** owner Codex; rama `codex/web-checkout-branding`; territorio `convex/lib/**`, `convex/payments/stripeActions.ts`, tests y documentación/env de la integración; base `origin/main` en `8d542a1`; cambio de contrato: no; riesgo alto por intervenir la creación del pago; pruebas unitarias focalizadas, suite completa, typecheck y diff check; rollout únicamente en Stripe test y preview, con producción en `COMMERCE_MODE=off`; rollback por revert o comercio apagado; fuera de alcance frontend, rediseño, cambio de razón social, portal multimarcas, credenciales, deploy y activación live.
+
+**Decisión de seguridad:** la marca se define mediante `STRIPE_CHECKOUT_DISPLAY_NAME` en Convex. Nunca se recibe como argumento público, de modo que una persona no puede hacer que un Checkout de Órbita se presente con otra identidad.
+
+**Implementado:** `POST /checkout/sessions` incorpora `branding_settings[display_name]` y fija `Stripe-Version: 2025-09-30.clover` sólo para esa petición. El resto del cliente REST mantiene la versión configurada en la cuenta. `.env.example` documenta la nueva variable y las pruebas cubren ausencia, normalización, Órbita, una segunda marca y el header aislado.
+
+**Limitación confirmada:** Customer Portal muestra la identidad pública global de la cuenta Stripe y no ofrece una marca por sesión. Checkout y el descriptor de cada Product sí pueden diferenciarse por producto; un portal completamente multimarcas requeriría otra cuenta Stripe o una interfaz propia.
+
+**Validación:** typecheck verde; pruebas focalizadas 8/8; suite completa 805/805; `git diff --check` limpio. Sin codegen porque no cambian schema, firmas ni bindings. Stripe, Convex dev/prod y producción todavía no fueron modificados en esta rama.
+
 ## Web Plus — mensaje preciso al bloquear una compra repetida (2026-07-31, Claude + Codex)
 
 **Objetivo:** cuando Stripe Checkout no se abre porque la cuenta ya tiene Órbita Plus, mostrar una explicación accionable y enviar a Perfil; conservar el mensaje genérico para fallas de red o errores desconocidos.

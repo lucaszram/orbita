@@ -4,6 +4,7 @@ import {
   automaticTaxEnabled,
   checkoutEnabled,
   commerceMode,
+  requireStripeCheckoutDisplayName,
   requireStripeSecret,
   requireWebAppUrl,
   type CommerceMode
@@ -14,6 +15,7 @@ import {
   buildStripePortalForm,
   createStripeApi,
   requireStripeString,
+  STRIPE_CHECKOUT_API_VERSION,
   trialDaysForPlan,
   type StripePlan
 } from "../lib/stripeApi";
@@ -176,6 +178,7 @@ export const createCheckoutSession = action({
     const mode = commerceMode();
     const stripe = stripeClient(mode);
     const webUrl = requireWebAppUrl(mode);
+    const displayName = requireStripeCheckoutDisplayName();
     const priceId = priceForPlan(plan);
     validatePrice(
       await stripe.get<StripePrice>(
@@ -217,8 +220,10 @@ export const createCheckoutSession = action({
         priceId,
         clerkUserId,
         webUrl,
+        displayName,
         automaticTax: automaticTaxEnabled()
-      })
+      }),
+      { stripeVersion: STRIPE_CHECKOUT_API_VERSION }
     );
 
     return { url: requireStripeString(session, "url") };

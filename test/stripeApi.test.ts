@@ -8,6 +8,7 @@ import {
   createStripeApi,
   encodeStripeForm,
   requireStripeString,
+  STRIPE_CHECKOUT_API_VERSION,
   trialDaysForPlan
 } from "../convex/lib/stripeApi";
 
@@ -58,6 +59,29 @@ test("Stripe REST client posts form data with bearer auth", async () => {
   assert.equal(body.get("metadata[clerkUserId]"), "user_123");
 });
 
+test("Stripe REST client can version only the Checkout request", async () => {
+  const calls: Array<{ input: string; init: RequestInit }> = [];
+  const client = createStripeApi("sk_test_secret", async (input, init) => {
+    calls.push({ input, init });
+    return new Response(JSON.stringify({ id: "cs_test_123" }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    });
+  });
+
+  await client.post(
+    "/checkout/sessions",
+    { mode: "subscription" },
+    { stripeVersion: STRIPE_CHECKOUT_API_VERSION }
+  );
+
+  assert.deepEqual(calls[0].init.headers, {
+    Authorization: "Bearer sk_test_secret",
+    "Content-Type": "application/x-www-form-urlencoded",
+    "Stripe-Version": STRIPE_CHECKOUT_API_VERSION
+  });
+});
+
 test("Stripe customer, checkout and portal forms preserve the existing contract", () => {
   assert.deepEqual(buildStripeCustomerForm({ clerkUserId: "user_123" }), {
     email: undefined,
@@ -69,7 +93,8 @@ test("Stripe customer, checkout and portal forms preserve the existing contract"
     customerId: "cus_123",
     priceId: "price_yearly",
     clerkUserId: "user_123",
-    webUrl: "https://orbita.example"
+    webUrl: "https://orbita.example",
+    displayName: "Órbita"
   });
   assert.equal(subscription.mode, "subscription");
   assert.equal(subscription["subscription_data[metadata][plan]"], "yearly");
@@ -77,6 +102,7 @@ test("Stripe customer, checkout and portal forms preserve the existing contract"
   assert.equal(trialDaysForPlan("yearly"), 3);
   assert.equal(subscription["subscription_data[trial_period_days]"], 3);
   assert.equal(subscription["payment_intent_data[metadata][plan]"], undefined);
+  assert.equal(subscription["branding_settings[display_name]"], "Órbita");
   assert.equal(subscription.success_url, "https://orbita.example/checkout/success?session_id={CHECKOUT_SESSION_ID}");
   assert.equal(subscription.cancel_url, "https://orbita.example/paywall");
 
@@ -85,18 +111,21 @@ test("Stripe customer, checkout and portal forms preserve the existing contract"
     customerId: "cus_123",
     priceId: "price_lifetime",
     clerkUserId: "user_123",
-    webUrl: "https://orbita.example"
+    webUrl: "https://orbita.example",
+    displayName: "Otra marca"
   });
   assert.equal(lifetime.mode, "payment");
   assert.equal(lifetime["payment_intent_data[metadata][plan]"], "lifetime");
   assert.equal(lifetime["subscription_data[metadata][plan]"], undefined);
+  assert.equal(lifetime["branding_settings[display_name]"], "Otra marca");
 
   const weekly = buildStripeCheckoutForm({
     plan: "weekly",
     customerId: "cus_123",
     priceId: "price_weekly",
     clerkUserId: "user_123",
-    webUrl: "https://orbita.example"
+    webUrl: "https://orbita.example",
+    displayName: "Órbita"
   });
   assert.equal(trialDaysForPlan("weekly"), 0);
   assert.equal(weekly["subscription_data[trial_period_days]"], undefined);
