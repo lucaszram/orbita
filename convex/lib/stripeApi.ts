@@ -5,6 +5,12 @@ export type StripeForm = Record<string, StripeFormValue>;
 export type StripeFetch = (input: string, init: RequestInit) => Promise<Response>;
 export type StripePlan = "weekly" | "yearly";
 
+export const ANNUAL_TRIAL_DAYS = 3;
+
+export function trialDaysForPlan(plan: StripePlan | "lifetime"): number {
+  return plan === "yearly" ? ANNUAL_TRIAL_DAYS : 0;
+}
+
 type StripeErrorPayload = {
   error?: {
     message?: unknown;
@@ -53,7 +59,8 @@ export function buildStripeCheckoutForm(args: {
       ? {
           "subscription_data[metadata][clerkUserId]": args.clerkUserId,
           "subscription_data[metadata][plan]": args.plan,
-          "subscription_data[trial_period_days]": args.plan === "yearly" ? 7 : undefined
+          "subscription_data[trial_period_days]":
+            trialDaysForPlan(args.plan) || undefined
         }
       : {
           "payment_intent_data[metadata][clerkUserId]": args.clerkUserId,

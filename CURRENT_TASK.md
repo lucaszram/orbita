@@ -1,5 +1,15 @@
 # Current Task
 
+## Lanzamiento web — autoridad de prueba anual Plus (2026-07-31, Codex)
+
+**Objetivo:** alinear la oferta web y Stripe Checkout sobre una única prueba anual de tres días; el semanal no ofrece prueba.
+
+**Criterios de aceptación:** `getWebOffer` devuelve `trialDays: 3` para anual y `0` para semanal; Checkout envía `trial_period_days=3` sólo para anual; una sola constante evita divergencias; no cambian schema ni firmas públicas.
+
+**Ficha:** owner Codex; rama `feature/api-web-plus-offer`; territorio `convex/**`, tests y documentación contractual; riesgo medio por precio/oferta de pagos; pruebas unitarias + suite completa + typecheck; rollout Stripe test y preview integrado, con producción en `COMMERCE_MODE=off`; rollback revertir este commit o mantener comercio apagado; fuera de alcance frontend, precios hardcodeados, credenciales, deploy y activación live.
+
+**Estado:** implementación local completa. `ANNUAL_TRIAL_DAYS = 3` alimenta oferta y Checkout; semanal permanece sin prueba. Verificación: typecheck verde, prueba Stripe 6/6, suite completa 376/376 y `git diff --check` limpio. Sin codegen porque no cambian bindings ni contratos públicos. Producción no fue tocada.
+
 ## P0 — integridad de datos natales y recuperación dev (2026-07-29, Codex)
 
 **Objetivo:** impedir que el onboarding o sus controles internos sobrescriban datos natales ya existentes y evitar que una carta vieja se presente como vigente durante una edición/reparación.
