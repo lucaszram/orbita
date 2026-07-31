@@ -2,9 +2,12 @@ import { type ReactNode } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { useQuery } from "convex/react";
+import { MeasuredSquare } from "@/components/orbita/ContentCanvas";
 import { NatalWheel } from "@/components/orbita/NatalWheel";
-import { resolveBirthInfo } from "@/domain/birthInfo";
+import { bodyCode } from "@/domain/astroSymbols";
+import { INCOMPLETE_BIRTH_MESSAGE } from "@/domain/birthInfo";
 import { mapNatalChart } from "@/domain/natalChart";
+import { personalChartGate } from "@/domain/natalChartGate";
 import { dataPhase, sessionPhase } from "@/domain/screenPhase";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { appApi, type NatalChartPayload } from "@/services/appRefs";
@@ -22,14 +25,12 @@ export function CartaCard({ variant = "card" }: { variant?: "card" | "hero" }) {
   const phase = sessionPhase(live);
   const doc = useQuery(appApi.charts.current, phase === "live" ? {} : "skip");
   // Los datos natales REMOTOS mandan sobre la existencia de una carta: una carta
-  // calculada sobre datos incompletos no es válida y no se dibuja. Sin esto, un
-  // documento legado (lugar "Sin especificar", sin coordenadas) igual producía
-  // una rueda que se leía como propia.
+  // calculada sobre datos incompletos —o sobre datos que ya cambiaron— no es
+  // válida y no se dibuja. Sin esto, un documento legado (lugar "Sin
+  // especificar", sin coordenadas) o la carta anterior a una edición igual
+  // producían una rueda que se leía como propia.
   const remoteBirth = useQuery(appApi.birthData.getCurrent, phase === "live" ? {} : "skip");
-  const birth = resolveBirthInfo({
-    doc: remoteBirth ?? null,
-    resolved: phase !== "live" || remoteBirth !== undefined
-  });
+  const chartGate = personalChartGate({ birth: remoteBirth, chart: doc });
   const hero = variant === "hero";
 
   if (phase === "cargando") {
@@ -58,7 +59,7 @@ export function CartaCard({ variant = "card" }: { variant?: "card" | "hero" }) {
     );
   }
 
-  if (phase === "live" && birth.status === "loading") {
+  if (chartGate === "cargando") {
     return (
       <CardFrame hero={hero}>
         <View style={[styles.wheelWrap, styles.stateZone]}>
@@ -67,10 +68,21 @@ export function CartaCard({ variant = "card" }: { variant?: "card" | "hero" }) {
       </CardFrame>
     );
   }
-  if (phase === "live" && birth.status === "incomplete") {
+  if (chartGate === "datosIncompletos") {
     return (
       <CardFrame hero={hero} onPress={() => router.push("/editar-datos")} ctaLabel="EDITAR DATOS">
-        <Text style={styles.stateText}>{birth.message}</Text>
+        <Text style={styles.stateText}>{INCOMPLETE_BIRTH_MESSAGE}</Text>
+      </CardFrame>
+    );
+  }
+  if (chartGate === "desactualizada") {
+    // Hay carta, pero es la de datos anteriores: se abre la Carta, que ofrece
+    // recalcularla. Nunca se dibuja la rueda vieja como si fuera la actual.
+    return (
+      <CardFrame hero={hero} onPress={() => router.push("/(tabs)/carta")} ctaLabel="VER MI CARTA →">
+        <Text style={styles.stateText}>
+          Tus datos cambiaron desde el último cálculo. Abrí tu carta para recalcularla.
+        </Text>
       </CardFrame>
     );
   }
@@ -122,10 +134,13 @@ export function CartaCard({ variant = "card" }: { variant?: "card" | "hero" }) {
         accessibilityLabel="Ver mi carta natal"
       >
         <Text style={styles.eyebrow}>TU CARTA NATAL</Text>
+        {/* El lado sale del CONTENEDOR medido, con 232 como tope. */}
         <View style={styles.wheelWrap} pointerEvents="none">
-          <NatalWheel payload={payload} size={232} />
+          <MeasuredSquare max={232}>{(size) => <NatalWheel payload={payload!} size={size} />}</MeasuredSquare>
         </View>
-        <Text style={styles.triad}>{`☉ ${t.sun.sign}    ☽ ${t.moon.sign}    ↑ ${t.ascendant.sign}`}</Text>
+        <Text style={styles.triad}>
+          {`${bodyCode({ key: "sun" })} ${t.sun.sign}    ${bodyCode({ key: "moon" })} ${t.moon.sign}    ${bodyCode({ key: "ascendant" })} ${t.ascendant.sign}`}
+        </Text>
         <View style={styles.cta}>
           <Text style={styles.ctaText}>VER MI CARTA →</Text>
         </View>

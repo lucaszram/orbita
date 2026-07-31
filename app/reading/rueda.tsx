@@ -1,13 +1,15 @@
 import { useState } from "react";
-import { StyleSheet, useWindowDimensions, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import { useQuery } from "convex/react";
 import { DetailScreen } from "@/components/home/DetailScreen";
 import { Body, H2, Note } from "@/components/orbita/kit";
+import { MeasuredSquare } from "@/components/orbita/ContentCanvas";
 import { NatalWheel } from "@/components/orbita/NatalWheel";
 import { GuestState } from "@/components/orbita/GuestState";
 import { EmptyState, ErrorState, LoadingState, MinimalLoading } from "@/components/orbita/states";
 import { mapNatalChart } from "@/domain/natalChart";
+import { personalChartGate } from "@/domain/natalChartGate";
 import { sessionPhase } from "@/domain/screenPhase";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { appApi, type NatalChartPayload } from "@/services/appRefs";
@@ -53,21 +55,31 @@ export default function RuedaScreen() {
 
 function RuedaLive() {
   const chartDoc = useQuery(appApi.charts.current, {});
-  if (chartDoc === undefined) {
+  // Una rueda personal exige datos natales remotos completos Y una carta que
+  // corresponda a esos datos (ver `domain/natalChartGate`).
+  const remoteBirth = useQuery(appApi.birthData.getCurrent, {});
+  const chartGate = personalChartGate({ birth: remoteBirth, chart: chartDoc });
+  if (chartGate === "cargando") {
     return (
       <DetailScreen eyebrow="Carta · Rueda completa">
         <LoadingState />
       </DetailScreen>
     );
   }
-  if (chartDoc === null) {
+  if (chartGate !== "listo") {
+    // Sin datos completos, sin carta, o con una carta que no es la de estos
+    // datos: se manda al lugar donde se resuelve, nunca se dibuja la rueda.
     return (
       <DetailScreen eyebrow="Carta · Rueda completa">
         <EmptyState
-          title="Todavía no hay carta"
-          body="Completá tu fecha, hora y lugar de nacimiento para calcular tu carta natal."
-          cta="COMPLETAR MIS DATOS"
-          onCta={() => router.push("/(tabs)/perfil")}
+          title={chartGate === "desactualizada" ? "Tu carta tiene que recalcularse" : "Todavía no hay carta"}
+          body={
+            chartGate === "desactualizada"
+              ? "Tus datos de nacimiento cambiaron desde el último cálculo. Abrí tu carta para recalcularla."
+              : "Completá tu fecha, hora y lugar de nacimiento para calcular tu carta natal."
+          }
+          cta={chartGate === "desactualizada" ? "VER MI CARTA" : "COMPLETAR MIS DATOS"}
+          onCta={() => router.push(chartGate === "desactualizada" ? "/(tabs)/carta" : "/(tabs)/perfil")}
         />
       </DetailScreen>
     );
@@ -86,15 +98,18 @@ function RuedaLive() {
 }
 
 function RuedaView({ payload }: { payload: NatalChartPayload }) {
-  const { width } = useWindowDimensions();
-  const size = Math.min(width - orbita.spacing.gutter * 2, 360);
   const [selectedKey, setSelectedKey] = useState<string | undefined>(undefined);
 
   return (
     <DetailScreen eyebrow="Carta · Rueda completa">
       <H2>Tu carta natal.</H2>
       <View style={styles.wheelWrap}>
-        <NatalWheel payload={payload} size={size} selectedKey={selectedKey} onSelect={setSelectedKey} />
+        {/* El lado sale del contenedor medido, nunca del ancho de la ventana. */}
+        <MeasuredSquare max={360}>
+          {(size) => (
+            <NatalWheel payload={payload} size={size} selectedKey={selectedKey} onSelect={setSelectedKey} />
+          )}
+        </MeasuredSquare>
       </View>
       <Body>Tocá un planeta para resaltarlo y ver sus aspectos. La rueda muestra tus posiciones de nacimiento con el Ascendente a la izquierda.</Body>
       <Note>{payload.accuracy}</Note>

@@ -76,7 +76,13 @@ export function CodeHelp({ onResend }: Props) {
         <Text style={[styles.resend, btn.disabled && styles.resendDisabled]}>{btn.label}</Text>
       </Pressable>
       {feedback ? (
-        <Text style={status === "error" ? styles.error : styles.ok}>{feedback}</Text>
+        <Text
+          accessibilityRole={status === "error" ? "alert" : undefined}
+          accessibilityLiveRegion="polite"
+          style={status === "error" ? styles.error : styles.ok}
+        >
+          {feedback}
+        </Text>
       ) : null}
     </View>
   );

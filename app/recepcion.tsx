@@ -1,12 +1,15 @@
 import { useEffect } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "convex/react";
 import { HomeBackdrop } from "@/components/home/HomeBackdrop";
+import { ContentCanvas, MeasuredSquare } from "@/components/orbita/ContentCanvas";
+import { bodyCode } from "@/domain/astroSymbols";
 import { NatalWheel } from "@/components/orbita/NatalWheel";
 import { mapNatalChart } from "@/domain/natalChart";
+import { personalChartGate } from "@/domain/natalChartGate";
 import { markFirstRun } from "@/services/firstRun";
 import { useAppState } from "@/hooks/useAppState";
 import { useLiveApp } from "@/hooks/useLiveApp";
@@ -36,17 +39,27 @@ function fechaLarga(iso: string): string {
  *  primera vez); "VER DESPUÉS" deja al usuario en la Home, donde la segunda
  *  entrega (el tarot diario) se explica en su lugar de trabajo.
  */
+// Códigos monocromos (ver `domain/astroSymbols`): los glifos Unicode caían al
+// font de emoji en web y Android.
+const SOL = bodyCode({ key: "sun" });
+const LUNA = bodyCode({ key: "moon" });
+const ASC = bodyCode({ key: "ascendant" });
+
 export default function RecepcionScreen() {
   const { isReady, profile } = useRequireProfile();
   const fontsLoaded = useOrbitaFonts();
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
   // La tríada real llega del onboarding (calculada sin login vía previewDailyHome):
   // no dependemos de que la carta ya esté persistida en Convex.
   const { sol, luna, asc } = useLocalSearchParams<{ sol?: string; luna?: string; asc?: string }>();
 
   const { isLive } = useLiveApp();
   const chartDoc = useQuery(appApi.charts.current, isLive ? {} : "skip");
+  // La rueda exige datos natales remotos completos Y una carta que corresponda a
+  // esos datos (ver `domain/natalChartGate`): recién salido del onboarding, la
+  // carta puede estar todavía calculándose.
+  const remoteBirth = useQuery(appApi.birthData.getCurrent, isLive ? {} : "skip");
+  const chartGate = personalChartGate({ birth: remoteBirth, chart: chartDoc });
 
   useEffect(() => {
     void markFirstRun({ recepcionVista: true });
@@ -61,7 +74,7 @@ export default function RecepcionScreen() {
   // y una rueda ajena al lado los desmiente (feedback Lucas 2026-07-15). Mientras
   // no hay carta, el espacio queda en el fondo estelar.
   let payload: NatalChartPayload | null = null;
-  if (isLive && chartDoc) {
+  if (isLive && chartDoc && chartGate === "listo") {
     try {
       payload = mapNatalChart(chartDoc);
     } catch {
@@ -73,9 +86,9 @@ export default function RecepcionScreen() {
   // largos parta entre unidades y no entre el glifo y su signo.
   const triadItems = (
     sol || luna || asc
-      ? [sol ? `☉ ${sol}` : null, luna ? `☽ ${luna}` : null, asc ? `↑ ${asc}` : null]
+      ? [sol ? `${SOL} ${sol}` : null, luna ? `${LUNA} ${luna}` : null, asc ? `${ASC} ${asc}` : null]
       : payload
-        ? [`☉ ${payload.triad.sun.sign}`, `☽ ${payload.triad.moon.sign}`, `↑ ${payload.triad.ascendant.sign}`]
+        ? [`${SOL} ${payload.triad.sun.sign}`, `${LUNA} ${payload.triad.moon.sign}`, `${ASC} ${payload.triad.ascendant.sign}`]
         : []
   ).filter((t): t is string => Boolean(t));
 
@@ -85,21 +98,28 @@ export default function RecepcionScreen() {
   const partes = [fechaLarga(profile.birthDate), profile.birthTime, lugar]
     .filter(Boolean)
     .join(", ");
-  const wheelSize = Math.min(width - orbita.spacing.gutter * 6, 260);
 
   return (
     <View style={styles.screen}>
       <HomeBackdrop />
       <StatusBar style="light" />
       <ScrollView
-        contentContainerStyle={[
-          styles.content,
-          { paddingTop: insets.top + orbita.spacing.xxl, paddingBottom: insets.bottom + orbita.spacing.xxl }
-        ]}
+        contentContainerStyle={{
+          paddingTop: insets.top + orbita.spacing.xxl,
+          paddingBottom: insets.bottom + orbita.spacing.xxl
+        }}
         showsVerticalScrollIndicator={false}
       >
-        <View style={[styles.wheelWrap, { height: wheelSize }]}>
-          {payload ? <NatalWheel payload={payload} size={wheelSize} /> : null}
+        {/* Las gutters van DENTRO del lienzo, como en el resto de la app: así
+            la columna mide lo mismo acá que en la Carta o en la Home. */}
+        <ContentCanvas>
+        <View style={styles.content}>
+        {/* El lado sale del contenedor medido, nunca del ancho de la ventana.
+            El inset conserva el aire lateral que tenía la recepción. */}
+        <View style={styles.wheelWrap}>
+          <MeasuredSquare max={260} inset={orbita.spacing.gutter * 3}>
+            {(size) => (payload ? <NatalWheel payload={payload} size={size} /> : null)}
+          </MeasuredSquare>
         </View>
 
         {triadItems.length ? (
@@ -134,6 +154,8 @@ export default function RecepcionScreen() {
         >
           <Text style={styles.laterLabel}>VER DESPUÉS</Text>
         </Pressable>
+        </View>
+        </ContentCanvas>
       </ScrollView>
     </View>
   );

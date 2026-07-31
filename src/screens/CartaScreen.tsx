@@ -5,17 +5,19 @@
  * propia versión en paralelo y las dos derivaban. La ruta ahora es un wrapper
  * fino sobre este módulo; no se duplica ninguna pantalla por plataforma.
  */
-import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { useEffect, useState, type ReactNode } from "react";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { useAction, useQuery } from "convex/react";
 
 import { Body, Divider, Eyebrow, H2, Note, OrbitaScreen, Pill, Section, TabStrip } from "@/components/orbita/kit";
-import { glyphFor } from "@/components/orbita/GlyphRow";
+import { MeasuredSquare } from "@/components/orbita/ContentCanvas";
 import { GuestState } from "@/components/orbita/GuestState";
 import { NatalWheel } from "@/components/orbita/NatalWheel";
 import { EmptyState, ErrorState, MinimalLoading } from "@/components/orbita/states";
+import { bodyCode, RETROGRADE_CODE } from "@/domain/astroSymbols";
 import { mapNatalChart } from "@/domain/natalChart";
+import { personalChartGate } from "@/domain/natalChartGate";
 import { Radar } from "@/components/orbita/Radar";
 import { cartaGate, readingBlockPhase, type ReadingBlockPhase } from "@/domain/cartaNatalCarga";
 import { sessionPhase } from "@/domain/screenPhase";
@@ -43,35 +45,50 @@ export function CartaScreen() {
   // resuelve o reconecta → carga mínima; sesión rota → error + retry.
   if (phase === "cargando") {
     return (
-      <OrbitaScreen right="Carta">
+      <CartaShell>
         <MinimalLoading />
-      </OrbitaScreen>
+      </CartaShell>
     );
   }
   if (phase === "error") {
     return (
-      <OrbitaScreen right="Carta">
+      <CartaShell>
         <ErrorState onRetry={live.retryUser} />
-      </OrbitaScreen>
+      </CartaShell>
     );
   }
   if (phase === "invitado") {
     // Sin mocks: estado honesto de invitado, nunca la carta demo como si fuera tuya.
     return (
-      <OrbitaScreen right="Carta">
+      <CartaShell>
         <GuestState
           eyebrow="TU CARTA NATAL"
           title={"Tu carta se calcula\ncon tu cuenta."}
           body="Órbita usa tu fecha, hora y lugar de nacimiento reales para dibujar tu carta natal completa y explicártela."
         />
-      </OrbitaScreen>
+      </CartaShell>
     );
   }
   return <CartaLive />;
 }
 
+/**
+ * Shell de la pantalla. El lienzo de contenido lo monta `OrbitaScreen` para
+ * TODAS sus pantallas (ancho completo con las gutters nativas en móvil, columna
+ * centrada con ancho máximo en escritorio), así que acá ya no se repite.
+ */
+function CartaShell({ children }: { children: ReactNode }) {
+  return <OrbitaScreen right="Carta">{children}</OrbitaScreen>;
+}
+
 function CartaLive() {
   const doc = useQuery(appApi.charts.current, {});
+  // La carta se dibuja sólo si corresponde a los datos natales REMOTOS
+  // vigentes. `charts.current` cae a la última carta del usuario cuando no
+  // encuentra la exacta, así que después de editar fecha/hora/lugar puede
+  // devolver la carta VIEJA (ver `domain/natalChartGate`). Sin esta verificación
+  // se presentaba la carta de otros datos como si fuera la actual.
+  const remoteBirth = useQuery(appApi.birthData.getCurrent, {});
   const reading = useQuery(appApi.charts.personalityReading, {});
   // Señal reactiva de la generación (pending/ready/error): si el prewarm del
   // backend tomó el claim y FALLÓ, acá llega `error` y el bloque de lectura
@@ -108,17 +125,34 @@ function CartaLive() {
   // Gate GENERAL: solo carta + mapa de valores (llegan en <1 s). La lectura
   // larga (40–61 s) NO participa: nunca devuelve la pantalla a MinimalLoading.
   const gate = cartaGate({ doc, values });
-  if (gate === "cargando") {
+  // Gate de IDENTIDAD de la carta: datos remotos completos + carta que coincide.
+  const chartGate = personalChartGate({ birth: remoteBirth, chart: doc });
+  if (gate === "cargando" || chartGate === "cargando") {
     return (
-      <OrbitaScreen right="Carta">
+      <CartaShell>
         <MinimalLoading />
-      </OrbitaScreen>
+      </CartaShell>
     );
   }
-  if (gate === "vacio") {
+  if (chartGate === "datosIncompletos") {
+    // Sin datos natales completos no hay carta posible: se pide el dato que
+    // falta, no se dibuja una rueda aproximada.
+    return (
+      <CartaShell>
+        <EmptyState
+          eyebrow="TU CARTA NATAL"
+          title="Faltan tus datos de nacimiento"
+          body="Tu carta se calcula con tu fecha, tu hora y tu lugar de nacimiento. Completalos y la dibujamos."
+          cta="EDITAR DATOS"
+          onCta={() => router.push("/editar-datos")}
+        />
+      </CartaShell>
+    );
+  }
+  if (gate === "vacio" || chartGate === "sinCarta") {
     // El backend confirmó que no hay carta: vacío real.
     return (
-      <OrbitaScreen right="Carta">
+      <CartaShell>
         <EmptyState
           eyebrow="TU CARTA NATAL"
           title="Todavía no hay carta"
@@ -126,7 +160,17 @@ function CartaLive() {
           cta="COMPLETAR MIS DATOS"
           onCta={() => router.push("/(tabs)/perfil")}
         />
-      </OrbitaScreen>
+      </CartaShell>
+    );
+  }
+  if (chartGate === "desactualizada") {
+    // Hay una carta, pero no es la de estos datos (o no se puede probar que lo
+    // sea). Se ofrece recalcularla —la action es idempotente por cacheKey— en
+    // vez de mostrar la vieja como si fuera la actual.
+    return (
+      <CartaShell>
+        <RecalculateChart />
+      </CartaShell>
     );
   }
   let payload: NatalChartPayload;
@@ -134,9 +178,9 @@ function CartaLive() {
     payload = mapNatalChart(doc);
   } catch {
     return (
-      <OrbitaScreen right="Carta">
+      <CartaShell>
         <ErrorState />
-      </OrbitaScreen>
+      </CartaShell>
     );
   }
   // La lectura larga resuelve INLINE dentro de "Tu carta, explicada":
@@ -159,13 +203,44 @@ function CartaLive() {
   );
 }
 
+/**
+ * Carta que no corresponde a los datos vigentes: se recalcula, no se muestra.
+ * `calculateOrCreateNatalChart` devuelve la carta exacta si ya existe y la crea
+ * si no, así que reintentar es seguro.
+ */
+function RecalculateChart() {
+  const calculate = useAction(appApi.charts.calculateOrCreateNatalChart);
+  const [state, setState] = useState<"idle" | "working" | "failed">("idle");
+  const run = () => {
+    if (state === "working") return;
+    setState("working");
+    calculate({})
+      .then(() => setState("idle"))
+      .catch(() => setState("failed"));
+  };
+  return (
+    <Section>
+      <Eyebrow>Tu carta natal</Eyebrow>
+      <H2>Tu carta tiene que recalcularse.</H2>
+      <Body>
+        {state === "failed"
+          ? "No pudimos recalcularla. Tus datos están guardados: probá de nuevo."
+          : "Tus datos de nacimiento cambiaron desde el último cálculo. Recalculamos tu carta con los datos actuales."}
+      </Body>
+      <View style={{ height: orbita.spacing.lg }} />
+      <Pill
+        label={state === "working" ? "RECALCULANDO…" : state === "failed" ? "REINTENTAR" : "RECALCULAR MI CARTA"}
+        onPress={run}
+      />
+    </Section>
+  );
+}
+
 // --- Vista ---------------------------------------------------------------
 
-const PLANET_GLYPH: Record<string, string> = {
-  sun: "☉", moon: "☽", mercury: "☿", venus: "♀", mars: "♂", jupiter: "♃", saturn: "♄",
-  uranus: "♅", neptune: "♆", pluto: "♇", ascendant: "↑", node: "☊", chiron: "⚷"
-};
-const glyphOf = (p: { key?: string; planet: string }) => (p.key && PLANET_GLYPH[p.key]) || glyphFor(p.planet);
+/** Código monocromo del cuerpo (ver `domain/astroSymbols`): nunca un glifo que
+ *  en web o Android cae al font de emoji. */
+const glyphOf = (p: { key?: string; planet: string }) => bodyCode({ key: p.key, label: p.planet });
 const deg = (n?: number) => (typeof n === "number" ? `${Math.round(n)}°` : "");
 
 function CartaView({
@@ -182,11 +257,8 @@ function CartaView({
   onRetryReading: () => void;
   values: ValuesMapPayload | null;
 }) {
-  const { width } = useWindowDimensions();
   const [view, setView] = useState<"circulo" | "tabla">("circulo");
   const [selected, setSelected] = useState<string | undefined>();
-  const wheelSize = Math.min(width - orbita.spacing.gutter * 2, 360);
-  const radarSize = Math.min(width - orbita.spacing.gutter * 2, 340);
   const sel = payload.placements.find((p) => p.key === selected);
   const aspects = payload.mainAspects ?? payload.aspects ?? [];
   const angular = payload.houses.filter((h) => [1, 4, 7, 10].includes(h.house)).sort((a, b) => a.house - b.house);
@@ -198,7 +270,7 @@ function CartaView({
   const sectionsB = sections.slice(mid);
 
   return (
-    <OrbitaScreen right="Carta">
+    <CartaShell>
       <Section style={{ paddingBottom: orbita.spacing.lg }}>
         <Eyebrow>Tu carta natal</Eyebrow>
         <H2>Tu mapa de origen.</H2>
@@ -216,15 +288,20 @@ function CartaView({
 
       {view === "circulo" ? (
         <View style={styles.wheelWrap}>
-          <NatalWheel
-            payload={payload}
-            size={wheelSize}
-            selectedKey={selected}
-            onSelect={(k) => setSelected((cur) => (cur === k ? undefined : k))}
-          />
+          {/* El lado sale del CONTENEDOR medido, no del ancho de la ventana. */}
+          <MeasuredSquare max={360}>
+            {(size) => (
+              <NatalWheel
+                payload={payload}
+                size={size}
+                selectedKey={selected}
+                onSelect={(k) => setSelected((cur) => (cur === k ? undefined : k))}
+              />
+            )}
+          </MeasuredSquare>
           {sel ? (
             <Text style={styles.selLine}>
-              {`${glyphOf(sel)}  ${sel.planet} en ${sel.sign}${sel.house ? ` · Casa ${sel.house}` : ""}${sel.normDegree != null ? ` · ${deg(sel.normDegree)}` : ""}${sel.isRetrograde ? " ℞" : ""}`}
+              {`${glyphOf(sel)}  ${sel.planet} en ${sel.sign}${sel.house ? ` · Casa ${sel.house}` : ""}${sel.normDegree != null ? ` · ${deg(sel.normDegree)}` : ""}${sel.isRetrograde ? ` ${RETROGRADE_CODE}` : ""}`}
             </Text>
           ) : (
             <Note>Tocá un planeta para verlo en la tabla.</Note>
@@ -285,7 +362,7 @@ function CartaView({
           <Eyebrow>Mapa de valores</Eyebrow>
           <Body>Qué te impulsa y qué te pesa, leído desde tu carta.</Body>
           <View style={styles.radarWrap}>
-            <Radar payload={values} size={radarSize} />
+            <MeasuredSquare max={340}>{(size) => <Radar payload={values} size={size} />}</MeasuredSquare>
           </View>
           <Body>{values.note}</Body>
         </Section>
@@ -334,7 +411,7 @@ function CartaView({
         ))}
         {reading ? <Note>{reading.disclaimer}</Note> : null}
       </Section>
-    </OrbitaScreen>
+    </CartaShell>
   );
 }
 
@@ -346,7 +423,7 @@ function SectorBlock({ s, n }: { s: PersonalitySection; n: number }) {
       <Text style={styles.sectorNum}>{`Sector ${String(n).padStart(2, "0")}`}</Text>
       <View style={styles.sectorHead}>
         <View style={styles.sectorMarker}>
-          <Text style={styles.sectorGlyph}>{glyphFor(s.placement.label)}</Text>
+          <Text style={styles.sectorGlyph}>{bodyCode({ label: s.placement.label })}</Text>
         </View>
         <Text style={styles.sectorPlacement}>
           {`${s.placement.planet} en ${s.placement.sign ?? ""}${s.placement.house ? ` · Casa ${s.placement.house}` : ""}`.toUpperCase()}
@@ -395,7 +472,7 @@ function PositionRow({ p }: { p: SignPlacement }) {
       <Text style={styles.posSign}>
         {p.sign}
         {p.normDegree != null ? ` ${deg(p.normDegree)}` : ""}
-        {p.isRetrograde ? " ℞" : ""}
+        {p.isRetrograde ? ` ${RETROGRADE_CODE}` : ""}
       </Text>
       <Text style={styles.posHouse}>{p.house ? `Casa ${p.house}` : "—"}</Text>
     </View>
@@ -434,14 +511,15 @@ const styles = StyleSheet.create({
   },
   triadCell: { alignItems: "center", flex: 1, paddingHorizontal: 4 },
   triadCellBorder: { borderLeftColor: orbita.colors.line, borderLeftWidth: 1 },
-  triadGlyph: { color: orbita.colors.copperSoft, fontSize: 22 },
+  triadGlyph: { color: orbita.colors.copperSoft, fontFamily: orbita.fonts.monoMedium, fontSize: 15, letterSpacing: 1 },
   triadRole: { color: orbita.colors.copper, fontFamily: orbita.fonts.monoMedium, fontSize: 10, letterSpacing: 0.6, marginTop: orbita.spacing.sm },
   triadSign: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 18, marginTop: 4 },
   triadHouse: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.mono, fontSize: 11, marginTop: 2 },
 
   posRow: { alignItems: "center", borderBottomColor: orbita.colors.line, borderBottomWidth: 1, flexDirection: "row", paddingVertical: orbita.spacing.md },
   posMarker: { alignItems: "center", borderColor: "rgba(214,154,106,0.5)", borderRadius: 15, borderWidth: 1, height: 30, justifyContent: "center", marginRight: orbita.spacing.md, width: 30 },
-  posGlyph: { color: orbita.colors.bone, fontSize: 14 },
+  // Los símbolos son códigos de dos letras en la mono empaquetada.
+  posGlyph: { color: orbita.colors.bone, fontFamily: orbita.fonts.mono, fontSize: 11, letterSpacing: 0.5 },
   posName: { color: orbita.colors.bone, flex: 1, fontFamily: orbita.fonts.serif, fontSize: 16 },
   posSign: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 13, textAlign: "right", width: 108 },
   posHouse: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.mono, fontSize: 11, textAlign: "right", width: 58 },
@@ -456,7 +534,7 @@ const styles = StyleSheet.create({
   sectorNum: { color: orbita.colors.copper, fontFamily: orbita.fonts.monoMedium, fontSize: 11, letterSpacing: 1.5 },
   sectorHead: { alignItems: "center", flexDirection: "row", marginTop: orbita.spacing.md },
   sectorMarker: { alignItems: "center", borderColor: "rgba(214,154,106,0.5)", borderRadius: 16, borderWidth: 1, height: 32, justifyContent: "center", marginRight: orbita.spacing.md, width: 32 },
-  sectorGlyph: { color: orbita.colors.bone, fontFamily: orbita.fonts.body, fontSize: 15 },
+  sectorGlyph: { color: orbita.colors.bone, fontFamily: orbita.fonts.mono, fontSize: 11, letterSpacing: 0.5 },
   sectorPlacement: { color: orbita.colors.copperSoft, flex: 1, fontFamily: orbita.fonts.monoMedium, fontSize: 11, letterSpacing: 1 },
   sectorTitle: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 22, lineHeight: 28, marginTop: orbita.spacing.md },
   sectorBody: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 15, lineHeight: 23, marginTop: orbita.spacing.sm },

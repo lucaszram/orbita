@@ -283,6 +283,8 @@ export default function EditarDatosRoute() {
               onChangeText={setPlaceQuery}
               placeholder="Buscar otra ciudad…"
               placeholderTextColor={orbita.faint}
+              // El placeholder desaparece al tipear: la etiqueta es aparte.
+              accessibilityLabel="Buscar tu lugar de nacimiento"
               autoCapitalize="none"
               autoCorrect={false}
               style={styles.input}
@@ -366,7 +368,9 @@ export default function EditarDatosRoute() {
 }
 
 const styles = StyleSheet.create({
-  backBtn: { alignItems: "flex-start", height: 30, justifyContent: "center", width: 28 },
+  // 44px reales: `hitSlop` no existe en web, así que el objetivo de "cancelar"
+  // eran los 28×30 del chevron.
+  backBtn: { alignItems: "flex-start", justifyContent: "center", minHeight: 44, minWidth: 44 },
   blockNote: { color: orbita.muted, marginBottom: 12 },
   body: { flexGrow: 1, paddingBottom: 48, paddingHorizontal: GUTTER, paddingTop: 18 },
   cancelRow: { alignItems: "center", marginTop: 16, paddingBottom: 10 },

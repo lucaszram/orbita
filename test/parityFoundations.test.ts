@@ -129,18 +129,22 @@ test("no vuelve a existir un gate de mocks ni `?live=1`", () => {
 // El problema original: la web tenía su propia Home, Carta, Tránsitos y Diario
 // en `src/components/web/`, y derivaban del nativo sin que nada lo impidiera.
 
+// La Carta ya no tiene una ruta web aparte: `app/carta.tsx` y `app/(tabs)/carta.tsx`
+// se disputaban la URL `/carta` (los segmentos de grupo son opcionales en
+// expo-router) y montaban DOS shells distintos según por cuál entrabas. Quedó la
+// del grupo, que es la que el shell web ya envuelve una sola vez desde el layout.
 const CANONICAS = [
-  ["src/screens/HomeScreen.tsx", "HomeScreen", "app/home.tsx", "app/(tabs)/index.tsx"],
-  ["src/screens/CartaScreen.tsx", "CartaScreen", "app/carta.tsx", "app/(tabs)/carta.tsx"],
-  ["src/screens/TransitosScreen.tsx", "TransitosScreen", "app/transito.tsx", "app/(tabs)/transitos.tsx"],
-  ["src/screens/DiarioScreen.tsx", "DiarioScreen", "app/diario.tsx", "app/reading/diario.tsx"]
+  ["src/screens/HomeScreen.tsx", "HomeScreen", ["app/home.tsx", "app/(tabs)/index.tsx"]],
+  ["src/screens/CartaScreen.tsx", "CartaScreen", ["app/(tabs)/carta.tsx"]],
+  ["src/screens/TransitosScreen.tsx", "TransitosScreen", ["app/transito.tsx", "app/(tabs)/transitos.tsx"]],
+  ["src/screens/DiarioScreen.tsx", "DiarioScreen", ["app/diario.tsx", "app/reading/diario.tsx"]]
 ] as const;
 
 test("web y nativo resuelven a la MISMA pantalla canónica", () => {
-  for (const [modulo, nombre, rutaWeb, rutaNativa] of CANONICAS) {
+  for (const [modulo, nombre, rutas] of CANONICAS) {
     const canon = readFileSync(join(ROOT, modulo), "utf8");
     assert.ok(new RegExp(`export function ${nombre}`).test(canon), `${modulo} no exporta ${nombre}`);
-    for (const ruta of [rutaWeb, rutaNativa]) {
+    for (const ruta of rutas) {
       const s = readFileSync(join(ROOT, ruta), "utf8");
       assert.ok(
         s.includes(`@/screens/${nombre}`),

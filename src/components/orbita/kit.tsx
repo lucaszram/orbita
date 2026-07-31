@@ -2,6 +2,7 @@ import { ReactNode } from "react";
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { ContentCanvas } from "@/components/orbita/ContentCanvas";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
 import { orbita } from "@/theme/orbita";
 import type { Triad as TriadData } from "@/domain/types";
@@ -11,7 +12,15 @@ const SCREEN_BACKDROP = require("../../../assets/orbita/optimized/core/orbita_da
 
 const G = orbita.spacing.gutter;
 
-/** Dark editorial screen shell: bg #111, top bar, scroll, font gate. */
+/**
+ * Dark editorial screen shell: bg #111, top bar, scroll, font gate.
+ *
+ * El lienzo de contenido (`ContentCanvas`) se monta ACÁ, una sola vez por
+ * pantalla: ancho completo con las gutters nativas en móvil, columna centrada
+ * de 720 en escritorio. Antes lo montaba cada pantalla por su cuenta, así que
+ * Tránsitos y Vínculo se estiraban con la ventana mientras Carta y Perfil no.
+ * En un teléfono el tope nunca aplica, así que el nativo no cambia.
+ */
 export function OrbitaScreen({ children, right = "Hoy  ˅" }: { children: ReactNode; right?: string }) {
   const insets = useSafeAreaInsets();
   const fontsLoaded = useOrbitaFonts();
@@ -28,19 +37,26 @@ export function OrbitaScreen({ children, right = "Hoy  ˅" }: { children: ReactN
         contentContainerStyle={{ paddingBottom: insets.bottom + orbita.spacing.xxl }}
         showsVerticalScrollIndicator={false}
       >
-        {children}
+        <ContentCanvas>{children}</ContentCanvas>
       </ScrollView>
     </View>
   );
 }
 
+/**
+ * Barra de la pantalla. La regla de la barra es full-bleed (es chrome), pero la
+ * marca y el selector viajan en el mismo lienzo que el contenido: si no, en
+ * escritorio quedaban a 350px del texto que encabezan.
+ */
 export function TopBar({ right = "HOY ˅" }: { right?: string }) {
   return (
     <View>
-      <View style={styles.topbar}>
-        <Text style={styles.brand}>ÓRBITA</Text>
-        <Text style={styles.selector}>{right}</Text>
-      </View>
+      <ContentCanvas>
+        <View style={styles.topbar}>
+          <Text style={styles.brand}>ÓRBITA</Text>
+          <Text style={styles.selector}>{right}</Text>
+        </View>
+      </ContentCanvas>
       <View style={styles.topbarDivider} />
     </View>
   );
