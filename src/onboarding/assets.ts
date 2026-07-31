@@ -1,6 +1,11 @@
 // Órbita onboarding — asset require map (rebuilt flow).
 // Paths are relative to this file (src/onboarding/) → repo assets/ at ../../.
-// Optimized JPGs are preferred; core PNGs / archive symbols where needed.
+//
+// Heavy reusable masters point at `assets/orbita/optimized/**`. The small Figma
+// splash asset stays in place. Masters under `core/` (2–2,6 MB) and
+// `higgsfield/archive-10/` (4,5–5,8 MB) remain untouched as source material and
+// do not ship in the web export.
+// `scripts/check-web-export.mjs` falla si alguno se cuela.
 
 export const A = {
   // immersive backgrounds
@@ -14,15 +19,15 @@ export const A = {
   beforeAfterBg: require("../../assets/orbita/optimized/onboarding-v44/before_after_idx53.jpg"),
 
   // focal emblems (circular)
-  heroEclipse: require("../../assets/orbita/core/orbita_home_hero_orbital_a.png"),
-  chartDiagram: require("../../assets/orbita/core/orbita_carta_natal_diagram_a.png"),
+  heroEclipse: require("../../assets/orbita/optimized/core/orbita_home_hero_orbital_a.jpg"),
+  chartDiagram: require("../../assets/orbita/optimized/core/orbita_carta_natal_diagram_a.jpg"),
   sun: require("../../assets/orbita/optimized/onboarding-v44/sun_emblem_idx25.jpg"),
   ascendant: require("../../assets/orbita/optimized/onboarding-v44/ascendant_horizon_idx27.jpg"),
   rings: require("../../assets/orbita/optimized/onboarding-v44/orbital_chart_idx15.jpg"),
   globe: require("../../assets/orbita/optimized/onboarding-v44/birth_data_idx34.jpg"),
-  moon: require("../../assets/orbita/higgsfield/archive-10/selected/moon-phases/archive10_moon_phase_first_quarter_copper__idx18__hf_20260703_003720_cd8f386a-ae56-43a2-befd-3c0349168199.png"),
-  saturn: require("../../assets/orbita/higgsfield/archive-10/selected/planetary-symbols/archive10_planet_saturn_close_ring__idx31__hf_20260703_004047_d9c80e5f-05a1-43a4-899e-1b338900705f.png"),
-  heart: require("../../assets/orbita/higgsfield/archive-10/selected/app-symbols/archive10_topic_love_or_vinculo_heart_orbit__idx16__hf_20260703_003624_d05c1e75-2bbe-4074-84ab-0a3205f4f5aa.png"),
+  moon: require("../../assets/orbita/optimized/archive-10/moon_phase_first_quarter_copper_idx18.jpg"),
+  saturn: require("../../assets/orbita/optimized/archive-10/planet_saturn_close_ring_idx31.jpg"),
+  heart: require("../../assets/orbita/optimized/archive-10/topic_love_heart_orbit_idx16.jpg"),
 
   // benefit tiles (screen 02)
   tileLunar: require("../../assets/orbita/optimized/onboarding-v44/benefit_lunar_idx68.jpg"),
