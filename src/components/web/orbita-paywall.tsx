@@ -4,6 +4,7 @@ import { Link } from "expo-router";
 import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { ImmersiveScreen } from "@/components/web/immersive-bg";
 import { RequireSession, WebNotice } from "@/components/web/require-session";
+import { WebLayoutProvider } from "@/components/web/web-layout-provider";
 import { WebNav } from "@/components/web/web-nav";
 import {
   formatPlanPrice,
@@ -37,10 +38,15 @@ const BENEFITS = [
 ];
 
 export function OrbitaPaywall() {
+  // Mismo motivo que `/iniciar-sesion` y `/editar-datos`: esta pantalla standalone
+  // monta `WebNav` fuera de `WebAppShell`, así que sin este provider
+  // `useIsDesktop()` es siempre `false` y la barra de escritorio nunca aparece.
   return (
-    <RequireSession>
-      <PaywallWithBackend />
-    </RequireSession>
+    <WebLayoutProvider>
+      <RequireSession>
+        <PaywallWithBackend />
+      </RequireSession>
+    </WebLayoutProvider>
   );
 }
 

@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   CHECKOUT_POLL_TIMEOUT_MS,
   checkoutPollDecision,
@@ -204,4 +206,23 @@ test("no se afirma nada mientras el plan o el comercio no resolvieron", () => {
     manageSubscription({ entitlement: { canManageInStripePortal: true }, commerceEnabled: undefined }),
     "cargando"
   );
+});
+
+// --- Nav de escritorio en el paywall standalone -----------------------------
+
+const ROOT = join(import.meta.dirname, "..");
+const paywallSrc = readFileSync(join(ROOT, "src/components/web/orbita-paywall.tsx"), "utf8");
+
+test("el paywall monta WebLayoutProvider alrededor de RequireSession", () => {
+  // El paywall es una pantalla standalone: monta WebNav (dentro de Shell) fuera
+  // de WebAppShell. Sin WebLayoutProvider, useIsDesktop() cae al default del
+  // contexto ("mobile") y la barra de escritorio nunca aparece, aunque el
+  // comercio esté prendido o apagado.
+  assert.match(paywallSrc, /from "@\/components\/web\/web-layout-provider"/);
+  assert.match(paywallSrc, /<WebLayoutProvider>\s*<RequireSession>\s*<PaywallWithBackend \/>\s*<\/RequireSession>\s*<\/WebLayoutProvider>/);
+});
+
+test("OrbitaPaywall monta un solo provider de layout", () => {
+  const aperturas = paywallSrc.match(/<WebLayoutProvider>/g) ?? [];
+  assert.equal(aperturas.length, 1, "un solo punto de entrada standalone, un solo provider");
 });

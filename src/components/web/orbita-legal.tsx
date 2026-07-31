@@ -11,6 +11,7 @@ import { useFonts } from "expo-font";
 import { Link } from "expo-router";
 import type { StyleProp, TextStyle } from "react-native";
 import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { WebLayoutProvider } from "@/components/web/web-layout-provider";
 import { WebNav } from "@/components/web/web-nav";
 import { SUPPORT_EMAIL, SUPPORT_MAILTO } from "@/domain/support";
 
@@ -38,19 +39,24 @@ function LegalShell({ eyebrow, title, children }: { eyebrow: string; title: stri
       </View>
     );
   }
+  // Mismo motivo que `/iniciar-sesion` y `/editar-datos`: Soporte, Privacidad y
+  // Términos montan `WebNav` fuera de `WebAppShell`, así que sin este provider
+  // `useIsDesktop()` es siempre `false` y la barra de escritorio nunca aparece.
   return (
-    <View style={styles.page}>
-      <WebNav active="inicio" />
-      <ScrollView contentContainerStyle={styles.scroll}>
-        <View style={styles.column}>
-          <Text style={styles.eyebrow}>{eyebrow}</Text>
-          <Text style={styles.title}>{title}</Text>
-          <Text style={styles.updated}>Última actualización: {UPDATED}</Text>
-          <View style={styles.content}>{children}</View>
-          <LegalFooter />
-        </View>
-      </ScrollView>
-    </View>
+    <WebLayoutProvider>
+      <View style={styles.page}>
+        <WebNav active="inicio" />
+        <ScrollView contentContainerStyle={styles.scroll}>
+          <View style={styles.column}>
+            <Text style={styles.eyebrow}>{eyebrow}</Text>
+            <Text style={styles.title}>{title}</Text>
+            <Text style={styles.updated}>Última actualización: {UPDATED}</Text>
+            <View style={styles.content}>{children}</View>
+            <LegalFooter />
+          </View>
+        </ScrollView>
+      </View>
+    </WebLayoutProvider>
   );
 }
 
