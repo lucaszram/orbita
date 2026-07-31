@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAction } from "convex/react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Link } from "expo-router";
+import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { ImmersiveScreen } from "@/components/web/immersive-bg";
 import { RequireSession, WebNotice } from "@/components/web/require-session";
 import { WebNav } from "@/components/web/web-nav";
@@ -13,6 +14,7 @@ import {
   type OfferPlan,
   type WebOffer
 } from "@/domain/paywall";
+import { SUPPORT_EMAIL, SUPPORT_MAILTO } from "@/domain/support";
 import { proposedApi } from "@/services/appRefs";
 
 const colors = {
@@ -177,6 +179,42 @@ function BenefitList() {
   );
 }
 
+/**
+ * Divulgación legal de la pantalla de compra: privacidad, términos y una vía de
+ * soporte real, visibles desde el paywall mismo y en cualquiera de sus estados
+ * (con o sin comercio habilitado). No cambia nada del checkout.
+ */
+function PaywallLegalLinks() {
+  return (
+    <View style={styles.legalLinks}>
+      <View style={styles.legalRow}>
+        <Link href="/privacy" asChild>
+          <Pressable accessibilityRole="link" hitSlop={8}>
+            <Text style={styles.legalLink}>Privacidad</Text>
+          </Pressable>
+        </Link>
+        <Text style={styles.legalDot}>·</Text>
+        <Link href="/terminos" asChild>
+          <Pressable accessibilityRole="link" hitSlop={8}>
+            <Text style={styles.legalLink}>Términos y condiciones</Text>
+          </Pressable>
+        </Link>
+      </View>
+      <Text selectable style={styles.legal}>
+        ¿Dudas antes de suscribirte? Escribinos a{" "}
+        <Text
+          style={styles.legalLink}
+          accessibilityRole="link"
+          onPress={() => Linking.openURL(SUPPORT_MAILTO)}
+        >
+          {SUPPORT_EMAIL}
+        </Text>
+        .
+      </Text>
+    </View>
+  );
+}
+
 function Shell({ children }: { children: React.ReactNode }) {
   const { width } = useWindowDimensions();
   const isNarrow = width < 900;
@@ -191,7 +229,10 @@ function Shell({ children }: { children: React.ReactNode }) {
             Tu carta, leída entera.
           </Text>
         </View>
-        <View style={{ gap: 20, paddingHorizontal: pad, paddingTop: 32 }}>{children}</View>
+        <View style={{ gap: 20, paddingHorizontal: pad, paddingTop: 32 }}>
+          {children}
+          <PaywallLegalLinks />
+        </View>
       </ScrollView>
     </ImmersiveScreen>
   );
@@ -232,6 +273,11 @@ const styles = StyleSheet.create({
   ctaText: { color: colors.black, fontSize: 15, fontWeight: "700" },
   error: { color: colors.copperSoft, fontSize: 14 },
   legal: { color: colors.boneDim, fontSize: 13, lineHeight: 19 },
+
+  legalLinks: { borderTopColor: colors.line, borderTopWidth: 1, gap: 10, maxWidth: 640, paddingTop: 20 },
+  legalRow: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  legalLink: { color: colors.copperSoft, fontSize: 13, fontWeight: "500" },
+  legalDot: { color: colors.boneDim, fontSize: 13 },
 
   benefits: { gap: 10, maxWidth: 640, paddingTop: 12 },
   benefitsLabel: { color: colors.copperSoft, fontSize: 12, fontWeight: "700", letterSpacing: 1 },

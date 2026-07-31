@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<!--
+  Plantilla del documento de la web pública de Órbita.
+
+  Expo la toma de `public/index.html` cuando existe (si no, usa la suya) y
+  completa los dos marcadores de abajo con `expo.web.lang` y `expo.web.name` de
+  `app.json`; la descripción la inyecta desde `expo.web.description`. Por eso el
+  idioma, el título y la descripción se editan en `app.json`, no acá.
+
+  OJO: Expo hace un `String.replace` por marcador, que reemplaza SÓLO la primera
+  aparición. Escribir el nombre de un marcador en este comentario se come la
+  sustitución y el documento sale con el literal en el `<html>` o el `<title>`.
+
+  Lo único que este archivo agrega sobre la plantilla por defecto es la
+  `<link rel="canonical">`, que la configuración de Expo no sabe expresar. El
+  resto es la plantilla original, sin cambios: tocarla afecta a TODAS las rutas
+  de la web y a nada del build nativo (`public/` es sólo web).
+-->
+<html lang="%LANG_ISO_CODE%">
+  <head>
+    <meta charset="utf-8" />
+    <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>%WEB_TITLE%</title>
+    <!--
+      La web es una SPA: todas las rutas se sirven desde este mismo documento,
+      así que la canónica apunta al dominio productivo raíz. Sin esto, los
+      previews de Vercel y el dominio de producción compiten por el mismo
+      contenido en los buscadores.
+    -->
+    <link rel="canonical" href="https://orbitaastrologia.xyz/" />
+    <!-- The `react-native-web` recommended style reset: https://necolas.github.io/react-native-web/docs/setup/#root-element -->
+    <style id="expo-reset">
+      /* These styles make the body full-height */
+      html,
+      body {
+        height: 100%;
+      }
+      /* These styles disable body scrolling if you are using <ScrollView> */
+      body {
+        overflow: hidden;
+      }
+      /* These styles make the root element full-height */
+      #root {
+        display: flex;
+        height: 100%;
+        flex: 1;
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- Use static rendering with Expo Router to support running without JavaScript. -->
+    <noscript>
+      Necesitás habilitar JavaScript para usar Órbita.
+    </noscript>
+    <!-- The root element for your Expo app. -->
+    <div id="root"></div>
+  </body>
+</html>

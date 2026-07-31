@@ -1,0 +1,73 @@
+# Órbita — validación automática. NO despliega nada.
+#
+# Etapa 2 de `docs/proceso-desarrollo-y-releases.md` §17: instalación
+# reproducible, typecheck, suite completa con piso de cobertura y export web
+# dentro de sus presupuestos.
+#
+# Este workflow NO tiene —y no debe tener— pasos de Vercel, EAS, Convex,
+# TestFlight ni promoción a producción: publicar sigue siendo una decisión
+# manual de Lucas con el gate de release documentado.
+name: Validación
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+# Un push nuevo sobre la misma rama cancela la corrida anterior: lo que importa
+# es el último commit, no la cola.
+concurrency:
+  group: validacion-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validar:
+    name: typecheck · tests · export web
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # `--frozen-lockfile`: si el lockfile no coincide con `package.json`, la
+      # corrida falla en vez de resolver versiones nuevas por su cuenta.
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      # No hay eslint en este repo: el "lint verde" es el typecheck verde.
+      - name: Typecheck
+        run: pnpm typecheck
+
+      # La suite corre UNA sola vez; el piso la juzga después sobre esta salida.
+      # `pipefail` explícito: sin él, `tee` devolvería 0 aunque los tests fallen.
+      - name: Tests
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm test 2>&1 | tee test-output.log
+
+      - name: Piso de cobertura (mínimo 745 tests)
+        run: pnpm check:test-count test-output.log
+
+      - name: Export web
+        run: pnpm build:web
+
+      - name: Presupuestos del export web
+        run: pnpm check:web-export

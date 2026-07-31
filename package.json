@@ -10,6 +10,7 @@
     "web": "expo start --web",
     "build:web": "expo export --platform web",
     "check:web-export": "node scripts/check-web-export.mjs",
+    "check:test-count": "node scripts/check-test-count.mjs",
     "convex:dev": "convex dev",
     "convex:codegen": "convex codegen",
     "test": "tsx --test test/*.test.ts",
