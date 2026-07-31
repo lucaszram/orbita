@@ -22,6 +22,7 @@ import {
 } from "@/domain/types";
 import { getZodiacSign } from "@/domain/zodiac";
 import { toHomeReading } from "@/domain/homeAdapter";
+import { useDailyContext } from "@/hooks/useDailyContext";
 import { useLiveApp, useLiveHome, useLiveSavedReadings } from "@/hooks/useLiveApp";
 import {
   buildAccountSnapshot,
@@ -243,9 +244,18 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   // Live (Convex): sin sesión, `payload` es null y todo queda igual que siempre.
   // `isAuthLoading` sostiene la última lectura live durante una reconexión
   // para no pisar contenido real con el engine local delante del usuario.
-  const localDate = toISODate();
   const { isLive, isAuthLoading, auth } = useLiveApp();
-  const { payload: liveHomePayload, saveLive } = useLiveHome(isLive, localDate, isAuthLoading);
+  // La capa live usa SIEMPRE la fecha/zona canónicas del servidor. Mientras no
+  // lleguen, no se consulta ni se genera nada: el reloj del dispositivo no
+  // decide el día astrológico.
+  const daily = useDailyContext();
+  const canonical = daily.status === "listo" ? daily.context : null;
+  const { payload: liveHomePayload, saveLive } = useLiveHome(
+    isLive && canonical !== null,
+    canonical?.localDate ?? "",
+    canonical?.timezone ?? "",
+    isAuthLoading
+  );
   const {
     rows: remoteSavedRows,
     loading: savedReadingsSyncing,

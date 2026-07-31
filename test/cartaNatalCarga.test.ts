@@ -100,7 +100,8 @@ describe("readingBlockPhase — señal remota personalityReadingState (backend #
 
 // Verificación ESTRUCTURAL del cableado en la pantalla (no se puede renderizar
 // RN en node; mismo patrón que perfilAppReview.test.ts).
-const CARTA = readFileSync(path.join(process.cwd(), "app/(tabs)/carta.tsx"), "utf8");
+// La pantalla es canónica y compartida: la ruta nativa es sólo un wrapper.
+const CARTA = readFileSync(path.join(process.cwd(), "src/screens/CartaScreen.tsx"), "utf8");
 
 describe("carta.tsx — cableado anti-bloqueo", () => {
   it("el gate general usa cartaGate({ doc, values }) — sin la lectura", () => {

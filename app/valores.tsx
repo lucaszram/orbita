@@ -1,10 +1,18 @@
 import { Redirect } from "expo-router";
-import { OrbitaValues } from "@/components/web/orbita-values";
+import { ValoresScreen } from "@/screens/ValoresScreen";
+import { WebAppShell } from "@/components/web/web-app-shell";
 
-export default function ValoresRoute() {
+// Mapa de valores: destino contextual de la Carta.
+// Es la pantalla canónica compartida con el nativo, no una versión web aparte.
+// `WebAppShell` aporta la navegación que en nativo pone el layout de pestañas.
+export default function Route() {
   if (process.env.EXPO_OS !== "web") {
     return <Redirect href="/" />;
   }
 
-  return <OrbitaValues />;
+  return (
+    <WebAppShell active="carta">
+      <ValoresScreen />
+    </WebAppShell>
+  );
 }

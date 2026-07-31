@@ -31,7 +31,8 @@ import { CTA } from "@/onboarding/components/CTA";
 import { Screen } from "@/onboarding/components/Screen";
 import { Body, Label, Title } from "@/onboarding/components/Type";
 import { font, GUTTER, orbita } from "@/onboarding/theme";
-import { useBackendPersistStrict } from "@/onboarding/useAccount";
+import { BirthPayloadError, birthPayloadMessage } from "@/domain/birthPayload";
+import { useProfileBirthDataPersist } from "@/onboarding/useAccount";
 import { searchPlaces, type PlaceHit } from "@/services/geocoding";
 
 /**
@@ -52,7 +53,9 @@ export default function EditarDatosRoute() {
   const { isReady, profile, updateProfile } = useAppState();
   const { isLive, auth, retryUser } = useLiveApp();
   const { birthData: remoteBirthData, birthDataResolved } = useLiveAppDocs(isLive);
-  const persistBackend = useBackendPersistStrict();
+  // Editar datos usa el endpoint de PERFIL: `completeBirthData` es create-only
+  // y rechazaría un cambio con ONBOARDING_BIRTH_DATA_CONFLICT.
+  const persistBackend = useProfileBirthDataPersist();
 
   const [date, setDate] = useState<Date>(() => isoToDate(profile?.birthDate ?? "1996-01-15"));
   const [time, setTime] = useState<Date>(() => timeToDate(profile?.birthTime));
@@ -61,7 +64,9 @@ export default function EditarDatosRoute() {
   const [placeQuery, setPlaceQuery] = useState("");
   const [placeHits, setPlaceHits] = useState<PlaceHit[]>([]);
   const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState(false);
+  // Mensaje concreto en vez de un booleano: un documento legado incompleto
+  // tiene que decir "elegí el lugar de nuevo", no "revisá tu conexión".
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [syncTimedOut, setSyncTimedOut] = useState(false);
   const [syncTick, setSyncTick] = useState(0);
 
@@ -152,7 +157,7 @@ export default function EditarDatosRoute() {
   const save = async () => {
     if (!dirty || saving || syncState !== "ready") return;
     setSaving(true);
-    setSaveError(false);
+    setSaveError(null);
     try {
       if (auth?.isSignedIn && persistBackend) {
         // Con sesión: esperar la confirmación del backend (recalcula carta y
@@ -163,8 +168,12 @@ export default function EditarDatosRoute() {
       // Invitado: guardado local solamente.
       await updateProfile(applyBirthEdits(profile, edits));
       router.back();
-    } catch {
-      setSaveError(true);
+    } catch (e) {
+      setSaveError(
+        e instanceof BirthPayloadError
+          ? birthPayloadMessage(e.problem)
+          : "No pudimos guardar en tu cuenta. No cambiamos nada; revisá tu conexión y volvé a intentar."
+      );
     } finally {
       setSaving(false);
     }
@@ -269,11 +278,7 @@ export default function EditarDatosRoute() {
 
         <View style={styles.spacer} />
 
-        {saveError ? (
-          <Body style={styles.saveError}>
-            No pudimos guardar en tu cuenta. No cambiamos nada; revisá tu conexión y volvé a intentar.
-          </Body>
-        ) : null}
+        {saveError !== null ? <Body style={styles.saveError}>{saveError}</Body> : null}
         {syncState === "retry" ? (
           <Body style={styles.saveError}>
             No pudimos sincronizar los datos de tu cuenta. No cambiamos nada; podés reintentar o
@@ -288,7 +293,7 @@ export default function EditarDatosRoute() {
                 ? "Sincronizando tus datos…"
                 : syncState === "retry"
                   ? "Reintentar sincronización"
-                  : saveError
+                  : saveError !== null
                     ? "Reintentar"
                     : "Guardar cambios"
           }

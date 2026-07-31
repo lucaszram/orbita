@@ -1,6 +1,7 @@
 import { anyApi } from "convex/server";
 import type { FunctionReference } from "convex/server";
 import type { PublicDailyHome } from "./publicLabRefs";
+import type { CheckoutStatus, WebOffer } from "@/domain/paywall";
 
 /**
  * Capa de datos del front para la Web B0 (usuario autenticado con Clerk).
@@ -409,7 +410,9 @@ export const appApi = {
       "query",
       "public",
       Empty,
-      { status: "pending" | "ready" | "error" }
+      // `locked` (backend P0): el gating Free/Plus es server-side; la lectura
+      // larga no se genera ni se entrega a Free.
+      { status: "pending" | "ready" | "error" | "locked" }
     >,
     // Genera (LLM) + cachea la lectura rica; la query de arriba la devuelve reactiva.
     generatePersonalityReading: anyApi.charts.generatePersonalityReading as FunctionReference<
@@ -457,11 +460,25 @@ export const appApi = {
     >
   },
   subscriptions: {
+    // Única fuente de verdad del acceso. El tipo anterior decía
+    // `{ entitlement: "free" | "plus" } | null` y no coincidía con el backend:
+    // el valor Plus es `orbita_pro`, `isPro` es explícito y nunca devuelve null
+    // (sin usuario responde el entitlement gratuito).
     getCurrent: anyApi.subscriptions.getCurrent as FunctionReference<
       "query",
       "public",
       Empty,
-      { entitlement: "free" | "plus"; status: string } | null
+      {
+        entitlement: "free" | "orbita_pro";
+        isPro: boolean;
+        status: string;
+        provider?: string;
+        plan?: string;
+        isLifetime: boolean;
+        currentPeriodEnd?: number;
+        willRenew?: boolean;
+        canManageInStripePortal: boolean;
+      }
     >
   }
 } as const;
@@ -498,14 +515,53 @@ export const proposedApi = {
   // void.suggestedQuestions(): preguntas sugeridas personalizadas por categoría.
   voidSuggested: anyApi.void.suggestedQuestions as FunctionReference<"action", "public", Empty, VoidSuggestedPayload>,
   // daily.getGuide(): guía diaria personalizada (action: genera+cachea 1/día/usuario).
+  // daily.getTodayContext(): fecha canónica + zona, calculadas por el servidor
+  // desde la timezone natal. Es una ACTION (no reactiva): se pide una vez por
+  // sesión desde `DailyContextProvider` y se comparte. El cliente NO calcula
+  // el día ni manda su timezone como autoridad.
+  todayContext: anyApi.daily.getTodayContext as FunctionReference<
+    "action",
+    "public",
+    Empty,
+    { localDate: string; timezone: string }
+  >,
+  // --- Pagos (web) ---------------------------------------------------------
+  // Todas son ACTIONS. `getWebOffer` decide server-side si el comercio está
+  // habilitado; con `off` devuelve `plans: []` y no hay checkout posible.
+  // Los precios salen de Stripe: nunca se escriben en el cliente.
+  getWebOffer: anyApi.payments.stripeActions.getWebOffer as FunctionReference<
+    "action",
+    "public",
+    Empty,
+    WebOffer
+  >,
+  createCheckoutSession: anyApi.payments.stripeActions.createCheckoutSession as FunctionReference<
+    "action",
+    "public",
+    { plan: "weekly" | "yearly" },
+    { url: string }
+  >,
+  // Sólo se consulta en la pantalla de retorno. `active` significa que el
+  // backend verificó sesión, propietario, customer y el entitlement del
+  // webhook: la URL por sí sola nunca concede Plus.
+  getCheckoutStatus: anyApi.payments.stripeActions.getCheckoutStatus as FunctionReference<
+    "action",
+    "public",
+    { sessionId: string },
+    { status: CheckoutStatus }
+  >,
+  createPortalSession: anyApi.payments.stripeActions.createPortalSession as FunctionReference<
+    "action",
+    "public",
+    Empty,
+    { url: string }
+  >,
   dailyGuide: anyApi.daily.getGuide as FunctionReference<"action", "public", { localDate?: string; timezone?: string }, DailyGuidePayload>,
   // daily.revealCard(): da vuelta la carta de ese día. Idempotente, irreversible.
   revealCard: anyApi.daily.revealCard as FunctionReference<"mutation", "public", { localDate: string }, number>,
   // daily.getStrip(): la tira del Diario (qué carta salió cada día, si ya la diste vuelta).
   // Query reactiva: después de revealCard, la Home y la tira se actualizan solas.
   dailyStrip: anyApi.daily.getStrip as FunctionReference<"query", "public", { from: string; to: string }, DailyStripDay[]>,
-  // Dev/testeo interno: marca al usuario como Pro (gateado por ALLOW_DEV_STUB en Convex).
-  setStubPro: anyApi.subscriptions.setStubPlusForDev as FunctionReference<"mutation", "public", Empty, unknown>,
   // Telemetría: aviso de instalación al bot de Telegram (1 vez por install, sin sesión).
   appOpened: anyApi.telemetry.appOpened as FunctionReference<"mutation", "public", { platform?: string }, null>
 } as const;

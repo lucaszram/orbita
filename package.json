@@ -17,6 +17,7 @@
   "dependencies": {
     "@babel/runtime": "^7.29.7",
     "@clerk/expo": "^3.6.5",
+    "@clerk/localizations": "^4.13.8",
     "@expo-google-fonts/inter": "^0.4.2",
     "@expo-google-fonts/newsreader": "^0.4.1",
     "@expo-google-fonts/roboto-mono": "^0.4.2",

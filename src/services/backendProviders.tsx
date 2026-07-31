@@ -1,6 +1,7 @@
 import Constants from "expo-constants";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { ReactNode, useMemo } from "react";
+import { orbitaEsES } from "@/services/clerkLocalization";
 
 const extra = Constants.expoConfig?.extra as Record<string, string | undefined> | undefined;
 
@@ -31,7 +32,11 @@ export function BackendProviders({ children }: { children: ReactNode }) {
   const { ConvexProviderWithClerk } = require("convex/react-clerk");
 
   return (
-    <ClerkProvider publishableKey={clerkPublishableKey} tokenCache={tokenCache}>
+    <ClerkProvider
+      publishableKey={clerkPublishableKey}
+      tokenCache={tokenCache}
+      localization={orbitaEsES}
+    >
       <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
         {children}
       </ConvexProviderWithClerk>

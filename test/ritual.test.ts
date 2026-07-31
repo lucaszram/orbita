@@ -124,7 +124,8 @@ describe("cartaRevealView — la cara nunca convive con el CTA de carta cerrada"
 });
 
 describe("Diario — la carta no reintroduce el cruce astro (handoff v3)", () => {
-  const diarioSrc = readFileSync(resolve("app/reading/diario.tsx"), "utf8");
+  // Pantalla canónica compartida; la ruta nativa quedó como wrapper.
+  const diarioSrc = readFileSync(resolve("src/screens/DiarioScreen.tsx"), "utf8");
 
   it("no conserva los labels EL CIELO DE HOY / DE ESE DÍA en el detalle de la carta", () => {
     assert.ok(!diarioSrc.includes("EL CIELO DE HOY"), "el Diario no debe renderizar EL CIELO DE HOY");

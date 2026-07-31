@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
-import { Redirect, Tabs } from "expo-router";
+import { Redirect, Slot, Tabs, usePathname } from "expo-router";
+import { WebAppShell } from "@/components/web/web-app-shell";
+import type { NavKey } from "@/components/web/web-nav";
 import { OrbitaTabBar } from "@/components/orbita/TabBar";
 import { resolveTabsGuard, type LocalProfileOwner } from "@/domain/sessionStart";
 import { useAppState } from "@/hooks/useAppState";
@@ -21,7 +23,17 @@ const CLERK_LOAD_TIMEOUT_MS = 8000;
  * Órbita no tiene modo invitado: sin sesión confirmada no se renderiza Home,
  * Tránsitos, Umbral ni Perfil. La regla vive en `resolveTabsGuard` (con tests).
  */
+/** Qué sección de la navegación web corresponde a la ruta actual. */
+function navKeyForPath(pathname: string): NavKey {
+  if (pathname.startsWith("/transitos")) return "transitos";
+  if (pathname.startsWith("/vacio") || pathname.startsWith("/umbral")) return "umbral";
+  if (pathname.startsWith("/carta")) return "carta";
+  if (pathname.startsWith("/perfil")) return "perfil";
+  return "inicio";
+}
+
 export default function TabsLayout() {
+  const pathname = usePathname();
   const { isReady, profile, profileOwner, profileAdoptionPending } = useAppState();
   const { auth } = useLiveApp();
   const [clerkTimedOut, setClerkTimedOut] = useState(false);
@@ -72,6 +84,19 @@ export default function TabsLayout() {
     case "allow":
     default:
       break;
+  }
+
+  // En web la barra de pestañas de React Navigation no es el chrome de la app:
+  // el resto de las rutas autenticadas usa `WebAppShell`, y tener dos chromes
+  // distintos según la ruta era justamente la deriva que este trabajo elimina.
+  // El shell se monta UNA vez acá, en el layout, no por pantalla.
+  // En nativo no cambia absolutamente nada.
+  if (IS_WEB) {
+    return (
+      <WebAppShell active={navKeyForPath(pathname)}>
+        <Slot />
+      </WebAppShell>
+    );
   }
 
   return (

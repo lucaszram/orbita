@@ -7,7 +7,7 @@ import { Body, H2, Note } from "@/components/orbita/kit";
 import { NatalWheel } from "@/components/orbita/NatalWheel";
 import { GuestState } from "@/components/orbita/GuestState";
 import { EmptyState, ErrorState, LoadingState, MinimalLoading } from "@/components/orbita/states";
-import { mapNatalChart } from "@/components/web/orbita-chart";
+import { mapNatalChart } from "@/domain/natalChart";
 import { sessionPhase } from "@/domain/screenPhase";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { appApi, type NatalChartPayload } from "@/services/appRefs";

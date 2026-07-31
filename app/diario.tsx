@@ -1,17 +1,18 @@
 import { Redirect } from "expo-router";
-import { OrbitaSoon } from "@/components/web/orbita-soon";
+import { DiarioScreen } from "@/screens/DiarioScreen";
+import { WebAppShell } from "@/components/web/web-app-shell";
 
-export default function DiarioRoute() {
+// Diario real: la tira de cartas y el ritual de cada día.
+// Es la pantalla canónica compartida con el nativo, no una versión web aparte.
+// `WebAppShell` aporta la navegación que en nativo pone el layout de pestañas.
+export default function Route() {
   if (process.env.EXPO_OS !== "web") {
     return <Redirect href="/" />;
   }
 
   return (
-    <OrbitaSoon
-      active="diario"
-      eyebrow="Diario"
-      title="Lo que te movió, guardado."
-      body="Tus notas junto a la lectura de cada día, para volver a leerte con el tiempo."
-    />
+    <WebAppShell active="diario">
+      <DiarioScreen />
+    </WebAppShell>
   );
 }

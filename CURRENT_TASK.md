@@ -40,6 +40,151 @@
 
 **Bloqueo móvil posterior:** `src/domain/appData.ts` todavía construye tránsitos nativos hardcodeados mediante `buildTransitos` y `chartMock`. No afecta Gate A web y queda fuera de este PR backend, pero debe eliminarse antes de cualquier nueva publicación móvil.
 
+## Órbita Web P0 — alta de cuenta dentro de Órbita (2026-07-28, Claude)
+
+**Objetivo:** que crear cuenta ocurra dentro del producto, en español, sin perder el onboarding cargado.
+
+**Ficha:** owner Claude (frontend); territorio `app/**`, `src/**`, `test/**`; rama `feature/web-p0-signup-es` sobre `feature/web-p0-auth-es` `610f6ad`; riesgo medio (toca el estado del onboarding); validación typecheck + suite + export web + navegador a 320/390/1100.
+
+**Qué cambió:**
+1. **`/login`**: `signUpUrl="/empezar"` en el `<SignIn />`. "Registrate" ahora lleva al onboarding de Órbita, no al Account Portal alojado.
+2. **Paso de cuenta de `/empezar`**: `withSignUp` en el `<SignIn />` ya montado. Un email nuevo continúa a registro **en el mismo componente**, con `routing="hash"` (`/empezar#/create`). No hizo falta montar `<SignUp />` aparte: la instancia no bloqueó el flujo.
+3. **Borrador del onboarding persistido** (`src/domain/onboardingDraft.ts`). Sin esto no se cumplía el criterio de aceptación: todo el onboarding vivía en `useState` y la vuelta de Clerk a `/empezar` lo borraba entero. Se guarda en `sessionStorage`, no `localStorage`, a propósito — son datos de nacimiento: duran lo que dura la pestaña y no quedan en una máquina compartida. Lectura defensiva: un borrador corrupto, truncado o de otra versión se descarta y se empieza limpio. Se borra al terminar el onboarding.
+4. **Bug encontrado al validar:** el efecto que invalida la tríada cuando cambian los datos de nacimiento **también corría en el primer render**, así que al volver de crear la cuenta borraba la tríada restaurada aunque nada hubiera cambiado. Ahora compara contra una firma de los datos; la tríada guardada se calculó con esos mismos datos, así que es consistente por construcción.
+5. **Overrides de voz y de inglés faltante.** `esES` deja **550 claves** sin traducir respecto de `enUS`; casi todas son de passkeys, SSO empresarial, API keys y códigos por teléfono, que Órbita no usa. Se tradujeron sólo las alcanzables en email + contraseña: `signIn.start.titleCombined` (mostraba **"Continue to Orbita"** en el formulario combinado), `formFieldInputPlaceholder__signUpPassword`, `formFieldInput__emailAddress_format`, `protectCheck.*` y los títulos de contraseña comprometida/no confiable. Más el ajuste a voseo pedido: "Ingresá tu dirección de correo electrónico", "¿No tenés cuenta?", "Registrate", "Creá tu cuenta", "¿Ya tenés cuenta?".
+
+**Verificado en navegador contra Convex dev:**
+- Click real en "Registrate" desde `/login` → `http://localhost:8099/empezar`. **No** `accounts.dev`.
+- En el paso de cuenta, un email nuevo continuó a registro en `/empezar#/create` (dos `history.replaceState`, sin recarga ni navegación externa), con el paso "5/6 Guardá tu carta" intacto alrededor.
+- Formulario de alta en español: "Creá tu cuenta", "para continuar en Orbita", "¿Ya tenés cuenta? Iniciar sesión". Cero inglés.
+- Borrador tras entrar al alta: paso 8, `1994-4-12`, `10:40`, "Rosario, Santa Fe, Argentina", coordenadas y tríada `Aries/Tauro/Virgo` conservados.
+- 320, 390 y 1100: sin desborde horizontal, sin inglés, sin `accounts.dev`.
+
+**Validación: typecheck verde, 441/441 tests, export web 5,18 MB.**
+
+**Límite:** no completé un alta real (no creo cuentas ni ingreso contraseñas). Falta confirmar con una cuenta descartable que, **después** de crear la cuenta, el onboarding sigue en el paso de cuenta con los datos y que la carta queda guardada antes del paywall. El borrador y la tríada ya se verificaron sobrevivir el remonte y la entrada al alta.
+
+## Órbita Web P0 — auth en español (2026-07-28, Claude)
+
+**Objetivo:** que los componentes de Clerk que montamos rindan en español. Sin rediseñar auth ni tocar la arquitectura de providers.
+
+**Ficha:** owner Claude (frontend); territorio `src/services/**` + `package.json`/`pnpm-lock.yaml`; rama `feature/web-p0-auth-es` sobre `feature/web-p0-final` `91786fe`; riesgo bajo; validación typecheck + suite + `expo export --platform web` + navegador a 320/390/1100.
+
+**Qué cambió:**
+1. `@clerk/localizations@4.13.8` agregado con pnpm (`package.json` + `pnpm-lock.yaml` commiteados).
+2. `src/services/clerkLocalization.ts` exporta `orbitaEsES` = `esES` + overrides puntuales.
+3. `ClerkProvider` recibe `localization={orbitaEsES}`. Nada más cambió: mismo `tokenCache`, mismo `ConvexProviderWithClerk`, mismas rutas.
+
+**Import por subpath — no cosmético:** importar desde la raíz (`@clerk/localizations`) mete los ~40 idiomas del paquete y el bundle web pasó de **4,9 MB a 10,1 MB**. Con `@clerk/localizations/es-ES` queda en **5,18 MB** (+~70 KB sobre la base). El bundle exportado se verificó: tiene los strings en español y **cero** francés/alemán/portugués/japonés.
+
+**Overrides aplicados:** `esES` trae dos interrogaciones sin signo de apertura. Se corrigieron sólo esas dos claves (`formFieldAction__forgotPassword` y `reverification.alternativeMethods.getHelp.title`). No quedó ningún string en inglés dentro de los componentes que montamos, así que no hizo falta ningún otro override.
+
+**Verificado en navegador contra Convex dev:** "Entrar", "para continuar a Orbita", "Correo electrónico", "Contraseña", "Continuar", "¿No tienes cuenta? Regístrese", "¿Olvidaste tu contraseña?" y el error real del servidor ("No se ha encontrado ninguna cuenta con este identificador."). Sin desborde horizontal ni strings en inglés a 320, 390 y 1100.
+
+**Validación: typecheck verde, 430/430 tests, export web correcto.**
+
+**Dos cosas que quedan y NO se resuelven con esta librería:**
+1. **"Regístrese" sale de la app.** Lleva al Account Portal alojado de Clerk (`golden-urchin-96.accounts.dev/sign-up`), que está **en inglés** y no lo alcanza el prop `localization` — ése es otro origen. Se arregla desde el Dashboard de Clerk (idioma del Account Portal) o montando un `<SignUp />` propio, que sería rediseñar auth y quedó explícitamente fuera de este PR.
+2. **Registro mezclado tú/usted.** `esES` es español peninsular: "¿No tienes cuenta?" (tú) junto a "Regístrese" / "Ingrese su dirección" (usted), mientras Órbita escribe en voseo ("Entrá", "Guardá"). No es un bug de traducción sino de voz de marca. Se puede alinear sobrescribiendo un puñado de claves visibles; no lo hice porque excede "sobrescribir sólo strings en inglés".
+
+El badge **"Development mode"** es esperable con la instancia de desarrollo y `pk_test`. No se ocultó por CSS; se verifica antes del Gate A con `pk_live` y el dominio canónico.
+
+## Órbita Web P0 — responsive, gestión de suscripción y validación en dev (2026-07-28, Claude)
+
+**Objetivo:** cerrar el alcance P0 restante — comportamiento responsive, "Gestionar suscripción" en Perfil, y una pasada real contra Convex dev `dutiful-viper-815`. PWA queda fuera.
+
+**Ficha:** owner Claude (frontend); territorio `app/**`, `src/**`, `test/**`; rama `feature/web-p0-final` sobre `feature/web-p0-paywall`; riesgo medio; validación `pnpm typecheck` + suite completa + pasada en navegador contra Convex dev.
+
+**Qué cambió:**
+1. **Navegación móvil.** `WebNav` ocultaba los cuatro links debajo de 900px y no dejaba **ningún** modo de moverse entre secciones: la web era inusable en teléfono. Ahora baja a una barra inferior fija (`position: fixed` de RNW, con `env(safe-area-inset-bottom)`), ítems de 56px y los links de escritorio con 44px de alto mínimo.
+2. **Desborde horizontal.** `minWidth: 300` en la columna lateral de Carta y Valores forzaba 300px sobre los 272 disponibles a 320px; `deepVisual` de la Home tenía `width: 460` fijo. Corregidos a `minWidth: 0` + `sideWide` sólo en ancho, y `maxWidth` con `width: "100%"`.
+3. **`ManageSubscriptionBlock`** en Perfil, sobre la decisión pura `manageSubscription`. La autoridad es `canManageInStripePortal` (que el backend calcula como `provider === "stripe" && !isLifetime`, o sea que ya excluye Free, RevenueCat y lifetime). Se suma el estado del comercio: con `off` **no** se ofrece el portal —`createPortalSession` no puede construir el cliente de Stripe y tiraría— sino la vía de soporte. Estados de carga y error con reintento. Sólo se abre la URL que devolvió el backend.
+4. **`/profile`** se mantiene como redirect de compatibilidad; el backend ya devuelve a `/perfil` (`6fcfdac`).
+
+**Hallazgos de la validación real (corregidos en esta rama):**
+- **`/perfil` mostraba "12 Abr 1994"** a cualquier visitante sin sesión. Sale de `createFallbackProfile()` (`birthDate: "1994-04-12"` hardcodeado) vía `useAppData()`: una fecha de nacimiento inventada presentada como propia. Ahora el hero sólo muestra la línea si existe un perfil real. Se arregló en el punto de render, sin tocar `src/domain/appData.ts`.
+- **`/diario` no exigía sesión**: renderizaba el shell y la navegación para cualquiera. Ahora va detrás de `RequireSession`.
+- **El login ofrecía "Seguir en modo demo"**, que además apuntaba a `/home` y por tanto rebotaba a `/login`: superficie demo muerta. Eliminada, junto con el copy "la web sigue andando en modo demo".
+- **La tarjeta de Clerk quedaba cortada a 320/390**: 112px de padding sobre 320 dejaban 208px para una tarjeta que pide ~400, y el campo de email no entraba. Padding responsive + `appearance` fluido.
+
+**Validación ejecutada contra Convex dev** (`localhost:8099`, iframes del mismo origen para forzar viewport real):
+- Rutas internas `/studio`, `/lab`, `/backoffice` → todas redirigen a `/`.
+- Rutas de app `/carta`, `/transito`, `/paywall`, `/diario` → redirigen a `/login` sin sesión.
+- `/profile` → `/perfil`.
+- Sin desborde horizontal a 320, 390 y 430 (`scrollWidth === innerWidth`).
+- `/perfil` y el resto de los tabs sin sesión muestran estados honestos ("Creá tu cuenta"), sin fechas ni lecturas inventadas.
+
+**NO validado — requiere a Lucas:** todo el recorrido con sesión (onboarding, fecha canónica, Home, carta Free, Tarot diario, Diario, Tránsitos, Umbral, paywall con comercio apagado y "Gestionar suscripción"). No puedo crear cuentas ni ingresar contraseñas.
+
+**Pendiente / decisión:**
+- **Clerk está en inglés** ("Sign in to Orbita", "Welcome back!", "Email address", "Continue", "Sign up"). El brief P0 exige auth en español. El arreglo es `@clerk/localizations` (`esES`) en `ClerkProvider`, pero implica agregar una dependencia (`package.json` es config gris): queda a tu decisión.
+- El badge **"Development mode"** de Clerk aparece por usar `pk_test` en local; con `pk_live` no se muestra. Verificar en el preview productivo.
+
+## Órbita Web P0 — paywall y retorno de checkout (2026-07-28, Claude)
+
+**Objetivo:** consumir `payments.getWebOffer` y `payments.getCheckoutStatus` con el comercio apagado por defecto, sin precios en el cliente y sin que la URL de retorno pueda conceder Plus.
+
+**Criterios de aceptación:** el paywall pide la oferta al entrar; con `commerceMode="off"` dice "Órbita Plus estará disponible pronto" y no ofrece ningún camino a checkout; los precios salen exclusivamente de `currency`/`unitAmount`/`interval`/`trialDays`; el retorno valida `session_id` con `getCheckoutStatus` y hace polling acotado sólo mientras responde `pending`, cortando con `active`, `failed`, timeout, logout o desmontaje; con el comercio apagado no se consulta el estado.
+
+**Ficha:** owner Claude (frontend); territorio `app/**`, `src/**`, `test/**`; rama `feature/web-p0-paywall` sobre `feature/web-p0-contracts`; riesgo alto por tocar el camino de cobro; validación `pnpm typecheck` + suite completa + export web; fuera de alcance `convex/**`, Stripe live, dominio/Clerk, responsive y PWA.
+
+**Qué cambió:**
+1. **`/paywall`** (`src/components/web/orbita-paywall.tsx`) llama `getWebOffer({})` al montar. `offerPhase` (`src/domain/paywall.ts`) resuelve cargando/error/próximamente/disponible. "Próximamente" cubre además el caso `checkoutEnabled=true` con `plans: []`: antes que una pantalla de compra vacía, se dice que todavía no está.
+2. **Precios sólo desde Stripe.** `formatPlanPrice` usa `currency` + `unitAmount` (unidad mínima) vía `Intl`; `planTrialLabel` sólo anuncia el trial si `trialDays > 0`; `planIntervalLabel` sale del `interval`. No hay ningún importe escrito en el cliente. Un código de moneda inválido cae a mostrar el código, nunca a un símbolo inventado.
+3. **`/checkout/success`** (`src/components/web/orbita-checkout-return.tsx`) valida la forma del `session_id` antes de mandarlo, consulta primero si el comercio está habilitado y sólo entonces llama `getCheckoutStatus`. El polling vive en la decisión pura `checkoutPollDecision`: se detiene con `active`, `failed`, timeout (90 s), logout (`isLive`) o desmontaje. El timeout no promete Plus ni declara un fallo: dice que el pago se está confirmando.
+4. **`/profile`** redirige a `/perfil`. El backend fija `return_url` del Customer Portal en `{WEB_APP_URL}/profile`, pero el perfil de Órbita vive en `/perfil`: volver del portal daba 404.
+5. **`PlusLocked` linkea a `/paywall`**, que resuelve por sí solo el estado del comercio. Con `off` no hay camino a checkout desde ninguna superficie.
+
+**Validación:** `pnpm typecheck` en verde, **425/425** tests (19 nuevos en `test/paywall.test.ts`) y `npx expo export --platform web` correcto. El bundle exportado confirma `getWebOffer`, `getCheckoutStatus`, `getTodayContext`, `/paywall` y `/checkout/success` presentes, y **cero** ocurrencias de `live=1`, `urlForcedLive`, `setStubPlusForDev` y el copy de demo.
+
+**Configuración del worktree:** `.env.local` y `.vercel` copiados desde el worktree principal — Convex dev `dutiful-viper-815`, Clerk `pk_test`, proyecto Vercel `orbita`. Ambos están cubiertos por `.gitignore` (`.env*`, `.vercel`); no se commiteó ningún secreto. `EXPO_PUBLIC_ORBITA_INTERNAL_TOOLS` queda sin setear.
+
+**Pendiente:** responsive/PWA; "Gestionar suscripción" en Perfil con `createPortalSession`; prueba manual conjunta contra Convex dev.
+
+## Órbita Web P0 — contratos nuevos: fecha canónica y Free/Plus (2026-07-28, Claude)
+
+**Objetivo:** consumir el contrato del backend P0 (PR #40): la fecha del día la decide el servidor, y las superficies recortadas por plan se leen como "esto es Plus" y no como una falla.
+
+**Criterios de aceptación:** ninguna pantalla calcula el día astrológico ni manda su timezone como autoridad; una sola llamada a `getTodayContext` por sesión, refrescada al cambiar de cuenta, volver al frente y cruzar la medianoche; `locked` y `access` tienen estado propio en Carta, Personalidad, Valores y la Carta nativa.
+
+**Ficha:** owner Claude (frontend); territorio `app/**`, `src/**`, `test/**`; rama `feature/web-p0-contracts` sobre `feature/web-p0-shell`; riesgo medio — cambia cómo se resuelve la fecha en toda la app; validación `pnpm typecheck` + suite completa; fuera de alcance `convex/**`, paywall/checkout (PR siguiente), responsive, PWA y `src/domain/appData.ts`.
+
+**Qué cambió:**
+1. **`DailyContextProvider`** (`src/hooks/useDailyContext.tsx`) monta una sola llamada a `daily.getTodayContext` por sesión, sobre la decisión pura `refetchReason` (`src/domain/dailyContext.ts`). Refresca por cambio de cuenta, foreground (`AppState`) y medianoche. El reloj del navegador **sólo dispara el refetch**: se compara contra la fecha civil observada al momento del último fetch, nunca contra el `localDate` del servidor — si se comparara contra el servidor, un ciclo congelado tras editar el lugar natal refetchearía en loop para siempre.
+2. **Se eliminaron los seis `todayLocalDate()`** del cliente. Esto no era cosmético: `transits.getToday` ahora **tira excepción** si la fecha no es la canónica, así que Tránsitos web, `app/reading/transito.tsx`, `app/reading/transitos.tsx` y `app/(tabs)/transitos.tsx` fallaban para cualquiera cuya zona natal no coincidiera con la del dispositivo.
+3. **`useLiveHome` recibe fecha y zona canónicas.** Antes escribía con `toISODate()` + `deviceTimezone()` y `home.getDaily` leía otra fecha: la Home podía quedar vacía para siempre. Además el flag de "ya intenté generar" pasó de booleano a por-fecha, si no el día siguiente nunca se generaba.
+4. **Free/Plus con estado propio** (`src/domain/entitlement.ts`): `valuesMapPhase` desambigua el `null` de `charts.valuesMap` (Free vs sin carta) — antes a un Free con su carta ya calculada le decíamos "completá tus datos de nacimiento"; `personalityPhase` trata `locked`; la Carta web oculta el bloque de aspectos con `access.aspects` en vez de dejar la tarjeta vacía.
+5. **`readingBlockPhase` suma `bloqueado`** y `locked` gana sobre `failed`/`generating`: para un Free la action de generación rechaza por diseño, así que la Carta nativa mostraba error con REINTENTAR o "Preparando tu lectura…" eterno.
+6. **Ref de `subscriptions.getCurrent` corregido.** Decía `{ entitlement: "free" | "plus" } | null`; el backend devuelve `orbita_pro`, incluye `isPro` y nunca es null. El tipo viejo hacía que cualquier decisión de gating leyera mal el plan.
+
+**Validación:** `pnpm typecheck` en verde y **406/406** tests (16 nuevos entre `test/dailyContext.test.ts` y `test/entitlement.test.ts`). Sin pasada manual todavía.
+
+**Pendiente:** paywall con `getWebOffer` y retorno de checkout con `getCheckoutStatus` (PR 3); responsive/PWA; prueba manual conjunta contra Convex dev con el #40 desplegado.
+
+## Órbita Web P0 — shell limpio: sin mocks ni superficies internas (2026-07-28, Claude)
+
+**Objetivo:** que la web publicada no pueda mostrar contenido inventado ni rutear a herramientas internas. Pareja frontend del backend P0 (PR #40), primer PR de la serie.
+
+**Criterios de aceptación:** ninguna pantalla web renderiza mocks, ni como demo para visitantes ni como fallback ante error/vacío; sin sesión toda ruta de app manda a login; Studio/Lab/backoffice no son ruteables en la web pública; `?live=1` no existe; `setStubPlusForDev` no se referencia.
+
+**Ficha:** owner Claude (frontend); territorio `app/**`, `src/**`, `test/**`; rama `feature/web-p0-shell` sobre `origin/main` `ef8b048` (misma base que el backend #40); riesgo medio — toca el arranque de sesión de la web y borra caminos de render; validación `pnpm typecheck` + suite completa; rollout PR → revisión → integración con #40 en Convex dev → pasada manual de Lucas; fuera de alcance `convex/**`, deploy, dominio/Clerk, Stripe, PWA, responsive y los contratos nuevos (van en los PR siguientes).
+
+**Qué cambió:**
+1. **`LiveGate` eliminado** (`src/components/web/live.tsx` borrado). Era la raíz del problema: no sólo daba una demo mock a visitantes sin sesión, también servía de fallback silencioso ante fallas reales. Casos concretos que veía gente **con sesión**: `orbita-transit.tsx` devolvía `transitMock` cuando la action de tránsitos fallaba o venía vacía, y `orbita-personality.tsx` rellenaba con `chartMock`/`personalityMock`/`valuesMock`, mostrándole a alguien sin carta la carta natal inventada de otro como si fuera suya.
+2. **`RequireSession`** (`src/components/web/require-session.tsx`) reemplaza esa dualidad, sobre la decisión pura `webRouteDecision` (`src/domain/webSession.ts`, testeada). Reusa `useLiveApp` + `sessionPhase` en vez de duplicar el handshake Clerk/Convex. Sin sesión → login; error de fila `users` → reintento; sin Convex/Clerk → "no está disponible", nunca demo.
+3. **Estados honestos** en Tránsitos (con reintento), Personalidad, Valores y Carta, vía `WebNotice`.
+4. **`?live=1` eliminado**, incluido el `router.replace("/home?live=1")` del onboarding web.
+5. **Superficies internas cerradas** por `INTERNAL_TOOLS_ENABLED` (`src/services/internalTools.ts`, apagado por defecto): `/studio`, `/lab` y `/backoffice` redirigen a `/`. El Lab antes sólo se cerraba en nativo: en la web publicada era ruteable. La landing pública además promocionaba el Studio con una sección entera ("el espacio interno donde Órbita prepara su material"); se eliminó y los CTA ahora son `Empezar` / `Ya tengo cuenta`.
+6. **`setStubPro` fuera de `appRefs.ts`** — apuntaba a la mutación que el backend eliminó.
+7. **`/empezar` sin backend** muestra el estado no-disponible en vez de correr el onboarding entero y descartar los datos en silencio.
+
+**Validación:** `pnpm typecheck` en verde y **379/379** tests (8 nuevos en `test/webSession.test.ts`, incluida la regresión de que "sin sesión" jamás rinde contenido de muestra). Sin pasada manual todavía.
+
+**Pendiente / handoff:**
+- `src/domain/appData.ts` (`buildTransitos`) todavía arma tránsitos hardcodeados con `chartMock` ("Venus armoniza tu Sol en…"). Sólo lo consume el Perfil **nativo** (`app/(tabs)/perfil.tsx`), no la web, así que queda fuera de este PR — pero es contenido astrológico inventado y hay que resolverlo antes de publicar el nativo.
+- Para el backend: `.env.example` sigue documentando `ALLOW_DEV_STUB` y `STRIPE_PRICE_LIFETIME`, ambos ya sin uso tras el P0.
+- `EXPO_PUBLIC_ORBITA_INTERNAL_TOOLS` debe quedar **sin setear** en el proyecto Vercel de producción.
+
 ## Analytics — eventos de producto + resumen diario por Telegram (2026-07-20, Codex)
 
 **Objetivo:** registrar hechos puntuales del funnel de Órbita y enviar cada mañana un resumen del día anterior con aperturas únicas, nuevos/recurrentes, onboarding completado, cartas reveladas y retención.

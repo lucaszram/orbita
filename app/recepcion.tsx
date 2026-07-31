@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "convex/react";
 import { HomeBackdrop } from "@/components/home/HomeBackdrop";
 import { NatalWheel } from "@/components/orbita/NatalWheel";
-import { mapNatalChart } from "@/components/web/orbita-chart";
+import { mapNatalChart } from "@/domain/natalChart";
 import { markFirstRun } from "@/services/firstRun";
 import { useAppState } from "@/hooks/useAppState";
 import { useLiveApp } from "@/hooks/useLiveApp";

@@ -10,8 +10,14 @@ import { useAppState } from "@/hooks/useAppState";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
 import { backendConfig } from "@/services/backendProviders";
+import { clearDraft, readDraft, writeDraft } from "@/domain/onboardingDraft";
+import { resolveDebugStep } from "@/domain/onboardingDebug";
+import { INTERNAL_TOOLS_ENABLED } from "@/services/internalTools";
 
-import { AccountScreen } from "./screens/AccountScreen";
+import { BirthPayloadError, birthPayloadMessage } from "@/domain/birthPayload";
+import { CTA } from "./components/CTA";
+import { Screen } from "./components/Screen";
+import { Body, Title } from "./components/Type";
 import { AlignScreen } from "./screens/AlignScreen";
 import { BaseChartScreen } from "./screens/BaseChartScreen";
 import { BeforeAfterScreen } from "./screens/BeforeAfterScreen";
@@ -27,11 +33,17 @@ import { PaywallScreen, type PlanId } from "./screens/PaywallScreen";
 import { PersonalizingScreen } from "./screens/PersonalizingScreen";
 import { SplashScreen } from "./screens/SplashScreen";
 import { orbita } from "./theme";
-import { validateSignupPassword } from "./signup";
-import { useAccountFlow, useBackendPersist, useOnboardingChart, useOnboardingComputeTriad } from "./useAccount";
+import { useOnboardingBirthDataPersist, useOnboardingChart, useOnboardingComputeTriad } from "./useAccount";
 import type { OnboardingChart } from "./useAccount";
 
-const TOTAL = 15;
+// El alta de cuenta salió del onboarding (es la puerta anterior), así que hay
+// un paso menos. Los índices se nombran a propósito: el camino de escritura
+// depende del último paso y un renumerado silencioso ya costó datos.
+const TOTAL = 14;
+/** Primer paso que ya puede calcular la tríada real (necesita lugar). */
+const STEP_COMPUTE_TRIAD = 11;
+/** Último paso: cierra el onboarding (paywall si estuviera activo). */
+const FINAL_STEP = TOTAL - 1;
 
 // Con backend hay puerta "Ya tengo cuenta" en la entrada (paso 0).
 const HAS_BACKEND = backendConfig.hasConvex && backendConfig.hasClerk;
@@ -39,10 +51,6 @@ const HAS_BACKEND = backendConfig.hasConvex && backendConfig.hasClerk;
 // Paso donde arranca la carga de datos de nacimiento (continuación del alta
 // post-login para una cuenta sin birthData: `/onboarding?resume=datos`).
 const STEP_BIRTHDATE = 4;
-// Primer paso del alta propiamente dicha (el 0 es la entrada con las puertas).
-// Destino de "Crear una cuenta" desde el login: `/onboarding?nuevo=1`.
-const STEP_ALTA = 1;
-const STEP_ACCOUNT = 13;
 
 // Paywall temporalmente DESACTIVADO (2-3 semanas, mientras refinamos el onboarding
 // y el flujo). Con `false`, al terminar el onboarding se entra DIRECTO a la app sin
@@ -80,49 +88,72 @@ export function OnboardingFlow() {
   const params = useLocalSearchParams<{
     debugStep?: string;
     resume?: string;
-    nuevo?: string;
-    email?: string;
   }>();
 
   // `resume=datos`: sesión activa sin datos de nacimiento → continuar el alta
   // desde la fecha, sin repetir splash/pitch ni crear una segunda cuenta.
   // `nuevo=1`: viene de "Crear una cuenta" en el login → arranca el alta en su
   // primer paso; la entrada (paso 0) ya la pasó.
+  // Borrador de sesión: en web, crear la cuenta hace que Clerk vuelva a
+  // `/empezar` y el remonte borraba todo lo cargado. Los params explícitos
+  // (`resume`, `nuevo`) mandan sobre el borrador: son una intención del usuario.
+  // En nativo `readDraft` devuelve null (no hay sessionStorage) y nada cambia.
+  const saved = useMemo(() => readDraft(TOTAL), []);
+
   const [step, setStep] = useState(() =>
-    params.resume === "datos" ? STEP_BIRTHDATE : params.nuevo === "1" ? STEP_ALTA : 0
+    params.resume === "datos" ? STEP_BIRTHDATE : saved?.step ?? 0
   );
-  const [identity, setIdentity] = useState<Identity>("ella");
-  const [birthDate, setBirthDate] = useState<BirthDateParts>({ day: 15, month: 1, year: 1996 });
-  const [placeQuery, setPlaceQuery] = useState("");
-  const [birthPlace, setBirthPlace] = useState<PlaceOption | undefined>();
-  const [birthTime, setBirthTime] = useState<BirthTime>({ hour: 12, minute: 0 });
-  const [timeUnknown, setTimeUnknown] = useState(false);
-  // Email tipeado en el login y traído por "Crear una cuenta" (`?email=`): el
-  // usuario no lo vuelve a escribir; llega ya cargado al paso de cuenta.
-  const [email, setEmail] = useState(() => (typeof params.email === "string" ? params.email : ""));
+  const [identity, setIdentity] = useState<Identity>((saved?.identity as Identity) ?? "ella");
+  const [birthDate, setBirthDate] = useState<BirthDateParts>(
+    saved?.birthDate ?? { day: 15, month: 1, year: 1996 }
+  );
+  const [placeQuery, setPlaceQuery] = useState(saved?.placeQuery ?? "");
+  const [birthPlace, setBirthPlace] = useState<PlaceOption | undefined>(
+    saved?.birthPlace as PlaceOption | undefined
+  );
+  const [birthTime, setBirthTime] = useState<BirthTime>(saved?.birthTime ?? { hour: 12, minute: 0 });
+  const [timeUnknown, setTimeUnknown] = useState(saved?.timeUnknown ?? false);
   // Clerk Producción exige contraseña en el alta: se pide + confirmación.
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [accountFormError, setAccountFormError] = useState<string | null>(null);
-  const [accountCode, setAccountCode] = useState("");
   const [plan, setPlan] = useState<PlanId>("annual");
-  const account = useAccountFlow();
-  const persistBackend = useBackendPersist();
+  // Persistencia ESTRICTA: propaga el error. Con el wrapper anterior el catch
+  // de `submit` era inalcanzable y el alta navegaba sin haber escrito.
+  const persistBackend = useOnboardingBirthDataPersist();
   const chartPreview = useOnboardingChart();
   const computeTriad = useOnboardingComputeTriad();
   const [computed, setComputed] = useState<OnboardingChart | undefined>();
   const [retryTick, setRetryTick] = useState(0);
-  const calcFired = useRef(false);
+  // Persistencia del cierre: sin esto un fallo navegaba a la recepción
+  // como si el alta hubiera funcionado.
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  // Lock SINCRÓNICO. `submitting` es estado de React: recién se refleja en el
+  // próximo render, así que dos taps en el mismo render pasaban los dos. El ref
+  // se toma en la primera línea; sólo se libera al fallar (en el éxito ya
+  // navegamos fuera del flujo).
+  const submitLock = useRef(false);
   const computedSig = useRef<string | null>(null);
-  // La sesión se activó EN este flujo (verify/oauth ok): fuente de verdad
-  // inmediata, porque useAuth puede seguir stale en el render siguiente.
-  const sessionActivated = useRef(false);
 
-  // Dev preview: jump to any step via ?debugStep=N.
+  // Salto de paso SÓLO con herramientas internas encendidas. En producción el
+  // param se ignora y el onboarding arranca normal: era un control de
+  // desarrollo servido en público, igual que el viejo `?live=1`.
+  const debugStep = resolveDebugStep({
+    raw: params.debugStep,
+    total: TOTAL,
+    internalToolsEnabled: INTERNAL_TOOLS_ENABLED
+  });
+  /**
+   * Inspección visual: SOLO LECTURA. Montar un paso por `debugStep` no puede
+   * escribir nada — ni datos natales, ni perfil, ni carta, ni cuenta, ni
+   * checkout, ni el submit final con su navegación.
+   *
+   * Motivo real: el paso 14 auto-ejecutaba `submit()` al montarse, así que
+   * abrir `?debugStep=14` con sesión activa PERSISTÍA los valores por defecto
+   * del flujo encima de los datos natales de la cuenta y recalculaba la carta.
+   */
+  const inspeccion = debugStep !== null;
   useEffect(() => {
-    const n = Number(params.debugStep);
-    if (Number.isFinite(n) && n >= 0 && n < TOTAL) setStep(n);
-  }, [params.debugStep]);
+    if (debugStep !== null) setStep(debugStep);
+  }, [debugStep]);
 
   // Respaldo del resume: si los params llegan un render después del mount,
   // el useState inicial no los vio. Solo salta si todavía está en la entrada.
@@ -130,14 +161,14 @@ export function OnboardingFlow() {
     if (params.resume === "datos") setStep((s) => (s === 0 ? STEP_BIRTHDATE : s));
   }, [params.resume]);
 
-  // Mismo respaldo para `nuevo=1` (y su email) llegando un render tarde.
-  useEffect(() => {
-    if (params.nuevo === "1") setStep((s) => (s === 0 ? STEP_ALTA : s));
-  }, [params.nuevo]);
+
 
   useEffect(() => {
-    if (typeof params.email === "string" && params.email) setEmail((e) => e || params.email!);
-  }, [params.email]);
+    // En inspección no se guarda: un salto arranca con los valores por defecto
+    // y sobrescribiría el borrador real de la persona.
+    if (inspeccion) return;
+    writeDraft({ step, identity, birthDate, placeQuery, birthPlace, birthTime, timeUnknown });
+  }, [step, identity, birthDate, placeQuery, birthPlace, birthTime, timeUnknown, inspeccion]);
 
   const next = () => setStep((s) => Math.min(TOTAL - 1, s + 1));
   const back = () => setStep((s) => Math.max(0, s - 1));
@@ -157,27 +188,13 @@ export function OnboardingFlow() {
     : `${String(birthTime.hour).padStart(2, "0")}:${String(birthTime.minute).padStart(2, "0")}`;
   const placeShort = birthPlace?.label.split(",")[0] ?? "";
 
-  // Al llegar al preview (paso 14) disparamos el cálculo REAL de la carta una vez.
-  // Con sesión Clerk persiste birthData + carta + primera lectura; sin sesión no
-  // hace nada (persistBackend chequea isSignedIn) y el preview degrada a solo-Sol.
-  useEffect(() => {
-    if (step !== 14 || calcFired.current || !persistBackend) return;
-    calcFired.current = true;
-    void persistBackend({
-      birthDate: birthDateISO,
-      birthTime: timeUnknown ? undefined : timeLabel,
-      birthPlaceLabel: birthPlace?.label,
-      latitude: birthPlace?.latitude,
-      longitude: birthPlace?.longitude,
-      timezone: birthPlace?.timezone,
-    });
-  }, [step, persistBackend, birthDateISO, timeUnknown, timeLabel, birthPlace]);
-
   // Tríada real SIN login: al llegar a "Personalizing"(11) calculamos la carta con
   // el endpoint público, para que el preview muestre Luna/Ascendente reales aunque
   // el usuario no se haya logueado todavía. Requiere lugar (coords del geocoding).
   useEffect(() => {
-    if (step < 11 || !computeTriad || !birthPlace) return;
+    // Inspección: no se le pega a la API de cálculo.
+    if (inspeccion) return;
+    if (step < STEP_COMPUTE_TRIAD || !computeTriad || !birthPlace) return;
     const birthTimeStr = timeUnknown ? undefined : to24hFromParts(birthTime);
     // Firma de los datos: si cambia (el usuario editó fecha/hora/lugar) recalcula;
     // si es la misma, no vuelve a pegarle a la API. Antes un ref "fired" dejaba
@@ -199,51 +216,49 @@ export function OnboardingFlow() {
       .catch(() => { computedSig.current = null; });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, computeTriad, birthPlace, birthDateISO, timeUnknown, birthTime.hour, birthTime.minute, retryTick]);
-
-  // `codeOverride`: la auto-verificación del CodeInput pasa el código recién
-  // completado directo (el estado `accountCode` todavía no re-renderizó).
-  const accountNext = async (codeOverride?: string) => {
-    if (!account || account.isSignedIn) {
-      next();
-      return;
-    }
-    const trimmed = email.trim().toLowerCase();
-    if (account.phase === "email") {
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(trimmed)) {
-        setAccountFormError("Revisá el email.");
-        return;
-      }
-      const pwError = validateSignupPassword(password, confirmPassword);
-      if (pwError) {
-        setAccountFormError(pwError);
-        return;
-      }
-      setAccountFormError(null);
-      await account.start(trimmed, password);
-      return;
-    }
-    const ok = await account.verify((codeOverride ?? accountCode).trim());
-    if (ok) {
-      sessionActivated.current = true;
-      next();
-    }
-  };
-
-  const accountOAuth = async (provider: "google" | "apple") => {
-    if (!account) {
-      next();
-      return;
-    }
-    const ok = await account.oauth(provider);
-    if (ok) {
-      sessionActivated.current = true;
-      next();
-    }
-  };
+  }, [step, computeTriad, birthPlace, birthDateISO, timeUnknown, birthTime.hour, birthTime.minute, retryTick, inspeccion]);
 
   const submit = async () => {
+    // Inspección visual: ninguna escritura, ni siquiera desde un CTA.
+    if (inspeccion) return;
+    // Reentrada: el lock va PRIMERO y es sincrónico.
+    if (submitLock.current) return;
+    submitLock.current = true;
     const birthTimeValue = timeUnknown ? undefined : timeLabel;
+
+    // ÚNICA ruta de persistencia del onboarding, y se ESPERA. Antes había dos:
+    // un efecto al montar el paso 14 (con `void`, sin manejo de error) y otra
+    // acá, también con `void`. Ese efecto sin guarda persistía los valores por
+    // defecto cuando se saltaba directo al paso 14, y el `void` hacía que un
+    // fallo pasara desapercibido mientras el flujo navegaba a la recepción como
+    // si todo hubiera salido bien.
+    if (persistBackend) {
+      setSubmitError(null);
+      setSubmitting(true);
+      try {
+        await persistBackend({
+          birthDate: birthDateISO,
+          birthTime: birthTimeValue,
+          birthPlaceLabel: birthPlace?.label,
+          latitude: birthPlace?.latitude,
+          longitude: birthPlace?.longitude,
+          timezone: birthPlace?.timezone,
+        });
+      } catch (e) {
+        // Nada de perfil local, nada de limpiar el borrador, nada de navegar: la
+        // persona ve el error y puede reintentar sin perder lo cargado.
+        setSubmitError(
+          e instanceof BirthPayloadError
+            ? birthPayloadMessage(e.problem)
+            : "Tus datos siguen acá. Puede ser la conexión; probá de nuevo y la guardamos."
+        );
+        setSubmitting(false);
+        submitLock.current = false;
+        return;
+      }
+      setSubmitting(false);
+    }
+
     // Con sesión activa (alta con cuenta, OAuth o resume=datos post-login) el
     // perfil queda marcado con su dueño: el próximo arranque lo reconoce como
     // propio en vez de mandarlo a reconciliar. Guest → sin dueño. Carrera
@@ -251,7 +266,9 @@ export function OnboardingFlow() {
     // perfil se crea sin dueño con ADOPCIÓN PENDIENTE y se marca solo apenas
     // aparece el userId (resolveProfileOwnerAtCreation + AppState).
     const owner = resolveProfileOwnerAtCreation({
-      sessionActive: sessionActivated.current || !!auth?.isSignedIn || !!account?.isSignedIn,
+      // El onboarding arranca con sesión activa (auth es la puerta anterior),
+      // así que basta con lo que reporta Clerk.
+      sessionActive: !!auth?.isSignedIn,
       knownUserId: auth?.userId ?? null,
     });
     await createProfile(
@@ -267,17 +284,8 @@ export function OnboardingFlow() {
       owner.ownerUserId,
       owner.adoptWhenReady,
     );
-    // Con sesión Clerk: persistir en Convex en background (no bloquea la entrada).
-    if (persistBackend) {
-      void persistBackend({
-        birthDate: birthDateISO,
-        birthTime: birthTimeValue,
-        birthPlaceLabel: birthPlace?.label,
-        latitude: birthPlace?.latitude,
-        longitude: birthPlace?.longitude,
-        timezone: birthPlace?.timezone,
-      });
-    }
+    // El onboarding terminó: el borrador ya no debe sobrevivir a la sesión.
+    clearDraft();
     // Al salir del onboarding, la primera entrega: la ceremonia de recepción de la
     // carta natal (/recepcion, full-screen, una sola vez). La tríada calculada viaja
     // por params para no depender de que Convex ya haya persistido la carta.
@@ -293,17 +301,13 @@ export function OnboardingFlow() {
 
   // Sin paywall: al llegar al paso de pago (step 14) se entra directo a la app.
   useEffect(() => {
-    if (step === 14 && !PAYWALL_ENABLED) void submit();
+    if (inspeccion) return;
+    if (step === FINAL_STEP && !PAYWALL_ENABLED) void submit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step]);
+  }, [step, inspeccion]);
 
   // Sesión ya activa (login previo o continuación del alta): el paso de crear
   // cuenta se saltea solo — nunca pedir crear/iniciar sesión de nuevo.
-  useEffect(() => {
-    if (step === STEP_ACCOUNT && account?.isSignedIn) next();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, account?.isSignedIn]);
-
   if (!fontsLoaded) return <View style={styles.fill} />;
 
   let screen: ReactNode;
@@ -402,27 +406,7 @@ export function OnboardingFlow() {
     case 12:
       screen = <BeforeAfterScreen step={step} onNext={next} onBack={back} />;
       break;
-    case 13:
-      screen = (
-        <AccountScreen
-          step={step}
-          email={email}
-          onEmail={setEmail}
-          password={password}
-          onPassword={setPassword}
-          confirmPassword={confirmPassword}
-          onConfirmPassword={setConfirmPassword}
-          formError={accountFormError}
-          code={accountCode}
-          onCode={setAccountCode}
-          account={account}
-          onNext={accountNext}
-          onOAuth={accountOAuth}
-          onBack={back}
-        />
-      );
-      break;
-    case 14:
+    case FINAL_STEP:
     default:
       // Paso 14 = paywall único. La tríada real va arriba como gancho (antes era
       // una pantalla de preview aparte, que hacía parecer que pagabas dos veces).
@@ -443,7 +427,19 @@ export function OnboardingFlow() {
             setRetryTick((t) => t + 1);
           }}
         />
+      ) : submitError !== null ? (
+        // La persistencia falló: se dice, con reintento, y NO se navega a la
+        // recepción. Antes el fallo era invisible (`void persistBackend`) y la
+        // persona entraba a una app sin carta guardada.
+        <Screen bg={undefined}>
+          <View style={styles.closeError}>
+            <Title>No pudimos guardar tu carta.</Title>
+            <Body>{submitError}</Body>
+            <CTA label={submitting ? "Guardando…" : "Reintentar"} onPress={submit} />
+          </View>
+        </Screen>
       ) : (
+        // Cierre en curso (o paywall apagado): carga estable, sin flashear pago.
         <View style={styles.fill} />
       );
       break;
@@ -459,4 +455,5 @@ export function OnboardingFlow() {
 
 const styles = StyleSheet.create({
   fill: { backgroundColor: orbita.bg, flex: 1 },
+  closeError: { flex: 1, gap: 16, justifyContent: "center", paddingHorizontal: 24 },
 });

@@ -175,7 +175,10 @@ export function TabStrip<T extends string>({
 
 export const styles = StyleSheet.create({
   screen: { backgroundColor: orbita.colors.background, flex: 1 },
-  backdrop: { ...StyleSheet.absoluteFillObject, opacity: 0.5 },
+  // `absoluteFillObject` fija los cuatro lados pero NO el tamaño: en
+  // react-native-web el <img> se va a su tamaño intrínseco y estira la
+  // página. Es el fondo de TODAS las pantallas, así que afectaba a todas.
+  backdrop: { ...StyleSheet.absoluteFillObject, height: "100%", opacity: 0.5, width: "100%" },
   backdropScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(7,8,10,0.5)" },
   topbar: {
     alignItems: "center",

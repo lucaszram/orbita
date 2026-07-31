@@ -8,17 +8,13 @@ import { GuestState } from "@/components/orbita/GuestState";
 import { ErrorState, MinimalLoading } from "@/components/orbita/states";
 import { sessionPhase } from "@/domain/screenPhase";
 import { useLiveApp } from "@/hooks/useLiveApp";
+import { useCanonicalLocalDate } from "@/hooks/useDailyContext";
 import { proposedApi, type TransitDetailPayload } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
 
 const PLANET_IMG = require("../../assets/orbita/optimized/core/orbita_home_hero_orbital_b.jpg");
 const VENUS_IMG = require("../../assets/orbita/optimized/core/orbita_moon_phase_waxing.jpg");
 
-/** Fecha local YYYY-MM-DD (componentes locales, mismo criterio que la web; no UTC). */
-function todayLocalDate(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-}
 
 /** Tránsito / En el cielo (Figma V4.7 · 334:2): escena espacial + frecuencia + en la Tierra. */
 export default function TransitoDetalleScreen() {
@@ -64,11 +60,15 @@ function TransitoDetalleLive() {
     { kind: "loading" } | { kind: "error" } | { kind: "ok"; data: TransitDetailPayload }
   >({ kind: "loading" });
   const [attempt, setAttempt] = useState(0);
+  // La fecha la resuelve el servidor desde la zona natal; `transits.getToday`
+  // rechaza cualquier otra. Null = todavía no llegó → seguimos en carga.
+  const localDate = useCanonicalLocalDate();
 
   useEffect(() => {
+    if (!localDate) return;
     let alive = true;
     setState({ kind: "loading" });
-    getToday({ localDate: todayLocalDate() })
+    getToday({ localDate })
       .then((r) => {
         if (!alive) return;
         setState(r ? { kind: "ok", data: r as TransitDetailPayload } : { kind: "error" });
@@ -79,9 +79,9 @@ function TransitoDetalleLive() {
     return () => {
       alive = false;
     };
-  }, [getToday, attempt]);
+  }, [getToday, attempt, localDate]);
 
-  if (state.kind === "loading") {
+  if (!localDate || state.kind === "loading") {
     return (
       <DetailScreen eyebrow="Tránsito · Hoy">
         <View style={styles.loading}>

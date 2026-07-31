@@ -15,6 +15,7 @@ import {
   interpretSignUpAttempt,
   makeReentrancyGuard
 } from "@/onboarding/signup";
+import { validateBirthPayload } from "@/domain/birthPayload";
 import { deviceTimezone } from "@/hooks/useLiveApp";
 import { useOrbitaAuth } from "@/hooks/useOrbitaAuth";
 import { appApi, type BirthDataDoc } from "@/services/appRefs";
@@ -49,6 +50,12 @@ export type AccountFlow = {
   verify: (code: string) => Promise<boolean>;
   /** Reenvía el código sin crear otra cuenta ni reiniciar el flujo. */
   resend: () => Promise<ResendResult>;
+  /**
+   * El email ya tenía cuenta: el alta cambió a iniciar sesión con código. Se
+   * expone para poder DECIRLO — si no, la pantalla de alta pide un código sin
+   * explicar por qué dejó de ser un alta.
+   */
+  existingAccount: boolean;
   oauth: (provider: OAuthProvider) => Promise<boolean>;
   resetToEmail: () => void;
 };
@@ -111,6 +118,7 @@ function useAccountFlowInner(): AccountFlow {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [oauthBusy, setOauthBusy] = useState<OAuthProvider | null>(null);
+  const [existingAccount, setExistingAccount] = useState(false);
   const flowRef = useRef<"signUp" | "signIn">("signUp");
   // emailAddressId del intento de sign-in (rama email ya existente): lo guarda
   // `start` para que el reenvío pueda repetir prepareFirstFactor sin perderlo.
@@ -125,6 +133,7 @@ function useAccountFlowInner(): AccountFlow {
       if (!signUp || !signIn) return;
       setBusy(true);
       setError(null);
+      setExistingAccount(false);
       try {
         // Con contraseña desde la creación: Clerk Producción tiene
         // `password: required`, así que sin esto el alta queda en
@@ -137,6 +146,7 @@ function useAccountFlowInner(): AccountFlow {
       } catch (e) {
         const code = (e as { errors?: Array<{ code?: string }> })?.errors?.[0]?.code;
         if (code === "form_identifier_exists") {
+          setExistingAccount(true);
           // El email ya tiene cuenta: entrar por sign-in con código.
           try {
             const attempt = await signIn.create({ identifier: emailAddress });
@@ -228,9 +238,11 @@ function useAccountFlowInner(): AccountFlow {
     verify,
     resend,
     oauth,
+    existingAccount,
     resetToEmail: () => {
       setError(null);
       setPhase("email");
+      setExistingAccount(false);
     }
   };
 }
@@ -624,9 +636,28 @@ export type PersistBirthData = (input: {
  * Persistencia con errores TRAGADOS (onboarding: la copia local ya existe y
  * el flujo no debe cortarse). Para "Editar datos" usar la variante estricta.
  */
-export function useBackendPersist(): PersistBirthData | null {
+/**
+ * Persistencia del ONBOARDING: `onboarding.completeBirthData`, create-only e
+ * idempotente del lado del backend.
+ *
+ * ESTRICTA a propósito: propaga el error. Antes pasaba por un wrapper que
+ * atrapaba cualquier fallo del backend y resolvía como si hubiera escrito, así
+ * que el cierre del alta creaba el perfil local, limpiaba el borrador y
+ * navegaba a la recepción sin que Convex tuviera nada.
+ */
+export function useOnboardingBirthDataPersist(): PersistBirthData | null {
   if (!HAS_BACKEND) return null;
-  return useBackendPersistSwallowInner();
+  return useBackendPersistInner();
+}
+
+/**
+ * Persistencia del EDITOR DE PERFIL: `birthData.upsertForCurrentUser` con
+ * `source: "profile"`. Es el único camino para CAMBIAR datos natales ya
+ * existentes; propaga el error para que "Guardar" pueda mostrar reintento.
+ */
+export function useProfileBirthDataPersist(): PersistBirthData | null {
+  if (!HAS_BACKEND) return null;
+  return useProfilePersistInner();
 }
 
 /**
@@ -639,21 +670,6 @@ export function useBackendPersistStrict(): PersistBirthData | null {
   return useBackendPersistInner();
 }
 
-function useBackendPersistSwallowInner(): PersistBirthData {
-  const persist = useBackendPersistInner();
-  return useCallback(
-    async (input) => {
-      try {
-        await persist(input);
-      } catch (e) {
-        // La copia local ya existe: el backend puede fallar sin romper el flujo.
-        console.warn("Órbita: persistencia backend falló (la app sigue local)", e);
-      }
-    },
-    [persist]
-  );
-}
-
 function useBackendPersistInner(): PersistBirthData {
   const auth = useOrbitaAuth();
   const ensureUser = useMutation(appApi.users.getOrCreateCurrentUser);
@@ -661,26 +677,70 @@ function useBackendPersistInner(): PersistBirthData {
   // Backend la define como Action (igual que en la web); antes acá estaba mal
   // como useMutation → "Trying to execute ... as Mutation, but defined as Action".
   const calculateChart = useAction(appApi.charts.calculateOrCreateNatalChart);
-  const generateToday = useMutation(appApi.readings.generateToday);
   const isSignedIn = auth.isSignedIn;
 
   return useCallback(
     async (input) => {
-      if (!isSignedIn) return;
-      const birthTimezone = input.timezone ?? deviceTimezone();
+      // Con backend configurado, "sesión todavía no lista" es la carrera
+      // post-verify: NO se puede resolver como éxito, porque el cierre seguiría
+      // adelante sin haber escrito nada. Se rechaza y la pantalla ofrece
+      // reintentar, que es lo que la carrera necesita.
+      if (!isSignedIn) throw new Error("ONBOARDING_SESSION_NOT_READY");
+      // Nada de rellenar: sin lugar elegido, coordenadas o zona, no se escribe.
+      const payload = validateBirthPayload(input);
       await ensureUser({});
       await completeBirthData({
-        birthDate: input.birthDate,
-        birthTime: input.birthTime,
-        birthTimePrecision: input.birthTime ? "known" : "unknown",
-        birthPlaceLabel: input.birthPlaceLabel ?? "Sin especificar",
-        latitude: input.latitude,
-        longitude: input.longitude,
-        timezone: birthTimezone
+        birthDate: payload.birthDate,
+        birthTime: payload.birthTime,
+        birthTimePrecision: payload.birthTime ? "known" : "unknown",
+        birthPlaceLabel: payload.birthPlaceLabel,
+        latitude: payload.latitude,
+        longitude: payload.longitude,
+        timezone: payload.timezone
       });
       await calculateChart({});
-      await generateToday({ localDate: new Date().toISOString().slice(0, 10), timezone: deviceTimezone() });
+      // NO se llama `readings.generateToday` acá: usaba la fecha y la timezone
+      // del dispositivo, y el día astrológico lo decide el servidor desde la
+      // zona natal (`daily.getTodayContext`). La generación diaria sigue por el
+      // camino canónico, que ya corre en la Home con la fecha del servidor.
     },
-    [calculateChart, completeBirthData, ensureUser, generateToday, isSignedIn]
+    [calculateChart, completeBirthData, ensureUser, isSignedIn]
+  );
+}
+
+/** Igual que la anterior pero contra el endpoint de PERFIL (edición). */
+function useProfilePersistInner(): PersistBirthData {
+  const auth = useOrbitaAuth();
+  const ensureUser = useMutation(appApi.users.getOrCreateCurrentUser);
+  const upsertBirthData = useMutation(appApi.birthData.upsertForCurrentUser);
+  const calculateChart = useAction(appApi.charts.calculateOrCreateNatalChart);
+  const isSignedIn = auth.isSignedIn;
+
+  return useCallback(
+    async (input) => {
+      // Sesión no lista: rechazar, no resolver. Si resolviera, el editor
+      // aplicaría el cambio local como si el backend lo hubiera guardado.
+      if (!isSignedIn) throw new Error("PROFILE_SESSION_NOT_READY");
+      // Validación en el BORDE de escritura. `birthSaveGate` espera el doc
+      // remoto, pero no lo valida: con un documento legado incompleto (sin
+      // coordenadas y con el lugar en "Sin especificar"), cambiar sólo la fecha
+      // o la hora arrastraba ese lugar vacío y volvía a escribirlo, recalculando
+      // la carta sobre datos que no son de nadie.
+      const payload = validateBirthPayload(input);
+      await ensureUser({});
+      await upsertBirthData({
+        birthDate: payload.birthDate,
+        birthTime: payload.birthTime,
+        birthTimePrecision: payload.birthTime ? "known" : "unknown",
+        birthPlaceLabel: payload.birthPlaceLabel,
+        latitude: payload.latitude,
+        longitude: payload.longitude,
+        timezone: payload.timezone,
+        // Marca la intención: es una edición del perfil, no el alta.
+        source: "profile"
+      });
+      await calculateChart({});
+    },
+    [calculateChart, ensureUser, isSignedIn, upsertBirthData]
   );
 }

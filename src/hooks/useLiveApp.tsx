@@ -15,9 +15,9 @@ import { backendConfig } from "@/services/backendProviders";
 import { OrbitaAuth, useOrbitaAuth } from "@/hooks/useOrbitaAuth";
 
 /**
- * Capa live nativa (no hay `?live=1` como en web): live ⟺ Convex configurado
- * + sesión Clerk autenticada en Convex. Mock/local-first: sin sesión, la app
- * se comporta exactamente igual que siempre.
+ * Capa de sesión compartida: live ⟺ Convex configurado + sesión Clerk
+ * autenticada en Convex. En web la consume `RequireSession`, que sin sesión
+ * manda a login; en nativo, sin sesión la app sigue local-first.
  *
  * Hotfix build 11: la sesión es CENTRAL (`OrbitaSessionProvider` en el root
  * layout). Antes cada consumidor corría su propio `ensureUser` con estado
@@ -133,29 +133,37 @@ export type LiveHome = {
 
 const NO_LIVE_HOME: LiveHome = { payload: null, saveLive: null };
 
-export function useLiveHome(isLive: boolean, localDate: string, holdLive = false): LiveHome {
+/**
+ * `localDate` y `timezone` son los CANÓNICOS del servidor (`getTodayContext`).
+ * Antes salían de `toISODate()` + `deviceTimezone()`: la lectura se escribía
+ * bajo la fecha del dispositivo y se leía bajo otra, así que la Home podía
+ * quedar vacía o duplicar filas al viajar.
+ */
+export function useLiveHome(isLive: boolean, localDate: string, timezone: string, holdLive = false): LiveHome {
   if (!HAS_CONVEX) return NO_LIVE_HOME;
-  return useLiveHomeInner(isLive, localDate, holdLive);
+  return useLiveHomeInner(isLive, localDate, timezone, holdLive);
 }
 
-function useLiveHomeInner(isLive: boolean, localDate: string, holdLive: boolean): LiveHome {
+function useLiveHomeInner(isLive: boolean, localDate: string, timezone: string, holdLive: boolean): LiveHome {
   const doc = useQuery(appApi.readings.getToday, isLive ? { localDate } : "skip");
   const generateToday = useMutation(appApi.readings.generateToday);
   const save = useMutation(appApi.readings.save);
-  const triedGenerate = useRef(false);
+  const triedGenerate = useRef<string | null>(null);
   // Última lectura live vista (por fecha): una reconexión o red lenta NO debe
   // reemplazar datos live por mocks mientras la query vuelve a resolver.
   const lastLive = useRef<{ date: string; payload: unknown } | null>(null);
 
   useEffect(() => {
-    if (isLive && doc === null && !triedGenerate.current) {
-      triedGenerate.current = true;
-      generateToday({ localDate, timezone: deviceTimezone() }).catch(() => {
+    // El intento se recuerda POR FECHA: al cruzar la medianoche hay que generar
+    // el día nuevo, y un flag booleano lo bloqueaba para siempre.
+    if (isLive && doc === null && triedGenerate.current !== localDate) {
+      triedGenerate.current = localDate;
+      generateToday({ localDate, timezone }).catch(() => {
         // sin red / deployment desincronizado: la Home sigue con el engine local
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLive, doc, localDate]);
+  }, [isLive, doc, localDate, timezone]);
 
   const saveLive = useCallback(
     async (readingPayload: unknown) => {
