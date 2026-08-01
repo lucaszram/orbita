@@ -1,5 +1,33 @@
 # Current Task
 
+## Stripe Live — Gate B de cobros web (2026-08-01, Codex)
+
+**Objetivo:** habilitar en `orbitaastrologia.xyz` la suscripción mensual Live de USD 9,99 con siete días gratis, Checkout alojado por Stripe, entitlement autoritativo por webhook y portal/cancelación, sin mezclar credenciales test/live ni cobrar durante la preparación.
+
+**Criterios de aceptación:** producto/precio Live mensual activo y coherente; webhook Live a `https://exciting-bat-311.convex.site/webhooks/stripe` con `checkout.session.completed`, `checkout.session.expired`, `customer.subscription.updated` y `customer.subscription.deleted`; Convex producción recibe `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` y `STRIPE_PRICE_MONTHLY` Live manteniendo primero `COMMERCE_MODE=off`; oferta autenticada publica USD 9,99/mes y siete días; Checkout usa `orbitaastrologia.xyz`; prueba manual con tarjeta real confirma trial, webhook, entitlement, portal y cancelación sin cobro inmediato; al cerrar la prueba se vuelve a `COMMERCE_MODE=off` hasta la decisión explícita de apertura pública.
+
+**Ficha:** owner Codex + pasos manuales de Lucas en Stripe/tarjeta; configuración externa y corrección backend acotada para compatibilidad con la API Live actual de Stripe; riesgo alto porque habilita suscripciones y futuros cobros reales; rollout `off → secretos Live → validación → live temporal → smoke completo → cancelación → off`; rollback inmediato `COMMERCE_MODE=off` y, si fuera necesario, desactivar el Price/webhook; fuera de alcance nuevos planes, cambios de copy, app stores, RevenueCat y modificaciones fiscales no decididas.
+
+### Resultado de Gate B
+
+- [x] Producto Live `Órbita Plus` y precio mensual Live USD 9,99 activos; trial de siete días agregado por Checkout; Automatic Tax apagado por decisión explícita.
+- [x] Webhook Live `Órbita Production Billing` activo hacia `https://exciting-bat-311.convex.site/webhooks/stripe`, limitado a los cuatro eventos contratados. El secreto expuesto accidentalmente en una captura fue rotado por Lucas y reemplazado en Convex sin volver a revelarlo.
+- [x] Convex producción recibió la clave Live dedicada, el Price mensual, el secreto rotado y `WEB_APP_URL`; no se imprimió ni persistió ningún secreto.
+- [x] La mención de “verificación de identidad” pertenecía a una guía genérica de Connect; no había evidencia de bloqueo de Payments y la prueba Live confirmó que la cuenta puede crear suscripciones.
+- [x] Validación técnica sin tarjeta: Price Live correcto, Checkout alojado, retorno productivo, siete días y Automatic Tax `false`; la sesión se venció inmediatamente y `checkout.session.expired` llegó a Convex sin crear cliente, suscripción ni cobro.
+- [x] Lucas autorizó omitir la espera de 24 horas, activar `COMMERCE_MODE=live` temporalmente, probar de punta a punta, cancelar dentro del trial y volver a `off`.
+- [x] Paywall y Checkout mostraron Órbita Plus mensual, siete días gratis, USD 9,99/mes y primer cobro previsto el 8 de agosto de 2026.
+- [x] Lucas completó OTP/tarjeta directamente en Stripe; Codex no leyó ni ingresó credenciales ni datos de pago.
+- [x] Checkout Live terminó correctamente: total inmediato USD 0, estado `trialing`, siete días, cero PaymentIntents inmediatos y acceso `orbita_pro` concedido por webhook.
+- [x] Billing Portal abrió desde Perfil, mostró la factura inicial USD 0,00 y permitió cancelar. La renovación quedó cancelada para el 8 de agosto; Stripe conserva acceso durante el trial y no realizará el cobro futuro.
+- [x] La pasada Live detectó que la API Stripe `2025-11-17.clover` entrega la baja del trial en `cancel_at` y el fin de período en `items.data[].current_period_end`. El backend sólo contemplaba los campos legacy.
+- [x] Se agregó `convex/lib/stripeSubscription.ts`, se ajustó `convex/payments/stripeInternal.ts` y se cubrieron ambos formatos con cuatro tests nuevos.
+- [x] Fix sincronizado con Convex dev y publicado con aprobación explícita a Convex producción `exciting-bat-311`. Un webhook Live nuevo confirmó: `status=canceled`, `willRenew=false`, fin de acceso el 8 de agosto y entitlement `orbita_pro` todavía activo.
+- [x] Validación posterior al rebase sobre `main` actual: suite completa **816/816**, typecheck verde, Convex dev/codegen correctos y `git diff --check` limpio.
+- [x] `COMMERCE_MODE` volvió a **`off`**. CLI y web autenticada confirman que `/paywall` muestra “Órbita Plus estará disponible pronto”, sin compra; `/carta` conserva Plus durante el trial cancelado.
+
+**Estado de cierre:** Gate B técnico completo y sin cobro: Checkout, trial, webhook, entitlement, portal y cancelación funcionaron de punta a punta. La única suscripción Live creada quedó cancelada dentro del trial, con acceso hasta el 8 de agosto y renovación desactivada. Producción está segura con `COMMERCE_MODE=off`; para abrir ventas al público sólo falta una decisión explícita de Lucas de volverlo a `live` y fusionar el ajuste backend posterior al PR #58.
+
 ## Hotfix web — Carta Free no dispara generación Plus (2026-08-01, Claude + Codex)
 
 **Objetivo:** impedir que `CartaScreen` invoque `charts.generatePersonalityReading` cuando el estado remoto autoritativo ya es `locked` para una cuenta Free. Hoy la pantalla muestra correctamente el bloqueo, pero igualmente dispara la action Plus y genera un Server Error en producción.

@@ -11,6 +11,7 @@ import {
   type SubscriptionStatus
 } from "../lib/entitlements";
 import { recordBackendProductEvent } from "../lib/productAnalytics";
+import { stripeSubscriptionLifecycle } from "../lib/stripeSubscription";
 import { omitUndefined } from "../lib/users";
 
 function mapStripeStatus(status?: string): SubscriptionStatus {
@@ -269,12 +270,9 @@ async function handleSubscriptionChange(
 
   const priceId: string | undefined =
     subscription.items?.data?.[0]?.price?.id;
-  const cancelAtPeriodEnd = Boolean(subscription.cancel_at_period_end);
+  const { cancellationScheduled, currentPeriodEnd } =
+    stripeSubscriptionLifecycle(subscription);
   const mappedStatus = mapStripeStatus(subscription.status);
-  const currentPeriodEnd =
-    typeof subscription.current_period_end === "number"
-      ? subscription.current_period_end * 1000
-      : undefined;
   const isActive =
     mappedStatus === "active" ||
     mappedStatus === "trialing" ||
@@ -285,9 +283,9 @@ async function handleSubscriptionChange(
     clerkUserId,
     {
       entitlement: isActive ? PRO_ENTITLEMENT : "free",
-      status: cancelAtPeriodEnd && isActive ? "canceled" : mappedStatus,
+      status: cancellationScheduled && isActive ? "canceled" : mappedStatus,
       plan: planFromPriceId(priceId),
-      willRenew: !cancelAtPeriodEnd,
+      willRenew: !cancellationScheduled,
       providerCustomerId: subscription.customer,
       providerSubscriptionId: subscription.id,
       currentPeriodEnd
