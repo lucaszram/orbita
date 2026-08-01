@@ -174,6 +174,30 @@ describe("carta.tsx — cableado anti-bloqueo", () => {
     assert.doesNotMatch(errorBranch, /router\.push\("\/paywall"\)/);
   });
 
+  it("HOTFIX Free: la action Plus solo se dispara con la señal remota resuelta y no 'locked'", () => {
+    // Reproducido en producción: una cuenta Free mostraba el bloqueo pero
+    // igualmente disparaba generatePersonalityReading y la consola registraba
+    // un Server Error. El booleano exige que personalityReadingState haya
+    // resuelto (undefined = query en vuelo) y que no sea `locked`.
+    assert.match(
+      CARTA,
+      /const canGenerate = readingState !== undefined && readingState\.status !== "locked";/
+    );
+    // El guard corta el efecto ANTES de generate({}): bloqueado o sin señal,
+    // la action no sale nunca.
+    const generateCall = CARTA.indexOf("generate({})");
+    const effect = CARTA.slice(CARTA.lastIndexOf("useEffect(() => {", generateCall), generateCall);
+    assert.match(effect, /if \(!canGenerate\) return;/);
+  });
+
+  it("HOTFIX Free: la dependencia del efecto es el booleano, no el status crudo", () => {
+    // pending→ready/error mantiene canGenerate=true sin cambiar de identidad:
+    // el efecto no se re-dispara en esas transiciones. Depender de readingState
+    // (o de su status) sí lo re-dispararía en cada cambio remoto.
+    assert.match(CARTA, /\}, \[generate, attempt, canGenerate\]\);/);
+    assert.doesNotMatch(CARTA, /\}, \[[^\]]*readingState[^\]]*\]\);/);
+  });
+
   it("los siete capítulos largos se muestran intactos cuando la lectura está lista", () => {
     // Los capítulos se dibujan desde una sola función (`explicada`), montada
     // con la primera y la segunda mitad. Antes eran dos bloques duplicados; el
