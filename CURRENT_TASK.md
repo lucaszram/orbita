@@ -70,6 +70,17 @@ Los dos requires de `src/onboarding/entryBackground.web.ts` apuntan a los `.webp
 
 **Ficha:** owner Claude (frontend) / Codex (backend); territorio `convex/payments/**`, `convex/lib/stripeApi.ts`, contrato de suscripciones, `.env.example`, `src/components/web/orbita-paywall.tsx`, `src/components/web/orbita-legal.tsx`, `src/domain/paywall.ts`, referencias tipadas, pruebas focalizadas y este handoff. Riesgo alto por tocar Checkout, trial, webhooks y entitlement; validación: typecheck, suite completa, export web, presupuesto de assets y pasada integrada con Stripe test. Rollout sólo en modo test — producción mantiene `COMMERCE_MODE=off`; rollback por revert y `COMMERCE_MODE=off`; fuera de alcance compras one-time, nuevos checkouts semanal/anual, publicación y promoción productiva.
 
+### QA integrado final — 2026-08-01 14:08 ART
+
+- La descripción del producto en Stripe Test fue corregida y un Checkout nuevo mostró `Suscripción Mensual`, junto con `7 days free`, `$9.99 per month` y primer cobro simulado el 8 de agosto de 2026.
+- Se completó Checkout en Sandbox con la tarjeta oficial de prueba `4242`; Stripe creó la suscripción/trial y una factura de `$0.00`. No hubo cobro real, tarjeta real ni cambio de producción.
+- Convex dev recibió `POST /webhooks/stripe` con HTTP `200`; `payments/stripeInternal:dispatchStripeEvent` procesó el evento y `subscriptions:getCurrent` pasó a devolver la suscripción. Perfil mostró `GESTIONAR SUSCRIPCIÓN`, confirmando el entitlement Plus.
+- El Customer Portal abrió correctamente y mostró Órbita Plus, `$9.99 per month`, trial hasta el 8 de agosto y la tarjeta test. La cancelación se completó desde el portal: ahora figura `Cancels Aug 8` y confirma que el servicio dejará de estar disponible al finalizar la prueba, sin renovación.
+- Convex dev recibió y procesó también los webhooks de cancelación con HTTP `200`. El acceso Plus permanece activo hasta el final del trial, que es la conducta esperada.
+- Detalle de infraestructura observado: el `success_url` de este entorno apunta al preview protegido de Vercel y, tras Checkout, redirige al login de Vercel. No afectó Checkout, webhook, entitlement, portal ni cancelación; la pantalla de éxito del preview no pudo validarse visualmente. Antes de activar live, la URL de retorno debe ser el dominio público no protegido.
+- Gates de código previos siguen vigentes: typecheck, suite completa **808/808**, export web y presupuesto de assets en verde. Producción continúa con comercio apagado y no fue modificada.
+- PR #58 ya completó la pasada integrada de Stripe Test. Puede pasar de draft a listo para revisión técnica, manteniendo fuera de alcance cualquier promoción productiva.
+
 ### Handoff final — 2026-08-01 12:30 ART
 
 - Rama/worktree: `codex/web-offer-v2` en `.worktrees/orbita-web-offer-v2`, limpia.
