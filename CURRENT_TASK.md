@@ -1,5 +1,21 @@
 # Current Task
 
+## Web pública v2 — hero: la carta astral base, dicha en el primer pantallazo (2026-08-01, Claude)
+
+**Objetivo:** corrección acotada de mensaje sobre el mismo PR #57 (`feature/web-public-entry-v2`, misma rama, se actualiza, no se abre otro), por feedback de usuario: la landing sobre-indexaba en el tarot diario y no decía en el hero que la carta astral es fundacional. Sin tocar titular, layout, abanico de 7, CTAs, anclas, rutas, secciones, assets ni responsive.
+
+**Decisión de producto (user-facing):** el hero suma una línea de valor visualmente contenida, con esta copy exacta — etiqueta `TU CARTA ASTRAL BASE, INCLUIDA AL EMPEZAR` + apoyo `Sol, Luna y ascendente: el mapa personal que da contexto a tu tarot diario y a los tránsitos.` Se dice "base" y se nombra la tríada a propósito: **no** se promete la carta natal completa gratis — casas, aspectos y lecturas siguen siendo Plus (coherente con los paneles Gratis/Plus de la misma página).
+
+**Implementación:** bloque `heroBase` DEBAJO del row de CTAs en la columna de copy del hero — así el CTA primario no baja ni un pixel y sigue en el primer viewport a 390×844 (ya validado en la pasada anterior; esta línea sólo agrega contenido debajo). Hairline superior (`colors.hairline`), etiqueta en Roboto Mono cobre 11/`letterSpacing: 1` (mismo trato que `eyebrow`/`cardCaption`) y apoyo en Inter 14/21 `boneMuted` con `maxWidth: 560`: tokens y tipografías ya existentes, integrado a la columna, no un card nuevo. Cero estilos de color/fuente nuevos, cero assets.
+
+**Test:** `test/webPublicEntry.test.ts` suma «el hero declara la carta astral base, debajo del CTA y sin regalar la completa»: copy exacta presente una sola vez dentro del bloque del hero, posicionada después de `<EmpezarCta` (guarda de que no empuja el CTA), y `doesNotMatch(/carta natal completa/i)` en el hero. Los invariantes de conversión existentes no cambian.
+
+**Validación (2026-08-01, Codex):** `pnpm typecheck` pasó; suite completa **812/812**; `pnpm build:web` pasó; `pnpm check:web-export` pasó con 36,17 MB totales, imagen máxima 479,3 KB y JS gzip 1,10 MB; `git diff --check` limpio. Revisión visual en navegador a 390×844 y 1440×900: CTA principal visible dentro del primer viewport, bloque de carta astral inmediatamente debajo de los CTA, sin colisiones ni cambios en el abanico. La etiqueta aparece exactamente una vez y los cuatro CTA, el único login y la promesa Free/Plus conservan sus invariantes.
+
+**Archivos tocados:** `src/components/web/orbita-landing.tsx` (bloque `heroBase` + 3 estilos), `test/webPublicEntry.test.ts` (un test nuevo), `CURRENT_TASK.md`.
+
+**Sin commit, push, deploy.** Producción intacta.
+
 ## Web pública v2 — corrección final: entrada web sin portada + landing con mazo real (2026-07-31, Claude)
 
 **Objetivo:** cerrar el PR #57 (`feature/web-public-entry-v2`) con la corrección final acordada: (a) el flujo web normal `/` → `/empezar` monta **AlignScreen de inmediato** (CTA `Empezar el viaje`) y nunca la portada nativa (SplashScreen: video de intro + "Órbita · Tu cielo, todos los días"); (b) la landing extiende los dos fondos orbitales ya aprobados a TODA la página, muestra en el hero un abanico de cartas reales del mazo en lugar de La Luna, y suma la sección "El mazo de Órbita" con 16 cartas y la mención explícita del mazo completo de 78. Nativo, auth, Convex, rutas y pasos 2–15 intactos.

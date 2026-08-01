@@ -287,6 +287,19 @@ export function OrbitaLanding() {
                 <Text style={styles.ctaGhostText}>Ver una lectura</Text>
               </Pressable>
             </View>
+            {/* La carta astral es fundacional, no un extra: queda dicho en el
+                primer pantallazo. Va DEBAJO de los CTAs para que el primario no
+                baje del primer viewport móvil. "Base" y la tríada a propósito:
+                la carta natal completa (casas, aspectos, lectura) es Plus. */}
+            <View style={styles.heroBase}>
+              <Text selectable style={styles.heroBaseLabel}>
+                TU CARTA ASTRAL BASE, INCLUIDA AL EMPEZAR
+              </Text>
+              <Text selectable style={styles.heroBaseBody}>
+                Sol, Luna y ascendente: el mapa personal que da contexto a tu tarot diario y a
+                los tránsitos.
+              </Text>
+            </View>
           </View>
           <View style={[styles.heroVisual, isNarrow && styles.heroVisualNarrow]}>
             {/* En móvil el abanico entra en el ancho de la columna (gutters de
@@ -836,6 +849,28 @@ const styles = StyleSheet.create({
   },
   ctaStretch: {
     alignSelf: "stretch"
+  },
+  // Línea de valor bajo los CTAs: hairline arriba y tipografías ya existentes
+  // (mono cobre + Inter muted). Integrada a la columna de copy, no un panel.
+  heroBase: {
+    borderTopColor: colors.hairline,
+    borderTopWidth: 1,
+    gap: 6,
+    marginTop: 6,
+    maxWidth: 560,
+    paddingTop: 14
+  },
+  heroBaseLabel: {
+    color: colors.copperSoft,
+    fontFamily: "RobotoMono_500Medium",
+    fontSize: 11,
+    letterSpacing: 1
+  },
+  heroBaseBody: {
+    color: colors.boneMuted,
+    fontFamily: "Inter_400Regular",
+    fontSize: 14,
+    lineHeight: 21
   },
   heroVisual: {
     alignItems: "center",

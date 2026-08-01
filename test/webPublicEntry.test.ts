@@ -111,6 +111,26 @@ test("«El mazo de Órbita»: 16 cartas, los cuatro palos y el 78 explícito", (
   assert.match(LANDING, /role="listitem"/);
 });
 
+test("el hero declara la carta astral base, debajo del CTA y sin regalar la completa", () => {
+  // El bloque del hero: desde su apertura hasta la sección del ejemplo.
+  const hero = LANDING.slice(LANDING.indexOf("styles.hero,"), LANDING.indexOf('id="tu-carta-de-hoy"'));
+  assert.match(hero, /TU CARTA ASTRAL BASE, INCLUIDA AL EMPEZAR/, "la etiqueta acordada vive en el hero");
+  assert.match(
+    hero,
+    /Sol, Luna y ascendente: el mapa personal que da contexto a tu tarot diario y a\s+los tránsitos\./,
+    "con su línea de apoyo exacta"
+  );
+  assert.equal(contar(LANDING, "TU CARTA ASTRAL BASE"), 1, "una sola aparición en la página");
+  // Va DESPUÉS del bloque de CTAs: el CTA primario no baja del primer viewport
+  // móvil (390×844) por esta línea.
+  assert.ok(
+    hero.indexOf("<EmpezarCta") < hero.indexOf("TU CARTA ASTRAL BASE"),
+    "la línea de valor no empuja el CTA primario"
+  );
+  // La promesa Plus no cambia: el hero no anuncia la carta natal completa.
+  assert.doesNotMatch(hero, /carta natal completa/i);
+});
+
 test("los invariantes de conversión de la landing no cambian", () => {
   assert.equal(contar(LANDING, "Ya tengo cuenta"), 1, "una sola acción de cuenta, en el header");
   assert.equal(contar(LANDING, "<EmpezarCta"), 4, "cuatro CTAs de arranque");

@@ -22,6 +22,7 @@ La referencia y la implementación se abrieron juntas en el mismo pase de compar
 
 - **Header:** emblema real, un solo acceso `Ya tengo cuenta`, targets legibles y sin colisiones en 390 px.
 - **Hero:** H1, bajada, CTA principal y CTA secundario conservan jerarquía y contraste; el abanico usa assets reales y queda completo dentro de 390 y 1440 px.
+- **Carta astral como base:** la línea `TU CARTA ASTRAL BASE, INCLUIDA AL EMPEZAR` queda debajo de los CTA, visible en el primer pantallazo sin desplazar el CTA principal. Nombra Sol, Luna y ascendente sin prometer gratis la carta completa de Plus.
 - **Entrada `/empezar`:** el recorrido normal muestra inmediatamente `Alineate con el ritmo del universo`; no monta la portada/video nativo. La flecha vuelve a `/`.
 - **Mazo:** la fila horizontal tiene 16 cartas representativas, Arcanos Mayores y los cuatro palos, con nombres visibles y semántica de lista.
 
@@ -52,7 +53,7 @@ No quedan diferencias accionables P0, P1 o P2.
 ## Verificación técnica
 
 - `pnpm typecheck`: passed.
-- `pnpm test`: 811/811 passed.
+- `pnpm test`: 812/812 passed.
 - `pnpm build:web`: passed.
 - `pnpm check:web-export`: 36.17 MB; imagen máxima 479.3 KB; JS de app gzip 1.10 MB.
 - No se observó overlay de error ni fallo de render en el navegador durante el recorrido.
