@@ -16,13 +16,23 @@ test("entitlement resolution", async (t) => {
 
   await t.test("active subscription within period → pro", () => {
     const rows: SubscriptionRow[] = [
-      { provider: "stripe", status: "active", currentPeriodEnd: FUTURE, plan: "yearly", willRenew: true }
+      { provider: "stripe", status: "active", currentPeriodEnd: FUTURE, plan: "monthly", willRenew: true }
     ];
     const result = resolveEntitlement(rows, NOW);
     assert.equal(result.isPro, true);
     assert.equal(result.entitlement, "orbita_pro");
     assert.equal(result.provider, "stripe");
     assert.equal(result.canManageInStripePortal, true);
+  });
+
+  await t.test("monthly trial grants the complete Pro entitlement", () => {
+    const rows: SubscriptionRow[] = [
+      { provider: "stripe", status: "trialing", currentPeriodEnd: FUTURE, plan: "monthly", willRenew: true }
+    ];
+    const result = resolveEntitlement(rows, NOW);
+    assert.equal(result.isPro, true);
+    assert.equal(result.status, "trialing");
+    assert.equal(result.plan, "monthly");
   });
 
   await t.test("expired subscription past period → free", () => {

@@ -13,7 +13,12 @@ const subscriptionStatusValidator = v.union(
   v.literal("expired")
 );
 const providerValidator = v.union(v.literal("revenuecat"), v.literal("stripe"), v.literal("stub"));
-const planValidator = v.union(v.literal("weekly"), v.literal("yearly"), v.literal("lifetime"));
+const planValidator = v.union(
+  v.literal("monthly"),
+  v.literal("weekly"),
+  v.literal("yearly"),
+  v.literal("lifetime")
+);
 
 // Estado de acceso resuelto combinando todas las filas de suscripción del
 // usuario (RevenueCat + Stripe + stub). Es la fuente de verdad server-side:

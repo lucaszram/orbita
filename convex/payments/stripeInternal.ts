@@ -32,6 +32,9 @@ function mapStripeStatus(status?: string): SubscriptionStatus {
 
 function planFromPriceId(priceId?: string): SubscriptionPlan | undefined {
   if (!priceId) return undefined;
+  if (priceId === process.env.STRIPE_PRICE_MONTHLY) return "monthly";
+  // Legacy prices remain recognizable for existing subscriptions, but no new
+  // weekly/yearly checkout can be created by the public API.
   if (priceId === process.env.STRIPE_PRICE_YEARLY) return "yearly";
   if (priceId === process.env.STRIPE_PRICE_WEEKLY) return "weekly";
   return undefined;
@@ -209,11 +212,12 @@ async function handleCheckoutCompleted(
     session.client_reference_id ?? session.metadata?.clerkUserId;
   const plan = session.metadata?.plan;
 
-  // El checkout web sólo reconoce suscripciones semanales o anuales.
-  // Sesiones one-time/lifetime antiguas no conceden acceso desde este webhook.
+  // El checkout web nuevo sólo reconoce la suscripción mensual. Sesiones
+  // one-time/lifetime y ofertas semanales/anuales antiguas no conceden un
+  // acceso nuevo desde checkout.session.completed.
   if (
     session.mode !== "subscription" ||
-    (plan !== "weekly" && plan !== "yearly")
+    plan !== "monthly"
   ) {
     return;
   }

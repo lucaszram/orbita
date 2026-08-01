@@ -18,7 +18,14 @@ const subscriptionStatus = v.union(
   v.literal("expired")
 );
 const subscriptionProvider = v.union(v.literal("revenuecat"), v.literal("stripe"), v.literal("stub"));
-const subscriptionPlan = v.union(v.literal("weekly"), v.literal("yearly"), v.literal("lifetime"));
+const subscriptionPlan = v.union(
+  v.literal("monthly"),
+  // Legacy values remain readable for subscriptions created before the web
+  // offer moved to a single monthly plan.
+  v.literal("weekly"),
+  v.literal("yearly"),
+  v.literal("lifetime")
+);
 const providerEnvironment = v.union(v.literal("sandbox"), v.literal("production"));
 const contentStatus = v.union(v.literal("draft"), v.literal("review"), v.literal("published"), v.literal("archived"));
 const labReviewStatus = v.union(v.literal("needs_review"), v.literal("approved"), v.literal("rejected"));
