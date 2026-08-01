@@ -3,6 +3,8 @@ import { ImageBackground, type ImageSourcePropType, StyleSheet, View } from "rea
 import { LinearGradient } from "expo-linear-gradient";
 
 import { Text } from "@/components/ui/text";
+import { AstroGlyph } from "@/components/orbita/AstroGlyph";
+import type { AstroGlyphKey } from "@/domain/astroGlyphs";
 
 import { A } from "../assets";
 import { CTA } from "../components/CTA";
@@ -80,7 +82,9 @@ function TileGrid() {
     >
       <View style={[styles.grid, { gap: px(COL_GAP), height: h }]}>
         <View style={[styles.col, { gap: px(COL_GAP) }]}>
-          <Tile img={A.tileLunar} label="☾  Influencia lunar" h={tile} />
+          {/* El emblema lunar es el glifo vectorial propio: el carácter `☾` caía
+              al font de emoji en web y Android (ver `domain/astroGlyphs`). */}
+          <Tile img={A.tileLunar} glyph="moon" label="Influencia lunar" h={tile} />
           <Tile img={A.tilePractice} label="◇  Práctica diaria" h={tile} />
         </View>
         <View style={[styles.col, { gap: px(COL_GAP) }]}>
@@ -92,7 +96,17 @@ function TileGrid() {
   );
 }
 
-function Tile({ img, label, h }: { img: ImageSourcePropType; label: string; h: number }) {
+function Tile({
+  img,
+  label,
+  h,
+  glyph
+}: {
+  img: ImageSourcePropType;
+  label: string;
+  h: number;
+  glyph?: AstroGlyphKey;
+}) {
   return (
     <View style={[styles.tile, { height: h }]}>
       {/* `imageStyle` propio PISA el sizing por defecto de react-native-web: sin
@@ -109,7 +123,10 @@ function Tile({ img, label, h }: { img: ImageSourcePropType; label: string; h: n
         style={StyleSheet.absoluteFill}
         pointerEvents="none"
       />
-      <Text style={styles.tileLabel}>{label}</Text>
+      <View style={styles.tileLabelRow}>
+        {glyph ? <AstroGlyph symbol={glyph} size={13} color={orbita.bone} /> : null}
+        <Text style={styles.tileLabel}>{label}</Text>
+      </View>
     </View>
   );
 }
@@ -126,14 +143,20 @@ const styles = StyleSheet.create({
   gridMeasure: { flex: 1, justifyContent: "center" },
   gridZone: { flex: 1, justifyContent: "center", minHeight: 180 },
   note: { color: orbita.faint, marginBottom: 6, textAlign: "center" },
-  tileLabel: {
+  tileLabelRow: {
+    alignItems: "center",
     bottom: 12,
-    color: orbita.bone,
-    fontFamily: font.sansMed,
-    fontSize: 13,
+    flexDirection: "row",
+    gap: 6,
     left: 12,
     position: "absolute",
     right: 12,
+  },
+  tileLabel: {
+    color: orbita.bone,
+    fontFamily: font.sansMed,
+    fontSize: 13,
+    flexShrink: 1,
   },
   sub: { marginTop: 10, textAlign: "center" },
   // `overflow: "hidden"` recorta lo que la imagen quiera desbordar, y

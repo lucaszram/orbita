@@ -1,5 +1,8 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { bodyCodeForName } from "@/domain/astroSymbols";
+
+import { AstroGlyph } from "@/components/orbita/AstroGlyph";
+import { bodySymbolForName } from "@/domain/astroSymbols";
+import type { BodyGlyphKey } from "@/domain/astroGlyphs";
 import { orbita } from "@/theme/orbita";
 
 /**
@@ -9,14 +12,13 @@ import { orbita } from "@/theme/orbita";
  */
 
 /**
- * Código monocromo del cuerpo del título. Antes devolvía glifos Unicode
- * (`☉ ☽ ☿ ♀ ♂ ♃ ♄`) que en web y Android caían al font de emoji. Los signos ya
- * usan sus glifos reales del font empaquetado, pero los PLANETAS no tienen glifo
- * en ninguna tipografía que el proyecto empaquete: siguen siendo códigos de dos
- * letras en la mono. La limitación está documentada en `domain/astroSymbols`.
+ * Glifo del cuerpo del título: la clave del catálogo vectorial propio
+ * (`domain/astroGlyphs`). Antes devolvía glifos Unicode (que caían al font de
+ * emoji en web y Android) y después códigos de dos letras; hoy todos los
+ * cuerpos tienen su símbolo real empaquetado.
  */
-export function glyphFor(title: string): string {
-  return bodyCodeForName(title) ?? "SO";
+export function glyphFor(title: string): BodyGlyphKey {
+  return bodySymbolForName(title) ?? "sun";
 }
 
 export function GlyphRow({ title, body, onPress }: { title: string; body: string; onPress?: () => void }) {
@@ -24,7 +26,7 @@ export function GlyphRow({ title, body, onPress }: { title: string; body: string
     <Pressable onPress={onPress} disabled={!onPress} style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
       <View style={styles.head}>
         <View style={styles.marker}>
-          <Text style={styles.glyph}>{glyphFor(title)}</Text>
+          <AstroGlyph symbol={glyphFor(title)} size={14} color={orbita.colors.bone} strokeWidth={2} />
         </View>
         <Text style={styles.title}>{title}</Text>
         <Text style={styles.arrow}>→</Text>
@@ -48,8 +50,6 @@ const styles = StyleSheet.create({
     marginRight: orbita.spacing.md,
     width: 26
   },
-  // Mono: el código son dos letras y tienen que caber centradas en el marcador.
-  glyph: { color: orbita.colors.bone, fontFamily: orbita.fonts.mono, fontSize: 11, letterSpacing: 0.5 },
   title: { color: orbita.colors.bone, flex: 1, fontFamily: orbita.fonts.serif, fontSize: 24, lineHeight: 30 },
   arrow: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 20, marginLeft: orbita.spacing.md },
   body: {

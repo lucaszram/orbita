@@ -2,6 +2,9 @@ import { ReactNode } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useIsDesktop } from "@/hooks/useLayoutMode";
+import { AstroGlyph } from "@/components/orbita/AstroGlyph";
+import { TriadLine } from "@/components/orbita/TriadLine";
+import { PLACEMENT_BODY_SYMBOL, type BodyGlyphKey } from "@/domain/astroSymbols";
 import { HomeReading, HomeTopic, Topic } from "@/domain/types";
 import type { DailyGuidePayload, DailyTopic } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
@@ -104,9 +107,16 @@ export function SignalTop({
         />
         <View style={[styles.heroContent, desktop && styles.heroContentWide]}>
           <Text style={styles.triadEyebrow}>TU CARTA NATAL</Text>
-          <Text style={[styles.triad, styles.triadCentered]}>
-            {`${triad.sun.glyph} ${triad.sun.label}   ${triad.moon.glyph} ${triad.moon.label}   ${triad.ascendant.glyph} ${triad.ascendant.label}`}
-          </Text>
+          <TriadLine
+            units={[triad.sun, triad.moon, triad.ascendant].map((p) => ({
+              symbol: PLACEMENT_BODY_SYMBOL[p.body],
+              label: p.label
+            }))}
+            textStyle={styles.triad}
+            glyphColor={orbita.colors.muted}
+            glyphSize={13}
+            centered
+          />
           {triad.accuracyNote ? <Text style={[styles.triadNote, styles.triadCentered]}>{triad.accuracyNote}</Text> : null}
           {onVerCarta ? (
             <Pressable
@@ -221,7 +231,7 @@ export function TopicsSection({
             >
               <View style={styles.insightHead}>
                 <View style={styles.topicMarker}>
-                  <Text style={styles.topicGlyph}>{TOPIC_GLYPHS[t.topic] ?? "☉"}</Text>
+                  <AstroGlyph symbol={TOPIC_GLYPHS[t.topic] ?? "sun"} size={14} color={orbita.colors.bone} strokeWidth={2} />
                 </View>
                 <Text style={styles.insightTitle}>{t.title}</Text>
                 <Text style={[styles.chevron, open && styles.chevronOpen]}>⌄</Text>
@@ -251,11 +261,12 @@ export function TopicsSection({
 }
 
 /** Glifos por área para los marcadores de fila (Figma V4.7 Topics). */
-const TOPIC_GLYPHS: Partial<Record<Topic, string>> = {
-  amor: "♀",
-  trabajo: "♄",
-  familia: "☽",
-  vinculos: "☿"
+/** Cuerpo regente de cada área, como clave del catálogo vectorial propio. */
+const TOPIC_GLYPHS: Partial<Record<Topic, BodyGlyphKey>> = {
+  amor: "venus",
+  trabajo: "saturn",
+  familia: "moon",
+  vinculos: "mercury"
 };
 
 /** Tramo 04 — End: lectura larga, módulo educativo, cierre y links. */
@@ -459,7 +470,6 @@ const styles = StyleSheet.create({
     marginRight: orbita.spacing.md,
     width: 26
   },
-  topicGlyph: { color: orbita.colors.bone, fontFamily: orbita.fonts.body, fontSize: 13 },
   insightBody: { marginLeft: 26 + orbita.spacing.md, marginTop: orbita.spacing.sm },
   tab: { alignItems: "center" },
   tabLabel: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.mono, fontSize: 13 },

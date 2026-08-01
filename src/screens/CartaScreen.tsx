@@ -16,7 +16,8 @@ import { MeasuredSquare } from "@/components/orbita/ContentCanvas";
 import { GuestState } from "@/components/orbita/GuestState";
 import { NatalWheel } from "@/components/orbita/NatalWheel";
 import { EmptyState, ErrorState, MinimalLoading } from "@/components/orbita/states";
-import { bodyCode, RETROGRADE_CODE } from "@/domain/astroSymbols";
+import { AstroGlyph } from "@/components/orbita/AstroGlyph";
+import { bodySymbol, RETROGRADE_CODE, type BodyGlyphKey } from "@/domain/astroSymbols";
 import { mapNatalChart } from "@/domain/natalChart";
 import { personalChartGate } from "@/domain/natalChartGate";
 import { Radar } from "@/components/orbita/Radar";
@@ -252,9 +253,9 @@ function RecalculateChart() {
 
 // --- Vista ---------------------------------------------------------------
 
-/** Código monocromo del cuerpo (ver `domain/astroSymbols`): nunca un glifo que
- *  en web o Android cae al font de emoji. */
-const glyphOf = (p: { key?: string; planet: string }) => bodyCode({ key: p.key, label: p.planet });
+/** Glifo vectorial del cuerpo (ver `domain/astroSymbols`): nunca un carácter
+ *  que en web o Android caiga al font de emoji. */
+const symbolOf = (p: { key?: string; planet: string }): BodyGlyphKey => bodySymbol({ key: p.key, label: p.planet });
 const deg = (n?: number) => (typeof n === "number" ? `${Math.round(n)}°` : "");
 
 function CartaView({
@@ -322,9 +323,12 @@ function CartaView({
             )}
           </MeasuredSquare>
           {sel ? (
-            <Text style={styles.selLine}>
-              {`${glyphOf(sel)}  ${sel.planet} en ${sel.sign}${sel.house ? ` · Casa ${sel.house}` : ""}${sel.normDegree != null ? ` · ${deg(sel.normDegree)}` : ""}${sel.isRetrograde ? ` ${RETROGRADE_CODE}` : ""}`}
-            </Text>
+            <View style={styles.selLine}>
+              <AstroGlyph symbol={symbolOf(sel)} size={17} color={orbita.colors.bone} />
+              <Text style={styles.selLineText}>
+                {`${sel.planet} en ${sel.sign}${sel.house ? ` · Casa ${sel.house}` : ""}${sel.normDegree != null ? ` · ${deg(sel.normDegree)}` : ""}${sel.isRetrograde ? ` ${RETROGRADE_CODE}` : ""}`}
+              </Text>
+            </View>
           ) : (
             <Note>Tocá un planeta para verlo en la tabla.</Note>
           )}
@@ -496,7 +500,7 @@ function SectorBlock({ s, n }: { s: PersonalitySection; n: number }) {
       <Text style={styles.sectorNum}>{`Sector ${String(n).padStart(2, "0")}`}</Text>
       <View style={styles.sectorHead}>
         <View style={styles.sectorMarker}>
-          <Text style={styles.sectorGlyph}>{bodyCode({ label: s.placement.label })}</Text>
+          <AstroGlyph symbol={bodySymbol({ label: s.placement.label })} size={16} color={orbita.colors.bone} strokeWidth={2} />
         </View>
         <Text style={styles.sectorPlacement}>
           {`${s.placement.planet} en ${s.placement.sign ?? ""}${s.placement.house ? ` · Casa ${s.placement.house}` : ""}`.toUpperCase()}
@@ -525,7 +529,7 @@ function CartaTriad({ triad }: { triad: NatalChartPayload["triad"] }) {
     <View style={styles.triadCard}>
       {cells.map(({ role, p }, i) => (
         <View key={role} style={[styles.triadCell, i > 0 && styles.triadCellBorder]}>
-          <Text style={styles.triadGlyph}>{glyphOf(p)}</Text>
+          <AstroGlyph symbol={symbolOf(p)} size={18} color={orbita.colors.copperSoft} />
           <Text style={styles.triadRole}>{role.toUpperCase()}</Text>
           <Text style={styles.triadSign}>{p.sign}</Text>
           {p.house ? <Text style={styles.triadHouse}>{`Casa ${p.house}`}</Text> : null}
@@ -539,7 +543,7 @@ function PositionRow({ p }: { p: SignPlacement }) {
   return (
     <View style={styles.posRow}>
       <View style={styles.posMarker}>
-        <Text style={styles.posGlyph}>{glyphOf(p)}</Text>
+        <AstroGlyph symbol={symbolOf(p)} size={16} color={orbita.colors.bone} strokeWidth={2} />
       </View>
       <Text style={styles.posName}>{p.planet}</Text>
       <Text style={styles.posSign}>
@@ -572,7 +576,8 @@ function LinkRow({ label, onPress }: { label: string; onPress?: () => void }) {
 
 const styles = StyleSheet.create({
   wheelWrap: { alignItems: "center", paddingHorizontal: orbita.spacing.gutter, paddingTop: orbita.spacing.lg },
-  selLine: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 17, marginTop: orbita.spacing.lg, textAlign: "center" },
+  selLine: { alignItems: "center", flexDirection: "row", gap: 8, justifyContent: "center", marginTop: orbita.spacing.lg },
+  selLineText: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 17, textAlign: "center" },
 
   triadCard: {
     borderColor: orbita.colors.line,
@@ -584,15 +589,12 @@ const styles = StyleSheet.create({
   },
   triadCell: { alignItems: "center", flex: 1, paddingHorizontal: 4 },
   triadCellBorder: { borderLeftColor: orbita.colors.line, borderLeftWidth: 1 },
-  triadGlyph: { color: orbita.colors.copperSoft, fontFamily: orbita.fonts.monoMedium, fontSize: 15, letterSpacing: 1 },
   triadRole: { color: orbita.colors.copper, fontFamily: orbita.fonts.monoMedium, fontSize: 10, letterSpacing: 0.6, marginTop: orbita.spacing.sm },
   triadSign: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 18, marginTop: 4 },
   triadHouse: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.mono, fontSize: 11, marginTop: 2 },
 
   posRow: { alignItems: "center", borderBottomColor: orbita.colors.line, borderBottomWidth: 1, flexDirection: "row", paddingVertical: orbita.spacing.md },
   posMarker: { alignItems: "center", borderColor: "rgba(214,154,106,0.5)", borderRadius: 15, borderWidth: 1, height: 30, justifyContent: "center", marginRight: orbita.spacing.md, width: 30 },
-  // Los símbolos son códigos de dos letras en la mono empaquetada.
-  posGlyph: { color: orbita.colors.bone, fontFamily: orbita.fonts.mono, fontSize: 11, letterSpacing: 0.5 },
   posName: { color: orbita.colors.bone, flex: 1, fontFamily: orbita.fonts.serif, fontSize: 16 },
   posSign: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 13, textAlign: "right", width: 108 },
   posHouse: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.mono, fontSize: 11, textAlign: "right", width: 58 },
@@ -607,7 +609,6 @@ const styles = StyleSheet.create({
   sectorNum: { color: orbita.colors.copper, fontFamily: orbita.fonts.monoMedium, fontSize: 11, letterSpacing: 1.5 },
   sectorHead: { alignItems: "center", flexDirection: "row", marginTop: orbita.spacing.md },
   sectorMarker: { alignItems: "center", borderColor: "rgba(214,154,106,0.5)", borderRadius: 16, borderWidth: 1, height: 32, justifyContent: "center", marginRight: orbita.spacing.md, width: 32 },
-  sectorGlyph: { color: orbita.colors.bone, fontFamily: orbita.fonts.mono, fontSize: 11, letterSpacing: 0.5 },
   sectorPlacement: { color: orbita.colors.copperSoft, flex: 1, fontFamily: orbita.fonts.monoMedium, fontSize: 11, letterSpacing: 1 },
   sectorTitle: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 22, lineHeight: 28, marginTop: orbita.spacing.md },
   sectorBody: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 15, lineHeight: 23, marginTop: orbita.spacing.sm },

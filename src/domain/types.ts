@@ -207,7 +207,6 @@ export type PlacementBody = "sol" | "luna" | "ascendente";
 
 export type Placement = {
   body: PlacementBody;
-  glyph: string;
   sign: ZodiacSign;
   label: string;
 };

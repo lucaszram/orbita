@@ -231,7 +231,8 @@ test("los mosaicos de Align se encogen con su columna y recortan la imagen", () 
   assert.doesNotMatch(align, /COL_OFFSET/, "el desfase que leía como error no puede volver");
   // Y la etiqueta va ADENTRO, no en una píldora colgando del borde.
   assert.doesNotMatch(align, /pill:|pillTxt:/, "las píldoras flotantes no pueden volver");
-  assert.match(align, /tileLabel: \{[\s\S]*?position: "absolute"/, "la etiqueta vive dentro del mosaico");
+  // La fila de etiqueta (glifo vectorial opcional + texto) va anclada al pie.
+  assert.match(align, /tileLabelRow: \{[\s\S]*?position: "absolute"/, "la etiqueta vive dentro del mosaico");
   assert.match(align, /<LinearGradient/, "con degradé de legibilidad debajo");
 
   // Y el `imageStyle` propio pisa el sizing por defecto de react-native-web:

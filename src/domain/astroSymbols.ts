@@ -1,108 +1,32 @@
 /**
- * Símbolos astrológicos SIN emoji y sin depender del font del sistema.
+ * Resolución de símbolos astrológicos: del payload (o de un texto visible) a la
+ * clave del glifo dibujable.
  *
- * El bug: la rueda y la tabla usaban los caracteres Unicode de signos y planetas
- * (`♈`–`♓` U+2648–U+2653, `☉ ☽ ☿ ♀ ♂ ♃ ♄ ♅ ♆ ♇ ☊ ⚷ ⊕`, `℞`). Ninguna de las
- * familias de TEXTO que Órbita empaqueta —Newsreader, Inter, Roboto Mono— tiene
- * esos glifos, así que el render caía al font del sistema: en la web y en
- * Android eso es la fuente de EMOJI, que los dibuja a color, con caja cuadrada y
- * ancho doble, ignorando el `fill` cobre. El selector U+FE0E que había pide
- * presentación de texto, pero es exactamente eso: un pedido.
+ * ## Historia
  *
- * ## Signos: glifos reales, de una tipografía ya empaquetada
- *
- * `@expo/vector-icons` es dependencia directa del proyecto (`15.1.1`, ya se usa
- * para `Ionicons`) y su `MaterialCommunityIcons.ttf` trae los DOCE glifos del
- * zodíaco: `zodiac-aries` … `zodiac-pisces`. Es un asset que ya viaja en el
- * bundle, con su `LICENSE` en el paquete: no hay que descargar nada ni agregar
- * una dependencia. Los doce signos se dibujan con esos glifos, iguales en web,
- * iOS y Android, monocromos y respetando el `fill`.
- *
- * El codepoint sale del glyph map REAL del paquete (el mismo objeto que devuelve
- * `MaterialCommunityIcons.getRawGlyphMap()`), no de una tabla copiada a mano; la
- * familia sale de `MaterialCommunityIcons.getFontFamily()` en
- * `theme/glyphFont`. El font se carga en `hooks/useOrbitaFonts`, que es lo que
- * ya gatea el render de todas las pantallas.
- *
- * ## Planetas: limitación precisa
- *
- * Ninguna tipografía empaquetada cubre los planetas. Concretamente, en los 17
- * glyph maps que trae `@expo/vector-icons`:
- *
- * - MaterialCommunityIcons: 12/12 signos, **cero** glifos planetarios.
- * - FontAwesome 4/5/6 y Fontisto: sólo `mercury`, `venus` y `mars` (esos sí son
- *   los glifos astrológicos ☿ ♀ ♂), más un `sun`/`moon` PICTÓRICO (sol con
- *   rayos, luna creciente), que no es ☉ ni ☽.
- * - No existe en ningún set `jupiter`, `saturn`, `uranus`, `neptune`, `pluto`,
- *   `chiron`, `node` ni `part_of_fortune`.
- *
- * O sea: 3 de los 10 planetas clásicos, en OTRA familia y con otro peso de
- * trazo. Cambiar sólo esos tres pondría dos vocabularios de símbolos y dos
- * tipografías de iconos en la misma rueda de trece puntos. Por eso **todos** los
- * puntos planetarios siguen siendo códigos de dos letras en la mono empaquetada
- * —el patrón que ya usaban los numerales romanos de las casas—: deterministas,
- * monocromos e idénticos en las tres plataformas.
- *
- * **Limitación aceptada:** los planetas son abreviaturas, no glifos. Recuperar
- * ☉ ☽ ☿ ♀ ♂ ♃ ♄ ♅ ♆ ♇ exige empaquetar una tipografía astrológica con licencia
- * o dibujarlos como paths SVG, y eso es traer un asset nuevo: queda como
- * decisión de diseño aparte. Los signos ya NO tienen esta limitación.
+ * La rueda y la tabla usaban los caracteres Unicode (`♈`–`♓`, `☉ ☽ ☿ …`).
+ * Ninguna familia de TEXTO empaquetada los trae, así que el render caía al font
+ * del sistema: en web y Android, el de EMOJI (color, caja cuadrada, ancho
+ * doble). La primera corrección degradó los planetas a códigos de dos letras
+ * (`SO`, `LU`, …) y los signos a MaterialCommunityIcons. Lucas rechazó esa
+ * limitación: hoy TODOS los símbolos —signos, planetas, puntos y ejes— son
+ * vectores propios empaquetados (`domain/astroGlyphs`, dibujados por
+ * `components/orbita/AstroGlyph`), deterministas, monocromos e idénticos en
+ * web, iOS y Android. Este módulo sólo resuelve QUÉ glifo corresponde; nunca
+ * devuelve una abreviatura ni un carácter Unicode.
  */
-import GLYPH_MAP from "@expo/vector-icons/build/vendor/react-native-vector-icons/glyphmaps/MaterialCommunityIcons.json";
+import { signGlyphKey, type BodyGlyphKey, type SignGlyphKey } from "./astroGlyphs";
+import type { PlacementBody } from "./types";
 
-/** Codepoints del glyph map empaquetado, por nombre de icono. */
-const BUNDLED_GLYPHS = GLYPH_MAP as unknown as Record<string, number>;
+export type { AstroGlyphKey, BodyGlyphKey, SignGlyphKey } from "./astroGlyphs";
+export { signGlyphKey } from "./astroGlyphs";
 
-/**
- * Nombre del glifo de MaterialCommunityIcons por índice de longitud eclíptica
- * (0 = Aries). Son los nombres que el paquete expone en su glyph map.
- */
-export const SIGN_GLYPH_NAMES = [
-  "zodiac-aries",
-  "zodiac-taurus",
-  "zodiac-gemini",
-  "zodiac-cancer",
-  "zodiac-leo",
-  "zodiac-virgo",
-  "zodiac-libra",
-  "zodiac-scorpio",
-  "zodiac-sagittarius",
-  "zodiac-capricorn",
-  "zodiac-aquarius",
-  "zodiac-pisces"
-] as const;
-
-/** Índice normalizado (nunca rompe con un índice fuera de rango). */
-const wrap12 = (index: number) => ((Math.trunc(index) % 12) + 12) % 12;
-
-/** Nombre del glifo del signo por índice. */
-export function signGlyphName(index: number): string {
-  return SIGN_GLYPH_NAMES[wrap12(index)];
-}
-
-/**
- * Codepoint del signo en el font empaquetado, o `null` si el paquete dejara de
- * traerlo (deriva de versión). Nunca se inventa un reemplazo.
- */
-export function signGlyphCodepoint(index: number): number | null {
-  const cp = BUNDLED_GLYPHS[signGlyphName(index)];
-  return typeof cp === "number" && Number.isFinite(cp) ? cp : null;
-}
-
-/**
- * Carácter del signo, listo para dibujar con `GLYPH_FONT_FAMILY`. `null` si el
- * glifo no está en el font: en ese caso la banda de signos NO se rotula, en vez
- * de caer a una abreviatura o a un cuadrado del font de emoji.
- */
-export function signGlyph(index: number): string | null {
-  const cp = signGlyphCodepoint(index);
-  return cp === null ? null : String.fromCodePoint(cp);
-}
-
-/** ¿El font empaquetado cubre los doce signos? (con `15.1.1`: sí). */
-export const SIGN_GLYPHS_COMPLETE: boolean = SIGN_GLYPH_NAMES.every(
-  (_, index) => signGlyphCodepoint(index) !== null
-);
+/** Glifo de cada cuerpo de la tríada del dominio (`Placement.body`). */
+export const PLACEMENT_BODY_SYMBOL: Record<PlacementBody, BodyGlyphKey> = {
+  sol: "sun",
+  luna: "moon",
+  ascendente: "ascendant"
+};
 
 /** Nombre del signo (es/en, con o sin acento) → índice eclíptico. `null` si no se reconoce. */
 export function signIndexForName(name: string | undefined | null): number | null {
@@ -112,10 +36,10 @@ export function signIndexForName(name: string | undefined | null): number | null
   return hit === -1 ? null : SIGN_NAMES[hit][1];
 }
 
-/** Carácter del signo a partir de su nombre. `null` si no se reconoce el nombre. */
-export function signGlyphForName(name: string | undefined | null): string | null {
+/** Clave del glifo del signo a partir de su nombre. `null` si no se reconoce. */
+export function signSymbolForName(name: string | undefined | null): SignGlyphKey | null {
   const index = signIndexForName(name);
-  return index === null ? null : signGlyph(index);
+  return index === null ? null : signGlyphKey(index);
 }
 
 const SIGN_NAMES: Array<[RegExp, number]> = [
@@ -134,75 +58,80 @@ const SIGN_NAMES: Array<[RegExp, number]> = [
 ];
 
 /**
- * Códigos de cuerpo/punto por `key` del payload de `charts.current`. Dos letras
- * en la mono empaquetada: ver la limitación documentada arriba.
- * `AC`/`MC` son EJES (no puntos): la rueda no los dibuja como planeta, pero la
- * tabla y la tríada sí los nombran.
+ * Las `key` del payload de `charts.current` son exactamente las claves del
+ * catálogo de glifos, así que la "tabla" es la identidad; este set dice cuáles
+ * son cuerpos/puntos válidos. `ascendant`/`midheaven` son EJES (no puntos): la
+ * rueda no los dibuja como planeta, pero la tabla y la tríada sí los nombran.
  */
-export const BODY_CODES: Record<string, string> = {
-  sun: "SO",
-  moon: "LU",
-  mercury: "ME",
-  venus: "VE",
-  mars: "MA",
-  jupiter: "JU",
-  saturn: "SA",
-  uranus: "UR",
-  neptune: "NE",
-  pluto: "PL",
-  node: "NO",
-  chiron: "QU",
-  part_of_fortune: "FO",
-  ascendant: "AC",
-  midheaven: "MC"
-};
+const BODY_KEY_SET: ReadonlySet<string> = new Set([
+  "sun",
+  "moon",
+  "mercury",
+  "venus",
+  "mars",
+  "jupiter",
+  "saturn",
+  "uranus",
+  "neptune",
+  "pluto",
+  "node",
+  "chiron",
+  "part_of_fortune",
+  "ascendant",
+  "midheaven"
+]);
 
 /** ¿Es un punto que la rueda dibuja por longitud eclíptica? (los ejes no). */
 export function isWheelBody(key: string | undefined): boolean {
   if (!key) return false;
-  return key in BODY_CODES && key !== "ascendant" && key !== "midheaven";
-}
-
-/** Marca de retrogradación. Reemplaza `℞` (U+211E), que tampoco está en las familias. */
-export const RETROGRADE_CODE = "Rx";
-
-const BODY_NAMES: Array<[RegExp, string]> = [
-  [/\bsol\b/, "SO"],
-  [/\bluna\b/, "LU"],
-  [/\bascendente\b/, "AC"],
-  [/\bmedio ?cielo\b/, "MC"],
-  [/\bmercurio\b/, "ME"],
-  [/\bvenus\b/, "VE"],
-  [/\bmarte\b/, "MA"],
-  [/\bjupiter\b/, "JU"],
-  [/\bsaturno\b/, "SA"],
-  [/\burano\b/, "UR"],
-  [/\bneptuno\b/, "NE"],
-  [/\bpluton\b/, "PL"],
-  [/\bnodo\b/, "NO"],
-  [/\bquiron\b/, "QU"]
-];
-
-/** Código por `key` del payload, con el nombre visible como respaldo. */
-export function bodyCode(input: { key?: string; label?: string }): string {
-  if (input.key && BODY_CODES[input.key]) return BODY_CODES[input.key];
-  return bodyCodeForName(input.label ?? "") ?? "SO";
+  return BODY_KEY_SET.has(key) && key !== "ascendant" && key !== "midheaven";
 }
 
 /**
- * Código del cuerpo que aparece PRIMERO en un texto ("Venus armoniza al Sol" →
- * VE, no SO): el sujeto de la frase manda, no el orden de la tabla.
+ * Marca de retrogradación. El símbolo tradicional `℞` (U+211E) tampoco está en
+ * las familias de texto empaquetadas; `Rx` es la notación ASCII estándar y no
+ * forma parte del catálogo de glifos pedido.
  */
-export function bodyCodeForName(text: string | undefined | null): string | null {
+export const RETROGRADE_CODE = "Rx";
+
+const BODY_NAMES: Array<[RegExp, BodyGlyphKey]> = [
+  [/\bsol\b/, "sun"],
+  [/\bluna\b/, "moon"],
+  [/\bascendente\b/, "ascendant"],
+  [/\bmedio ?cielo\b/, "midheaven"],
+  [/\bmercurio\b/, "mercury"],
+  [/\bvenus\b/, "venus"],
+  [/\bmarte\b/, "mars"],
+  [/\bjupiter\b/, "jupiter"],
+  [/\bsaturno\b/, "saturn"],
+  [/\burano\b/, "uranus"],
+  [/\bneptuno\b/, "neptune"],
+  [/\bpluton\b/, "pluto"],
+  [/\bnodo\b/, "node"],
+  [/\bquiron\b/, "chiron"],
+  [/\bfortuna\b/, "part_of_fortune"]
+];
+
+/** Glifo por `key` del payload, con el nombre visible como respaldo. */
+export function bodySymbol(input: { key?: string; label?: string }): BodyGlyphKey {
+  if (input.key && BODY_KEY_SET.has(input.key)) return input.key as BodyGlyphKey;
+  return bodySymbolForName(input.label ?? "") ?? "sun";
+}
+
+/**
+ * Glifo del cuerpo que aparece PRIMERO en un texto ("Venus armoniza al Sol" →
+ * `venus`, no `sun`): el sujeto de la frase manda, no el orden de la tabla.
+ */
+export function bodySymbolForName(text: string | undefined | null): BodyGlyphKey | null {
   if (!text) return null;
   const k = deacento(text);
-  let best: string | null = null;
+  let best: BodyGlyphKey | null = null;
   let bestIndex = Infinity;
-  for (const [re, code] of BODY_NAMES) {
+  for (const [re, key] of BODY_NAMES) {
     const m = k.match(re);
     if (m && m.index !== undefined && m.index < bestIndex) {
       bestIndex = m.index;
-      best = code;
+      best = key;
     }
   }
   return best;

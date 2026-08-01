@@ -6,8 +6,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "convex/react";
 import { HomeBackdrop } from "@/components/home/HomeBackdrop";
 import { ContentCanvas, MeasuredSquare } from "@/components/orbita/ContentCanvas";
-import { bodyCode } from "@/domain/astroSymbols";
 import { NatalWheel } from "@/components/orbita/NatalWheel";
+import { TriadLine, type TriadLineUnit } from "@/components/orbita/TriadLine";
 import { mapNatalChart } from "@/domain/natalChart";
 import { personalChartGate } from "@/domain/natalChartGate";
 import { markFirstRun } from "@/services/firstRun";
@@ -39,11 +39,6 @@ function fechaLarga(iso: string): string {
  *  primera vez); "VER DESPUÉS" deja al usuario en la Home, donde la segunda
  *  entrega (el tarot diario) se explica en su lugar de trabajo.
  */
-// Códigos monocromos (ver `domain/astroSymbols`): los glifos Unicode caían al
-// font de emoji en web y Android.
-const SOL = bodyCode({ key: "sun" });
-const LUNA = bodyCode({ key: "moon" });
-const ASC = bodyCode({ key: "ascendant" });
 
 export default function RecepcionScreen() {
   const { isReady, profile } = useRequireProfile();
@@ -82,15 +77,23 @@ export default function RecepcionScreen() {
     }
   }
 
-  // La tríada por unidades enteras ("☉ Escorpio") para que el wrap con nombres
+  // La tríada por unidades enteras (glifo + signo) para que el wrap con nombres
   // largos parta entre unidades y no entre el glifo y su signo.
-  const triadItems = (
+  const candidatos: Array<TriadLineUnit | null> =
     sol || luna || asc
-      ? [sol ? `${SOL} ${sol}` : null, luna ? `${LUNA} ${luna}` : null, asc ? `${ASC} ${asc}` : null]
+      ? [
+          sol ? { symbol: "sun", label: sol } : null,
+          luna ? { symbol: "moon", label: luna } : null,
+          asc ? { symbol: "ascendant", label: asc } : null
+        ]
       : payload
-        ? [`${SOL} ${payload.triad.sun.sign}`, `${LUNA} ${payload.triad.moon.sign}`, `${ASC} ${payload.triad.ascendant.sign}`]
-        : []
-  ).filter((t): t is string => Boolean(t));
+        ? [
+            { symbol: "sun", label: payload.triad.sun.sign },
+            { symbol: "moon", label: payload.triad.moon.sign },
+            { symbol: "ascendant", label: payload.triad.ascendant.sign }
+          ]
+        : [];
+  const triadItems = candidatos.filter((t): t is TriadLineUnit => t !== null);
 
   // Solo la ciudad: el label completo del geocoding ("Buenos Aires, Ciudad Autónoma
   // de Buenos Aires, Argentina") vuelve el headline un párrafo.
@@ -123,14 +126,15 @@ export default function RecepcionScreen() {
         </View>
 
         {triadItems.length ? (
-          <View style={styles.triadRow}>
-            {triadItems.map((item, i) => (
-              <Text key={item} style={styles.triad}>
-                {i > 0 ? "·  " : ""}
-                {item}
-              </Text>
-            ))}
-          </View>
+          <TriadLine
+            units={triadItems}
+            textStyle={styles.triad}
+            glyphColor={orbita.colors.muted}
+            glyphSize={13}
+            gap={12}
+            centered
+            style={styles.triadRow}
+          />
         ) : null}
 
         <Text style={styles.eyebrow}>TU CARTA NATAL</Text>
@@ -167,14 +171,7 @@ const styles = StyleSheet.create({
   // el bloque del CTA contra el borde inferior y los elementos se encimaban.
   content: { paddingHorizontal: orbita.spacing.gutter },
   wheelWrap: { alignItems: "center", justifyContent: "center", marginBottom: orbita.spacing.lg, marginTop: orbita.spacing.md },
-  triadRow: {
-    columnGap: 10,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "center",
-    marginBottom: orbita.spacing.xxl,
-    rowGap: 6
-  },
+  triadRow: { marginBottom: orbita.spacing.xxl },
   triad: {
     color: orbita.colors.muted,
     fontFamily: orbita.fonts.monoMedium,

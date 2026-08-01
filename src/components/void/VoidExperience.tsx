@@ -8,8 +8,10 @@ import { useAction, useQuery } from "convex/react";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
+import { AstroGlyph } from "@/components/orbita/AstroGlyph";
 import { ContentCanvas } from "@/components/orbita/ContentCanvas";
 import { ReadingBlock } from "@/components/orbita/Layout";
+import { bodySymbolForName, type BodyGlyphKey } from "@/domain/astroSymbols";
 import { GuestState } from "@/components/orbita/GuestState";
 import { ErrorState, MinimalLoading } from "@/components/orbita/states";
 import { sessionPhase } from "@/domain/screenPhase";
@@ -24,6 +26,21 @@ import { orbita } from "@/theme/orbita";
 
 const TEXTURE = require("../../../assets/orbita/optimized/core/orbita_daily_texture_b.jpg");
 const DEFAULT_QUESTION = "¿Qué estás apurando?";
+
+/**
+ * Glifo de cada categoría, del catálogo vectorial propio. El `glyph` del
+ * payload NO se presenta: es un string libre del backend y en web/Android un
+ * carácter Unicode cae al font de emoji (ver `domain/astroGlyphs`). Para una
+ * categoría desconocida se intenta por el label y se cae al Sol.
+ */
+const VOID_TAB_SYMBOL: Record<string, BodyGlyphKey> = {
+  yo: "sun",
+  amor: "venus",
+  trabajo: "saturn",
+  vinculos: "mercury"
+};
+const tabSymbol = (c: VoidPromptCategory): BodyGlyphKey =>
+  VOID_TAB_SYMBOL[c.key] ?? bodySymbolForName(c.label) ?? "sun";
 
 type Phase = "entrada" | "escuchando" | "respuesta";
 
@@ -274,7 +291,11 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
                   style={styles.tab}
                 >
                   <View style={[styles.tabGlyphBox, active && styles.tabGlyphBoxActive]}>
-                    <Text style={[styles.tabGlyph, active && styles.tabGlyphActive]}>{c.glyph}</Text>
+                    <AstroGlyph
+                      symbol={tabSymbol(c)}
+                      size={20}
+                      color={active ? orbita.colors.bone : orbita.colors.muted}
+                    />
                   </View>
                   <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{c.label.toUpperCase()}</Text>
                 </Pressable>

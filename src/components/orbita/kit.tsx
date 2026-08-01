@@ -3,6 +3,8 @@ import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-nati
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ContentCanvas } from "@/components/orbita/ContentCanvas";
+import { TriadLine } from "@/components/orbita/TriadLine";
+import { PLACEMENT_BODY_SYMBOL } from "@/domain/astroSymbols";
 import { showsScreenHeader, type CanvasVariant } from "@/domain/webLayout";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
@@ -117,9 +119,15 @@ export function Note({ children }: { children: ReactNode }) {
 
 export function Triad({ triad }: { triad: TriadData }) {
   return (
-    <Text style={styles.triad}>
-      {`${triad.sun.glyph} ${triad.sun.label}   ${triad.moon.glyph} ${triad.moon.label}   ${triad.ascendant.glyph} ${triad.ascendant.label}`}
-    </Text>
+    <TriadLine
+      units={[triad.sun, triad.moon, triad.ascendant].map((p) => ({
+        symbol: PLACEMENT_BODY_SYMBOL[p.body],
+        label: p.label
+      }))}
+      textStyle={styles.triad}
+      glyphColor={orbita.colors.muted}
+      glyphSize={13}
+    />
   );
 }
 

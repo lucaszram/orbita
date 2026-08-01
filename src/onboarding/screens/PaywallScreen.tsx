@@ -2,6 +2,9 @@ import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import { Text } from "@/components/ui/text";
 
+import { AstroGlyph } from "@/components/orbita/AstroGlyph";
+import type { BodyGlyphKey } from "@/domain/astroGlyphs";
+
 import { A } from "../assets";
 import { CTA } from "../components/CTA";
 import { Screen } from "../components/Screen";
@@ -11,7 +14,9 @@ import { font, GUTTER, orbita } from "../theme";
 
 export type PlanId = "weekly" | "annual";
 
-const TRIAD_GLYPH: Record<string, string> = { Sol: "☉", Luna: "☽", Ascendente: "↑" };
+/** Glifo de cada columna, del catálogo vectorial propio (nunca Unicode: en web
+ *  y Android caía al font de emoji — ver `domain/astroGlyphs`). */
+const TRIAD_GLYPH: Record<string, BodyGlyphKey> = { Sol: "sun", Luna: "moon", Ascendente: "ascendant" };
 
 const BENEFITS = [
   "Carta natal completa",
@@ -165,7 +170,9 @@ function TriadCol({
 }) {
   return (
     <View style={styles.triadCol}>
-      <Text style={styles.triadGlyph}>{TRIAD_GLYPH[label] ?? "·"}</Text>
+      <View style={styles.triadGlyph}>
+        <AstroGlyph symbol={TRIAD_GLYPH[label] ?? "sun"} size={20} color={orbita.copperSoft} />
+      </View>
       <Label style={styles.triadLabel}>{label}</Label>
       <Text style={styles.triadValue}>{loading ? "…" : (value ?? pending ?? "—")}</Text>
     </View>
@@ -344,7 +351,7 @@ const styles = StyleSheet.create({
   },
   triadCol: { alignItems: "center", flex: 1, paddingHorizontal: 4 },
   triadDivider: { backgroundColor: orbita.line, width: 1 },
-  triadGlyph: { color: orbita.copperSoft, fontFamily: font.serif, fontSize: 20, marginBottom: 6 },
+  triadGlyph: { marginBottom: 6 },
   triadLabel: { textAlign: "center" },
   triadValue: {
     color: orbita.bone,
