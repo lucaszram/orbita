@@ -1,5 +1,25 @@
 # Current Task
 
+## Hotfix web — Carta Free no dispara generación Plus (2026-08-01, Claude + Codex)
+
+**Objetivo:** impedir que `CartaScreen` invoque `charts.generatePersonalityReading` cuando el estado remoto autoritativo ya es `locked` para una cuenta Free. Hoy la pantalla muestra correctamente el bloqueo, pero igualmente dispara la action Plus y genera un Server Error en producción.
+
+**Criterios de aceptación:** una cuenta Free con `personalityReadingState.status="locked"` no llama la action de generación; conserva el CTA hacia `/paywall`; una cuenta Plus mantiene generación, reintento y lectura lista sin regresiones; no cambian contratos ni `convex/**`.
+
+**Ficha:** owner Claude (frontend), revisión/release Codex; rama `feature/web-free-reading-hotfix` desde `origin/main` `0086eba`; territorio permitido `src/screens/CartaScreen.tsx`, pruebas focalizadas de Carta y este handoff; riesgo medio porque altera el efecto de generación de la lectura larga; pruebas focalizadas, suite completa, typecheck, export web y presupuesto de assets; rollout por PR aislado y nuevo deployment productivo sólo después de aprobación; rollback por revert del PR/deployment; fuera de alcance recálculo de carta natal, cambios de oferta/entitlements, `convex/**`, Stripe y rediseño.
+
+**Estado inicial:** reproducido en producción con una cuenta Free: Carta pide recalcular la carta base y la consola registra `[CONVEX A(charts:generatePersonalityReading)] Server Error`. El backend rechaza correctamente la action porque la cuenta no es Plus; el defecto es que el frontend la invoca antes de respetar `locked`.
+
+**Implementación (2026-08-01, Claude):** en `CartaLive` se deriva `const canGenerate = readingState !== undefined && readingState.status !== "locked"` de la query reactiva `charts.personalityReadingState` que la pantalla ya escuchaba. El efecto de generación abre con `if (!canGenerate) return;`: la action no se dispara mientras la señal remota está en vuelo (`undefined`) ni cuando es `locked`, y el booleano se sumó al array de dependencias (`[generate, attempt, canGenerate]`). Depender del booleano — no del status crudo — garantiza que las transiciones `pending→ready`/`pending→error` de una cuenta Plus no re-disparan la generación: el efecto solo vuelve a correr si cambia la posibilidad de generar o con el reintento explícito (`attempt`). El resto del cableado queda intacto: `readingBlockPhase` ya priorizaba `locked` → `bloqueado` (CTA a `/paywall`, sin REINTENTAR), así que aunque `generating` conserve su valor inicial con la action sin disparar, el bloque bloqueado se muestra igual; Plus mantiene montaje→generación, reintento y lectura lista sin cambios.
+
+**Pruebas:** `test/cartaNatalCarga.test.ts` suma dos tests estructurales HOTFIX: (a) `canGenerate` con la forma exacta y el guard `if (!canGenerate) return;` dentro del efecto ANTES de `generate({})`; (b) el array de dependencias es `[generate, attempt, canGenerate]` y ningún array de dependencias del archivo contiene `readingState` crudo. La conducta de dominio (`locked` gana a `failed`/`generating` → `bloqueado`) ya estaba cubierta en `test/entitlement.test.ts` y no se duplicó.
+
+**Validación final (2026-08-01, Codex):** test focalizado `test/cartaNatalCarga.test.ts` 24/24; suite completa 819/819; typecheck verde; export web aprobado; presupuesto aprobado (`36.17 MB / 50 MB`, imagen máxima `479.3 KB / 500 KB`, JS gzip `1.10 MB / 1.25 MB`); `git diff --check` verde. Revisión React: el cambio usa una dependencia booleana primitiva derivada durante render, evita depender del objeto reactivo crudo y mantiene el early return antes de la action; sin hallazgos adicionales.
+
+**Archivos tocados:** `src/screens/CartaScreen.tsx` (gate `canGenerate` del efecto de generación), `test/cartaNatalCarga.test.ts` (2 tests estructurales), `CURRENT_TASK.md`.
+
+**Siguiente paso:** commit y PR aislado; merge y nuevo deployment productivo sólo al aprobar el rollout. Producción sigue en `0086eba` y todavía contiene el defecto hasta desplegar este hotfix.
+
 ## Web pública v2 — hero: la carta astral base, dicha en el primer pantallazo (2026-08-01, Claude)
 
 **Objetivo:** corrección acotada de mensaje sobre el mismo PR #57 (`feature/web-public-entry-v2`, misma rama, se actualiza, no se abre otro), por feedback de usuario: la landing sobre-indexaba en el tarot diario y no decía en el hero que la carta astral es fundacional. Sin tocar titular, layout, abanico de 7, CTAs, anclas, rutas, secciones, assets ni responsive.

@@ -113,7 +113,14 @@ function CartaLive() {
   const [generateFailed, setGenerateFailed] = useState(false);
   const [generating, setGenerating] = useState(true);
   const [attempt, setAttempt] = useState(0);
+  // La action es Plus-only: con `locked` el backend la rechaza por diseño, así
+  // que dispararla igual solo producía un Server Error en cada cuenta Free. Se
+  // espera la señal remota (`undefined` = query en vuelo) y se dispara solo si
+  // no está bloqueada. La dependencia es este booleano — no el status crudo —
+  // para que pending→ready/error no re-dispare la generación.
+  const canGenerate = readingState !== undefined && readingState.status !== "locked";
   useEffect(() => {
+    if (!canGenerate) return;
     let alive = true;
     setGenerateFailed(false);
     setGenerating(true);
@@ -127,7 +134,7 @@ function CartaLive() {
     return () => {
       alive = false;
     };
-  }, [generate, attempt]);
+  }, [generate, attempt, canGenerate]);
 
   // Gate GENERAL: solo carta + mapa de valores (llegan en <1 s). La lectura
   // larga (40–61 s) NO participa: nunca devuelve la pantalla a MinimalLoading.
