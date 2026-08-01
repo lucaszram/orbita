@@ -97,9 +97,10 @@ test("/terminos es una ruta pública que monta los Términos", () => {
 
 test("los Términos cubren los siete compromisos del brief", () => {
   const compromisos: Array<[string, RegExp]> = [
-    ["renovación automática", /renuevan autom(á|a)ticamente/i],
-    ["prueba de tres días en el anual", /anual incluye[\s\S]{0,80}tres días de prueba/i],
-    ["semanal sin prueba", /semanal[\s\S]{0,80}no tiene período de prueba/i],
+    ["renovación automática mensual", /al final de cada mes[\s\S]{0,120}renueva autom(á|a)ticamente/i],
+    ["prueba de siete días en el mensual", /mensual incluye[\s\S]{0,80}siete días de prueba/i],
+    ["la prueba incluye carta natal completa y Tarot diario", /siete días de prueba[\s\S]{0,160}carta natal completa[\s\S]{0,40}Tarot diario/i],
+    ["cancelar durante la prueba no cuesta nada", /cancelás antes de que termine la prueba, no se cobra nada/i],
     ["cancelación desde el perfil", /cancelar cuando quieras[\s\S]{0,120}desde tu perfil/i],
     ["acceso hasta el fin del período pagado", /hasta el final del período\s*\n?\s*que ya pagaste/i],
     ["reembolsos por ley aplicable", /reembolsos se rigen por la normativa aplicable/i],
@@ -124,7 +125,7 @@ test("el paywall linkea Privacidad y Términos y publica una vía de soporte", (
 });
 
 test("la divulgación vive en el Shell: se ve con comercio prendido y apagado", () => {
-  // Si estuviera dentro de `PlanPicker`, el estado "próximamente" —el que hay
+  // Si estuviera dentro de `MonthlyOffer`, el estado "próximamente" —el que hay
   // hoy, con el comercio apagado— quedaría sin links legales.
   assert.match(paywall, /\{children\}\s*\n\s*<PaywallLegalLinks \/>/);
 });

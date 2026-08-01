@@ -304,20 +304,17 @@ export function OrbitaTerms() {
 
       <Section heading="Suscripción a Órbita Plus">
         <P>
-          Órbita tiene una parte gratuita y una suscripción paga, Órbita Plus. Los precios, la moneda y
-          la duración de cada plan se muestran antes de confirmar la compra, y son los que rigen.
+          Órbita tiene una parte gratuita y una suscripción paga, Órbita Plus. Es una suscripción
+          mensual: el precio y la moneda se muestran antes de confirmar la compra, y son los que rigen.
         </P>
         <Bullet>
-          Las suscripciones se <Text style={styles.provider}>renuevan automáticamente</Text> al final de
-          cada período —semana o año, según el plan— hasta que las canceles.
+          La suscripción mensual incluye <Text style={styles.provider}>siete días de prueba</Text>{" "}
+          gratis con todo Órbita Plus, incluida tu carta natal completa y el Tarot diario.
         </Bullet>
         <Bullet>
-          El plan anual incluye <Text style={styles.provider}>tres días de prueba</Text> gratis. Si no
-          cancelás antes de que termine la prueba, se cobra el primer año.
-        </Bullet>
-        <Bullet>
-          El plan semanal <Text style={styles.provider}>no tiene período de prueba</Text>: se cobra al
-          contratarlo.
+          Al terminar la prueba, y luego al final de cada mes, la suscripción se{" "}
+          <Text style={styles.provider}>renueva automáticamente</Text> al precio vigente mostrado en la
+          compra, hasta que la canceles. Si cancelás antes de que termine la prueba, no se cobra nada.
         </Bullet>
         <P>
           En la web el pago lo procesa Stripe. Si contratás desde la app, el cobro y la renovación los

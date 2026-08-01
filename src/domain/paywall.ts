@@ -13,10 +13,10 @@
 export type CommerceMode = "off" | "test" | "live";
 
 export type OfferPlan = {
-  id: "weekly" | "yearly";
+  id: "monthly";
   currency: string;
   unitAmount: number;
-  interval: "week" | "year";
+  interval: "month";
   trialDays: number;
 };
 
@@ -34,15 +34,22 @@ export function offerPhase(input: {
 }): OfferPhase {
   if (input.failed) return "error";
   if (input.offer === undefined || input.offer === null) return "cargando";
-  // Sin planes no hay nada que ofrecer aunque el flag venga en true: preferimos
-  // "próximamente" antes que una pantalla de compra vacía.
-  if (!input.offer.checkoutEnabled || input.offer.plans.length === 0) return "proximamente";
+  // Sin el plan mensual no hay nada que ofrecer aunque el flag venga en true:
+  // preferimos "próximamente" antes que una pantalla de compra vacía.
+  if (!input.offer.checkoutEnabled || monthlyPlan(input.offer.plans) === null) return "proximamente";
   return "disponible";
 }
 
+/**
+ * La oferta vigente es UNA sola suscripción mensual. Cualquier otro id que
+ * llegara del backend se ignora: no se ofrece un plan que producto ya retiró.
+ */
+export function monthlyPlan(plans: OfferPlan[]): OfferPlan | null {
+  return plans.find((plan) => plan.id === "monthly" && plan.interval === "month") ?? null;
+}
+
 const INTERVAL_LABEL: Record<OfferPlan["interval"], string> = {
-  week: "por semana",
-  year: "por año"
+  month: "por mes"
 };
 
 /**
@@ -73,9 +80,14 @@ export function planTrialLabel(plan: OfferPlan): string | null {
   return plan.trialDays === 1 ? "1 día gratis" : `${plan.trialDays} días gratis`;
 }
 
-/** El anual va primero y preseleccionado; es la decisión de producto vigente. */
-export function sortedPlans(plans: OfferPlan[]): OfferPlan[] {
-  return [...plans].sort((a, b) => (a.id === "yearly" ? -1 : b.id === "yearly" ? 1 : 0));
+/**
+ * CTA del checkout. Los días salen de `trialDays` —el mismo valor que el
+ * backend manda a Stripe— así el botón nunca promete una prueba distinta de la
+ * que Checkout va a configurar. Sin prueba, no se anuncian días gratis.
+ */
+export function checkoutCtaLabel(plan: OfferPlan): string {
+  if (!plan.trialDays || plan.trialDays <= 0) return "Suscribirme";
+  return plan.trialDays === 1 ? "Probar 1 día gratis" : `Probar ${plan.trialDays} días gratis`;
 }
 
 // ---------------------------------------------------------------------------

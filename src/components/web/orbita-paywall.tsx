@@ -7,12 +7,13 @@ import { RequireSession, WebNotice } from "@/components/web/require-session";
 import { WebLayoutProvider } from "@/components/web/web-layout-provider";
 import { WebNav } from "@/components/web/web-nav";
 import {
+  checkoutCtaLabel,
   checkoutStartErrorKind,
   formatPlanPrice,
+  monthlyPlan,
   offerPhase,
   planIntervalLabel,
   planTrialLabel,
-  sortedPlans,
   type OfferPlan,
   type WebOffer
 } from "@/domain/paywall";
@@ -68,6 +69,9 @@ function PaywallWithBackend() {
   }, [getWebOffer, attempt]);
 
   const phase = offerPhase({ offer, failed });
+  // `offerPhase` ya garantiza que en "disponible" existe el plan mensual; el
+  // null acá abajo sólo le cierra el caso al type checker.
+  const plan = offer ? monthlyPlan(offer.plans) : null;
 
   if (phase === "cargando") {
     return (
@@ -87,7 +91,7 @@ function PaywallWithBackend() {
       />
     );
   }
-  if (phase === "proximamente") {
+  if (phase === "proximamente" || plan === null) {
     // Comercio apagado: sin precios, sin planes y sin ningún camino a checkout.
     return (
       <Shell>
@@ -107,61 +111,61 @@ function PaywallWithBackend() {
 
   return (
     <Shell>
-      <PlanPicker plans={sortedPlans(offer!.plans)} />
+      <MonthlyOffer plan={plan} />
       <BenefitList />
     </Shell>
   );
 }
 
-function PlanPicker({ plans }: { plans: OfferPlan[] }) {
+/**
+ * La oferta es UNA sola suscripción mensual: sin selector de planes. Precio,
+ * moneda e intervalo salen de Stripe vía getWebOffer; los días de prueba son
+ * los mismos que el backend configura en Checkout.
+ */
+function MonthlyOffer({ plan }: { plan: OfferPlan }) {
   const createCheckout = useAction(proposedApi.createCheckoutSession);
   const router = useRouter();
-  // El anual va preseleccionado (decisión de producto vigente).
-  const [selected, setSelected] = useState<OfferPlan["id"]>(plans[0]?.id ?? "yearly");
   const [state, setState] = useState<"idle" | "abriendo" | "error" | "ya_plus">("idle");
 
   const start = useCallback(async () => {
     if (state === "abriendo") return;
     setState("abriendo");
     try {
-      const { url } = await createCheckout({ plan: selected });
+      const { url } = await createCheckout({ plan: plan.id });
       if (typeof window !== "undefined") window.location.assign(url);
     } catch (err) {
       setState(checkoutStartErrorKind(err) === "ya_plus" ? "ya_plus" : "error");
     }
-  }, [createCheckout, selected, state]);
+  }, [createCheckout, plan.id, state]);
 
+  const trial = planTrialLabel(plan);
   return (
     <View style={styles.plans}>
-      {plans.map((plan) => {
-        const active = plan.id === selected;
-        const trial = planTrialLabel(plan);
-        return (
-          <Pressable
-            key={plan.id}
-            onPress={() => setSelected(plan.id)}
-            accessibilityRole="radio"
-            accessibilityState={{ selected: active }}
-            style={[styles.plan, active && styles.planActive]}
-          >
-            <View style={styles.planHead}>
-              <Text selectable style={styles.planName}>
-                {plan.id === "yearly" ? "Anual" : "Semanal"}
-              </Text>
-              {trial ? <Text selectable style={styles.planTrial}>{trial}</Text> : null}
-            </View>
-            {/* Precio, moneda e intervalo salen de Stripe vía getWebOffer. */}
-            <Text selectable style={styles.planPrice}>
-              {formatPlanPrice(plan)}{" "}
-              <Text selectable style={styles.planInterval}>{planIntervalLabel(plan)}</Text>
-            </Text>
-          </Pressable>
-        );
-      })}
+      <View style={styles.plan}>
+        <View style={styles.planHead}>
+          <Text selectable style={styles.planName}>Órbita Plus mensual</Text>
+          {trial ? <Text selectable style={styles.planTrial}>{trial}</Text> : null}
+        </View>
+        <Text selectable style={styles.planPrice}>
+          {formatPlanPrice(plan)}{" "}
+          <Text selectable style={styles.planInterval}>{planIntervalLabel(plan)}</Text>
+        </Text>
+        <Text selectable style={styles.planDetail}>
+          {trial
+            ? `Tus ${plan.trialDays} días gratis incluyen todo Órbita Plus: tu carta natal completa y el Tarot de cada día.`
+            : "Incluye todo Órbita Plus: tu carta natal completa y el Tarot de cada día."}
+        </Text>
+      </View>
 
-      <Pressable onPress={start} disabled={state === "abriendo"} style={[styles.cta, state === "abriendo" && styles.ctaOff]}>
+      <Pressable
+        onPress={start}
+        disabled={state === "abriendo"}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: state === "abriendo" }}
+        style={[styles.cta, state === "abriendo" && styles.ctaOff]}
+      >
         <Text selectable style={styles.ctaText}>
-          {state === "abriendo" ? "Abriendo el pago…" : "Continuar"}
+          {state === "abriendo" ? "Abriendo el pago…" : checkoutCtaLabel(plan)}
         </Text>
       </Pressable>
       {state === "error" ? (
@@ -181,7 +185,9 @@ function PlanPicker({ plans }: { plans: OfferPlan[] }) {
         </Text>
       ) : null}
       <Text selectable style={styles.legal}>
-        La suscripción se renueva sola hasta que la cancelés. Podés gestionarla desde tu perfil.
+        {trial
+          ? `Si cancelás antes de que terminen los ${plan.trialDays} días de prueba, no se te cobra nada. Al terminar la prueba, la suscripción se renueva sola cada mes al precio de arriba, hasta que la cancelés. Podés gestionarla desde tu perfil.`
+          : "La suscripción se renueva sola cada mes hasta que la cancelés. Podés gestionarla desde tu perfil."}
       </Text>
     </View>
   );
@@ -281,13 +287,13 @@ const styles = StyleSheet.create({
   soonBody: { color: colors.boneMuted, fontSize: 15, lineHeight: 23 },
 
   plans: { gap: 12, maxWidth: 520 },
-  plan: { backgroundColor: colors.panel, borderColor: colors.line, borderRadius: 12, borderWidth: 1, gap: 8, padding: 20 },
-  planActive: { borderColor: colors.copperSoft, borderWidth: 2 },
+  plan: { backgroundColor: colors.panel, borderColor: colors.copperSoft, borderRadius: 12, borderWidth: 1, gap: 8, padding: 20 },
   planHead: { alignItems: "center", flexDirection: "row", gap: 10, justifyContent: "space-between" },
   planName: { color: colors.bone, fontSize: 17, fontWeight: "700" },
   planTrial: { color: colors.copperSoft, fontSize: 13, fontWeight: "700" },
   planPrice: { color: colors.bone, fontSize: 26 },
   planInterval: { color: colors.boneMuted, fontSize: 15 },
+  planDetail: { color: colors.boneMuted, fontSize: 14, lineHeight: 21 },
 
   cta: { alignItems: "center", backgroundColor: colors.bone, borderRadius: 8, marginTop: 8, paddingVertical: 15 },
   ctaOff: { opacity: 0.5 },

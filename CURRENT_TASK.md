@@ -64,6 +64,11 @@ Los dos requires de `src/onboarding/entryBackground.web.ts` apuntan a los `.webp
 **Archivos tocados (alcance final, ya sin paywall):** `src/components/web/orbita-landing.tsx` (reescritura completa), `src/onboarding/screens/SplashScreen.tsx` (sólo el `bg` de la entrada), `src/onboarding/entryBackground.ts` + `entryBackground.web.ts` (nuevos), `assets/orbita/web-entry/{selected,rejected}/*.png` (masters, 4 archivos), `assets/orbita/optimized/web-entry/entry_bg_{desktop,mobile}.webp` (runtime), `CURRENT_TASK.md`.
 
 **Sin commit, push, PR ni deploy.** Producción intacta.
+## Web Plus — oferta única mensual con 7 días de prueba completa (2026-08-01, Claude + Codex)
+
+**Objetivo:** un solo plan de suscripción mensual de Stripe, con 7 días de prueba con acceso completo —incluida la carta natal y el Tarot diario— y renovación mensual automática salvo cancelación. La divulgación del paywall promete explícitamente que cancelar antes de que termine la prueba no genera ningún cobro, con los días dinámicos del plan y el precio siempre desde Stripe (nunca hardcodeado).
+
+**Ficha:** owner Claude (frontend) / Codex (backend); territorio `convex/payments/**`, `convex/lib/stripeApi.ts`, contrato de suscripciones, `.env.example`, `src/components/web/orbita-paywall.tsx`, `src/components/web/orbita-legal.tsx`, `src/domain/paywall.ts`, referencias tipadas, pruebas focalizadas y este handoff. Riesgo alto por tocar Checkout, trial, webhooks y entitlement; validación: typecheck, suite completa, export web, presupuesto de assets y pasada integrada con Stripe test. Rollout sólo en modo test — producción mantiene `COMMERCE_MODE=off`; rollback por revert y `COMMERCE_MODE=off`; fuera de alcance compras one-time, nuevos checkouts semanal/anual, publicación y promoción productiva.
 
 ## Web Plus — mensaje preciso al bloquear una compra repetida (2026-07-31, Claude + Codex)
 
