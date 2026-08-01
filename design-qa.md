@@ -74,3 +74,31 @@ The Umbral follow-up was reviewed by placing Lucas's reported desktop screenshot
 - `git diff --check` — pass
 
 final result: passed
+
+---
+
+# Web public entry v2 — Design QA
+
+## Scope and sources
+
+- Landing `/`: Figma WEB V1/W1 (`767:2`, `770:2`) and approved La Luna ritual (`727:127`).
+- `/empezar` first web screen only: final desktop and mobile compositions selected directly by Lucas on 2026-07-31.
+- Steps 2–15, native onboarding, auth, Convex and payments remain unchanged.
+
+## Final visual checks
+
+- Desktop 1440×900: panoramic background uses intentional negative space for the wordmark, subtitle, CTA and login; the planet remains on the right and no viewer chrome is present.
+- Mobile 390×844: dedicated 9:19 crop keeps the celestial body centered above the wordmark; CTA and login remain visible in the first viewport.
+- No horizontal overflow, white cut, missing asset, console error or stretched mobile image.
+- Both runtime assets remain under 500 KB: desktop 80,104 bytes; mobile 42,866 bytes.
+- The rebuilt landing retains one login action, working anchors, four consistent onboarding CTAs and the approved La Luna editorial example.
+
+## Verification
+
+- `pnpm typecheck` — pass
+- `pnpm test` — 803/803
+- `pnpm exec expo export --platform web --clear` — pass after final asset selection
+- `pnpm check:web-export` — pass (35.99 MB total; 479.3 KB largest runtime image; 1.09 MB app JS gzip)
+- `git diff --check` — pass
+
+final result: passed

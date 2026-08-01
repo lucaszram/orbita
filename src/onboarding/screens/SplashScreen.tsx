@@ -6,7 +6,7 @@ import { Text } from "@/components/ui/text";
 
 import { useIsDesktop } from "@/hooks/useLayoutMode";
 
-import { A } from "../assets";
+import { entryBackground } from "../entryBackground";
 import { CTA } from "../components/CTA";
 import { Screen } from "../components/Screen";
 
@@ -93,8 +93,10 @@ const TAGLINE_DESKTOP = { ...TAGLINE, fontSize: 21, lineHeight: 30, marginTop: 6
 function EntryDoors({ onNext, onSignIn }: Props) {
   const desktop = useIsDesktop();
   return (
+    // En web el fondo es responsive (un master por breakpoint, candidato 3);
+    // en nativo `entryBackground` devuelve siempre el asset V4.4 de siempre.
     <Screen
-      bg={A.splashBg}
+      bg={entryBackground(desktop)}
       bgOpacity={0.9}
       wash={desktop ? 0.44 : 0.5}
       layout={desktop ? "scene" : "stage"}

@@ -1,5 +1,34 @@
 # Current Task
 
+## Web pública v2 — landing W1 + portada responsive de /empezar (2026-07-31, Claude)
+
+**Objetivo:** reemplazar el recorrido público `/` → `/empezar`: reconstruir la landing entera según WEB V1/W1 (Figma `767:2` escritorio, `770:2` móvil) con el ritual de La Luna aprobado (`727:127`) como pieza editorial central, y cambiar SÓLO el fondo de la primera pantalla web de `/empezar` por las dos composiciones elegidas directamente por Lucas. Pasos 2–15, nativo, auth, Convex y rutas quedan intactos. PR #56 (`codex/web-hero-background-v2`) queda superseded: no se cherry-pickeó nada.
+
+**Ficha:** owner Claude (frontend), revisión/release Codex; rama `feature/web-public-entry-v2` sobre `origin/main` `8d542a1`, worktree limpio `.worktrees/orbita-public-entry-v2`; territorio `src/components/web/orbita-landing.tsx`, `src/onboarding/screens/SplashScreen.tsx`, `src/onboarding/entryBackground{,.web}.ts`, `src/content/plusBenefits.ts`, `src/components/web/orbita-paywall.tsx` (sólo la extracción de beneficios), `assets/orbita/web-entry/**`, `assets/orbita/optimized/web-entry/**` y este handoff; riesgo medio (superficie pública de captación; cero contratos backend); rollout un PR aislado sin deploy; rollback revert del PR; fuera de alcance `convex/**`, Clerk/Convex, pagos, precios, onboarding pasos 2–15, conducta nativa, deploy y producción.
+
+**Decisiones:**
+1. **Fondos de entrada seleccionados por Lucas:** desktop usa la composición con espacio negativo a la izquierda y planeta/orbitas cobre abajo a la derecha; mobile usa la composición simétrica con cuerpo celeste centrado arriba. Se recortó únicamente la interfaz del visor de las capturas entregadas y se generaron masters/derivados específicos por breakpoint. Los candidatos generados anteriormente quedan como referencia en `rejected/`. Ningún master es dependencia runtime.
+2. **Seam por plataforma** `src/onboarding/entryBackground.ts` (nativo → `A.splashBg` de siempre) + `entryBackground.web.ts` (web → derivado por breakpoint vía `useIsDesktop`, que ya estaba en el splash). El bundle nativo no carga los fondos web y el PNG 393×852 ya no se estira en escritorio.
+3. **Landing tipográfica W1**, no foto gigante: header con el emblema real (`orbita_app_icon_web.png`, mismo tratamiento que `web-nav.tsx`) + anclas (`Cómo funciona`, `Tu carta de hoy`, `Qué incluye`, ocultas <760) + ÚNICO `Ya tengo cuenta` → `/iniciar-sesion`; hero escritorio copy izquierda / carta real derecha (arte `major_18_la_luna.jpg` del mazo, ratio 603×900), móvil copy+CTA primero (CTA en el primer viewport) y carta debajo; título y bajada del brief; `Ver una lectura` scrollea al ejemplo.
+4. **Ritual de muestra hardcodeado a propósito** (la landing es pública: no hay ni puede haber API de lecturas personalizadas): versión abreviada fiel del nodo `727:127` con el orden canónico de `RitualReading` (esencia → SIGNIFICADO GENERAL → EN TU DÍA → EL CONSEJO → cierre), etiquetas en Roboto Mono cobre como el producto. El remate "PREGUNTALE AL UMBRAL ›" es texto de la muestra, no un control muerto.
+5. **Free/Plus sin precios:** los cinco beneficios Plus son copy LOCAL de la landing que espeja los `BENEFITS` del paywall sin importarlos (revisión Codex: el paywall queda 100% fuera de este PR; su archivo está byte-idéntico a `main`). Panel Gratis derivado del producto real (ritual completo, tríada, tres preguntas de Umbral, Diario de siete días) y nota explícita de que la carta diaria sigue gratis.
+6. **Anclas por `scrollTo`** con posiciones medidas por `onLayout` (las secciones son hijas directas del ScrollView), más `id` en el DOM; headings semánticos (`role="heading"` + `aria-level` 1/2/3), foco visible del CSS global, targets ≥44px, un solo H1.
+
+**Validación al momento de este handoff:**
+- `pnpm typecheck` **en verde** (corrido en la pasada de revisión de Codex sobre este worktree).
+- Invariantes verificados sobre el código: exactamente UNA aparición de texto de "Ya tengo cuenta" en `/` (header); un solo `EmpezarCta` definido y montado 4 veces (hero, tras el ejemplo, tras Cómo funciona, cierre), siempre `href="/empezar"`; logo → `/`; `Ver una lectura` → scroll al ejemplo de La Luna; footer → `/privacy`, `/terminos`, `/support`; regex de los tests estructurales (`accountDestination`, `parityFoundations`, `responsiveShells`, `onboardingLaunch`) chequeados a mano contra los archivos nuevos.
+- Suite completa **803/803**, typecheck, export web y presupuesto de assets ya estaban verdes antes del reemplazo final de imágenes. Después del reemplazo literal se volvió a ejecutar el export web y `pnpm check:web-export`: **35,99 MB**, imagen runtime máxima **479,3 KB**, JS gzip **1,09 MB**.
+- Verificación visual final de `/empezar`: desktop 1440×900 usa el fondo panorámico con el contenido legible en el espacio negativo; mobile 390×844 usa el cuerpo celeste centrado, CTA y login visibles, sin desborde horizontal ni errores de consola.
+
+**Derivados WebP definitivos (cerrado):** generados desde las dos imágenes elegidas por Lucas y verificados por inspección visual:
+- `assets/orbita/optimized/web-entry/entry_bg_desktop.webp` — **2560×1440, 80.104 bytes**.
+- `assets/orbita/optimized/web-entry/entry_bg_mobile.webp` — **1170×2532, 42.866 bytes**.
+Los dos requires de `src/onboarding/entryBackground.web.ts` apuntan a los `.webp`; los PNG interinos de `optimized/web-entry/` fueron eliminados y el TODO quitado. Ambos derivados quedan lejos del límite de 500 KB por imagen del gate.
+
+**Archivos tocados (alcance final, ya sin paywall):** `src/components/web/orbita-landing.tsx` (reescritura completa), `src/onboarding/screens/SplashScreen.tsx` (sólo el `bg` de la entrada), `src/onboarding/entryBackground.ts` + `entryBackground.web.ts` (nuevos), `assets/orbita/web-entry/{selected,rejected}/*.png` (masters, 4 archivos), `assets/orbita/optimized/web-entry/entry_bg_{desktop,mobile}.webp` (runtime), `CURRENT_TASK.md`.
+
+**Sin commit, push, PR ni deploy.** Producción intacta.
+
 ## Web Plus — mensaje preciso al bloquear una compra repetida (2026-07-31, Claude + Codex)
 
 **Objetivo:** cuando Stripe Checkout no se abre porque la cuenta ya tiene Órbita Plus, mostrar una explicación accionable y enviar a Perfil; conservar el mensaje genérico para fallas de red o errores desconocidos.
