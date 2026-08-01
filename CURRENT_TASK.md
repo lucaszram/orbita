@@ -1,5 +1,70 @@
 # Current Task
 
+## Web pública v2 — hero: la carta astral base, dicha en el primer pantallazo (2026-08-01, Claude)
+
+**Objetivo:** corrección acotada de mensaje sobre el mismo PR #57 (`feature/web-public-entry-v2`, misma rama, se actualiza, no se abre otro), por feedback de usuario: la landing sobre-indexaba en el tarot diario y no decía en el hero que la carta astral es fundacional. Sin tocar titular, layout, abanico de 7, CTAs, anclas, rutas, secciones, assets ni responsive.
+
+**Decisión de producto (user-facing):** el hero suma una línea de valor visualmente contenida, con esta copy exacta — etiqueta `TU CARTA ASTRAL BASE, INCLUIDA AL EMPEZAR` + apoyo `Sol, Luna y ascendente: el mapa personal que da contexto a tu tarot diario y a los tránsitos.` Se dice "base" y se nombra la tríada a propósito: **no** se promete la carta natal completa gratis — casas, aspectos y lecturas siguen siendo Plus (coherente con los paneles Gratis/Plus de la misma página).
+
+**Implementación:** bloque `heroBase` DEBAJO del row de CTAs en la columna de copy del hero — así el CTA primario no baja ni un pixel y sigue en el primer viewport a 390×844 (ya validado en la pasada anterior; esta línea sólo agrega contenido debajo). Hairline superior (`colors.hairline`), etiqueta en Roboto Mono cobre 11/`letterSpacing: 1` (mismo trato que `eyebrow`/`cardCaption`) y apoyo en Inter 14/21 `boneMuted` con `maxWidth: 560`: tokens y tipografías ya existentes, integrado a la columna, no un card nuevo. Cero estilos de color/fuente nuevos, cero assets.
+
+**Test:** `test/webPublicEntry.test.ts` suma «el hero declara la carta astral base, debajo del CTA y sin regalar la completa»: copy exacta presente una sola vez dentro del bloque del hero, posicionada después de `<EmpezarCta` (guarda de que no empuja el CTA), y `doesNotMatch(/carta natal completa/i)` en el hero. Los invariantes de conversión existentes no cambian.
+
+**Validación (2026-08-01, Codex):** `pnpm typecheck` pasó; suite completa **812/812**; `pnpm build:web` pasó; `pnpm check:web-export` pasó con 36,17 MB totales, imagen máxima 479,3 KB y JS gzip 1,10 MB; `git diff --check` limpio. Revisión visual en navegador a 390×844 y 1440×900: CTA principal visible dentro del primer viewport, bloque de carta astral inmediatamente debajo de los CTA, sin colisiones ni cambios en el abanico. La etiqueta aparece exactamente una vez y los cuatro CTA, el único login y la promesa Free/Plus conservan sus invariantes.
+
+**Archivos tocados:** `src/components/web/orbita-landing.tsx` (bloque `heroBase` + 3 estilos), `test/webPublicEntry.test.ts` (un test nuevo), `CURRENT_TASK.md`.
+
+**Sin commit, push, deploy.** Producción intacta.
+
+## Web pública v2 — corrección final: entrada web sin portada + landing con mazo real (2026-07-31, Claude)
+
+**Objetivo:** cerrar el PR #57 (`feature/web-public-entry-v2`) con la corrección final acordada: (a) el flujo web normal `/` → `/empezar` monta **AlignScreen de inmediato** (CTA `Empezar el viaje`) y nunca la portada nativa (SplashScreen: video de intro + "Órbita · Tu cielo, todos los días"); (b) la landing extiende los dos fondos orbitales ya aprobados a TODA la página, muestra en el hero un abanico de cartas reales del mazo en lugar de La Luna, y suma la sección "El mazo de Órbita" con 16 cartas y la mención explícita del mazo completo de 78. Nativo, auth, Convex, rutas y pasos 2–15 intactos.
+
+**Ficha:** owner Claude (frontend), revisión/release Codex; misma rama/PR (`feature/web-public-entry-v2` → PR #57, se actualiza, no se abre otro); territorio `src/onboarding/OnboardingFlow.tsx` (sólo la entrada por plataforma), `src/components/web/orbita-landing.tsx`, `test/webPublicEntry.test.ts` (nuevo) y este handoff; riesgo medio (superficie pública + el arranque del alta web); rollout un PR aislado sin deploy; rollback revert; fuera de alcance `convex/**`, pagos, APIs, rutas, conducta nativa (más allá de preservarla), onboarding pasos 2–15, assets nuevos y producción.
+
+**Decisiones:**
+1. **Entrada por plataforma en el flujo canónico, sin flujo web aparte.** `ENTRY_STEP = IS_WEB ? 1 : 0` en `OnboardingFlow.tsx`: la web entra por AlignScreen y el nativo conserva su paso 0 (SplashScreen) intacto. Un borrador web persistido en el paso 0 (versión anterior) se **normaliza al paso 1** al restaurarse (`normalizeEntryStep`). Los saltos de sesión activa y `resume=datos` comparan contra `ENTRY_STEP` (antes `0` literal): sin esto, en web una cuenta incompleta se quedaba mirando AlignScreen en vez de seguir en la fecha.
+2. **Volver desde el paso 1 web regresa a `/`** (`router.replace("/")`): en web el paso 1 ES la entrada, no hay portada abajo. En nativo y en inspección el back no cambia. `debugStep=0` sigue montando la portada, pero SOLO por `resolveDebugStep` (herramientas internas, sólo lectura) — es la única puerta al paso 0 en web.
+3. **Fondo orbital de la landing = los MISMOS derivados aprobados de la entrada** (`entryBackground`: panorámico 2560×1440 en escritorio, vertical 1170×2532 en móvil), montados como capa fija al viewport detrás del ScrollView con `resizeMode="cover"` (recorta, no estira) + scrim `rgba(7,8,10,0.74)`. El ScrollView quedó transparente: sin fondos sólidos por sección no hay cortes y las transiciones son continuas. Cero assets nuevos.
+4. **Hero: abanico accesible de 7 piezas** — cinco cartas reales (La Estrella, El Mago, El Sol, As de Copas, Reina de Bastos) + los dos dorsos del repo (mandala y órbitas). Para un lector de pantalla es UNA imagen (contenedor `accessibilityRole="image"` con nombre; las cartas solapadas ocultas del árbol). El ancho del abanico se calcula del espacio disponible: no desborda a 320 ni se agranda de más a 1440. **La ilustración de La Luna aparece UNA sola vez en la página, en la lectura editorial**; el hero cierra con "HOY · UNA CARTA DEL MAZO DE 78".
+5. **Sección "El mazo de Órbita"** (entre el ejemplo editorial y Cómo funciona, sin ancla nueva en el header): fila horizontal accesible (`role="list"`/`listitem`, indicador de scroll visible, nombre visible por carta + meta en Roboto Mono) con 16 cartas — 8 Arcanos Mayores (sin La Luna) y 2 por cada palo (Bastos, Copas, Espadas, Oros) — y el copy dice explícitamente "un mazo completo de 78 cartas… los 22 Arcanos Mayores y los 56 Arcanos Menores". Las 78 ilustraciones ya estaban bundleadas por `tarotDeck.ts`, así que la sección no agrega peso de export.
+6. **Invariantes de conversión conservados:** exactamente UN "Ya tengo cuenta" (header), los 4 `EmpezarCta` (`Empezar gratis`) en hero/ejemplo/cómo-funciona/cierre, las 3 anclas, paneles Gratis/Plus sin precios y los enlaces legales `/privacy` `/terminos` `/support`.
+
+**Archivos tocados:** `src/onboarding/OnboardingFlow.tsx` (entrada por plataforma: `ENTRY_STEP`, `normalizeEntryStep`, `back` web→`/`, saltos vs `ENTRY_STEP`), `src/components/web/orbita-landing.tsx` (fondo fijo + scrim, abanico `CardFan`, sección "El mazo de Órbita", La Luna una sola vez), `test/webPublicEntry.test.ts` (nuevo: 8 tests estructurales de estos invariantes), `CURRENT_TASK.md`.
+
+**Validación final de Codex:** `git diff --check` limpio; `pnpm typecheck` en verde; suite completa **811/811**; `pnpm build:web` correcto; `pnpm check:web-export` en verde — **36,17 MB** totales, imagen máxima **479,3 KB** y JavaScript de aplicación **1,10 MB gzip**. Pasada visual y funcional en 390×844 y 1440×900, más controles de desborde a 320, 768, 900, 1024 y 1920 px: sin desborde horizontal, cortes blancos ni colisiones. `/` → `/empezar` muestra inmediatamente `Alineate con el ritmo del universo`; la flecha vuelve a `/`; el splash no aparece en el recorrido web normal. El reporte completo está en `design-qa.md` con resultado `passed`.
+
+**Sin deploy.** Producción intacta.
+
+## Web pública v2 — landing W1 + portada responsive de /empezar (2026-07-31, Claude)
+
+**Objetivo:** reemplazar el recorrido público `/` → `/empezar`: reconstruir la landing entera según WEB V1/W1 (Figma `767:2` escritorio, `770:2` móvil) con el ritual de La Luna aprobado (`727:127`) como pieza editorial central, y cambiar SÓLO el fondo de la primera pantalla web de `/empezar` por las dos composiciones elegidas directamente por Lucas. Pasos 2–15, nativo, auth, Convex y rutas quedan intactos. PR #56 (`codex/web-hero-background-v2`) queda superseded: no se cherry-pickeó nada.
+
+**Ficha:** owner Claude (frontend), revisión/release Codex; rama `feature/web-public-entry-v2` sobre `origin/main` `8d542a1`, worktree limpio `.worktrees/orbita-public-entry-v2`; territorio `src/components/web/orbita-landing.tsx`, `src/onboarding/screens/SplashScreen.tsx`, `src/onboarding/entryBackground{,.web}.ts`, `src/content/plusBenefits.ts`, `src/components/web/orbita-paywall.tsx` (sólo la extracción de beneficios), `assets/orbita/web-entry/**`, `assets/orbita/optimized/web-entry/**` y este handoff; riesgo medio (superficie pública de captación; cero contratos backend); rollout un PR aislado sin deploy; rollback revert del PR; fuera de alcance `convex/**`, Clerk/Convex, pagos, precios, onboarding pasos 2–15, conducta nativa, deploy y producción.
+
+**Decisiones:**
+1. **Fondos de entrada seleccionados por Lucas:** desktop usa la composición con espacio negativo a la izquierda y planeta/orbitas cobre abajo a la derecha; mobile usa la composición simétrica con cuerpo celeste centrado arriba. Se recortó únicamente la interfaz del visor de las capturas entregadas y se generaron masters/derivados específicos por breakpoint. Los candidatos generados anteriormente quedan como referencia en `rejected/`. Ningún master es dependencia runtime.
+2. **Seam por plataforma** `src/onboarding/entryBackground.ts` (nativo → `A.splashBg` de siempre) + `entryBackground.web.ts` (web → derivado por breakpoint vía `useIsDesktop`, que ya estaba en el splash). El bundle nativo no carga los fondos web y el PNG 393×852 ya no se estira en escritorio.
+3. **Landing tipográfica W1**, no foto gigante: header con el emblema real (`orbita_app_icon_web.png`, mismo tratamiento que `web-nav.tsx`) + anclas (`Cómo funciona`, `Tu carta de hoy`, `Qué incluye`, ocultas <760) + ÚNICO `Ya tengo cuenta` → `/iniciar-sesion`; hero escritorio copy izquierda / carta real derecha (arte `major_18_la_luna.jpg` del mazo, ratio 603×900), móvil copy+CTA primero (CTA en el primer viewport) y carta debajo; título y bajada del brief; `Ver una lectura` scrollea al ejemplo.
+4. **Ritual de muestra hardcodeado a propósito** (la landing es pública: no hay ni puede haber API de lecturas personalizadas): versión abreviada fiel del nodo `727:127` con el orden canónico de `RitualReading` (esencia → SIGNIFICADO GENERAL → EN TU DÍA → EL CONSEJO → cierre), etiquetas en Roboto Mono cobre como el producto. El remate "PREGUNTALE AL UMBRAL ›" es texto de la muestra, no un control muerto.
+5. **Free/Plus sin precios:** los cinco beneficios Plus son copy LOCAL de la landing que espeja los `BENEFITS` del paywall sin importarlos (revisión Codex: el paywall queda 100% fuera de este PR; su archivo está byte-idéntico a `main`). Panel Gratis derivado del producto real (ritual completo, tríada, tres preguntas de Umbral, Diario de siete días) y nota explícita de que la carta diaria sigue gratis.
+6. **Anclas por `scrollTo`** con posiciones medidas por `onLayout` (las secciones son hijas directas del ScrollView), más `id` en el DOM; headings semánticos (`role="heading"` + `aria-level` 1/2/3), foco visible del CSS global, targets ≥44px, un solo H1.
+
+**Validación al momento de este handoff:**
+- `pnpm typecheck` **en verde** (corrido en la pasada de revisión de Codex sobre este worktree).
+- Invariantes verificados sobre el código: exactamente UNA aparición de texto de "Ya tengo cuenta" en `/` (header); un solo `EmpezarCta` definido y montado 4 veces (hero, tras el ejemplo, tras Cómo funciona, cierre), siempre `href="/empezar"`; logo → `/`; `Ver una lectura` → scroll al ejemplo de La Luna; footer → `/privacy`, `/terminos`, `/support`; regex de los tests estructurales (`accountDestination`, `parityFoundations`, `responsiveShells`, `onboardingLaunch`) chequeados a mano contra los archivos nuevos.
+- Suite completa **803/803**, typecheck, export web y presupuesto de assets ya estaban verdes antes del reemplazo final de imágenes. Después del reemplazo literal se volvió a ejecutar el export web y `pnpm check:web-export`: **35,99 MB**, imagen runtime máxima **479,3 KB**, JS gzip **1,09 MB**.
+- Verificación visual final de `/empezar`: desktop 1440×900 usa el fondo panorámico con el contenido legible en el espacio negativo; mobile 390×844 usa el cuerpo celeste centrado, CTA y login visibles, sin desborde horizontal ni errores de consola.
+
+**Derivados WebP definitivos (cerrado):** generados desde las dos imágenes elegidas por Lucas y verificados por inspección visual:
+- `assets/orbita/optimized/web-entry/entry_bg_desktop.webp` — **2560×1440, 80.104 bytes**.
+- `assets/orbita/optimized/web-entry/entry_bg_mobile.webp` — **1170×2532, 42.866 bytes**.
+Los dos requires de `src/onboarding/entryBackground.web.ts` apuntan a los `.webp`; los PNG interinos de `optimized/web-entry/` fueron eliminados y el TODO quitado. Ambos derivados quedan lejos del límite de 500 KB por imagen del gate.
+
+**Archivos tocados (alcance final, ya sin paywall):** `src/components/web/orbita-landing.tsx` (reescritura completa), `src/onboarding/screens/SplashScreen.tsx` (sólo el `bg` de la entrada), `src/onboarding/entryBackground.ts` + `entryBackground.web.ts` (nuevos), `assets/orbita/web-entry/{selected,rejected}/*.png` (masters, 4 archivos), `assets/orbita/optimized/web-entry/entry_bg_{desktop,mobile}.webp` (runtime), `CURRENT_TASK.md`.
+
+**Sin commit, push, PR ni deploy.** Producción intacta.
+
 ## Web Plus — mensaje preciso al bloquear una compra repetida (2026-07-31, Claude + Codex)
 
 **Objetivo:** cuando Stripe Checkout no se abre porque la cuenta ya tiene Órbita Plus, mostrar una explicación accionable y enviar a Perfil; conservar el mensaje genérico para fallas de red o errores desconocidos.
