@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Easing, Image, StyleSheet, View } from "react-native";
+import { Animated, Easing, Image, Platform, StyleSheet, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
@@ -62,6 +62,18 @@ const FINAL_STEP = TOTAL - 1;
 // Con backend hay puerta "Ya tengo cuenta" en la entrada (paso 0).
 const HAS_BACKEND = backendConfig.hasConvex && backendConfig.hasClerk;
 
+// La web pública NO monta la portada nativa (SplashScreen: video de intro +
+// "Órbita · Tu cielo, todos los días"): la landing de `/` YA es la portada, y
+// repetirla dejaba dos portadas seguidas. El alta web arranca DIRECTO en
+// AlignScreen (paso 1, CTA "Empezar el viaje") y "volver" desde ahí regresa a
+// `/`. El nativo conserva su paso 0 tal cual. `debugStep=0` sigue montando la
+// portada, pero sólo por el camino de inspección interna (sólo lectura).
+const IS_WEB = Platform.OS === "web";
+/** Primer paso del flujo normal por plataforma. */
+const ENTRY_STEP = IS_WEB ? 1 : 0;
+/** Un borrador web guardado en el paso 0 (versión anterior) se normaliza al 1. */
+const normalizeEntryStep = (s: number) => (IS_WEB && s === 0 ? ENTRY_STEP : s);
+
 // Paso donde arranca la carga de datos de nacimiento (continuación del alta
 // post-login para una cuenta sin birthData: `/onboarding?resume=datos`).
 const STEP_BIRTHDATE = 4;
@@ -119,7 +131,7 @@ export function OnboardingFlow({
   const saved = useMemo(() => readDraft(TOTAL), []);
 
   const [step, setStep] = useState(() =>
-    params.resume === "datos" ? STEP_BIRTHDATE : saved?.step ?? 0
+    params.resume === "datos" ? STEP_BIRTHDATE : normalizeEntryStep(saved?.step ?? ENTRY_STEP)
   );
   const [identity, setIdentity] = useState<Identity>((saved?.identity as Identity) ?? "ella");
   const [birthDate, setBirthDate] = useState<BirthDateParts>(
@@ -193,7 +205,7 @@ export function OnboardingFlow({
   // Respaldo del resume: si los params llegan un render después del mount,
   // el useState inicial no los vio. Solo salta si todavía está en la entrada.
   useEffect(() => {
-    if (params.resume === "datos") setStep((s) => (s === 0 ? STEP_BIRTHDATE : s));
+    if (params.resume === "datos") setStep((s) => (s === ENTRY_STEP ? STEP_BIRTHDATE : s));
   }, [params.resume]);
 
   // Cuenta con sesión y SIN datos natales que abre el alta: se continúa desde la
@@ -208,7 +220,7 @@ export function OnboardingFlow({
   const sesionActiva = !!auth?.isSignedIn || !!account?.isSignedIn;
   useEffect(() => {
     if (inspeccion || !sesionActiva) return;
-    setStep((s) => (s === 0 ? STEP_BIRTHDATE : s));
+    setStep((s) => (s === ENTRY_STEP ? STEP_BIRTHDATE : s));
   }, [sesionActiva, inspeccion]);
 
 
@@ -221,7 +233,16 @@ export function OnboardingFlow({
   }, [step, identity, birthDate, placeQuery, birthPlace, birthTime, timeUnknown, email, inspeccion]);
 
   const next = () => setStep((s) => Math.min(TOTAL - 1, s + 1));
-  const back = () => setStep((s) => Math.max(0, s - 1));
+  const back = () => {
+    // En web el paso 1 ES la entrada del alta: "volver" no baja al paso 0 (la
+    // portada nativa, que la web no monta) sino que devuelve a la landing. En
+    // inspección no: `debugStep` tiene el paso fijado y no navega fuera.
+    if (IS_WEB && !inspeccion && step <= ENTRY_STEP) {
+      router.replace("/");
+      return;
+    }
+    setStep((s) => Math.max(ENTRY_STEP, s - 1));
+  };
 
   const birthDateISO = useMemo(
     () =>

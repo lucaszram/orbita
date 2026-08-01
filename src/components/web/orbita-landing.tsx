@@ -11,8 +11,9 @@ import {
   useWindowDimensions,
   View
 } from "react-native";
-import { cardById } from "@/content/tarotDeck";
+import { CARD_BACK, cardById, TAROT_DECK, type TarotDeckCard } from "@/content/tarotDeck";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
+import { entryBackground } from "@/onboarding/entryBackground";
 
 const colors = {
   black: "#07080A",
@@ -35,11 +36,66 @@ const colors = {
  */
 const APP_ICON = require("../../../assets/orbita/optimized/brand/orbita_app_icon_web.png");
 
-/** La Luna (Arcano Mayor XVIII, id 18): la MISMA arte del mazo real de Órbita. */
+/**
+ * La Luna (Arcano Mayor XVIII, id 18): la MISMA arte del mazo real de Órbita.
+ * Su ilustración aparece UNA sola vez en la página, en la lectura editorial de
+ * ejemplo — ni en el abanico del hero ni en la muestra del mazo.
+ */
 const LA_LUNA = cardById(18)!;
 
 /** Relación de aspecto real de las cartas del mazo (603×900). */
 const CARD_RATIO = 603 / 900;
+
+/** El segundo dorso del mazo (el mandala). El de órbitas ya lo exporta el mazo. */
+const CARD_BACK_MANDALA = require("../../../assets/orbita/optimized/tarot/orbita_card_back_mandala.jpg");
+
+/** Carta real por `key` del catálogo: si falta, es un error de build, no un hueco. */
+function byKey(key: string): TarotDeckCard {
+  const card = TAROT_DECK.find((c) => c.key === key);
+  if (!card) throw new Error(`carta faltante en el mazo: ${key}`);
+  return card;
+}
+
+/**
+ * Abanico del hero: cinco cartas REALES del mazo más los dos dorsos, en el
+ * orden visual izquierda → derecha. La Luna no está a propósito: su arte queda
+ * reservado para la lectura de ejemplo.
+ */
+const FAN: ReadonlyArray<{ key: string; source: TarotDeckCard["image"]; nombre: string }> = [
+  { key: "back_mandala", source: CARD_BACK_MANDALA, nombre: "el dorso mandala" },
+  { key: "major_17_la_estrella", source: byKey("major_17_la_estrella").image, nombre: "La Estrella" },
+  { key: "major_01_el_mago", source: byKey("major_01_el_mago").image, nombre: "El Mago" },
+  { key: "major_19_el_sol", source: byKey("major_19_el_sol").image, nombre: "El Sol" },
+  { key: "cups_ace", source: byKey("cups_ace").image, nombre: "el As de Copas" },
+  { key: "wands_queen", source: byKey("wands_queen").image, nombre: "la Reina de Bastos" },
+  { key: "back_orbits", source: CARD_BACK, nombre: "el dorso de órbitas" }
+];
+
+const FAN_LABEL = `Abanico de cartas del mazo de Órbita: ${FAN.map((c) => c.nombre).join(", ")}.`;
+
+/**
+ * Muestra del mazo para la sección "El mazo de Órbita": dieciséis cartas que
+ * cubren los Arcanos Mayores y los cuatro palos (dos por palo). El producto usa
+ * el mazo COMPLETO de 78; esto es una vidriera, no el inventario.
+ */
+const MAZO_MUESTRA: ReadonlyArray<TarotDeckCard> = [
+  "major_00_el_loco",
+  "major_01_el_mago",
+  "major_02_la_sacerdotisa",
+  "major_03_la_emperatriz",
+  "major_10_la_rueda",
+  "major_17_la_estrella",
+  "major_19_el_sol",
+  "major_21_el_mundo",
+  "wands_ace",
+  "wands_king",
+  "cups_ace",
+  "cups_queen",
+  "swords_ace",
+  "swords_knight",
+  "pentacles_ace",
+  "pentacles_10"
+].map(byKey);
 
 type SectionKey = "carta-hoy" | "como-funciona" | "que-incluye";
 
@@ -143,12 +199,26 @@ export function OrbitaLanding() {
   };
 
   return (
-    <ScrollView
-      ref={scrollRef}
-      style={styles.page}
-      contentContainerStyle={styles.pageContent}
-      showsVerticalScrollIndicator={false}
-    >
+    <View style={styles.root}>
+      {/* Fondo orbital aprobado — los MISMOS derivados que la entrada del alta
+          (`entryBackground`): panorámico 2560×1440 en escritorio, vertical
+          1170×2532 en móvil. Queda fijo al viewport (el scroll vive en el
+          ScrollView, no en el documento) y con `cover` se recorta según el
+          viewport: nunca se estira. El scrim oscuro de arriba mantiene la
+          legibilidad y hace que las secciones transicionen sin cortes. */}
+      <Image
+        source={entryBackground(!isNarrow)}
+        style={StyleSheet.absoluteFill}
+        resizeMode="cover"
+        importantForAccessibility="no-hide-descendants"
+      />
+      <View pointerEvents="none" style={styles.bgScrim} />
+      <ScrollView
+        ref={scrollRef}
+        style={styles.page}
+        contentContainerStyle={styles.pageContent}
+        showsVerticalScrollIndicator={false}
+      >
       {/* ---------------------------------------------------------- header */}
       <View style={styles.nav}>
         <Link href="/" asChild>
@@ -219,16 +289,12 @@ export function OrbitaLanding() {
             </View>
           </View>
           <View style={[styles.heroVisual, isNarrow && styles.heroVisualNarrow]}>
-            <View style={[styles.cardFrame, isNarrow ? styles.cardFrameNarrow : styles.cardFrameWide]}>
-              <Image
-                accessibilityLabel="La Luna, ilustrada para el mazo de Órbita"
-                source={LA_LUNA.image}
-                style={styles.cardImg}
-                resizeMode="cover"
-              />
-            </View>
+            {/* En móvil el abanico entra en el ancho de la columna (gutters de
+                24); en escritorio se acota a su porción del hero para no
+                aplastar la copy en anchos intermedios. */}
+            <CardFan narrow={isNarrow} maxWidth={isNarrow ? width - 48 : Math.min(560, (width - 48) * 0.46)} />
             <Text selectable style={styles.cardCaption}>
-              HOY · TE SALIÓ {LA_LUNA.nombre.toUpperCase()}
+              HOY · UNA CARTA DEL MAZO DE 78
             </Text>
           </View>
         </View>
@@ -316,6 +382,52 @@ export function OrbitaLanding() {
           como entretenimiento y autoconocimiento.
         </Text>
         <EmpezarCta stretch={isNarrow} />
+      </View>
+
+      {/* ------------------------------------------------ el mazo de Órbita */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text selectable style={styles.eyebrow}>
+            EL MAZO
+          </Text>
+          <Text
+            selectable
+            role="heading"
+            aria-level={2}
+            style={[styles.sectionTitle, isNarrow && styles.sectionTitleNarrow]}
+          >
+            El mazo de Órbita.
+          </Text>
+          <Text selectable style={styles.mazoBody}>
+            Órbita usa un mazo completo de 78 cartas, ilustrado para la app: los 22 Arcanos
+            Mayores y los 56 Arcanos Menores de los cuatro palos — Bastos, Copas, Espadas y Oros.
+            Estas son dieciséis.
+          </Text>
+        </View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator
+          accessibilityLabel="Dieciséis cartas del mazo de Órbita"
+          contentContainerStyle={styles.mazoRow}
+        >
+          <View role="list" style={styles.mazoList}>
+            {MAZO_MUESTRA.map((card) => (
+              <View key={card.key} role="listitem" style={styles.mazoItem}>
+                {/* La ilustración es decorativa: el nombre visible de abajo es
+                    lo que lee un lector de pantalla, sin repetirse. */}
+                <View style={[styles.cardFrame, styles.mazoCard]} importantForAccessibility="no-hide-descendants">
+                  <Image source={card.image} style={styles.cardImg} resizeMode="cover" />
+                </View>
+                <Text selectable style={styles.mazoNombre}>
+                  {card.nombre}
+                </Text>
+                <Text selectable style={styles.mazoMeta}>
+                  {card.arcana === "major" ? `ARCANO MAYOR · ${card.roman}` : card.correspondencia.toUpperCase()}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </ScrollView>
       </View>
 
       {/* --------------------------------------------------- cómo funciona */}
@@ -454,7 +566,63 @@ export function OrbitaLanding() {
           <FooterLink href="/support" label="Soporte" />
         </View>
       </View>
-    </ScrollView>
+      </ScrollView>
+    </View>
+  );
+}
+
+/**
+ * Abanico del hero: las siete piezas de `FAN` (cinco cartas reales + los dos
+ * dorsos) desplegadas en arco. Para accesibilidad es UNA imagen: el contenedor
+ * lleva el nombre (`FAN_LABEL`) y las cartas individuales quedan ocultas del
+ * árbol accesible — siete imágenes solapadas anunciadas una por una serían
+ * ruido, no información.
+ *
+ * Los hijos absolutos sin `left/top` se alinean con el `alignItems` /
+ * `justifyContent` del padre (Yoga): cada carta nace centrada abajo y se
+ * despliega sólo con transforms, así el abanico queda simétrico a cualquier
+ * ancho sin medir nada.
+ */
+function CardFan({ narrow, maxWidth }: { narrow: boolean; maxWidth: number }) {
+  // El despliegue horizontal por carta es una fracción del ancho de carta; el
+  // ancho de carta sale de cuánto lugar hay, con tope por breakpoint. Así el
+  // abanico NUNCA desborda: a 320 se achica, a 1440 no se agranda de más.
+  const SPREAD = 0.42;
+  const cardW = Math.min(narrow ? 96 : 140, Math.floor((maxWidth - 28) / (1 + (FAN.length - 1) * SPREAD)));
+  const cardH = Math.round(cardW / CARD_RATIO);
+  const spread = Math.round(cardW * SPREAD);
+  const lift = narrow ? 8 : 12;
+  const mid = (FAN.length - 1) / 2;
+  return (
+    <View
+      accessibilityRole="image"
+      accessibilityLabel={FAN_LABEL}
+      style={{ height: cardH + lift * mid + 18, width: cardW + spread * (FAN.length - 1) + 28 }}
+    >
+      <View importantForAccessibility="no-hide-descendants" style={styles.fanStage}>
+        {FAN.map((card, i) => {
+          const c = i - mid;
+          return (
+            <View
+              key={card.key}
+              style={[
+                styles.cardFrame,
+                styles.fanCard,
+                {
+                  bottom: (mid - Math.abs(c)) * lift,
+                  height: cardH,
+                  transform: [{ translateX: c * spread }, { rotate: `${c * 7}deg` }],
+                  width: cardW,
+                  zIndex: 10 - Math.abs(c)
+                }
+              ]}
+            >
+              <Image source={card.source} style={styles.cardImg} resizeMode="cover" />
+            </View>
+          );
+        })}
+      </View>
+    </View>
   );
 }
 
@@ -506,13 +674,22 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center"
   },
-  page: {
+  root: {
+    // El negro de base queda DEBAJO de la imagen: si el fondo tarda un frame en
+    // decodificar, no hay flash claro.
     backgroundColor: colors.black,
     flex: 1
   },
-  pageContent: {
-    backgroundColor: colors.black
+  bgScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(7, 8, 10, 0.74)"
   },
+  // El scroll es transparente: el fondo orbital fijo se ve a través de TODA la
+  // landing, sin cortes de color entre secciones.
+  page: {
+    flex: 1
+  },
+  pageContent: {},
   stack: {
     flexDirection: "column"
   },
@@ -692,6 +869,16 @@ const styles = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 1
   },
+  fanStage: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "flex-end"
+  },
+  // Sin `left/top`: la carta nace centrada por el `alignItems` del escenario y
+  // se despliega sólo con transforms.
+  fanCard: {
+    position: "absolute"
+  },
 
   // ----------------------------------------------------------- secciones
   section: {
@@ -805,6 +992,42 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 20,
     maxWidth: 560
+  },
+
+  // --------------------------------------------------- el mazo de Órbita
+  mazoBody: {
+    color: colors.boneMuted,
+    fontFamily: "Inter_400Regular",
+    fontSize: 16,
+    lineHeight: 25,
+    maxWidth: 640
+  },
+  mazoRow: {
+    paddingBottom: 14
+  },
+  mazoList: {
+    flexDirection: "row",
+    gap: 20
+  },
+  mazoItem: {
+    gap: 8,
+    width: 132
+  },
+  mazoCard: {
+    width: 132
+  },
+  mazoNombre: {
+    color: colors.bone,
+    fontFamily: "Inter_500Medium",
+    fontSize: 14,
+    lineHeight: 19,
+    marginTop: 4
+  },
+  mazoMeta: {
+    color: colors.boneDim,
+    fontFamily: "RobotoMono_500Medium",
+    fontSize: 10,
+    letterSpacing: 0.5
   },
 
   // ------------------------------------------------------ cómo funciona
