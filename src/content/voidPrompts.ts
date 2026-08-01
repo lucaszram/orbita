@@ -10,7 +10,12 @@ export type VoidCategory = "yo" | "amor" | "trabajo" | "vinculos";
 export type VoidCategoryDef = {
   key: VoidCategory;
   label: string;
-  /** Glifo astrológico como emblema de la categoría. */
+  /**
+   * Emblema de la categoría, como clave del catálogo vectorial propio
+   * (`domain/astroGlyphs`). Antes era un carácter Unicode (`☉ ♀ ♄ ☍`) que en
+   * web y Android caía al font de emoji; la vista dibuja `AstroGlyph`, nunca
+   * este string como texto.
+   */
   glyph: string;
   prompts: string[];
 };
@@ -19,7 +24,7 @@ export const VOID_CATEGORIES: VoidCategoryDef[] = [
   {
     key: "yo",
     label: "Yo",
-    glyph: "☉",
+    glyph: "sun",
     prompts: [
       "¿Qué estoy evitando?",
       "¿Qué necesito soltar?",
@@ -31,7 +36,7 @@ export const VOID_CATEGORIES: VoidCategoryDef[] = [
   {
     key: "amor",
     label: "Amor",
-    glyph: "♀",
+    glyph: "venus",
     prompts: [
       "¿Qué patrón repito en el amor?",
       "¿Qué busco afuera que no me doy?",
@@ -42,7 +47,7 @@ export const VOID_CATEGORIES: VoidCategoryDef[] = [
   {
     key: "trabajo",
     label: "Trabajo",
-    glyph: "♄",
+    glyph: "saturn",
     prompts: [
       "¿Qué estoy postergando?",
       "¿Qué me está pidiendo foco?",
@@ -53,7 +58,7 @@ export const VOID_CATEGORIES: VoidCategoryDef[] = [
   {
     key: "vinculos",
     label: "Vínculos",
-    glyph: "☍",
+    glyph: "mercury",
     prompts: [
       "¿Qué conversación estoy esquivando?",
       "¿A quién necesito escuchar?",

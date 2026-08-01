@@ -12,7 +12,13 @@
  * arriba, DSC derecha, IC abajo (ver `wheelGeometry`).
  */
 import { arcBetween, norm360, wheelAngle } from "@/components/orbita/wheelGeometry";
-import { bodyCode, isWheelBody, signGlyph } from "@/domain/astroSymbols";
+import {
+  bodySymbol,
+  isWheelBody,
+  signGlyphKey,
+  type BodyGlyphKey,
+  type SignGlyphKey
+} from "@/domain/astroSymbols";
 import type { NatalChartPayload } from "@/services/appRefs";
 
 export const WHEEL_VIEWBOX = 640;
@@ -31,12 +37,10 @@ const COLLISION_STEP = 22;
 export type WheelSignSector = {
   index: number;
   /**
-   * Glifo del signo en el font EMPAQUETADO (MaterialCommunityIcons, vía
-   * `domain/astroSymbols`). `null` sólo si el paquete dejara de traerlo: en ese
-   * caso el sector se dibuja sin rótulo, nunca con un carácter del font de
-   * emoji.
+   * Clave del glifo del signo en el catálogo propio (`domain/astroGlyphs`):
+   * vectores empaquetados, nunca un carácter que dependa de una fuente.
    */
-  glyph: string | null;
+  symbol: SignGlyphKey;
   /** Ángulo de la línea divisoria (inicio del signo). */
   boundaryDeg: number;
   /** Ángulo del centro del sector, donde va el código. */
@@ -56,7 +60,8 @@ export type WheelHouseCusp = {
 export type WheelPlanet = {
   key: string;
   label: string;
-  code: string;
+  /** Clave del glifo del cuerpo en el catálogo propio. */
+  symbol: BodyGlyphKey;
   deg: number;
   /** Radio final tras la de-colisión. */
   radius: number;
@@ -90,7 +95,7 @@ export function buildWheelLayout(payload: NatalChartPayload): WheelLayout {
 
   const signs: WheelSignSector[] = Array.from({ length: 12 }, (_, index) => ({
     index,
-    glyph: signGlyph(index),
+    symbol: signGlyphKey(index),
     boundaryDeg: screenDeg(index * 30),
     labelDeg: screenDeg(index * 30 + 15)
   }));
@@ -101,7 +106,7 @@ export function buildWheelLayout(payload: NatalChartPayload): WheelLayout {
     .map((p) => ({
       key: p.key as string,
       label: p.planet,
-      code: bodyCode({ key: p.key, label: p.planet }),
+      symbol: bodySymbol({ key: p.key, label: p.planet }),
       deg: screenDeg(p.fullDegree as number),
       radius: WHEEL_R_PLANET,
       retrograde: p.isRetrograde === true

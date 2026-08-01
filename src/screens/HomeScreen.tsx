@@ -26,7 +26,6 @@ import { Eyebrow, InsightRow, Section } from "@/components/orbita/kit";
 import { GuestState } from "@/components/orbita/GuestState";
 import { useNotify } from "@/components/orbita/ConfirmHost";
 import { LoadingState } from "@/components/orbita/states";
-import { bodyCode } from "@/domain/astroSymbols";
 import { mapNatalChart } from "@/domain/natalChart";
 import { lastNDaysFrom } from "@/domain/dateStrip";
 import { useCanonicalLocalDate } from "@/hooks/useDailyContext";
@@ -44,26 +43,18 @@ import { HomeTopic, Topic, Triad } from "@/domain/types";
 import { appApi, proposedApi, type DailyGuidePayload, type NatalChartPayload } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
 
-// Códigos monocromos (ver `domain/astroSymbols`): los glifos Unicode caían al
-// font de emoji en web y Android.
 const IS_WEB = process.env.EXPO_OS === "web";
 
-const TRIAD_GLYPH = {
-  sol: bodyCode({ key: "sun" }),
-  luna: bodyCode({ key: "moon" }),
-  ascendente: bodyCode({ key: "ascendant" })
-} as const;
-
 /** Tríada de la Home tomada de la MISMA fuente que la Carta (el chart), para que
- *  Home y Carta muestren exactamente lo mismo. */
+ *  Home y Carta muestren exactamente lo mismo. Los glifos los dibuja la vista
+ *  (`TriadLine` → catálogo vectorial propio, ver `domain/astroGlyphs`). */
 function triadFromChart(payload: NatalChartPayload): Triad {
   const t = payload.triad;
   return {
-    sun: { body: "sol", glyph: TRIAD_GLYPH.sol, sign: t.sun.sign as Triad["sun"]["sign"], label: t.sun.sign },
-    moon: { body: "luna", glyph: TRIAD_GLYPH.luna, sign: t.moon.sign as Triad["moon"]["sign"], label: t.moon.sign },
+    sun: { body: "sol", sign: t.sun.sign as Triad["sun"]["sign"], label: t.sun.sign },
+    moon: { body: "luna", sign: t.moon.sign as Triad["moon"]["sign"], label: t.moon.sign },
     ascendant: {
       body: "ascendente",
-      glyph: TRIAD_GLYPH.ascendente,
       sign: t.ascendant.sign as Triad["ascendant"]["sign"],
       label: t.ascendant.sign
     },

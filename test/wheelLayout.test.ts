@@ -4,7 +4,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { mapNatalChart } from "../src/domain/natalChart";
-import { signGlyph } from "../src/domain/astroSymbols";
+import { signGlyphKey } from "../src/domain/astroSymbols";
+import { SIGN_GLYPH_KEYS } from "../src/domain/astroGlyphs";
 import {
   aspectIsActive,
   buildWheelLayout,
@@ -167,11 +168,11 @@ test("una casa repetida no desplaza a las demás: gana la primera aparición", (
 
 test("los doce sectores se rotulan con los doce glifos del zodíaco", () => {
   const layout = buildWheelLayout(mapNatalChart(DOC));
-  const glifos = layout.signs.map((s) => s.glyph);
-  assert.equal(glifos.filter((g) => typeof g === "string").length, 12, "los doce tienen glifo");
-  assert.equal(new Set(glifos).size, 12, "y son distintos entre sí");
-  for (const g of glifos) assert.doesNotMatch(g as string, /[A-Za-z]/, "nunca una abreviatura");
-  assert.deepEqual(glifos, Array.from({ length: 12 }, (_, i) => signGlyph(i)));
+  const glifos = layout.signs.map((s) => s.symbol);
+  assert.equal(new Set(glifos).size, 12, "doce glifos distintos entre sí");
+  // Claves del catálogo vectorial propio, en orden eclíptico.
+  assert.deepEqual(glifos, [...SIGN_GLYPH_KEYS]);
+  assert.deepEqual(glifos, Array.from({ length: 12 }, (_, i) => signGlyphKey(i)));
 });
 
 // --- Rotación al Ascendente -------------------------------------------------
@@ -193,7 +194,7 @@ test("cada planeta cae en el arco de su signo real", () => {
   // Venus a 128° (8° de Leo, 120–150) con Asc en 185.
   assert.equal(venus.deg, wheelAngle(185, 128));
   const leo = layout.signs[4];
-  assert.equal(leo.glyph, signGlyph(4), "el sector 4 rotula Leo con su glifo empaquetado");
+  assert.equal(leo.symbol, "leo", "el sector 4 rotula Leo con su glifo del catálogo");
   const lo = Math.min(leo.boundaryDeg, wheelAngle(185, 150));
   const hi = Math.max(leo.boundaryDeg, wheelAngle(185, 150));
   assert.ok(venus.deg >= lo && venus.deg <= hi, `Venus ${venus.deg} fuera del arco de Leo`);

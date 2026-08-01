@@ -292,8 +292,8 @@ export function createDailyReading(profile: UserProfile, date = toISODate()): Da
   };
 }
 
-function buildPlacement(body: Placement["body"], glyph: string, sign: ZodiacSign): Placement {
-  return { body, glyph, sign, label: formatSign(sign) };
+function buildPlacement(body: Placement["body"], sign: ZodiacSign): Placement {
+  return { body, sign, label: formatSign(sign) };
 }
 
 /**
@@ -308,9 +308,9 @@ export function createTriad(profile: UserProfile, date = toISODate()): Triad {
   const hasFullData = Boolean(profile.birthTime && profile.birthPlace);
 
   return {
-    sun: buildPlacement("sol", "☉", profile.zodiacSign),
-    moon: buildPlacement("luna", "☽", moonSign),
-    ascendant: buildPlacement("ascendente", "↑", ascSign),
+    sun: buildPlacement("sol", profile.zodiacSign),
+    moon: buildPlacement("luna", moonSign),
+    ascendant: buildPlacement("ascendente", ascSign),
     accuracy: hasFullData ? "calculated" : "approximate",
     accuracyNote: hasFullData ? null : "Lectura aproximada: sumá tu hora de nacimiento para afinar Luna y Ascendente."
   };

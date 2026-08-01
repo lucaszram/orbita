@@ -4,7 +4,7 @@ import { router } from "expo-router";
 import { useQuery } from "convex/react";
 import { MeasuredSquare } from "@/components/orbita/ContentCanvas";
 import { NatalWheel } from "@/components/orbita/NatalWheel";
-import { bodyCode } from "@/domain/astroSymbols";
+import { TriadLine } from "@/components/orbita/TriadLine";
 import { INCOMPLETE_BIRTH_MESSAGE } from "@/domain/birthInfo";
 import { mapNatalChart } from "@/domain/natalChart";
 import { personalChartGate } from "@/domain/natalChartGate";
@@ -138,9 +138,18 @@ export function CartaCard({ variant = "card" }: { variant?: "card" | "hero" }) {
         <View style={styles.wheelWrap} pointerEvents="none">
           <MeasuredSquare max={232}>{(size) => <NatalWheel payload={payload!} size={size} />}</MeasuredSquare>
         </View>
-        <Text style={styles.triad}>
-          {`${bodyCode({ key: "sun" })} ${t.sun.sign}    ${bodyCode({ key: "moon" })} ${t.moon.sign}    ${bodyCode({ key: "ascendant" })} ${t.ascendant.sign}`}
-        </Text>
+        <TriadLine
+          units={[
+            { symbol: "sun", label: t.sun.sign },
+            { symbol: "moon", label: t.moon.sign },
+            { symbol: "ascendant", label: t.ascendant.sign }
+          ]}
+          textStyle={styles.triadText}
+          glyphColor={orbita.colors.bone}
+          glyphSize={14}
+          centered
+          style={styles.triad}
+        />
         <View style={styles.cta}>
           <Text style={styles.ctaText}>VER MI CARTA →</Text>
         </View>
@@ -209,13 +218,12 @@ const styles = StyleSheet.create({
     marginVertical: orbita.spacing.xl,
     textAlign: "center"
   },
-  triad: {
+  triad: { marginBottom: orbita.spacing.lg },
+  triadText: {
     color: orbita.colors.bone,
     fontFamily: orbita.fonts.monoMedium,
     fontSize: 13,
-    letterSpacing: 1,
-    marginBottom: orbita.spacing.lg,
-    textAlign: "center"
+    letterSpacing: 1
   },
   cta: {
     alignItems: "center",

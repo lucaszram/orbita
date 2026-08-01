@@ -1,6 +1,7 @@
 import React from "react";
 import Svg, { Circle, G, Line, Text as SvgText } from "react-native-svg";
 
+import { WheelAstroGlyph } from "@/components/orbita/AstroGlyph";
 import { RETROGRADE_CODE } from "@/domain/astroSymbols";
 import {
   aspectIsActive,
@@ -14,7 +15,6 @@ import {
   WHEEL_VIEWBOX
 } from "@/domain/wheelLayout";
 import type { NatalChartPayload } from "@/services/appRefs";
-import { GLYPH_FONT_FAMILY } from "@/theme/glyphFont";
 import { orbita } from "@/theme/orbita";
 
 /**
@@ -25,10 +25,12 @@ import { orbita } from "@/theme/orbita";
  * Todo el contenido (sectores, cúspides, cuerdas, planetas, de-colisión) lo
  * resuelve `buildWheelLayout` como dato puro: este componente sólo dibuja.
  *
- * Tipografías, las dos EMPAQUETADAS: los signos son los glifos reales del zodíaco
- * de MaterialCommunityIcons (`theme/glyphFont`), y los planetas y numerales de
- * casa van en la mono. Ningún carácter cae al font del sistema, que en web y
- * Android es el de emoji (ver `domain/astroSymbols`).
+ * Símbolos: signos y planetas son los glifos VECTORIALES propios
+ * (`components/orbita/AstroGlyph` sobre el catálogo de `domain/astroGlyphs`) —
+ * deterministas, monocromos, idénticos en las tres plataformas. El único texto
+ * de la rueda son los numerales de casa y la marca `Rx`, en la mono empaquetada:
+ * ningún carácter cae al font del sistema, que en web y Android es el de emoji
+ * (ver `domain/astroSymbols`).
  *
  * `size` es el lado en píxeles y tiene que venir del CONTENEDOR medido
  * (`MeasuredSquare`), nunca del ancho de la ventana.
@@ -69,18 +71,7 @@ export function NatalWheel({ payload, size, selectedKey, onSelect }: NatalWheelP
         return (
           <G key={`sign-${s.index}`} opacity={layout.hasAscendant ? 1 : 0.55}>
             <Line x1={x1} y1={y1} x2={x2} y2={y2} stroke={orbita.colors.line} strokeWidth={1} />
-            {s.glyph ? (
-              <SvgText
-                x={gx}
-                y={gy + 9}
-                fill={orbita.colors.copperSoft}
-                fontSize={26}
-                fontFamily={GLYPH_FONT_FAMILY}
-                textAnchor="middle"
-              >
-                {s.glyph}
-              </SvgText>
-            ) : null}
+            <WheelAstroGlyph symbol={s.symbol} cx={gx} cy={gy} size={26} color={orbita.colors.copperSoft} />
           </G>
         );
       })}
@@ -149,16 +140,14 @@ export function NatalWheel({ payload, size, selectedKey, onSelect }: NatalWheelP
               stroke={sel ? orbita.colors.bone : orbita.colors.copper}
               strokeWidth={sel ? 2 : 1.5}
             />
-            <SvgText
-              x={x}
-              y={y + 4}
-              fill={sel ? orbita.colors.bone : orbita.colors.copperSoft}
-              fontSize={12}
-              fontFamily={orbita.fonts.monoMedium}
-              textAnchor="middle"
-            >
-              {p.code}
-            </SvgText>
+            <WheelAstroGlyph
+              symbol={p.symbol}
+              cx={x}
+              cy={y}
+              size={16}
+              color={sel ? orbita.colors.bone : orbita.colors.copperSoft}
+              strokeWidth={2}
+            />
             {p.retrograde ? (
               <SvgText
                 x={x + 17}

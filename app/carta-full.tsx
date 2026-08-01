@@ -9,7 +9,7 @@ import { ContentCanvas, MeasuredSquare } from "@/components/orbita/ContentCanvas
 import { NatalWheel } from "@/components/orbita/NatalWheel";
 import { GuestState } from "@/components/orbita/GuestState";
 import { EmptyState, ErrorState, LoadingState, MinimalLoading } from "@/components/orbita/states";
-import { bodyCode } from "@/domain/astroSymbols";
+import { TriadLine } from "@/components/orbita/TriadLine";
 import { mapNatalChart } from "@/domain/natalChart";
 import { personalChartGate } from "@/domain/natalChartGate";
 import { sessionPhase } from "@/domain/screenPhase";
@@ -153,9 +153,17 @@ function CartaFullView({ payload }: { payload: NatalChartPayload }) {
       </ScrollView>
 
       <View style={[styles.triadBar, { paddingBottom: insets.bottom + orbita.spacing.lg }]}>
-        <Text style={styles.triad}>
-          {`${bodyCode({ key: "sun" })} ${triad.sun.sign}    ${bodyCode({ key: "moon" })} ${triad.moon.sign}    ${bodyCode({ key: "ascendant" })} ${triad.ascendant.sign}`}
-        </Text>
+        <TriadLine
+          units={[
+            { symbol: "sun", label: triad.sun.sign },
+            { symbol: "moon", label: triad.moon.sign },
+            { symbol: "ascendant", label: triad.ascendant.sign }
+          ]}
+          textStyle={styles.triad}
+          glyphColor={orbita.colors.bone}
+          glyphSize={14}
+          centered
+        />
         {payload.accuracy ? <Text style={styles.accuracy}>{payload.accuracy}</Text> : null}
       </View>
     </Frame>
@@ -177,6 +185,6 @@ const styles = StyleSheet.create({
   zoomContent: { alignItems: "center", flexGrow: 1, justifyContent: "center" },
 
   triadBar: { alignItems: "center", gap: orbita.spacing.xs, paddingHorizontal: orbita.spacing.gutter },
-  triad: { color: orbita.colors.bone, fontFamily: orbita.fonts.monoMedium, fontSize: 13, letterSpacing: 1, textAlign: "center" },
+  triad: { color: orbita.colors.bone, fontFamily: orbita.fonts.monoMedium, fontSize: 13, letterSpacing: 1 },
   accuracy: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.body, fontSize: 12, textAlign: "center" }
 });
