@@ -18,7 +18,27 @@
 
 **Archivos tocados:** `src/screens/CartaScreen.tsx` (gate `canGenerate` del efecto de generación), `test/cartaNatalCarga.test.ts` (2 tests estructurales), `CURRENT_TASK.md`.
 
-**Siguiente paso:** commit y PR aislado; merge y nuevo deployment productivo sólo al aprobar el rollout. Producción sigue en `0086eba` y todavía contiene el defecto hasta desplegar este hotfix.
+**Estado release:** PR #59 integrado en `main` como `5b6a38d`; pendiente confirmar el deployment productivo y la pasada manual junto con el hotfix siguiente.
+
+## Hotfix web — Carta exacta no debe quedar en recálculo infinito (2026-08-01, Claude + Codex)
+
+**Objetivo:** hacer que Carta y Home acepten `charts.current` como la carta natal vigente autoritativa. Convex ya devuelve únicamente el cache exacto de los datos actuales; el frontend aplica además un gate heredado que exige `birthDataId`, `birthDataHash` o `payload.birth`, campos que el contrato público elimina por privacidad, y por eso una carta recalculada queda falsamente en “desactualizada”.
+
+**Criterios de aceptación:** tras `calculateOrCreateNatalChart`, una carta no nula de `charts.current` se dibuja; si la query devuelve `null`, se conserva el estado sin carta/recalcular según corresponda; no se publican datos natales ni hashes serializados; Carta y Home usan la misma autoridad; tests de regresión cubren el contrato; no cambia `convex/**`.
+
+**Ficha:** owner Claude (frontend), revisión/release Codex; rama `feature/web-chart-current-gate-hotfix` desde `origin/main` `0086eba`; territorio permitido `src/domain/natalChartGate.ts`, sus consumidores Carta/Home, tests focalizados y este handoff; riesgo medio porque cambia el gate previo a dibujar la rueda; tests focalizados, suite completa, typecheck, export web y presupuesto; rollout por PR aislado y deployment productivo sólo tras aprobación; rollback por revert del PR/deployment; fuera de alcance lectura Plus/Free (PR #59), contratos Convex, Stripe, edición natal y rediseño.
+
+**Evidencia producción:** el clic llegó a `charts.calculateOrCreateNatalChart` y la action terminó correctamente. `charts.current` volvió a consultar la carta exacta. La pantalla siguió mostrando recálculo porque `personalChartGate` exige una prueba de identidad que `publicChartDocument` omite deliberadamente. Exponer `birthDataHash` no es opción: hoy es una serialización de fecha, hora, lugar, coordenadas y timezone, no un digest opaco.
+
+**Implementación (2026-08-01, Claude):** `personalChartGate` ahora trata `charts.current` como autoritativo: `undefined` en cualquiera de las dos queries = `cargando`; datos natales incompletos = `datosIncompletos`; `chart === null` = `sinCarta`; **toda carta no nula = `listo`**, sin re-verificar correspondencia en el cliente. Se eliminaron del módulo `chartMatchesBirthData`, `birthDataHash` y los helpers de eco/normalización (ningún otro caller productivo los usaba; su único consumidor externo era el propio test). El miembro `"desactualizada"` queda en el union como legado documentado —el gate ya no lo devuelve— para que las ramas defensivas de `CartaScreen`, `CartaCard`, `carta-full` y `reading/rueda` sigan typecheckeando sin tocar esas superficies. `ChartDoc` quedó reducido al contrato público sanitizado (`{ payload?: unknown } | null`). Comentarios del módulo reescritos: sin fallback backend, sin hash replicado (que además serializaba datos natales).
+
+**Regresiones (`test/natalChartGate.test.ts`):** se reescribió con un `PUBLIC_CHART` sanitizado (sin `birthDataId`/`birthDataHash`/`payload.birth`): carta pública no nula = `listo` (incluye variantes sin payload); editar los datos natales NO degrada una carta no nula (el cliente no duda de `charts.current`); nuevo test estructural que prohíbe que el gate vuelva a usar `birthDataHash`/`chartMatchesBirthData`; se eliminaron los tests de matching/hash (incluida la réplica del hash que leía `convex/lib/birthDataConsistency.ts`); los tests de cableado (gate antes de mapear, única fuente `charts.current`, recálculo idempotente) se conservan, quitando sólo la exigencia de la rama `"desactualizada"` en Carta/Home.
+
+**Archivos tocados:** `src/domain/natalChartGate.ts`, `test/natalChartGate.test.ts`, `CURRENT_TASK.md`. Sin cambios en `convex/**` ni en las superficies consumidoras.
+
+**Validación final (2026-08-01, Codex):** test focalizado 12/12; suite completa 810/810; typecheck verde; export web aprobado; presupuesto aprobado (`36.17 MB / 50 MB`, imagen máxima `479.3 KB / 500 KB`, JS gzip `1.10 MB / 1.25 MB`); `git diff --check` verde. La regresión reproduce la forma pública real sin ids/hash/eco y confirma `listo`.
+
+**Siguiente paso:** PR #60 rebasado sobre `main`; merge + deployment productivo y pasada manual de Carta después de checks remotos. Producción todavía muestra el recálculo infinito hasta desplegar este hotfix.
 
 ## Web pública v2 — hero: la carta astral base, dicha en el primer pantallazo (2026-08-01, Claude)
 
