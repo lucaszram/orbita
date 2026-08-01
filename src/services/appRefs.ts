@@ -538,7 +538,7 @@ export const proposedApi = {
   createCheckoutSession: anyApi.payments.stripeActions.createCheckoutSession as FunctionReference<
     "action",
     "public",
-    { plan: "weekly" | "yearly" },
+    { plan: "monthly" },
     { url: string }
   >,
   // Sólo se consulta en la pantalla de retorno. `active` significa que el

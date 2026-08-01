@@ -4,25 +4,28 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   CHECKOUT_POLL_TIMEOUT_MS,
+  checkoutCtaLabel,
   checkoutPollDecision,
   checkoutStartErrorKind,
   formatPlanPrice,
   manageSubscription,
+  monthlyPlan,
   offerPhase,
   planIntervalLabel,
   planTrialLabel,
   readCheckoutSessionId,
-  sortedPlans,
   type OfferPlan,
   type WebOffer
 } from "../src/domain/paywall";
 import { isPublicWebRoute } from "../src/domain/webSession";
 
-const WEEKLY: OfferPlan = { id: "weekly", currency: "USD", unitAmount: 499, interval: "week", trialDays: 0 };
-const YEARLY: OfferPlan = { id: "yearly", currency: "USD", unitAmount: 2999, interval: "year", trialDays: 7 };
+// El importe del fixture es arbitrario a propósito: el precio real es el del
+// Price de Stripe y nunca se escribe en el cliente.
+const MONTHLY: OfferPlan = { id: "monthly", currency: "USD", unitAmount: 2999, interval: "month", trialDays: 7 };
+const MONTHLY_SIN_TRIAL: OfferPlan = { ...MONTHLY, trialDays: 0 };
 
 const OFF: WebOffer = { commerceMode: "off", checkoutEnabled: false, plans: [] };
-const TEST_ON: WebOffer = { commerceMode: "test", checkoutEnabled: true, plans: [WEEKLY, YEARLY] };
+const TEST_ON: WebOffer = { commerceMode: "test", checkoutEnabled: true, plans: [MONTHLY] };
 
 // --- Oferta ----------------------------------------------------------------
 
@@ -36,8 +39,17 @@ test("checkoutEnabled sin planes tampoco ofrece comprar", () => {
   assert.equal(offerPhase({ offer: raro, failed: false }), "proximamente");
 });
 
-test("con comercio y planes se puede comprar", () => {
+test("con comercio y el plan mensual se puede comprar", () => {
   assert.equal(offerPhase({ offer: TEST_ON, failed: false }), "disponible");
+});
+
+test("la oferta vigente es una sola suscripción mensual", () => {
+  assert.equal(monthlyPlan([MONTHLY]), MONTHLY);
+  assert.equal(monthlyPlan([]), null);
+  // Un id retirado que llegara del backend no se ofrece.
+  const retirado = { id: "yearly", currency: "USD", unitAmount: 2999, interval: "year", trialDays: 3 } as unknown as OfferPlan;
+  assert.equal(monthlyPlan([retirado]), null);
+  assert.equal(offerPhase({ offer: { ...TEST_ON, plans: [retirado] }, failed: false }), "proximamente");
 });
 
 test("un fallo de la oferta no se muestra como 'próximamente'", () => {
@@ -47,12 +59,11 @@ test("un fallo de la oferta no se muestra como 'próximamente'", () => {
 // --- Precios: siempre desde Stripe, nunca hardcodeados ---------------------
 
 test("el precio se formatea desde currency y unitAmount, en unidades mínimas", () => {
-  assert.match(formatPlanPrice(YEARLY, "es-AR"), /29,99|29\.99/);
-  assert.match(formatPlanPrice(WEEKLY, "es-AR"), /4,99|4\.99/);
+  assert.match(formatPlanPrice(MONTHLY, "es-AR"), /29,99|29\.99/);
 });
 
 test("otra moneda se respeta tal cual la devolvió Stripe", () => {
-  const eur: OfferPlan = { ...YEARLY, currency: "EUR", unitAmount: 1000 };
+  const eur: OfferPlan = { ...MONTHLY, currency: "EUR", unitAmount: 1000 };
   const out = formatPlanPrice(eur, "es-AR");
   assert.ok(out.includes("10") && !out.includes("$"), out);
 });
@@ -60,7 +71,7 @@ test("otra moneda se respeta tal cual la devolvió Stripe", () => {
 test("una moneda desconocida muestra el código, no un símbolo inventado", () => {
   // Intl acepta cualquier código de tres letras bien formado y lo imprime tal
   // cual, así que acá no se ejercita el fallback: se verifica la garantía real.
-  const out = formatPlanPrice({ ...YEARLY, currency: "XYZ" }, "es-AR");
+  const out = formatPlanPrice({ ...MONTHLY, currency: "XYZ" }, "es-AR");
   assert.ok(out.includes("XYZ"), out);
   assert.ok(!out.includes("$"), out);
 });
@@ -68,24 +79,25 @@ test("una moneda desconocida muestra el código, no un símbolo inventado", () =
 test("un código de moneda inválido no rompe la pantalla", () => {
   // Estos SÍ hacen tirar a Intl (largo inválido / vacío) y entran al fallback.
   for (const currency of ["US", "USDD", ""]) {
-    const out = formatPlanPrice({ ...YEARLY, currency }, "es-AR");
+    const out = formatPlanPrice({ ...MONTHLY, currency }, "es-AR");
     assert.equal(out, `${currency} 29.99`);
   }
 });
 
 test("el trial se anuncia sólo si existe", () => {
-  assert.equal(planTrialLabel(YEARLY), "7 días gratis");
-  assert.equal(planTrialLabel(WEEKLY), null);
+  assert.equal(planTrialLabel(MONTHLY), "7 días gratis");
+  assert.equal(planTrialLabel(MONTHLY_SIN_TRIAL), null);
 });
 
 test("el intervalo sale del plan", () => {
-  assert.equal(planIntervalLabel(WEEKLY), "por semana");
-  assert.equal(planIntervalLabel(YEARLY), "por año");
+  assert.equal(planIntervalLabel(MONTHLY), "por mes");
 });
 
-test("el anual va primero", () => {
-  assert.equal(sortedPlans([WEEKLY, YEARLY])[0].id, "yearly");
-  assert.equal(sortedPlans([YEARLY, WEEKLY])[0].id, "yearly");
+test("el CTA anuncia exactamente los días de prueba que van a Stripe", () => {
+  assert.equal(checkoutCtaLabel(MONTHLY), "Probar 7 días gratis");
+  assert.equal(checkoutCtaLabel({ ...MONTHLY, trialDays: 1 }), "Probar 1 día gratis");
+  // Sin prueba, el botón no promete días gratis que no existen.
+  assert.equal(checkoutCtaLabel(MONTHLY_SIN_TRIAL), "Suscribirme");
 });
 
 // --- Retorno del checkout --------------------------------------------------
@@ -254,4 +266,36 @@ test("el paywall monta WebLayoutProvider alrededor de RequireSession", () => {
 test("OrbitaPaywall monta un solo provider de layout", () => {
   const aperturas = paywallSrc.match(/<WebLayoutProvider>/g) ?? [];
   assert.equal(aperturas.length, 1, "un solo punto de entrada standalone, un solo provider");
+});
+
+// --- Oferta única mensual ---------------------------------------------------
+
+test("el paywall no conserva restos del picker de dos planes", () => {
+  // La oferta es una sola suscripción mensual: sin planes retirados, sin radio
+  // de selección y sin importes escritos en el cliente.
+  assert.doesNotMatch(paywallSrc, /weekly|yearly|Anual|Semanal/);
+  assert.doesNotMatch(paywallSrc, /accessibilityRole="radio"/);
+  assert.doesNotMatch(paywallSrc, /setSelected|sortedPlans/);
+});
+
+test("la promesa del trial: cancelar antes del fin de la prueba no cobra nada", () => {
+  // La divulgación de la rama con trial promete explícitamente que cancelar
+  // antes de que termine la prueba no genera ningún cobro, con los días
+  // dinámicos del plan (nunca un "7" hardcodeado), y conserva la divulgación
+  // de renovación mensual automática hasta que el usuario cancele.
+  assert.match(
+    paywallSrc,
+    /Si cancelás antes de que terminen los \$\{plan\.trialDays\} días de prueba, no se te cobra nada\. Al terminar la prueba, la suscripción se renueva sola cada mes al precio de arriba, hasta que la cancelés\./
+  );
+  // La rama sin trial mantiene su propia divulgación de renovación automática.
+  assert.match(paywallSrc, /La suscripción se renueva sola cada mes hasta que la cancelés\./);
+  // Los días de prueba nunca se escriben a mano en la divulgación.
+  assert.doesNotMatch(paywallSrc, /los 7 días de prueba/);
+});
+
+test("el CTA y el precio salen del plan que devolvió Stripe", () => {
+  assert.match(paywallSrc, /checkoutCtaLabel\(plan\)/);
+  assert.match(paywallSrc, /formatPlanPrice\(plan\)/);
+  // Ningún importe hardcodeado en el componente (el precio es el de Stripe).
+  assert.doesNotMatch(paywallSrc, /\$\s?\d|USD\s?\d/);
 });

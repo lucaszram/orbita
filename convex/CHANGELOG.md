@@ -1,5 +1,13 @@
 # Contrato — CHANGELOG
 
+## 2026-08-01 — Oferta web mensual única con siete días de Plus completo
+
+- **Oferta pública:** `payments.getWebOffer({})` deja de publicar los ids `weekly | yearly` y devuelve únicamente `monthly`, con intervalo `month`. Precio y moneda siguen viniendo del Price configurado en Stripe; el cliente no escribe USD 10 ni ningún importe.
+- **Checkout:** `payments.createCheckoutSession({ plan })` y `payments.getCheckoutStatus({ sessionId })` aceptan el plan web nuevo `monthly`. `MONTHLY_TRIAL_DAYS = 7` gobierna tanto la oferta como `subscription_data[trial_period_days]`, por lo que la prueba incluye el entitlement completo (carta natal y experiencia diaria) y, si no se cancela, continúa como suscripción mensual.
+- **Configuración:** se agrega `STRIPE_PRICE_MONTHLY`. `STRIPE_PRICE_WEEKLY` y `STRIPE_PRICE_YEARLY` quedan sólo como compatibilidad de lectura para webhooks de suscripciones históricas; no pueden iniciar compras nuevas.
+- **Persistencia:** el schema suma `monthly` sin retirar `weekly | yearly | lifetime`, evitando invalidar filas antiguas. No cambia la forma de las tablas ni se requiere migración de datos.
+- **Rollout:** probar exclusivamente con `COMMERCE_MODE=test`; producción permanece `off` hasta validar Checkout, webhook, trial, portal, cancelación y la transición al primer cobro.
+
 ## 2026-07-31 — Oferta Plus web: tres días de prueba anual
 
 - **Autoridad única:** `ANNUAL_TRIAL_DAYS = 3` gobierna tanto `payments.getWebOffer({})` como la creación de Stripe Checkout. El plan semanal conserva cero días de prueba.

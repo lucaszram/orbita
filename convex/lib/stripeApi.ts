@@ -3,12 +3,12 @@ const STRIPE_API_BASE_URL = "https://api.stripe.com/v1";
 export type StripeFormValue = string | number | boolean | null | undefined;
 export type StripeForm = Record<string, StripeFormValue>;
 export type StripeFetch = (input: string, init: RequestInit) => Promise<Response>;
-export type StripePlan = "weekly" | "yearly";
+export type StripePlan = "monthly";
 
-export const ANNUAL_TRIAL_DAYS = 3;
+export const MONTHLY_TRIAL_DAYS = 7;
 
 export function trialDaysForPlan(plan: StripePlan | "lifetime"): number {
-  return plan === "yearly" ? ANNUAL_TRIAL_DAYS : 0;
+  return plan === "monthly" ? MONTHLY_TRIAL_DAYS : 0;
 }
 
 type StripeErrorPayload = {

@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  ANNUAL_TRIAL_DAYS,
   buildStripeCheckoutForm,
   buildStripeCustomerForm,
   buildStripePortalForm,
   createStripeApi,
   encodeStripeForm,
+  MONTHLY_TRIAL_DAYS,
   requireStripeString,
   trialDaysForPlan
 } from "../convex/lib/stripeApi";
@@ -14,7 +14,7 @@ import {
 test("Stripe form encoding preserves nested Stripe keys and omits absent values", () => {
   const encoded = encodeStripeForm({
     mode: "subscription",
-    "line_items[0][price]": "price_yearly",
+    "line_items[0][price]": "price_monthly",
     "line_items[0][quantity]": 1,
     "metadata[clerkUserId]": "user_123",
     omitted: undefined,
@@ -23,7 +23,7 @@ test("Stripe form encoding preserves nested Stripe keys and omits absent values"
   const form = new URLSearchParams(encoded);
 
   assert.equal(form.get("mode"), "subscription");
-  assert.equal(form.get("line_items[0][price]"), "price_yearly");
+  assert.equal(form.get("line_items[0][price]"), "price_monthly");
   assert.equal(form.get("line_items[0][quantity]"), "1");
   assert.equal(form.get("metadata[clerkUserId]"), "user_123");
   assert.equal(form.has("omitted"), false);
@@ -65,17 +65,17 @@ test("Stripe customer, checkout and portal forms preserve the existing contract"
   });
 
   const subscription = buildStripeCheckoutForm({
-    plan: "yearly",
+    plan: "monthly",
     customerId: "cus_123",
-    priceId: "price_yearly",
+    priceId: "price_monthly",
     clerkUserId: "user_123",
     webUrl: "https://orbita.example"
   });
   assert.equal(subscription.mode, "subscription");
-  assert.equal(subscription["subscription_data[metadata][plan]"], "yearly");
-  assert.equal(ANNUAL_TRIAL_DAYS, 3);
-  assert.equal(trialDaysForPlan("yearly"), 3);
-  assert.equal(subscription["subscription_data[trial_period_days]"], 3);
+  assert.equal(subscription["subscription_data[metadata][plan]"], "monthly");
+  assert.equal(MONTHLY_TRIAL_DAYS, 7);
+  assert.equal(trialDaysForPlan("monthly"), 7);
+  assert.equal(subscription["subscription_data[trial_period_days]"], 7);
   assert.equal(subscription["payment_intent_data[metadata][plan]"], undefined);
   assert.equal(subscription.success_url, "https://orbita.example/checkout/success?session_id={CHECKOUT_SESSION_ID}");
   assert.equal(subscription.cancel_url, "https://orbita.example/paywall");
@@ -90,16 +90,6 @@ test("Stripe customer, checkout and portal forms preserve the existing contract"
   assert.equal(lifetime.mode, "payment");
   assert.equal(lifetime["payment_intent_data[metadata][plan]"], "lifetime");
   assert.equal(lifetime["subscription_data[metadata][plan]"], undefined);
-
-  const weekly = buildStripeCheckoutForm({
-    plan: "weekly",
-    customerId: "cus_123",
-    priceId: "price_weekly",
-    clerkUserId: "user_123",
-    webUrl: "https://orbita.example"
-  });
-  assert.equal(trialDaysForPlan("weekly"), 0);
-  assert.equal(weekly["subscription_data[trial_period_days]"], undefined);
 
   assert.deepEqual(buildStripePortalForm({ customerId: "cus_123", webUrl: "https://orbita.example" }), {
     customer: "cus_123",

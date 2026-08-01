@@ -49,12 +49,12 @@ const commerceModeValidator = v.union(
   v.literal("test"),
   v.literal("live")
 );
-const planValidator = v.union(v.literal("weekly"), v.literal("yearly"));
+const planValidator = v.literal("monthly");
 const offerPlanValidator = v.object({
   id: planValidator,
   currency: v.string(),
   unitAmount: v.number(),
-  interval: v.union(v.literal("week"), v.literal("year")),
+  interval: v.literal("month"),
   trialDays: v.number()
 });
 
@@ -63,10 +63,7 @@ function stripeClient(mode: CommerceMode): ReturnType<typeof createStripeApi> {
 }
 
 function priceForPlan(plan: StripePlan): string {
-  const price =
-    plan === "weekly"
-      ? process.env.STRIPE_PRICE_WEEKLY
-      : process.env.STRIPE_PRICE_YEARLY;
+  const price = process.env.STRIPE_PRICE_MONTHLY;
   if (!price) {
     throw new Error(`Stripe price id not configured for plan "${plan}"`);
   }
@@ -86,13 +83,13 @@ function validatePrice(
     id: StripePlan;
     priceId: string;
     mode: CommerceMode;
-    interval: "week" | "year";
+    interval: "month";
   }
 ): {
   id: StripePlan;
   currency: string;
   unitAmount: number;
-  interval: "week" | "year";
+  interval: "month";
   trialDays: number;
 } {
   const expectedLive = args.mode === "live";
@@ -137,28 +134,20 @@ export const getWebOffer = action({
     }
 
     const stripe = stripeClient(mode);
-    const weeklyPriceId = priceForPlan("weekly");
-    const yearlyPriceId = priceForPlan("yearly");
-    const [weekly, yearly] = await Promise.all([
-      stripe.get<StripePrice>(`/prices/${encodeURIComponent(weeklyPriceId)}`),
-      stripe.get<StripePrice>(`/prices/${encodeURIComponent(yearlyPriceId)}`)
-    ]);
+    const monthlyPriceId = priceForPlan("monthly");
+    const monthly = await stripe.get<StripePrice>(
+      `/prices/${encodeURIComponent(monthlyPriceId)}`
+    );
 
     return {
       commerceMode: mode,
       checkoutEnabled: true,
       plans: [
-        validatePrice(weekly, {
-          id: "weekly",
-          priceId: weeklyPriceId,
+        validatePrice(monthly, {
+          id: "monthly",
+          priceId: monthlyPriceId,
           mode,
-          interval: "week"
-        }),
-        validatePrice(yearly, {
-          id: "yearly",
-          priceId: yearlyPriceId,
-          mode,
-          interval: "year"
+          interval: "month"
         })
       ]
     };
@@ -185,7 +174,7 @@ export const createCheckoutSession = action({
         id: plan,
         priceId,
         mode,
-        interval: plan === "weekly" ? "week" : "year"
+        interval: "month"
       }
     );
     const binding = await bindingFor(ctx, clerkUserId);
@@ -257,8 +246,7 @@ export const getCheckoutStatus = action({
     }
     if (
       session.mode !== "subscription" ||
-      (session.metadata?.plan !== "weekly" &&
-        session.metadata?.plan !== "yearly")
+      session.metadata?.plan !== "monthly"
     ) {
       throw new Error("Unsupported checkout session");
     }
