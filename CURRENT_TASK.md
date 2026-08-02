@@ -1,5 +1,17 @@
 # Current Task
 
+## Incidente producción — carta natal vacía por contrato incompatible (2026-08-02, Codex)
+
+**Objetivo:** restaurar inmediatamente la carta natal ya calculada en web y app nativa, manteniendo la sanitización y el gating Free/Plus del backend, sin recalcular ni migrar datos de usuarios.
+
+**Criterios de aceptación:** `charts.current()` vuelve a entregar el payload plano que consumen los clientes publicados; Sol, Luna, Ascendente y posiciones se pueden mapear; una cuenta Free conserva tríada/posiciones pero no casas/aspectos; una cuenta Plus conserva carta completa; no se exponen fecha, hora, lugar, coordenadas, offset ni payload crudo; datos persistidos intactos; regresión backend→mapper cubierta; suite completa, typecheck, codegen y diff limpios; smoke real en web y app/contrato después del deploy.
+
+**Ficha:** owner Codex; branch `codex/hotfix-natal-chart-payload` desde `origin/main` `ac45d33`; territorio `convex/**`, tests y este handoff; cambio de contrato sí — restauración compatible de la forma pública de `charts.current`, sin cambiar args ni nombre; riesgo alto por producción compartida entre web y app; rollout tests → Convex dev/codegen → deploy productivo autorizado explícitamente por Lucas → smoke autenticado; rollback revert del hotfix y redeploy sólo si la forma restaurada falla; fuera de alcance frontend, Figma, Stripe, Commerce, datos natales, recálculos, migraciones y rediseño.
+
+**Síntoma y causa confirmada:** el deploy productivo del 2026-08-01 incluyó `24d80a6`, que envolvió la carta pública en `payload.chart.normalized`. El mapper compartido de los clientes publicados (`src/domain/natalChart.ts`) sigue leyendo `payload.placements`, por lo que recibe un documento no nulo pero deriva cero posiciones y muestra la rueda con Sol/Luna/Ascendente en `—`. La lectura larga persistida seguía visible: no hubo pérdida de cartas, sino una incompatibilidad silenciosa del contrato público.
+
+**Autorización:** Lucas aprobó explícitamente el hotfix y deploy productivo en este thread el 2026-08-02 con “ok”.
+
 ## Símbolos astrológicos reales en toda la app (2026-08-01, Claude)
 
 **Objetivo:** reemplazar los códigos de dos letras (`SO LU ME VE MA JU SA UR NE PL NO QU FO AC MC`) por un sistema ÚNICO de símbolos astrológicos visuales — determinista, monocromo y idéntico en web, iOS y Android — que cubra Sol, Luna, Mercurio, Venus, Marte, Júpiter, Saturno, Urano, Neptuno, Plutón, Nodo, Quirón, Parte de la Fortuna, Ascendente, Medio Cielo y los doce signos. Lucas rechazó explícitamente la limitación documentada en `src/domain/astroSymbols.ts` ("los planetas son abreviaturas").

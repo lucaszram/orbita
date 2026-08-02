@@ -1,5 +1,13 @@
 # Contrato — CHANGELOG
 
+## 2026-08-02 — Hotfix: restaurar payload natal compatible
+
+- **Qué cambia:** `charts.current()` vuelve a entregar la carta sanitizada directamente en `payload` (`placements`, `houses`, `aspects`, `summary`, etc.) en vez de envolverla en `payload.chart.normalized`. Se conservan `access` y el gating Free/Plus: Free recibe tríada/posiciones sin casas ni aspectos; Plus recibe la carta completa.
+- **Por qué:** el backend productivo cambió la forma el 2026-08-01, pero la app instalada y la web publicada comparten un mapper que lee `payload.placements`. La envoltura nueva produjo un fallo silencioso: documento presente, cero posiciones y rueda vacía para cartas existentes.
+- **Privacidad y datos:** se mantienen fuera de la respuesta fecha, hora, lugar, coordenadas, `timezoneOffset`, request/raw del proveedor y hashes. No se modifican filas ni se recalculan cartas.
+- **Compatibilidad:** restaura los clientes publicados sin OTA ni rebuild; no cambian nombre, argumentos ni disponibilidad de `charts.current`.
+- **Rollout:** tests de contrato backend→mapper, suite completa, typecheck y codegen; deploy a Convex producción autorizado explícitamente por Lucas; smoke autenticado en `/carta`. Rollback por revert y redeploy.
+
 ## 2026-08-01 — Oferta web mensual única con siete días de Plus completo
 
 - **Oferta pública:** `payments.getWebOffer({})` deja de publicar los ids `weekly | yearly` y devuelve únicamente `monthly`, con intervalo `month`. Precio y moneda siguen viniendo del Price configurado en Stripe; el cliente no escribe USD 10 ni ningún importe.
