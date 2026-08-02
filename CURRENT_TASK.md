@@ -12,6 +12,16 @@
 
 **Autorización:** Lucas aprobó explícitamente el hotfix y deploy productivo en este thread el 2026-08-02 con “ok”.
 
+**Implementación:** `buildPublicNatalChartDocument` quedó aislado en `convex/lib/publicNatalChart.ts`; conserva la sanitización y `access`, pero entrega `safeNormalized` directamente como `payload`. `charts.current` usa ese constructor. La regresión `test/natalChartPublicContract.test.ts` ejecuta la salida backend contra el mapper compartido real y cubre Plus, Free y ausencia de datos natales/offset.
+
+**Validación:** test focalizado contrato+rueda 19/19; suite completa **820/820**; `pnpm typecheck` equivalente (`tsc --noEmit`) verde; codegen ejecutado y `_generated` actualizado; Convex dev `dutiful-viper-815` sincronizado; `git diff --check` limpio. Dry-run productivo sin índices eliminados.
+
+**Rollout y evidencia:** commit productivo `a027e24` desplegado el 2026-08-02 a Convex producción `exciting-bat-311`; el push finalizó con `Deployed Convex functions`. Smoke autenticado tras recarga de `https://orbitaastrologia.xyz/carta`: la tríada volvió a `Sol · Escorpio · Casa 10`, `Luna · Escorpio · Casa 11`, `Ascendente · Capricornio · Casa 1`; posiciones, casas angulares, aspectos principales y lectura larga visibles. Consola sin errores de Carta/Convex; sólo warning web preexistente de `expo-notifications`. No hubo migración, recálculo ni escritura de datos de usuario.
+
+**Estado:** carta natal restaurada en producción para web y app instalada (mismo backend y mapper). Falta integrar el commit a `main` por PR para que un deploy futuro no lo revierta.
+
+**Hallazgo operativo separado:** el dry-run verbose de diagnóstico volcó variables productivas sensibles en la salida del comando y mostró `COMMERCE_MODE=live`, en contradicción con este handoff que lo registraba en `off`. Los valores no se copiaron ni se persistieron en archivos/commits, y este hotfix no cambió ninguna variable. Se requiere una tarea de seguridad/configuración separada para rotar credenciales potencialmente expuestas y confirmar el modo de comercio deseado; hasta entonces no volver a usar `convex deploy --verbose` contra producción.
+
 ## Símbolos astrológicos reales en toda la app (2026-08-01, Claude)
 
 **Objetivo:** reemplazar los códigos de dos letras (`SO LU ME VE MA JU SA UR NE PL NO QU FO AC MC`) por un sistema ÚNICO de símbolos astrológicos visuales — determinista, monocromo y idéntico en web, iOS y Android — que cubra Sol, Luna, Mercurio, Venus, Marte, Júpiter, Saturno, Urano, Neptuno, Plutón, Nodo, Quirón, Parte de la Fortuna, Ascendente, Medio Cielo y los doce signos. Lucas rechazó explícitamente la limitación documentada en `src/domain/astroSymbols.ts` ("los planetas son abreviaturas").
