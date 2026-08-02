@@ -22,9 +22,9 @@ import {
 } from "./lib/birthDataConsistency";
 import {
   ASTROLOGY_API_CHART_CALCULATION_VERSION,
-  buildWebB0ValuesMapPayload,
-  extractNormalizedChartFromPayload
+  buildWebB0ValuesMapPayload
 } from "./lib/orbita";
+import { buildPublicNatalChartDocument } from "./lib/publicNatalChart";
 import { isUserPro } from "./lib/subscriptionAccess";
 import { findCurrentUser, findUserByTokenIdentifier, requireIdentity } from "./lib/users";
 
@@ -36,68 +36,13 @@ async function getCurrentChart(ctx: any, userId: string) {
   return await findCurrentNatalChart(ctx, userId);
 }
 
-function publicChartDocument(chart: any, isPro: boolean) {
-  const normalized = extractNormalizedChartFromPayload(chart?.payload);
-  if (!normalized) {
-    return {
-      _id: chart._id,
-      calculationVersion: chart.calculationVersion,
-      providerVersion: chart.providerVersion,
-      createdAt: chart.createdAt,
-      updatedAt: chart.updatedAt,
-      payload: null
-    };
-  }
-
-  const {
-    birth: _birth,
-    timezoneOffset: _timezoneOffset,
-    ...publicNormalized
-  } = normalized;
-  const placements = normalized.placements.map((placement) => ({
-    ...placement,
-    house: isPro ? placement.house : null
-  }));
-  const byKey = new Map(placements.map((placement) => [placement.key, placement]));
-  const safeNormalized = {
-    // Datos de nacimiento y offset exacto no forman parte del contrato público.
-    ...publicNormalized,
-    placements,
-    houses: isPro ? normalized.houses : [],
-    aspects: isPro ? normalized.aspects : [],
-    summary: {
-      ...normalized.summary,
-      sun: byKey.get("sun") ?? null,
-      moon: byKey.get("moon") ?? null,
-      ascendant: byKey.get("ascendant") ?? null,
-      mainAspects: isPro ? normalized.summary.mainAspects : []
-    }
-  };
-
-  return {
-    _id: chart._id,
-    calculationVersion: chart.calculationVersion,
-    providerVersion: chart.providerVersion,
-    createdAt: chart.createdAt,
-    updatedAt: chart.updatedAt,
-    access: { isPro, houses: isPro, aspects: isPro },
-    payload: {
-      chart: {
-        version: chart.calculationVersion,
-        source: "astrologyapi",
-        normalized: safeNormalized
-      }
-    }
-  };
-}
-
 export const current = query({
   handler: async (ctx) => {
     const user = await findCurrentUser(ctx);
     if (!user) return null;
     const chart = await getCurrentChart(ctx, user._id);
     if (!chart) return null;
-    return publicChartDocument(chart, await isUserPro(ctx, user._id));
+    return buildPublicNatalChartDocument(chart, await isUserPro(ctx, user._id));
   }
 });
 
