@@ -5,7 +5,7 @@ type DeletionCtx = {
 type IndexedDeletionStep = {
   table: string;
   index: string;
-  field: "userId" | "createdByUserId";
+  field: "userId" | "createdByUserId" | "targetUserId" | "actorUserId";
 };
 
 /**
@@ -19,6 +19,10 @@ type IndexedDeletionStep = {
  * in test/accountDeletion.test.ts forces this plan to be updated too.
  */
 export const USER_SCOPED_DELETION_STEPS: readonly IndexedDeletionStep[] = [
+  { table: "adminAuditEvents", index: "by_target_created_at", field: "targetUserId" },
+  { table: "adminAuditEvents", index: "by_actor_created_at", field: "actorUserId" },
+  { table: "userActivityDays", index: "by_user_date", field: "userId" },
+  { table: "adminAccountStats", index: "by_user", field: "userId" },
   { table: "productEvents", index: "by_user_date", field: "userId" },
   { table: "productActors", index: "by_user", field: "userId" },
   { table: "labRuns", index: "by_createdBy", field: "createdByUserId" },

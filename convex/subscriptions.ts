@@ -12,7 +12,12 @@ const subscriptionStatusValidator = v.union(
   v.literal("canceled"),
   v.literal("expired")
 );
-const providerValidator = v.union(v.literal("revenuecat"), v.literal("stripe"), v.literal("stub"));
+const providerValidator = v.union(
+  v.literal("revenuecat"),
+  v.literal("stripe"),
+  v.literal("stub"),
+  v.literal("admin")
+);
 const planValidator = v.union(
   v.literal("monthly"),
   v.literal("weekly"),
@@ -21,7 +26,7 @@ const planValidator = v.union(
 );
 
 // Estado de acceso resuelto combinando todas las filas de suscripción del
-// usuario (RevenueCat + Stripe + stub). Es la fuente de verdad server-side:
+// usuario (RevenueCat + Stripe + stub + grant admin). Es la fuente de verdad server-side:
 // el cliente combina esto con RevenueCat local, pero nunca escribe su acceso.
 export const getCurrent = query({
   args: {},

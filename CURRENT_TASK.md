@@ -1,5 +1,15 @@
 # Current Task
 
+## Backoffice de cuentas, actividad y Pro (2026-08-04, Codex + Claude)
+
+**Objetivo:** agregar una pestaña interna `Cuentas` para consultar cuentas, acceso efectivo, actividad, rachas y preguntas recientes de Void, y administrar grants Pro temporales o permanentes con auditoría.
+
+**Criterios de aceptación:** acceso restringido por allowlist; tracking sólo de contenido durable; racha por día local; Void eliminado a los 90 días; backfill idempotente; grant/revoke Pro sin falsear Stripe/RevenueCat; UI con lista, búsqueda, detalle y estados completos.
+
+**Ficha:** owner Codex backend + Claude frontend; territorio `convex/**` para contrato/backend y `app/**` + `src/**` para UI; base `origin/main` `ac45d33`; cambio de contrato sí; riesgo alto por entitlements y PII administrativa; pruebas unitarias/estructurales + suite completa + typecheck; rollout contrato → backend Convex dev → backfill verificado → frontend → aprobación explícita antes de producción; rollback por gates `ORBITA_ADMIN_ACCOUNTS_ENABLED` y `ORBITA_ADMIN_PRO_WRITES_ENABLED`; fuera de alcance PostHog, edición/eliminación admin y tracking de vistas/clicks.
+
+**Estado:** contrato en `contract/admin-accounts`; backend y frontend pendientes en ramas separadas.
+
 ## Símbolos astrológicos reales en toda la app (2026-08-01, Claude)
 
 **Objetivo:** reemplazar los códigos de dos letras (`SO LU ME VE MA JU SA UR NE PL NO QU FO AC MC`) por un sistema ÚNICO de símbolos astrológicos visuales — determinista, monocromo y idéntico en web, iOS y Android — que cubra Sol, Luna, Mercurio, Venus, Marte, Júpiter, Saturno, Urano, Neptuno, Plutón, Nodo, Quirón, Parte de la Fortuna, Ascendente, Medio Cielo y los doce signos. Lucas rechazó explícitamente la limitación documentada en `src/domain/astroSymbols.ts` ("los planetas son abreviaturas").

@@ -17,7 +17,12 @@ const subscriptionStatus = v.union(
   v.literal("canceled"),
   v.literal("expired")
 );
-const subscriptionProvider = v.union(v.literal("revenuecat"), v.literal("stripe"), v.literal("stub"));
+const subscriptionProvider = v.union(
+  v.literal("revenuecat"),
+  v.literal("stripe"),
+  v.literal("stub"),
+  v.literal("admin")
+);
 const subscriptionPlan = v.union(
   v.literal("monthly"),
   // Legacy values remain readable for subscriptions created before the web
@@ -43,10 +48,34 @@ const productEventName = v.union(
   v.literal("paywall_viewed"),
   v.literal("checkout_started"),
   v.literal("checkout_completed"),
-  v.literal("checkout_failed")
+  v.literal("checkout_failed"),
+  v.literal("natal_chart_created"),
+  v.literal("natal_interpretation_created"),
+  v.literal("daily_guide_created"),
+  v.literal("transit_reading_created"),
+  v.literal("void_answer_created"),
+  v.literal("saved_reading_created"),
+  v.literal("journal_entry_created")
 );
 const productEventSource = v.union(v.literal("frontend"), v.literal("backend"));
 const digestStatus = v.union(v.literal("sending"), v.literal("sent"), v.literal("error"));
+const contentActivityKind = v.union(
+  v.literal("natal_chart"),
+  v.literal("natal_interpretation"),
+  v.literal("daily_guide"),
+  v.literal("daily_card_reveal"),
+  v.literal("transit_reading"),
+  v.literal("void_answer"),
+  v.literal("saved_reading"),
+  v.literal("journal_entry")
+);
+const adminAuditAction = v.union(v.literal("pro_granted"), v.literal("pro_revoked"));
+const adminBackfillStatus = v.union(
+  v.literal("idle"),
+  v.literal("running"),
+  v.literal("complete"),
+  v.literal("error")
+);
 
 export default defineSchema({
   users: defineTable({
@@ -98,7 +127,9 @@ export default defineSchema({
     appVersion: v.optional(v.string()),
     buildNumber: v.optional(v.string()),
     onboardingStep: v.optional(v.number()),
-    entryPoint: v.optional(v.string())
+    entryPoint: v.optional(v.string()),
+    resourceId: v.optional(v.string()),
+    backfilled: v.optional(v.boolean())
   })
     .index("by_event_id", ["eventId"])
     .index("by_date_event", ["localDate", "eventName"])
@@ -114,6 +145,98 @@ export default defineSchema({
     failedAt: v.optional(v.number()),
     errorCode: v.optional(v.string())
   }).index("by_date", ["localDate"]),
+
+  // Proyección operativa protegida por el backoffice. `searchText` sólo se usa
+  // dentro del índice admin y combina nombre/email/ids ya presentes en users.
+  adminAccountStats: defineTable({
+    userId: v.id("users"),
+    searchText: v.string(),
+    accountCreatedAt: v.number(),
+    onboardingCompletedAt: v.optional(v.number()),
+    isPro: v.boolean(),
+    subscriptionStatus,
+    subscriptionProvider: v.optional(subscriptionProvider),
+    subscriptionPlan: v.optional(subscriptionPlan),
+    currentPeriodEnd: v.optional(v.number()),
+    isLifetime: v.boolean(),
+    lastActivityAt: v.optional(v.number()),
+    lastActivityDate: v.optional(v.string()),
+    currentStreak: v.number(),
+    longestStreak: v.number(),
+    activeDayCount: v.number(),
+    contentCreatedCount: v.number(),
+    updatedAt: v.number()
+  })
+    .index("by_user", ["userId"])
+    .index("by_created_at", ["accountCreatedAt"])
+    .index("by_pro_created_at", ["isPro", "accountCreatedAt"])
+    .index("by_last_activity", ["lastActivityAt"])
+    .index("by_pro_last_activity", ["isPro", "lastActivityAt"])
+    .index("by_current_streak", ["currentStreak"])
+    .index("by_pro_current_streak", ["isPro", "currentStreak"])
+    .searchIndex("search_accounts", {
+      searchField: "searchText",
+      filterFields: ["isPro"]
+    }),
+
+  // Un único documento por usuario/día local. `activities` conserva conteos por
+  // clase para poder retirar por completo la contribución de Void a los 90 días.
+  userActivityDays: defineTable({
+    userId: v.id("users"),
+    localDate: v.string(),
+    timezone: v.string(),
+    activities: v.array(v.object({ kind: contentActivityKind, count: v.number() })),
+    firstActivityAt: v.number(),
+    lastActivityAt: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number()
+  })
+    .index("by_user_date", ["userId", "localDate"])
+    .index("by_date", ["localDate"]),
+
+  adminAuditEvents: defineTable({
+    actorUserId: v.id("users"),
+    targetUserId: v.id("users"),
+    action: adminAuditAction,
+    reason: v.string(),
+    mode: v.optional(v.union(v.literal("permanent"), v.literal("until"))),
+    expiresAt: v.optional(v.number()),
+    effectiveIsPro: v.boolean(),
+    createdAt: v.number()
+  })
+    .index("by_target_created_at", ["targetUserId", "createdAt"])
+    .index("by_actor_created_at", ["actorUserId", "createdAt"]),
+
+  adminDailyRollups: defineTable({
+    localDate: v.string(),
+    accountsCreated: v.number(),
+    activeUsers: v.number(),
+    contentCreated: v.number(),
+    voidAnswers: v.number(),
+    proGrants: v.number(),
+    proRevokes: v.number(),
+    updatedAt: v.number()
+  }).index("by_date", ["localDate"]),
+
+  adminGlobalStats: defineTable({
+    key: v.literal("global"),
+    totalAccounts: v.number(),
+    proAccounts: v.number(),
+    freeAccounts: v.number(),
+    updatedAt: v.number()
+  }).index("by_key", ["key"]),
+
+  adminBackfillState: defineTable({
+    key: v.literal("admin_accounts_v1"),
+    status: adminBackfillStatus,
+    phase: v.string(),
+    cursor: v.optional(v.string()),
+    processed: v.number(),
+    errorCode: v.optional(v.string()),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    updatedAt: v.number()
+  }).index("by_key", ["key"]),
 
   onboardingDrafts: defineTable({
     userId: v.optional(v.id("users")),
@@ -460,7 +583,9 @@ export default defineSchema({
     question: v.string(),
     payload: v.any(),
     createdAt: v.number()
-  }).index("by_user_date", ["userId", "localDate"]),
+  })
+    .index("by_user_date", ["userId", "localDate"])
+    .index("by_created_at", ["createdAt"]),
 
   // El Vacío — cache diario de las preguntas sugeridas personalizadas (1 set por
   // usuario por día). `payload` = { categories: [{ key, label, glyph, prompts[] }] }.
