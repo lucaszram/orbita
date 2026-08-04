@@ -2,6 +2,7 @@ import { mutationGeneric as mutation, queryGeneric as query } from "convex/serve
 import { v } from "convex/values";
 import { findCurrentUser, omitUndefined, requireUser } from "./lib/users";
 import { isUserPro } from "./lib/subscriptionAccess";
+import { recordBackendProductEvent } from "./lib/productAnalytics";
 import {
   localDateForTimezone,
   resolveCanonicalDailyContext,
@@ -59,7 +60,7 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
     const now = Date.now();
-    return await ctx.db.insert("journalEntries", omitUndefined({
+    const entryId = await ctx.db.insert("journalEntries", omitUndefined({
       userId: user._id,
       readingId: args.readingId,
       title: args.title,
@@ -67,6 +68,14 @@ export const create = mutation({
       createdAt: now,
       updatedAt: now
     }));
+    await recordBackendProductEvent(ctx, {
+      eventName: "journal_entry_created",
+      userId: user._id,
+      dedupeKey: String(entryId),
+      resourceId: String(entryId),
+      occurredAt: now
+    });
+    return entryId;
   }
 });
 

@@ -16,6 +16,7 @@ import {
 } from "./lib/orbita";
 import { findUserByTokenIdentifier, omitUndefined, requireIdentity } from "./lib/users";
 import { isUserPro } from "./lib/subscriptionAccess";
+import { recordBackendProductEvent } from "./lib/productAnalytics";
 
 const internalApi = internal as any;
 const DAILY_TRANSITS_TIMELINE_VERSION = "orbita-daily-transits-v1";
@@ -180,6 +181,15 @@ export const persistTodayFromProvider = internalMutation({
           updatedAt: now
         })
       );
+      await recordBackendProductEvent(ctx, {
+        eventName: "transit_reading_created",
+        userId: user._id,
+        dedupeKey: String(transitReadingId),
+        resourceId: String(transitReadingId),
+        occurredAt: now,
+        localDate: args.localDate,
+        timezone: args.timezone
+      });
     }
 
     const existingDailyReading = await ctx.db

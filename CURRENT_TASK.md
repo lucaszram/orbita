@@ -8,7 +8,9 @@
 
 **Ficha:** owner Codex backend + Claude frontend; territorio `convex/**` para contrato/backend y `app/**` + `src/**` para UI; base `origin/main` `ac45d33`; cambio de contrato sí; riesgo alto por entitlements y PII administrativa; pruebas unitarias/estructurales + suite completa + typecheck; rollout contrato → backend Convex dev → backfill verificado → frontend → aprobación explícita antes de producción; rollback por gates `ORBITA_ADMIN_ACCOUNTS_ENABLED` y `ORBITA_ADMIN_PRO_WRITES_ENABLED`; fuera de alcance PostHog, edición/eliminación admin y tracking de vistas/clicks.
 
-**Estado:** contrato en `contract/admin-accounts`; backend y frontend pendientes en ramas separadas.
+**Estado:** contrato validado en `contract/admin-accounts` (`d925b8b`). Backend implementado y validado en `feat/admin-accounts-backend`: allowlist + gates, proyecciones/listados, tracking autoritativo, rachas, Pro manual auditado, backfill por cursor, expiración programada y retención diaria de Void. Pendiente UI de Claude en rama separada; producción sigue fuera de alcance sin aprobación explícita.
+
+**Validación backend:** typecheck verde; suite completa 830/830; Convex dev `dutiful-viper-815` sincronizado con `convex dev --once`; backfill ejecutado dos veces con resultado idéntico: 7 usuarios/proyecciones/global, 96 contenidos/eventos/contribuciones, 8 Void recientes/eventos y 0 Void vencidos. Producción y el gate de Pro manual no fueron habilitados.
 
 ## Símbolos astrológicos reales en toda la app (2026-08-01, Claude)
 

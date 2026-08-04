@@ -9,6 +9,7 @@
  */
 
 import type * as adminAccounts from "../adminAccounts.js";
+import type * as adminMaintenance from "../adminMaintenance.js";
 import type * as backoffice from "../backoffice.js";
 import type * as birthData from "../birthData.js";
 import type * as charts from "../charts.js";
@@ -21,6 +22,7 @@ import type * as home from "../home.js";
 import type * as http from "../http.js";
 import type * as journal from "../journal.js";
 import type * as lib_accountDeletion from "../lib/accountDeletion.js";
+import type * as lib_adminAccountData from "../lib/adminAccountData.js";
 import type * as lib_aiGateway from "../lib/aiGateway.js";
 import type * as lib_astrologyApi from "../lib/astrologyApi.js";
 import type * as lib_backoffice from "../lib/backoffice.js";
@@ -64,6 +66,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   adminAccounts: typeof adminAccounts;
+  adminMaintenance: typeof adminMaintenance;
   backoffice: typeof backoffice;
   birthData: typeof birthData;
   charts: typeof charts;
@@ -76,6 +79,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   journal: typeof journal;
   "lib/accountDeletion": typeof lib_accountDeletion;
+  "lib/adminAccountData": typeof lib_adminAccountData;
   "lib/aiGateway": typeof lib_aiGateway;
   "lib/astrologyApi": typeof lib_astrologyApi;
   "lib/backoffice": typeof lib_backoffice;
