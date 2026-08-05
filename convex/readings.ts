@@ -1,5 +1,6 @@
 import { mutationGeneric as mutation, queryGeneric as query } from "convex/server";
 import { v } from "convex/values";
+import { recordBackendProductEvent } from "./lib/productAnalytics";
 import {
   belongsToNatalChart,
   buildBirthDataHash,
@@ -69,13 +70,22 @@ async function ensureChart(ctx: any, userId: string) {
     longitude: birthData.longitude,
     timezone: birthData.timezone
   });
+  const now = Date.now();
   const chartId = await ctx.db.insert("natalCharts", {
     userId,
     birthDataId: birthData._id,
     birthDataHash: buildBirthDataHash(birthData),
     calculationVersion: CHART_CALCULATION_VERSION,
     payload,
-    createdAt: Date.now()
+    createdAt: now
+  });
+  await recordBackendProductEvent(ctx, {
+    eventName: "natal_chart_created",
+    userId,
+    dedupeKey: String(chartId),
+    resourceId: String(chartId),
+    occurredAt: now,
+    timezone: birthData.timezone
   });
 
   return await ctx.db.get(chartId);
@@ -185,14 +195,24 @@ export const save = mutation({
       }
     }
 
-    return await ctx.db.insert("savedReadings", omitUndefined({
+    const now = Date.now();
+    const savedReadingId = await ctx.db.insert("savedReadings", omitUndefined({
       userId: user._id,
       readingId: args.readingId,
       readingDate: args.readingDate,
       readingPayload: args.readingPayload,
       note: args.note,
-      createdAt: Date.now()
+      createdAt: now
     }));
+    await recordBackendProductEvent(ctx, {
+      eventName: "saved_reading_created",
+      userId: user._id,
+      dedupeKey: String(savedReadingId),
+      resourceId: String(savedReadingId),
+      occurredAt: now,
+      localDate: args.readingDate
+    });
+    return savedReadingId;
   }
 });
 

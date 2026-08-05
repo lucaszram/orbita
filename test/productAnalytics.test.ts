@@ -140,13 +140,13 @@ describe("product analytics", () => {
     };
 
     const first = await recordBackendProductEvent(ctx, {
-      eventName: "daily_card_revealed",
+      eventName: "checkout_completed",
       userId: "user_12345678",
       dedupeKey: "guide_12345678",
       occurredAt: Date.parse("2026-07-19T15:00:00Z")
     });
     const second = await recordBackendProductEvent(ctx, {
-      eventName: "daily_card_revealed",
+      eventName: "checkout_completed",
       userId: "user_12345678",
       dedupeKey: "guide_12345678",
       occurredAt: Date.parse("2026-07-19T15:00:00Z")

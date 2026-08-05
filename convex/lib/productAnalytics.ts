@@ -15,7 +15,14 @@ export const BACKEND_PRODUCT_EVENTS = [
   "onboarding_completed",
   "daily_card_revealed",
   "checkout_completed",
-  "checkout_failed"
+  "checkout_failed",
+  "natal_chart_created",
+  "natal_interpretation_created",
+  "daily_guide_created",
+  "transit_reading_created",
+  "void_answer_created",
+  "saved_reading_created",
+  "journal_entry_created"
 ] as const;
 
 export type FrontendProductEventName = (typeof FRONTEND_PRODUCT_EVENTS)[number];
@@ -105,9 +112,24 @@ export async function recordBackendProductEvent(
     userId: any;
     dedupeKey: string;
     occurredAt?: number;
+    localDate?: string;
+    timezone?: string;
+    resourceId?: string;
+    backfilled?: boolean;
   }
 ): Promise<boolean> {
   assertOpaqueAnalyticsId("dedupeKey", args.dedupeKey);
+  if (args.eventName in CONTENT_EVENT_KIND) {
+    return await recordAuthoritativeContent(ctx, {
+      eventName: args.eventName as ContentEventName,
+      userId: args.userId,
+      resourceId: args.resourceId ?? args.dedupeKey,
+      occurredAt: args.occurredAt,
+      localDate: args.localDate,
+      timezone: args.timezone,
+      backfilled: args.backfilled
+    });
+  }
   const eventId = `backend:${args.eventName}:${args.dedupeKey}`;
   const existing = await ctx.db
     .query("productEvents")
@@ -121,9 +143,22 @@ export async function recordBackendProductEvent(
     eventName: args.eventName,
     source: "backend",
     userId: args.userId,
-    localDate: analyticsLocalDate(occurredAt),
-    occurredAt
+    localDate: args.localDate ?? analyticsLocalDate(occurredAt),
+    occurredAt,
+    ...(args.resourceId ? { resourceId: args.resourceId } : {}),
+    ...(args.backfilled !== undefined ? { backfilled: args.backfilled } : {})
   });
+  if (args.eventName === "account_created") {
+    await syncAdminAccountStats(ctx, args.userId, { now: occurredAt });
+    await incrementDailyRollup(ctx, analyticsLocalDate(occurredAt), {
+      accountsCreated: 1
+    });
+  } else if (args.eventName === "onboarding_completed") {
+    await syncAdminAccountStats(ctx, args.userId, {
+      onboardingCompletedAt: occurredAt,
+      now: occurredAt
+    });
+  }
   return true;
 }
 
@@ -254,3 +289,10 @@ export function computeDailyDigestMetrics(args: {
     previousActive: previousOpened.size
   };
 }
+import {
+  CONTENT_EVENT_KIND,
+  incrementDailyRollup,
+  recordAuthoritativeContent,
+  syncAdminAccountStats,
+  type ContentEventName
+} from "./adminAccountData";

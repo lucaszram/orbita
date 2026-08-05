@@ -6,6 +6,7 @@ import {
 import { v } from "convex/values";
 import { omitUndefined } from "../lib/users";
 import { PRO_ENTITLEMENT, type SubscriptionPlan, type SubscriptionStatus } from "../lib/entitlements";
+import { syncAdminAccountStats } from "../lib/adminAccountData";
 
 const applyEventRef = makeFunctionReference<"mutation">("payments/revenuecat:applyRevenueCatEvent");
 
@@ -203,6 +204,7 @@ export const applyRevenueCatEvent = internalMutation({
       });
     }
 
+    await syncAdminAccountStats(ctx, user._id, { now });
     await recordEvent();
     return null;
   }

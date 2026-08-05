@@ -1140,7 +1140,7 @@ export const ensureFastGuide = internalMutation({
         });
       }
     } else {
-      await ctx.db.insert("dailyGuides", omitUndefined({
+      const guideId = await ctx.db.insert("dailyGuides", omitUndefined({
         userId: user._id,
         localDate: args.localDate,
         timezone: args.timezone,
@@ -1149,6 +1149,15 @@ export const ensureFastGuide = internalMutation({
         payload: plan.payload,
         createdAt: now
       }));
+      await recordBackendProductEvent(ctx, {
+        eventName: "daily_guide_created",
+        userId: user._id,
+        dedupeKey: String(guideId),
+        resourceId: String(guideId),
+        occurredAt: now,
+        localDate: args.localDate,
+        timezone: args.timezone
+      });
     }
 
     if (plan.shouldSchedule) {
@@ -1505,7 +1514,10 @@ export const revealCard = mutation({
       eventName: "daily_card_revealed",
       userId: user._id,
       dedupeKey: String(doc._id),
-      occurredAt: revealedAt
+      resourceId: String(doc._id),
+      occurredAt: revealedAt,
+      localDate: doc.localDate,
+      timezone: doc.timezone
     });
     return revealedAt;
   }

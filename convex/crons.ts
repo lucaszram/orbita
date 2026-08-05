@@ -13,4 +13,20 @@ crons.daily(
   {}
 );
 
+// Retención de El Vacío: se ejecuta en lotes y vuelve a agendarse si quedan
+// respuestas cuya antigüedad ya superó los 90 días exactos.
+crons.daily(
+  "refresh stale admin streaks",
+  { hourUTC: 7, minuteUTC: 5 },
+  internalApi.adminMaintenance.refreshStaleStreaks,
+  {}
+);
+
+crons.daily(
+  "cleanup expired Void answers",
+  { hourUTC: 7, minuteUTC: 15 },
+  internalApi.adminMaintenance.cleanupExpiredVoid,
+  {}
+);
+
 export default crons;

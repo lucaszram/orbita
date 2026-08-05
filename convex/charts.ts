@@ -27,6 +27,7 @@ import {
 } from "./lib/orbita";
 import { isUserPro } from "./lib/subscriptionAccess";
 import { findCurrentUser, findUserByTokenIdentifier, requireIdentity } from "./lib/users";
+import { recordBackendProductEvent } from "./lib/productAnalytics";
 
 const internalApi = internal as any;
 
@@ -341,11 +342,21 @@ export const persistNatalReading = internalMutation({
       updatedAt: now
     };
 
-    if (existing) {
-      await ctx.db.patch(existing._id, fields);
-      return existing._id;
+    const interpretationId = existing?._id ?? await ctx.db.insert(
+      "natalInterpretations",
+      { ...fields, createdAt: now }
+    );
+    if (existing) await ctx.db.patch(existing._id, fields);
+    if (args.status === "ready" || args.status === "fallback") {
+      await recordBackendProductEvent(ctx, {
+        eventName: "natal_interpretation_created",
+        userId: args.userId,
+        dedupeKey: String(interpretationId),
+        resourceId: String(interpretationId),
+        occurredAt: now
+      });
     }
-    return await ctx.db.insert("natalInterpretations", { ...fields, createdAt: now });
+    return interpretationId;
   }
 });
 
@@ -541,6 +552,14 @@ export const persistCalculatedNatalChart = internalMutation({
         payload: args.payload,
         createdAt: now,
         updatedAt: now
+      });
+      await recordBackendProductEvent(ctx, {
+        eventName: "natal_chart_created",
+        userId: user._id,
+        dedupeKey: String(chartId),
+        resourceId: String(chartId),
+        occurredAt: now,
+        timezone: birthData.timezone
       });
     }
 

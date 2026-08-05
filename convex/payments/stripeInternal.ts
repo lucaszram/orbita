@@ -13,6 +13,7 @@ import {
 import { recordBackendProductEvent } from "../lib/productAnalytics";
 import { stripeSubscriptionLifecycle } from "../lib/stripeSubscription";
 import { omitUndefined } from "../lib/users";
+import { syncAdminAccountStats } from "../lib/adminAccountData";
 
 function mapStripeStatus(status?: string): SubscriptionStatus {
   switch (status) {
@@ -121,6 +122,7 @@ export const upsertStripeCustomer = internalMutation({
       status: "inactive",
       updatedAt: now
     });
+    await syncAdminAccountStats(ctx, user._id, { now });
     return null;
   }
 });
@@ -179,6 +181,7 @@ async function upsertStripeRow(
       ...base
     });
   }
+  await syncAdminAccountStats(ctx, user._id, { now });
 }
 
 async function recordCheckoutEvent(

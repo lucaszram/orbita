@@ -134,6 +134,7 @@ export default defineSchema({
     .index("by_event_id", ["eventId"])
     .index("by_date_event", ["localDate", "eventName"])
     .index("by_user_date", ["userId", "localDate"])
+    .index("by_user_source_date", ["userId", "source", "localDate"])
     .index("by_actor_date", ["actorId", "localDate"]),
 
   // Claim del digest para que el cron no mande dos resúmenes del mismo día.

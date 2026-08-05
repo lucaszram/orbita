@@ -5,6 +5,7 @@ import {
   queryGeneric as query
 } from "convex/server";
 import { v } from "convex/values";
+import { recordBackendProductEvent } from "./lib/productAnalytics";
 import { internal } from "./_generated/api";
 import { extractNormalizedChartFromPayload } from "./lib/orbita";
 import { resolveEntitlement, type SubscriptionRow } from "./lib/entitlements";
@@ -451,12 +452,21 @@ export const persistVoidAnswer = internalMutation({
       return { inserted: false, usedAfter: answersToday.length };
     }
 
-    await ctx.db.insert("voidAnswers", {
+    const now = Date.now();
+    const voidAnswerId = await ctx.db.insert("voidAnswers", {
       userId: user._id,
       localDate: args.localDate,
       question: args.question,
       payload: args.payload,
-      createdAt: Date.now()
+      createdAt: now
+    });
+    await recordBackendProductEvent(ctx, {
+      eventName: "void_answer_created",
+      userId: user._id,
+      dedupeKey: String(voidAnswerId),
+      resourceId: String(voidAnswerId),
+      occurredAt: now,
+      localDate: args.localDate
     });
 
     return { inserted: true, usedAfter: answersToday.length + 1 };

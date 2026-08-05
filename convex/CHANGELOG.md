@@ -6,7 +6,9 @@
 - **Persistencia:** se agregan las proyecciones `adminAccountStats`, `userActivityDays`, `adminDailyRollups`, `adminGlobalStats`, `adminAuditEvents` y `adminBackfillState`; `productEvents` suma resultados autoritativos de contenido y referencia opcional a recurso; `voidAnswers` suma índice global por creación para retención.
 - **Privacidad y compatibilidad:** nombre/email siguen sólo en Convex; la pregunta de Void nunca entra como propiedad libre de analytics. Las consultas anteriores a 90 días se eliminarán en la implementación. Los cambios son aditivos y las funciones quedan protegidas por la allowlist existente.
 - **Quién lo pidió:** producto/backend.
-- **Estado:** contrato propuesto; implementación backend y frontend en PRs separados.
+- **Implementación backend:** las escrituras durables registran eventos idempotentes y actualizan día local/racha; el backfill por cursor reconstruye cuentas y contenido recuperable; un cron elimina Void al superar 90 días y otro vence proyecciones de racha. Los grants `admin` expiran por scheduler y la revocación conserva cualquier acceso vigente de Stripe/RevenueCat.
+- **Gates:** `ORBITA_ADMIN_ACCOUNTS_ENABLED` controla lecturas y `ORBITA_ADMIN_PRO_WRITES_ENABLED` controla grants/revocaciones. Ambos fallan cerrados por defecto en producción y se pueden apagar independientemente.
+- **Estado:** contrato y backend implementados; Convex dev/backfill, frontend y rollout productivo siguen separados. Producción requiere aprobación explícita.
 
 ## 2026-08-01 — Oferta web mensual única con siete días de Plus completo
 
