@@ -1,5 +1,13 @@
 # Contrato — CHANGELOG
 
+## 2026-08-04 — Backoffice de cuentas, actividad y Pro manual
+
+- **Qué cambió:** se agrega `adminAccounts` con dashboard, lista paginada, búsqueda, detalle, actividad y mutations auditadas `grantPro`/`revokePro`. El provider público de suscripción suma `admin`.
+- **Persistencia:** se agregan las proyecciones `adminAccountStats`, `userActivityDays`, `adminDailyRollups`, `adminGlobalStats`, `adminAuditEvents` y `adminBackfillState`; `productEvents` suma resultados autoritativos de contenido y referencia opcional a recurso; `voidAnswers` suma índice global por creación para retención.
+- **Privacidad y compatibilidad:** nombre/email siguen sólo en Convex; la pregunta de Void nunca entra como propiedad libre de analytics. Las consultas anteriores a 90 días se eliminarán en la implementación. Los cambios son aditivos y las funciones quedan protegidas por la allowlist existente.
+- **Quién lo pidió:** producto/backend.
+- **Estado:** contrato propuesto; implementación backend y frontend en PRs separados.
+
 ## 2026-08-01 — Oferta web mensual única con siete días de Plus completo
 
 - **Oferta pública:** `payments.getWebOffer({})` deja de publicar los ids `weekly | yearly` y devuelve únicamente `monthly`, con intervalo `month`. Precio y moneda siguen viniendo del Price configurado en Stripe; el cliente no escribe USD 10 ni ningún importe.

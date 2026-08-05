@@ -13,7 +13,7 @@ export type SubscriptionStatus =
   | "billing_issue"
   | "canceled"
   | "expired";
-export type SubscriptionProvider = "revenuecat" | "stripe" | "stub";
+export type SubscriptionProvider = "revenuecat" | "stripe" | "stub" | "admin";
 export type SubscriptionPlan = "monthly" | "weekly" | "yearly" | "lifetime";
 
 export const PRO_ENTITLEMENT: EntitlementKey = "orbita_pro";

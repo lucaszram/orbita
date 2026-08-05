@@ -56,30 +56,34 @@ function fakeDb(initialRows: Record<string, Row[]>) {
 describe("deleteAccountData", () => {
   it("covers every user-owned table in the current schema", () => {
     assert.deepEqual(
-      USER_SCOPED_DELETION_STEPS.map((step) => step.table),
+      USER_SCOPED_DELETION_STEPS.map((step) => [step.table, step.index, step.field]),
       [
-        "productEvents",
-        "productActors",
-        "labRuns",
-        "labSubjects",
-        "savedReadings",
-        "journalEntries",
-        "natalInterpretations",
-        "profileAstrologyCaches",
-        "dailyLlmReadings",
-        "dailyReadings",
-        "transitReadings",
-        "transitTimelineCaches",
-        "dailyGuides",
-        "voidAnswers",
-        "voidPromptSets",
-        "relationshipProfiles",
-        "notificationPreferences",
-        "devices",
-        "subscriptions",
-        "natalCharts",
-        "birthData",
-        "onboardingDrafts"
+        ["adminAuditEvents", "by_target_created_at", "targetUserId"],
+        ["adminAuditEvents", "by_actor_created_at", "actorUserId"],
+        ["userActivityDays", "by_user_date", "userId"],
+        ["adminAccountStats", "by_user", "userId"],
+        ["productEvents", "by_user_date", "userId"],
+        ["productActors", "by_user", "userId"],
+        ["labRuns", "by_createdBy", "createdByUserId"],
+        ["labSubjects", "by_createdBy", "createdByUserId"],
+        ["savedReadings", "by_user", "userId"],
+        ["journalEntries", "by_user", "userId"],
+        ["natalInterpretations", "by_user", "userId"],
+        ["profileAstrologyCaches", "by_user", "userId"],
+        ["dailyLlmReadings", "by_user", "userId"],
+        ["dailyReadings", "by_user", "userId"],
+        ["transitReadings", "by_user_date", "userId"],
+        ["transitTimelineCaches", "by_user_period", "userId"],
+        ["dailyGuides", "by_user_date", "userId"],
+        ["voidAnswers", "by_user_date", "userId"],
+        ["voidPromptSets", "by_user_date", "userId"],
+        ["relationshipProfiles", "by_user", "userId"],
+        ["notificationPreferences", "by_user", "userId"],
+        ["devices", "by_user", "userId"],
+        ["subscriptions", "by_user", "userId"],
+        ["natalCharts", "by_user", "userId"],
+        ["birthData", "by_user", "userId"],
+        ["onboardingDrafts", "by_user", "userId"]
       ]
     );
 
@@ -113,11 +117,12 @@ describe("deleteAccountData", () => {
       contentModules: [{ _id: "editorial", kind: "education" }]
     };
 
-    for (const step of USER_SCOPED_DELETION_STEPS) {
-      initialRows[step.table] = [
-        { _id: `${step.table}_current`, [step.field]: "user_current" },
-        { _id: `${step.table}_other`, [step.field]: "user_other" }
-      ];
+    for (const [position, step] of USER_SCOPED_DELETION_STEPS.entries()) {
+      initialRows[step.table] ??= [];
+      initialRows[step.table].push(
+        { _id: `${step.table}_${position}_current`, [step.field]: "user_current" },
+        { _id: `${step.table}_${position}_other`, [step.field]: "user_other" }
+      );
     }
 
     const db = fakeDb(initialRows);
@@ -140,10 +145,15 @@ describe("deleteAccountData", () => {
       { _id: "editorial", kind: "education" }
     ]);
 
-    for (const step of USER_SCOPED_DELETION_STEPS) {
-      assert.deepEqual(db.rows.get(step.table), [
-        { _id: `${step.table}_other`, [step.field]: "user_other" }
-      ]);
+    for (const table of new Set(USER_SCOPED_DELETION_STEPS.map((step) => step.table))) {
+      assert.deepEqual(
+        db.rows.get(table),
+        USER_SCOPED_DELETION_STEPS.flatMap((step, position) =>
+          step.table === table
+            ? [{ _id: `${table}_${position}_other`, [step.field]: "user_other" }]
+            : []
+        )
+      );
     }
   });
 
