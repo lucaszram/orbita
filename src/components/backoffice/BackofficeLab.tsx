@@ -1,5 +1,5 @@
-import { useAction, useConvexAuth, useMutation, useQuery_experimental as useQuery } from "convex/react";
-import { ComponentProps, ComponentType, ReactNode, useEffect, useMemo, useState } from "react";
+import { useAction, useMutation, useQuery_experimental as useQuery } from "convex/react";
+import { ComponentProps, ReactNode, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -10,7 +10,6 @@ import {
   View,
   useWindowDimensions
 } from "react-native";
-import { backendConfig } from "@/services/backendProviders";
 import {
   backofficeApi,
   BirthTimePrecision,
@@ -21,8 +20,6 @@ import {
   LabSubject,
   LabSubjectInput
 } from "@/services/backofficeRefs";
-
-const staleCodeAccessStorageKey = "orbita:backoffice-lab-access";
 
 type QueryState<T> =
   | { status: "pending" }
@@ -182,135 +179,18 @@ function friendlyBackofficeError(message: string) {
   };
 }
 
-function clearStoredLabAccess() {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  window.sessionStorage.removeItem(staleCodeAccessStorageKey);
-}
-
-function SetupPanel({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <ScrollView style={styles.page} contentContainerStyle={styles.setupWrap}>
-      <View style={styles.setupPanel}>
-        <Text style={styles.kicker}>Órbita Backoffice</Text>
-        <Text style={styles.title}>{title}</Text>
-        <View style={styles.copyBlock}>{children}</View>
-      </View>
-    </ScrollView>
-  );
-}
-
-export function BackofficeRoute() {
-  if (!backendConfig.isConfigured) {
-    return (
-      <SetupPanel title="Falta conectar Convex y Clerk">
-        <Text selectable style={styles.body}>
-          Configurá `EXPO_PUBLIC_CONVEX_URL` y `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` para montar el laboratorio.
-        </Text>
-        <Text selectable style={styles.body}>
-          En Convex también falta `ORBITA_BACKOFFICE_ALLOWED_EMAILS` con los emails habilitados.
-        </Text>
-      </SetupPanel>
-    );
-  }
-
-  return <BackofficeAuthGate />;
-}
-
-function BackofficeAuthGate() {
-  const { useAuth, useUser } = require("@clerk/expo") as typeof import("@clerk/expo");
-  const auth = useAuth();
-  const { user } = useUser();
-  const convexAuth = useConvexAuth();
-  const userEmail = user?.primaryEmailAddress?.emailAddress ?? user?.emailAddresses?.[0]?.emailAddress;
-
-  useEffect(() => {
-    clearStoredLabAccess();
-  }, []);
-
-  if (!auth.isLoaded) {
-    return (
-      <SetupPanel title="Cargando sesión">
-        <ActivityIndicator color="#D8B46A" />
-      </SetupPanel>
-    );
-  }
-
-  if (!auth.isSignedIn) {
-    return <ClerkWebSignInPanel />;
-  }
-
-  if (convexAuth.isLoading) {
-    return (
-      <SetupPanel title="Conectando Convex">
-        <ActivityIndicator color="#D8B46A" />
-        <Text selectable style={styles.body}>
-          Ya estás en Clerk como `{userEmail ?? "tu cuenta"}`. Estoy esperando el token de Convex para habilitar el lab.
-        </Text>
-      </SetupPanel>
-    );
-  }
-
-  if (!convexAuth.isAuthenticated) {
-    return (
-      <SetupPanel title="Falta conectar Clerk con Convex">
-        <Text selectable style={styles.body}>
-          Clerk inició sesión con `{userEmail ?? "tu cuenta"}`, pero Convex no recibió identidad. Configurá el JWT template
-          `convex` en Clerk con application id `convex`.
-        </Text>
-        <View style={styles.setupActions}>
-          <Pressable accessibilityRole="button" onPress={() => void auth.signOut()} style={styles.secondaryButton}>
-            <Text style={styles.secondaryButtonText}>Cambiar cuenta</Text>
-          </Pressable>
-        </View>
-      </SetupPanel>
-    );
-  }
-
-  return <BackofficeLab onSignOut={() => void auth.signOut()} userEmail={userEmail} />;
-}
-
-function ClerkWebSignInPanel() {
-  if (process.env.EXPO_OS !== "web") {
-    return (
-      <SetupPanel title="Necesitás iniciar sesión">
-        <Text selectable style={styles.body}>
-          El backoffice exige una sesión Clerk allowlisted. Abrilo desde Expo Web e iniciá sesión con
-          `lucaszramos11@gmail.com`.
-        </Text>
-      </SetupPanel>
-    );
-  }
-
-  const { SignIn } = require("@clerk/expo/web") as {
-    SignIn: ComponentType<Record<string, unknown>>;
-  };
-
-  return (
-    <ScrollView style={styles.page} contentContainerStyle={styles.setupWrap}>
-      <View style={styles.setupPanel}>
-        <Text style={styles.kicker}>Órbita Backoffice</Text>
-        <Text style={styles.title}>Iniciar sesión</Text>
-        <Text selectable style={styles.body}>
-          Entrá con `lucaszramos11@gmail.com`. El acceso se valida con Clerk y la allowlist de Convex.
-        </Text>
-        <View style={styles.clerkPanel}>
-          <SignIn
-            fallbackRedirectUrl="/backoffice"
-            forceRedirectUrl="/backoffice"
-            routing="hash"
-            signUpFallbackRedirectUrl="/backoffice"
-            signUpForceRedirectUrl="/backoffice"
-          />
-        </View>
-      </View>
-    </ScrollView>
-  );
-}
-
-function BackofficeLab({ onSignOut, userEmail }: { onSignOut: () => void; userEmail?: string }) {
+/**
+ * El Lab de modelo: la pantalla original del backoffice.
+ *
+ * Antes era el backoffice entero (montaba su propia puerta de Clerk/Convex y
+ * mostraba la sesión arriba a la derecha). Hoy la puerta vive en
+ * `BackofficeGate.tsx`, la navegación y la sesión en `BackofficeScreen.tsx`;
+ * esto es sólo el workspace, con la misma composición y la misma conducta.
+ *
+ * Por eso no recibe `userEmail` ni `onSignOut`: el email y `Cambiar cuenta` se
+ * dibujan una sola vez, en la barra del shell.
+ */
+export function BackofficeLabWorkspace() {
   const { width } = useWindowDimensions();
   const isWide = width >= 1020;
   const [form, setForm] = useState<SubjectForm>(defaultSubjectForm);
@@ -548,7 +428,7 @@ function BackofficeLab({ onSignOut, userEmail }: { onSignOut: () => void; userEm
   if (blockedCopy) {
     return (
       <ScrollView style={styles.page} contentContainerStyle={styles.content}>
-        <BackofficeHeader onSignOut={onSignOut} userEmail={userEmail} />
+        <BackofficeHeader />
         <Notice tone="danger" title={blockedCopy.title}>
           {blockedCopy.detail}
         </Notice>
@@ -558,7 +438,7 @@ function BackofficeLab({ onSignOut, userEmail }: { onSignOut: () => void; userEm
 
   return (
     <ScrollView style={styles.page} contentContainerStyle={styles.content}>
-      <BackofficeHeader onSignOut={onSignOut} userEmail={userEmail} />
+      <BackofficeHeader />
       {mutationError ? (
         <Notice tone="danger" title="No se pudo completar">
           {friendlyBackofficeError(mutationError).detail}
@@ -717,7 +597,8 @@ function BackofficeLab({ onSignOut, userEmail }: { onSignOut: () => void; userEm
   );
 }
 
-function BackofficeHeader({ onSignOut, userEmail }: { onSignOut: () => void; userEmail?: string }) {
+/** Sólo el título: la sesión y `Cambiar cuenta` los dibuja el shell. */
+function BackofficeHeader() {
   return (
     <View style={styles.header}>
       <View style={styles.headerCopy}>
@@ -726,14 +607,6 @@ function BackofficeHeader({ onSignOut, userEmail }: { onSignOut: () => void; use
         <Text selectable style={styles.subtitle}>
           Personas de prueba, ejecuciones versionadas y gaps visibles antes de llevar el backend a la app.
         </Text>
-      </View>
-      <View style={styles.headerMeta}>
-        <Text selectable style={styles.metaLabel}>Sesión</Text>
-        <Text selectable style={styles.metaValue}>{userEmail ?? "Clerk conectado"}</Text>
-        <Text selectable style={styles.metaMode}>Clerk + Convex listo</Text>
-        <Pressable accessibilityRole="button" onPress={onSignOut} style={styles.sessionButton}>
-          <Text style={styles.sessionButtonText}>Cambiar cuenta</Text>
-        </Pressable>
       </View>
     </View>
   );
@@ -1590,15 +1463,6 @@ const styles = StyleSheet.create({
     gap: 6,
     minWidth: 280
   },
-  headerMeta: {
-    backgroundColor: colors.panel,
-    borderColor: colors.faint,
-    borderRadius: 8,
-    borderWidth: 1,
-    gap: 6,
-    padding: 12,
-    width: 320
-  },
   kicker: {
     color: colors.copper,
     fontSize: 12,
@@ -1623,37 +1487,6 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 15,
     lineHeight: 22
-  },
-  metaLabel: {
-    color: colors.muted,
-    fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 0,
-    textTransform: "uppercase"
-  },
-  metaValue: {
-    color: colors.ink,
-    fontSize: 14
-  },
-  metaMode: {
-    color: colors.copper,
-    fontSize: 12,
-    fontWeight: "700"
-  },
-  sessionButton: {
-    alignItems: "center",
-    backgroundColor: colors.panelSoft,
-    borderColor: colors.faint,
-    borderRadius: 8,
-    borderWidth: 1,
-    justifyContent: "center",
-    minHeight: 34,
-    paddingHorizontal: 12
-  },
-  sessionButtonText: {
-    color: colors.ink,
-    fontSize: 12,
-    fontWeight: "700"
   },
   grid: {
     gap: 16

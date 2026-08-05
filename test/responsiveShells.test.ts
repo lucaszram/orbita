@@ -520,6 +520,10 @@ test("en la app autenticada el viewport lo lee UN solo archivo: el shell web", (
   // decisión explícita y no un descuido.
   const FUERA_DEL_CONTRATO = new Set([
     "src/components/backoffice/BackofficeLab.tsx",
+    // El shell del backoffice mide la ventana UNA vez y baja el modo por prop a
+    // la tabla y al detalle de `Cuentas`: adentro del backoffice nadie más
+    // vuelve a consultar el viewport (lo verifica `adminAccountsUi.test.ts`).
+    "src/components/backoffice/BackofficeScreen.tsx",
     "src/components/web/immersive-bg.tsx",
     "src/components/web/orbita-lab.tsx",
     "src/components/web/orbita-landing.tsx",
