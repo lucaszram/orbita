@@ -38,7 +38,14 @@ export const current = query({
 
 export const getOrCreateCurrentUser = mutation({
   handler: async (ctx) => {
-    return await getOrCreateUser(ctx);
+    const identity = await requireIdentity(ctx);
+    const existing = await findUserByTokenIdentifier(ctx, identity.tokenIdentifier);
+    const user = await getOrCreateUser(ctx);
+    if (!existing && user) {
+      const sendSignupRef = makeFunctionReference<"action">("coreControl:sendSignup");
+      await ctx.scheduler.runAfter(0, sendSignupRef, { userId: user._id });
+    }
+    return user;
   }
 });
 
