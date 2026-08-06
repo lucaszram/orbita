@@ -15,10 +15,15 @@ import { DailyContextProvider } from "@/hooks/useDailyContext";
 import { OrbitaSessionProvider } from "@/hooks/useLiveApp";
 import { BackendProviders, backendConfig } from "@/services/backendProviders";
 import { InstallPing } from "@/components/InstallPing";
+import { PageViewTracker } from "@/components/PageViewTracker";
 
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
+      {/* `page_view` de la web pública. Va fuera de BackendProviders porque no
+          depende de Convex ni de sesión: mide también a quien todavía no tiene
+          cuenta. En nativo es un componente vacío. */}
+      <PageViewTracker />
       <BackendProviders>
         {backendConfig.hasConvex ? <InstallPing /> : null}
         {/* Sesión central (hotfix build 11): un solo estado Clerk/Convex
