@@ -1,5 +1,15 @@
 # Current Task
 
+## Alerta central de nuevas cuentas (2026-08-06, Codex)
+
+**Objetivo:** avisar en el tema **👤 Nuevas cuentas** del bot central de Core cuando se crea por primera vez una cuenta real de Órbita. El mensaje contiene producto y email; Órbita no conoce ninguna credencial de Telegram.
+
+**Implementación aislada:** rama `feat/core-signup-alerts`. `users.getOrCreateUser` agenda una acción interna sólo después de insertar el usuario. La acción recupera el email del backend, llama por HTTPS al endpoint de `core-control` con la credencial individual de Órbita y reintenta de forma acotada sin bloquear el alta. El emisor Telegram legacy de Órbita queda retirado para que Core sea el único dueño de los mensajes.
+
+**Privacidad y alcance:** no se envían perfiles ni datos astrológicos; el único dato personal es el email pedido para la alerta. No se guarda en `core-control`.
+
+**Validación y release:** typecheck y suite completa **817/817** aprobados; codegen Convex actualizado y `git diff --check` limpio. Lucas autorizó explícitamente commit, push y deploy el 6 de agosto de 2026.
+
 ## Símbolos astrológicos reales en toda la app (2026-08-01, Claude)
 
 **Objetivo:** reemplazar los códigos de dos letras (`SO LU ME VE MA JU SA UR NE PL NO QU FO AC MC`) por un sistema ÚNICO de símbolos astrológicos visuales — determinista, monocromo y idéntico en web, iOS y Android — que cubra Sol, Luna, Mercurio, Venus, Marte, Júpiter, Saturno, Urano, Neptuno, Plutón, Nodo, Quirón, Parte de la Fortuna, Ascendente, Medio Cielo y los doce signos. Lucas rechazó explícitamente la limitación documentada en `src/domain/astroSymbols.ts` ("los planetas son abreviaturas").

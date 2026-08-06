@@ -1,4 +1,4 @@
-import { mutationGeneric as mutation, queryGeneric as query } from "convex/server";
+import { makeFunctionReference, mutationGeneric as mutation, queryGeneric as query } from "convex/server";
 import { v } from "convex/values";
 import { deleteAccountData } from "./lib/accountDeletion";
 import { findUserByTokenIdentifier, getOrCreateUser, requireIdentity } from "./lib/users";
@@ -16,7 +16,14 @@ export const current = query({
 
 export const getOrCreateCurrentUser = mutation({
   handler: async (ctx) => {
-    return await getOrCreateUser(ctx);
+    const identity = await requireIdentity(ctx);
+    const existing = await findUserByTokenIdentifier(ctx, identity.tokenIdentifier);
+    const user = await getOrCreateUser(ctx);
+    if (!existing && user) {
+      const sendSignupRef = makeFunctionReference<"action">("coreControl:sendSignup");
+      await ctx.scheduler.runAfter(0, sendSignupRef, { userId: user._id });
+    }
+    return user;
   }
 });
 

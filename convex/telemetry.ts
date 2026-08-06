@@ -5,18 +5,14 @@ import {
   mutationGeneric as mutation
 } from "convex/server";
 import { v } from "convex/values";
-import { internal } from "./_generated/api";
 import {
   analyticsLocalDate,
   assertOpaqueAnalyticsId,
   assertSafeEntryPoint,
-  computeDailyDigestMetrics,
-  formatDailyDigest,
-  shiftIsoDate
+  computeDailyDigestMetrics
 } from "./lib/productAnalytics";
 import { findUserByTokenIdentifier } from "./lib/users";
 
-const internalApi = internal as any;
 const frontendEventName = v.union(
   v.literal("app_opened"),
   v.literal("onboarding_started"),
@@ -171,11 +167,9 @@ export const track = mutation({
  */
 export const appOpened = mutation({
   args: { platform: v.optional(v.string()) },
-  handler: async (ctx, args) => {
-    const platform = args.platform ? ` (${args.platform})` : "";
-    await ctx.scheduler.runAfter(0, internalApi.notify.sendTelegram, {
-      text: `📲 Nueva instalación de Órbita${platform}`
-    });
+  handler: async (_ctx, _args) => {
+    // Compatibilidad con builds anteriores. Las alertas viven en core-control;
+    // Órbita ya no posee credenciales ni un cliente de Telegram.
     return null;
   }
 });
@@ -287,35 +281,9 @@ export const finishDigest = internalMutation({
 export const sendDailyDigest = internalAction({
   args: { reportDate: v.optional(v.string()), force: v.optional(v.boolean()) },
   returns: v.null(),
-  handler: async (ctx, args) => {
-    const reportDate = args.reportDate ?? shiftIsoDate(analyticsLocalDate(), -1);
-    const previousDate = shiftIsoDate(reportDate, -1);
-    const claimed = await ctx.runMutation(internalApi.telemetry.claimDigest, {
-      localDate: reportDate,
-      force: args.force
-    });
-    if (!claimed) return null;
-
-    try {
-      const metrics = await ctx.runQuery(internalApi.telemetry.computeDigest, {
-        reportDate,
-        previousDate
-      });
-      const delivered = await ctx.runAction(internalApi.notify.sendTelegram, {
-        text: formatDailyDigest(metrics)
-      });
-      await ctx.runMutation(internalApi.telemetry.finishDigest, {
-        localDate: reportDate,
-        status: delivered ? "sent" : "error",
-        ...(!delivered ? { errorCode: "telegram_not_delivered" } : {})
-      });
-    } catch {
-      await ctx.runMutation(internalApi.telemetry.finishDigest, {
-        localDate: reportDate,
-        status: "error",
-        errorCode: "digest_failed"
-      });
-    }
+  handler: async (_ctx, _args) => {
+    // Compatibilidad interna durante el corte. El cron y la entrega real ahora
+    // pertenecen exclusivamente a core-control.
     return null;
   }
 });

@@ -157,7 +157,7 @@ describe("product analytics", () => {
     assert.equal(rows.length, 1);
   });
 
-  it("keeps client events closed and the daily cron at 09:00 Argentina", () => {
+  it("keeps client events closed and delegates portfolio messaging to core-control", () => {
     const telemetry = readFileSync(`${process.cwd()}/convex/telemetry.ts`, "utf8");
     const schema = readFileSync(`${process.cwd()}/convex/schema.ts`, "utf8");
     const crons = readFileSync(`${process.cwd()}/convex/crons.ts`, "utf8");
@@ -165,6 +165,7 @@ describe("product analytics", () => {
     assert.doesNotMatch(telemetry, /properties:\s*v\.any/);
     assert.match(telemetry, /withIndex\("by_event_id"/);
     assert.match(schema, /productEvents:[\s\S]*?\.index\("by_event_id", \["eventId"\]\)/);
-    assert.match(crons, /hourUTC:\s*12,\s*minuteUTC:\s*0/);
+    assert.doesNotMatch(crons, /sendDailyDigest|hourUTC|minuteUTC/);
+    assert.match(crons, /core-control/);
   });
 });
