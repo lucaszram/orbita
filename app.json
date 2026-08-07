@@ -29,6 +29,7 @@
     },
     "web": {
       "bundler": "metro",
+      "favicon": "./assets/orbita/optimized/brand/orbita_app_icon_web.png",
       "lang": "es",
       "name": "Órbita — tu carta natal, leída todos los días",
       "description": "Órbita calcula tu carta natal con tu fecha, hora y lugar de nacimiento, y la lee cada día junto a tus tránsitos y tu carta de Tarot. Entretenimiento, autoconocimiento y contexto diario."

@@ -1,5 +1,15 @@
 # Current Task
 
+## Web — favicon de Órbita (2026-08-07)
+
+**Objetivo:** reemplazar el ícono genérico de la pestaña/favorito del navegador por el emblema oficial de Órbita.
+
+**Criterios de aceptación:** Expo Web declara un favicon propio; el export genera `favicon.ico` y lo enlaza desde `index.html`; la configuración de íconos nativos no cambia.
+
+**Ficha:** owner Claude, coordinado y verificado por Codex; territorio `app.json` + asset web optimizado existente; cambio de contrato no; riesgo bajo; rollout por PR a `main` y despliegue automático de Vercel autorizado por Lucas el 2026-08-07; rollback revirtiendo el commit; fuera de alcance UI, backend e íconos nativos.
+
+**Estado:** implementación y validación completas en `fix/web-favicon-current`. `app.json` apunta al asset oficial `assets/orbita/optimized/brand/orbita_app_icon_web.png` (192x192, 62.9 KB). Verificación: JSON y `expo config --type public` válidos; typecheck y 817 tests en verde; `expo export --platform web` completo; el HTML exportado contiene `<link rel="icon" href="/favicon.ico" />` y el `.ico` incluye variantes 16x16 y 32x32.
+
 ## Símbolos astrológicos reales en toda la app (2026-08-01, Claude)
 
 **Objetivo:** reemplazar los códigos de dos letras (`SO LU ME VE MA JU SA UR NE PL NO QU FO AC MC`) por un sistema ÚNICO de símbolos astrológicos visuales — determinista, monocromo y idéntico en web, iOS y Android — que cubra Sol, Luna, Mercurio, Venus, Marte, Júpiter, Saturno, Urano, Neptuno, Plutón, Nodo, Quirón, Parte de la Fortuna, Ascendente, Medio Cielo y los doce signos. Lucas rechazó explícitamente la limitación documentada en `src/domain/astroSymbols.ts` ("los planetas son abreviaturas").
