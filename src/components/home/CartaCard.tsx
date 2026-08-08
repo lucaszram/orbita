@@ -207,9 +207,22 @@ const styles = StyleSheet.create({
   hero: { alignItems: "center", paddingVertical: orbita.spacing.lg },
   pressed: { opacity: 0.7 },
   eyebrow: { color: orbita.colors.copper, fontFamily: orbita.fonts.monoMedium, fontSize: 12, letterSpacing: 2.5 },
-  wheelWrap: { alignItems: "center", marginVertical: orbita.spacing.lg },
+  // El contenedor de la rueda tiene que tener ANCHO PROPIO. `MeasuredSquare`
+  // mide su contenedor con `onLayout` y sin medida real no dibuja nada; adentro
+  // de una tarjeta con `alignItems: "center"`, una caja sin ancho se encoge a su
+  // contenido —que arranca vacío— y el ancho medido queda en 0. La rueda no
+  // aparecía nunca y sólo quedaba el alto reservado: el hueco de 232 que se veía
+  // en Perfil. `alignSelf: "stretch"` + `width: "100%"` le dan un ancho definido
+  // contra el que el porcentaje del cuadrado resuelve, en web y en nativo.
+  //
+  // El centrado NO va acá: lo pone `MeasuredSquare`, que ya centra su contenido.
+  // `alignItems: "center"` sobre un hijo que declara `width: "100%"` es
+  // exactamente la combinación que colapsa en react-native-web (misma nota que
+  // en `ContentCanvas`).
+  wheelWrap: { alignSelf: "stretch", marginVertical: orbita.spacing.lg, width: "100%" },
   // Mismo alto que la rueda (232) para que el placeholder no salte al resolver.
-  stateZone: { height: 232, justifyContent: "center" },
+  // Centra su propio contenido, porque el wrap ya no lo hace.
+  stateZone: { alignItems: "center", height: 232, justifyContent: "center" },
   stateText: {
     color: orbita.colors.muted,
     fontFamily: orbita.fonts.body,
