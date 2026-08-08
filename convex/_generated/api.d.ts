@@ -29,6 +29,7 @@ import type * as lib_entitlements from "../lib/entitlements.js";
 import type * as lib_onboardingBirthData from "../lib/onboardingBirthData.js";
 import type * as lib_orbita from "../lib/orbita.js";
 import type * as lib_productAnalytics from "../lib/productAnalytics.js";
+import type * as lib_publicNatalChart from "../lib/publicNatalChart.js";
 import type * as lib_stripeApi from "../lib/stripeApi.js";
 import type * as lib_stripeSubscription from "../lib/stripeSubscription.js";
 import type * as lib_subscriptionAccess from "../lib/subscriptionAccess.js";
@@ -83,6 +84,7 @@ declare const fullApi: ApiFromModules<{
   "lib/onboardingBirthData": typeof lib_onboardingBirthData;
   "lib/orbita": typeof lib_orbita;
   "lib/productAnalytics": typeof lib_productAnalytics;
+  "lib/publicNatalChart": typeof lib_publicNatalChart;
   "lib/stripeApi": typeof lib_stripeApi;
   "lib/stripeSubscription": typeof lib_stripeSubscription;
   "lib/subscriptionAccess": typeof lib_subscriptionAccess;

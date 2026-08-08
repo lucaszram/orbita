@@ -1,5 +1,19 @@
 # Current Task
 
+## Incidente producción — restaurar definitivamente las cartas natales (2026-08-08)
+
+**Objetivo:** corregir el contrato entre `charts.current` y el frontend sin recalcular ni modificar cartas existentes, integrar el arreglo en `main` y desplegar únicamente Convex producción desde el SHA mergeado.
+
+**Criterios de aceptación:** payload plano canónico con `placements`, `houses`, `aspects` y `summary`; compatibilidad temporal con `payload.chart.normalized`; respuestas malformadas muestran error en vez de una rueda vacía; `AC —` sólo para `noon_fallback`; Free/Plus y privacidad intactos; Sol Escorpio, Luna Escorpio y Ascendente Capricornio mapeados en el contrato realista; payload nulo y posiciones esenciales ausentes cubiertos; suite, typecheck, export web, presupuesto y dry-run Convex en verde; ids/timestamps persistidos sin cambios; PR mergeado antes del deploy; smoke y monitoreo posterior.
+
+**Ficha:** owner Codex, con autorización excepcional explícita de Lucas para modificar `src/domain/natalChart.ts` y sus pruebas después de que Claude Code quedara bloqueado por permisos internos; branch `hotfix/natal-public-contract` desde `origin/main` `cf7a981`; territorios `convex/charts.ts`, helper público nuevo, mapper natal, pruebas y documentación; cambio de contrato sí — restauración compatible, sin cambio de nombre ni argumentos; riesgo alto por producción compartida; rollout tests → PR → merge a `main` → worktree limpio del merge → dry-run → deploy exclusivo `exciting-bat-311` → smoke/monitoreo; rollback al bundle anterior de funciones; fuera de alcance Vercel, favicon, aliases, Stripe, Tarot, datos natales, cartas guardadas, migraciones, recálculos y rediseño.
+
+**Causa confirmada:** el arreglo probado `a027e24` restauró el payload plano y fue desplegado el 2 de agosto, pero quedó en una rama lateral. Un deploy posterior desde `main`, donde seguía la envoltura `payload.chart.normalized`, revirtió el contrato sin tocar las filas. El mapper leyó `payload.placements`, obtuvo una lista vacía y fabricó guiones; `personalChartGate` hizo visible esa respuesta no nula como la carta vigente. La fuente persistida conserva la carta completa.
+
+**Validación local:** pruebas focalizadas 49/49; suite completa 838/838; typecheck completo verde; codegen Convex regeneró únicamente la referencia al helper nuevo; export web completo; presupuesto 36,21 MB / 50 MB, imagen máxima 479,3 KB / 500 KB y JS gzip 1,10 MB / 1,25 MB; `git diff --check` limpio. El dry-run contra `exciting-bat-311` validó schema, confirmó cero índices eliminados y no mostró cambios de schema ni funciones ajenas; la CLI reportó sólo una diferencia vacía de metadata de versión Node (`undefined` vs `null`), sin valor agregado o retirado.
+
+**Estado:** listo para PR. No desplegar nada hasta que este hotfix quede integrado en `main` y se verifique el SHA mergeado.
+
 ## Web — favicon de Órbita (2026-08-07)
 
 **Objetivo:** reemplazar el ícono genérico de la pestaña/favorito del navegador por el emblema oficial de Órbita.

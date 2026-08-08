@@ -253,7 +253,11 @@ test("un aspecto contra un punto que la rueda no dibuja no se cuelga", () => {
 });
 
 test("un payload vacío no rompe la geometría", () => {
-  const layout = buildWheelLayout(mapNatalChart({}));
+  // Un documento vacío ya no llega hasta acá: `mapNatalChart` lo rechaza (ver
+  // `natalChartMapper.test.ts`). La geometría igual tiene que sostener una
+  // carta sin puntos, que es lo que este test cuida.
+  const vacio = { triad: {} as never, placements: [], houses: [], aspects: [], accuracy: "", limitations: [] };
+  const layout = buildWheelLayout(vacio);
   assert.equal(layout.planets.length, 0);
   assert.equal(layout.houses.length, 0);
   assert.equal(layout.aspects.length, 0);

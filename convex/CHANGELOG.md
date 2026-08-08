@@ -1,5 +1,13 @@
 # Contrato — CHANGELOG
 
+## 2026-08-08 — Hotfix definitivo: restaurar el contrato natal público
+
+- **Qué cambia:** `charts.current()` vuelve a entregar la carta sanitizada directamente en `payload` (`placements`, `houses`, `aspects`, `summary`, etc.) en vez de envolverla en `payload.chart.normalized`. El cliente acepta temporalmente ambas formas y rechaza payloads malformados o sin Sol/Luna/Ascendente, salvo el Ascendente legítimamente ausente con `noon_fallback`.
+- **Por qué:** el arreglo probado del 2 de agosto se desplegó desde una rama lateral pero no quedó integrado en `main`; un despliegue posterior restauró la forma incompatible y el mapper produjo `SO — / LU — / AC —` en silencio.
+- **Privacidad y acceso:** siguen fuera de la respuesta fecha, hora, lugar, coordenadas, `timezoneOffset`, request/raw del proveedor y hashes. Free conserva posiciones/tríada sin casas ni aspectos; Plus conserva la carta completa.
+- **Persistencia:** no hay schema, migración ni escritura de datos. Los ids, `createdAt`, `updatedAt` y payloads almacenados no se modifican ni se recalculan.
+- **Rollout:** PR obligatorio a `main`; deploy exclusivo de Convex producción desde un worktree limpio del SHA mergeado; sin promoción de previews ni cambios en Vercel. Rollback por redeploy del bundle anterior de funciones.
+
 ## 2026-08-01 — Oferta web mensual única con siete días de Plus completo
 
 - **Oferta pública:** `payments.getWebOffer({})` deja de publicar los ids `weekly | yearly` y devuelve únicamente `monthly`, con intervalo `month`. Precio y moneda siguen viniendo del Price configurado en Stripe; el cliente no escribe USD 10 ni ningún importe.
