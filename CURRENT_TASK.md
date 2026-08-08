@@ -23,7 +23,19 @@
 
 **Sin verificar (no bloquea el PR):** no hubo pasada de navegador contra un proyecto PostHog real — no se configuró ninguna clave, así que el camino que se ejerció es el de "sin clave, no inicializa". Confirmar que los eventos llegan requiere una clave de test y es de Lucas/Codex. En el bundle exportado se verificó que el evento quedó cableado.
 
-**Sin commit, push, PR ni deploy.** Producción, Convex, Stripe y Clerk intactos; no se tocó UI visible.
+**Estado:** implementado y desplegado previamente como rama de analítica web; el dominio productivo continúa sirviendo esta línea y no `main`.
+
+## Incidente web — restaurar la carta natal vigente (2026-08-07, Codex)
+
+**Objetivo:** corregir el falso estado “carta desactualizada/no calculada” sobre la misma línea que hoy sirve producción, sin recalcular ni modificar datos natales.
+
+**Criterios de aceptación:** una respuesta no nula de `charts.current` se renderiza como carta vigente; `null` conserva el estado sin carta; la forma pública sanitizada no exige `birthDataHash`, `birthDataId` ni `payload.birth`; ninguna función Convex ni fila de cuenta cambia; el dominio productivo queda verificado con la carta existente.
+
+**Ficha:** owner del código original Claude, coordinación/release Codex; rama `hotfix/web-natal-gate-production` desde `feat/web-pageview-analytics` `7af7548`, que reproduce el artefacto productivo actual; territorio `src/domain/natalChartGate.ts`, `test/natalChartGate.test.ts` y este registro; cambio de contrato no; riesgo medio; pruebas focalizadas + suite + typecheck + export web + verificación de preview; rollout preview y promoción manual autorizada por Lucas; rollback al deployment `dpl_95QhYwg87K5SaGM3aMJttZPH6cnT`; fuera de alcance `convex/**`, datos de cuenta, Stripe, analytics, favicon y sincronizar toda la deriva con `main`.
+
+**Causa raíz:** producción quedó fijada al artefacto viejo del 6 de agosto. Ese cliente revalidaba una carta autoritativa usando campos natales que el contrato público elimina por privacidad, por lo que una carta real no nula se degradaba falsamente. La base de datos conserva la fila natal, la carta exacta y la interpretación sin escrituras recientes.
+
+**Implementación:** se reaplica sin cambios el hotfix frontend ya revisado en PR #60: `charts.current !== null` es autoridad suficiente y el cliente deja de replicar/comparar el hash natal.
 
 ## Web pública v2 — hero: la carta astral base, dicha en el primer pantallazo (2026-08-01, Claude)
 
