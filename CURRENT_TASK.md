@@ -1,5 +1,25 @@
 # Current Task
 
+## Hotfix visual — la mini rueda de la tarjeta de Carta natal (2026-08-08, Claude)
+
+**Objetivo:** que la tarjeta de Carta natal de Perfil vuelva a dibujar su mini rueda en vez del hueco vacío de 232 px que muestra la captura de producción, conservando el tope de 232 y los glifos vectoriales de Sol, Luna y Ascendente.
+
+**Criterios de aceptación:** el contenedor de la mini rueda tiene ancho medible en web y nativo; `MeasuredSquare` conserva `max={232}` y el lado sigue saliendo de la medición del contenedor, nunca del viewport; los estados de carga siguen reservando el mismo alto y centrando su spinner; la tríada sigue siendo `TriadLine` + `AstroGlyph` (`sun`/`moon`/`ascendant`) con el nombre real del signo, sin códigos `SO`/`LU`/`AC`; pruebas focalizadas que cubran las dos regresiones; esta ficha.
+
+**Ficha:** owner Claude (frontend), con autorización explícita de Lucas acotada a `src/components/home/CartaCard.tsx`, sus pruebas y `CURRENT_TASK.md`; branch `fix/profile-natal-card-visual` desde `origin/main` `2ff7010`; cambio de contrato no — es sólo estilo y cobertura; riesgo bajo; rollout por PR a `main`, sin commit, push ni deploy en esta pasada; rollback revirtiendo el commit único; fuera de alcance `convex/**`, datos, Tarot, favicon, aliases, Vercel y cualquier otra pantalla.
+
+**Causa confirmada:** `MeasuredSquare` mide su contenedor con `onLayout` y hasta no tener una medida real no dibuja nada, sólo reserva el alto del tope (`minHeight: size ?? max`). El `wheelWrap` de la tarjeta no declaraba ancho propio y vive dentro de un `Pressable` con `alignItems: "center"`, así que se encogía a su contenido —que arranca vacío— y el ancho medido quedaba en 0: el porcentaje del cuadrado no resolvía nunca y sólo sobrevivía el rectángulo de 232 px. Es la misma combinación que ya está documentada en `ContentCanvas` (`alignItems: "center"` sobre un hijo con `width: "100%"` colapsa en react-native-web).
+
+**Implementación:** `wheelWrap` pasa a `alignSelf: "stretch"` + `width: "100%"` y deja de centrar; el centrado lo pone `MeasuredSquare`, que ya centra su contenido. `stateZone` recibe `alignItems: "center"` para que el spinner de los tres estados de carga siga centrado. Nada más cambia: mismo `max={232}`, misma `TriadLine` con `sun`/`moon`/`ascendant` y el nombre del signo del payload (los códigos de dos letras ya no estaban en el archivo; ahora hay regresión que lo fija).
+
+**Regresiones (`test/cartaCardVisual.test.ts`, nuevo):** el wrap declara ancho propio y NO centra; la tarjeta sigue centrando el resto de su contenido; `max={232}` y `size={size}` intactos y sin lectura de viewport; `stateZone` reserva 232 y centra, y se usa en los tres estados de carga; la tríada importa `TriadLine` y declara las tres unidades con el signo real, y `TriadLine` dibuja `AstroGlyph`; Sol, Luna y Ascendente tienen dibujo en el catálogo; ningún token `SO`/`LU`/`AC` ni la API vieja de códigos.
+
+**Validación ejecutada (2026-08-08, Codex):** pruebas focalizadas **60/60**; suite completa **846/846**; `pnpm typecheck` verde; `pnpm build:web` verde; `check:web-export` verde con presupuesto 36.19 MB / 50 MB, imagen máxima 479.3 KB / 500 KB y JS gzip 1.10 MB / 1.25 MB.
+
+**Pendiente:** la **verificación visual autenticada todavía no se pudo ejecutar** porque el navegador local no tiene la sesión del usuario; no hay smoke visual de la tarjeta real y no se debe dar por hecho. Queda para una pasada con sesión válida.
+
+**Estado:** cambio aplicado y con la validación automatizada completa en verde. Falta únicamente la pasada visual autenticada antes del PR. Sin commit, push ni deploy en esta pasada.
+
 ## Incidente producción — restaurar definitivamente las cartas natales (2026-08-08)
 
 **Objetivo:** corregir el contrato entre `charts.current` y el frontend sin recalcular ni modificar cartas existentes, integrar el arreglo en `main` y desplegar únicamente Convex producción desde el SHA mergeado.
