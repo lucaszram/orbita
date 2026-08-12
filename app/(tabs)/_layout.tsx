@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { Redirect, Slot, Tabs, usePathname } from "expo-router";
+import { AccountGate } from "@/components/orbita/AccountGate";
 import { WebAppShell } from "@/components/web/web-app-shell";
 import type { NavKey } from "@/components/web/web-nav";
 import { OrbitaTabBar } from "@/components/orbita/TabBar";
@@ -50,21 +51,34 @@ export default function TabsLayout() {
       ? "current"
       : "other";
 
-  const guard = IS_WEB
-    ? "allow"
-    : resolveTabsGuard({
-        backendConfigured: BACKEND_CONFIGURED,
-        localReady: isReady,
-        hasLocalProfile: !!profile,
-        localProfileOwner,
-        clerkLoaded: auth ? auth.isLoaded : true,
-        clerkTimedOut,
-        isSignedIn: !!auth?.isSignedIn,
-        profileAdoptionPending,
-        // La recuperación remota es del arranque, no de las tabs.
-        recovery: "idle",
-        hasRemoteBirthData: false
-      });
+  // Con backend configurado la autoridad es la misma para las dos plataformas:
+  // `onboarding.getCompletionStatus` vía el gate compartido. Acá vivía
+  // `IS_WEB ? "allow"`, un bypass que dejaba entrar a la web con cualquier
+  // sesión —sin datos natales y sin carta— a una Home que no podía dibujar
+  // nada. Ahora la web bloquea hasta `chart_ready`, igual que el nativo.
+  if (BACKEND_CONFIGURED) {
+    return (
+      <AccountGate surface="app" loading={<TabsLoading />}>
+        <TabsChrome pathname={pathname} />
+      </AccountGate>
+    );
+  }
+
+  // Sin envs no hay cuenta que resolver: la app corre 100% local y la regla
+  // sigue siendo la del perfil de este dispositivo.
+  const guard = resolveTabsGuard({
+    backendConfigured: BACKEND_CONFIGURED,
+    localReady: isReady,
+    hasLocalProfile: !!profile,
+    localProfileOwner,
+    clerkLoaded: auth ? auth.isLoaded : true,
+    clerkTimedOut,
+    isSignedIn: !!auth?.isSignedIn,
+    profileAdoptionPending,
+    // La recuperación remota es del arranque, no de las tabs.
+    recovery: "idle",
+    hasRemoteBirthData: false
+  });
 
   switch (guard) {
     case "sign-in":
@@ -76,21 +90,22 @@ export default function TabsLayout() {
       // vive en "/" y no se duplica acá.
       return <Redirect href="/" />;
     case "loading":
-      return (
-        <View style={styles.loading}>
-          <ActivityIndicator color={theme.colors.plum} />
-        </View>
-      );
+      return <TabsLoading />;
     case "allow":
     default:
       break;
   }
 
-  // En web la barra de pestañas de React Navigation no es el chrome de la app:
-  // el resto de las rutas autenticadas usa `WebAppShell`, y tener dos chromes
-  // distintos según la ruta era justamente la deriva que este trabajo elimina.
-  // El shell se monta UNA vez acá, en el layout, no por pantalla.
-  // En nativo no cambia absolutamente nada.
+  return <TabsChrome pathname={pathname} />;
+}
+
+/**
+ * El chrome de la app, ya autorizado. En web la barra de pestañas de React
+ * Navigation no es el chrome: el resto de las rutas autenticadas usa
+ * `WebAppShell`, y tener dos chromes distintos según la ruta era justamente la
+ * deriva que este trabajo elimina. En nativo no cambia nada.
+ */
+function TabsChrome({ pathname }: { pathname: string }): ReactNode {
   if (IS_WEB) {
     return (
       <WebAppShell active={navKeyForPath(pathname)}>
@@ -113,6 +128,14 @@ export default function TabsLayout() {
       <Tabs.Screen name="carta" options={{ href: null }} />
       <Tabs.Screen name="vinculo" options={{ href: null }} />
     </Tabs>
+  );
+}
+
+function TabsLoading() {
+  return (
+    <View style={styles.loading}>
+      <ActivityIndicator color={theme.colors.plum} />
+    </View>
   );
 }
 

@@ -6,7 +6,7 @@ import {
   normalizedProfileName
 } from "../convex/lib/userProfile";
 
-describe("explicit onboarding profile names", () => {
+describe("optional profile names supplied by Clerk", () => {
   it("normalizes unicode names and repeated whitespace", () => {
     assert.deepEqual(normalizedProfileName("  María   José ", " O’Connor  Pérez "), {
       firstName: "María José",

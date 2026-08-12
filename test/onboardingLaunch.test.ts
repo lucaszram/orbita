@@ -423,27 +423,109 @@ test("la vista combinada es interna y de sólo lectura", () => {
   }
 });
 
-test("«Guardá tu carta»: el sello es una pieza y el formulario tiene superficie propia", () => {
+test("«Guardá tu carta»: el sello es una pieza y la cuenta la crea Clerk", () => {
   const cuenta = sinComentarios(leer("src/onboarding/screens/AccountScreen.tsx"));
   // Escritorio: el sello en su propia columna.
   assert.match(cuenta, /layout=\{desktop \? "split" : "stage"\}/);
-  assert.match(cuenta, /aside=\{desktop \? <View style=\{styles\.seal\}>/, "en escritorio el sello es la pieza");
+  assert.match(cuenta, /aside=\{[\s\S]*?styles\.seal/, "en escritorio el sello es la pieza");
   // Móvil: el arte del sobre baja a atmósfera y el sello sube como pieza
   // compacta arriba del título. A 0.9 era el FONDO del formulario.
   assert.match(cuenta, /bgOpacity=\{desktop \? 0\.55 : 0\.32\}/);
   assert.match(cuenta, /wash=\{desktop \? 0\.5 : 0\.74\}/);
   assert.match(cuenta, /\{desktop \? null : \(\s*<View style=\{styles\.sealMobile\}>/, "sello compacto en móvil");
   assert.match(cuenta, /sealMobile: \{[\s\S]*?height: 88,/, "compacto, no un fondo");
-  // Los campos en una superficie propia, oscura y con borde.
-  assert.match(cuenta, /<View style=\{desktop \? undefined : styles\.panel\}>/, "panel del formulario en móvil");
-  assert.match(cuenta, /panel: \{\s*backgroundColor: "rgba\(10,11,15,0\.86\)"/, "superficie oscura translúcida");
-  assert.match(cuenta, /borderColor: orbita\.lineStrong/);
-  // Contraste de campo: la línea del input se perdía contra la textura.
-  assert.match(cuenta, /inputLine: \{ backgroundColor: "rgba\(214,154,106,0\.55\)"/);
-  // Y el flujo Clerk no cambia.
-  assert.match(cuenta, /codePhase/);
-  assert.match(cuenta, /Guardar mi carta/);
-  assert.match(cuenta, /account\?\.resetToEmail\(\)/, "el camino de cuenta existente sigue igual");
+  // La cuenta la crea la UI OFICIAL de Clerk.
+  assert.match(cuenta, /<ClerkSignUp email=\{email\} \/>/);
+  assert.match(cuenta, /Guardá tu carta\./, "la copy del paso se conserva");
+});
+
+test("el alta NO tiene formulario propio ni pide nombre", () => {
+  const cuenta = sinComentarios(leer("src/onboarding/screens/AccountScreen.tsx"));
+  const flow = sinComentarios(leer("src/onboarding/OnboardingFlow.tsx"));
+  // El formulario propio reimplementaba la máquina de estados de Clerk
+  // (create → prepare → attempt → setActive) y quedaba desfasado con cada
+  // requisito nuevo de la instancia.
+  for (const prohibido of [
+    "TextInput",
+    "CodeInput",
+    "secureTextEntry",
+    "confirmPassword",
+    "Repetir contraseña",
+    "Verificar código",
+    "resetToEmail",
+    "codePhase"
+  ]) {
+    assert.ok(!cuenta.includes(prohibido), `el formulario propio no puede volver: ${prohibido}`);
+    assert.ok(!flow.includes(prohibido), `el flujo tampoco puede manejarlo: ${prohibido}`);
+  }
+  // Nombre y apellido son OPCIONALES: no se piden ni existe un paso para eso.
+  for (const rel of [
+    "src/onboarding/screens/AccountScreen.tsx",
+    "src/onboarding/OnboardingFlow.tsx",
+    "src/domain/onboardingReadiness.ts"
+  ]) {
+    const codigo = sinComentarios(leer(rel));
+    assert.doesNotMatch(codigo, /needs_name/, `${rel}: no existe un estado de nombre`);
+    assert.doesNotMatch(codigo, /firstName|lastName|Apellido/, `${rel}: el alta no pide nombre`);
+  }
+  // Y el paso 13 sigue siendo UNO solo: 15 pasos, sin agregados.
+  assert.match(flow, /const TOTAL = 15;/);
+  assert.match(flow, /const STEP_ACCOUNT = 13;/);
+});
+
+test("la UI oficial de Clerk se resuelve por plataforma", () => {
+  // Mismo patrón que `BirthPicker`: Metro elige el archivo por plataforma.
+  const nativo = sinComentarios(leer("src/onboarding/components/ClerkSignUp.tsx"));
+  assert.match(nativo, /from "@clerk\/expo\/native"/);
+  assert.match(nativo, /<AuthView mode="signUp"/);
+  // El alta va EMBEBIDA en el paso, no presentada como modal: el botón de
+  // cierre de `AuthView` no tendría a dónde cerrar y sería un segundo control
+  // de salida al lado del `Header`, que sí sabe volver al paso anterior.
+  assert.match(nativo, /<AuthView mode="signUp" isDismissible=\{false\} \/>/);
+  // `AuthView` sólo acepta `mode`, `isDismissible` y `onDismiss`: no expone
+  // prellenado, así que el email no puede colarse como prop inventada.
+  assert.doesNotMatch(nativo, /initialValues/, "AuthView no tiene prellenado");
+
+  const web = sinComentarios(leer("src/onboarding/components/ClerkSignUp.web.tsx"));
+  assert.match(web, /from "@clerk\/expo\/web"/);
+  assert.match(web, /<SignUp\b/);
+  assert.ok(statSync(join(ROOT, "src/onboarding/components/ClerkSignUp.web.tsx")).size > 0);
+  // Las dos superficies del alta montan el MISMO componente.
+  for (const rel of [
+    "src/onboarding/screens/AccountScreen.tsx",
+    "src/onboarding/screens/SignUpGateScreen.tsx"
+  ]) {
+    assert.match(sinComentarios(leer(rel)), /from "\.\.\/components\/ClerkSignUp"/, rel);
+  }
+});
+
+test("el email ya escrito PRELLENA el campo de Clerk, y sólo si es real", () => {
+  // Prellenar no es tener un campo propio: el dueño del email sigue siendo
+  // Clerk. Lo único que hace Órbita es no obligar a escribirlo dos veces.
+  const web = sinComentarios(leer("src/onboarding/components/ClerkSignUp.web.tsx"));
+  assert.match(web, /email\?: string;/, "el email es opcional");
+  assert.match(web, /const prefill = email\?\.trim\(\) \?\? "";/);
+  // Vacío ⇒ NADA. `initialValues: { emailAddress: "" }` es un prellenado que no
+  // corresponde a nada escrito, y deja el campo de Clerk en estado "tocado".
+  assert.match(
+    web,
+    /initialValues=\{prefill \? \{ emailAddress: prefill \} : undefined\}/,
+    "sólo se prellena con un email real"
+  );
+  // Y las dos superficies lo cablean hasta Clerk.
+  const flow = sinComentarios(leer("src/onboarding/OnboardingFlow.tsx"));
+  assert.match(flow, /<AccountScreen[\s\S]{0,200}email=\{email\}/, "el paso 13 recibe el email del flujo");
+  assert.match(
+    sinComentarios(leer("src/onboarding/screens/AccountScreen.tsx")),
+    /<ClerkSignUp email=\{email\} \/>/
+  );
+  const ruta = sinComentarios(leer("app/crear-cuenta.tsx"));
+  assert.match(ruta, /useLocalSearchParams<\{ email\?: string \}>\(\)/, "el link directo trae `?email=`");
+  assert.match(ruta, /<SignUpGateScreen email=\{email\}/);
+  assert.match(
+    sinComentarios(leer("src/onboarding/screens/SignUpGateScreen.tsx")),
+    /<ClerkSignUp email=\{email\} \/>/
+  );
 });
 
 test("el login social es SÓLO Google, y se enciende por configuración", () => {
@@ -487,19 +569,13 @@ test("«Continuar con Google» va arriba del divisor, con marca real y accesible
   assert.doesNotMatch(btn, /StyleSheet/);
   assert.match(btn, /o continuar con email/, "el divisor nombra el camino largo");
 
-  // Las dos superficies lo montan ANTES del formulario de email.
-  for (const rel of [
-    "src/onboarding/screens/AccountScreen.tsx",
-    "src/onboarding/screens/SignInScreen.tsx"
-  ]) {
-    const codigo = sinComentarios(leer(rel));
-    assert.match(codigo, /GOOGLE_AUTH_ENABLED/, `${rel} respeta el flag`);
-    assert.match(codigo, /<GoogleButton/, `${rel} monta el botón`);
-    assert.match(codigo, /<EmailDivider \/>/, `${rel} monta el divisor`);
-    const g = codigo.indexOf("<GoogleButton");
-    const d = codigo.indexOf("<EmailDivider");
-    assert.ok(g < d, `${rel}: Google va ARRIBA del divisor`);
-  }
+  // Queda en el LOGIN. En el alta los proveedores sociales los ofrece la UI
+  // oficial de Clerk según la instancia: duplicarlos sería un segundo camino.
+  const codigo = sinComentarios(leer("src/onboarding/screens/SignInScreen.tsx"));
+  assert.match(codigo, /GOOGLE_AUTH_ENABLED/, "el login respeta el flag");
+  assert.match(codigo, /<GoogleButton/, "el login monta el botón");
+  assert.match(codigo, /<EmailDivider \/>/, "el login monta el divisor");
+  assert.ok(codigo.indexOf("<GoogleButton") < codigo.indexOf("<EmailDivider"), "Google va ARRIBA del divisor");
 });
 
 test("la escena centrada usa una columna de lectura ancha, no una tira", () => {

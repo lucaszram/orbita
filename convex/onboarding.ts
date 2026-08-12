@@ -31,14 +31,12 @@ const birthTimePrecisionValidator = v.union(v.literal("known"), v.literal("appro
 const paymentStateValidator = v.union(v.literal("not_started"), v.literal("started"), v.literal("paid"), v.literal("skipped"));
 const completionStatusValidator = v.union(
   v.literal("signed_out"),
-  v.literal("needs_name"),
   v.literal("onboarding_incomplete"),
   v.literal("profile_incomplete"),
   v.literal("chart_pending"),
   v.literal("chart_ready")
 );
 const recoveryDestinationValidator = v.union(
-  v.literal("complete_name"),
   v.literal("onboarding"),
   v.literal("edit_birth_data"),
   v.null()

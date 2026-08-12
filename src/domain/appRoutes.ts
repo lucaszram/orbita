@@ -23,6 +23,16 @@ export const ONBOARDING_ROUTE = IS_WEB ? "/empezar" : "/onboarding";
 export const SIGN_IN_ROUTE = "/iniciar-sesion";
 
 /**
+ * Editor de datos natales, igual en las dos plataformas.
+ *
+ * Es el destino de recuperación de una cuenta que YA existía y quedó incompleta
+ * (`recovery: "edit_birth_data"`). No se la manda al alta: `completeBirthData`
+ * es create-only y una cuenta existente volvería con conflicto. Acá se completa
+ * y se recalcula sin borrar ni recrear nada.
+ */
+export const EDIT_BIRTH_DATA_ROUTE = "/editar-datos";
+
+/**
  * Formulario de alta suelto.
  *
  * NO es la entrada del alta: la cuenta se crea DENTRO del onboarding, en su

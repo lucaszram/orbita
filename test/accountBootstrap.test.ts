@@ -13,16 +13,32 @@ const ROOT = join(import.meta.dirname, "..");
 const sinComentarios = (x: string) =>
   x.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 
+/** Cuenta completa: la carta ya está persistida y verificada (`chart_ready`). */
 const CON_SESION: AccountState = {
   backendConfigured: true,
   clerkLoaded: true,
   signedIn: true,
-  birthDataResolved: true,
-  hasBirthData: true
+  completionResolved: true,
+  completion: {
+    status: "chart_ready",
+    recovery: null,
+    profileReady: true,
+    birthDataReady: true,
+    chartReady: true
+  }
+};
+
+/** Alta iniciada en este flujo que todavía no cerró. */
+const EN_ALTA: AccountState["completion"] = {
+  status: "onboarding_incomplete",
+  recovery: "onboarding",
+  profileReady: true,
+  birthDataReady: false,
+  chartReady: false
 };
 
 // --- El loop /home ↔ /onboarding --------------------------------------------
-// Sesión activa + `birthData` remoto completo + storage local vacío: el gate
+// Sesión activa + cuenta completa en el backend + storage local vacío: el gate
 // mandaba a Home, el guard de perfil de Home mandaba a onboarding, y el gate del
 // onboarding devolvía a Home porque el remoto estaba completo. La sesión que
 // teníamos en el navegador no lo mostraba porque ya tenía perfil local.
@@ -31,7 +47,7 @@ test("cuenta completa SIN perfil local → bootstrap, nunca Home ni onboarding",
   const d = resolveAccountDestination({ ...CON_SESION, localProfileReady: false });
   assert.equal(d, "bootstrap");
   // Y ese destino no habilita NINGUNA superficie: no redirige, así que no hay loop.
-  for (const surface of ["landing", "auth", "onboarding", "app"] as const) {
+  for (const surface of ["landing", "auth", "onboarding", "edit-birth-data", "app"] as const) {
     assert.ok(!destinationAllows(d, surface), `bootstrap no puede habilitar ${surface}`);
   }
 });
@@ -53,7 +69,7 @@ test("cuenta incompleta SIN datos ajenos → onboarding directo", () => {
     assert.equal(
       resolveAccountDestination({
         ...CON_SESION,
-        hasBirthData: false,
+        completion: EN_ALTA,
         localProfileReady,
         localProfileForeign: false
       }),
@@ -69,7 +85,7 @@ test("cuenta incompleta CON datos ajenos → primero aislar", () => {
   assert.equal(
     resolveAccountDestination({
       ...CON_SESION,
-      hasBirthData: false,
+      completion: EN_ALTA,
       localProfileReady: false,
       localProfileForeign: true
     }),
@@ -145,7 +161,15 @@ test("el alta vive dentro del onboarding, en su paso original", () => {
   assert.match(flow, /const STEP_ACCOUNT = 13;/);
   assert.match(flow, /const FINAL_STEP = TOTAL - 1;/);
   assert.match(flow, /case STEP_ACCOUNT:\s*screen = \(\s*<AccountScreen/);
-  for (const pieza of ["useAccountFlow", "sessionActivated", "validateSignupPassword", "accountCode"]) {
+  // El cableado del paso de cuenta después de pasar a la UI oficial de Clerk:
+  // ya no hay contraseña ni código propios, sí el borrador remoto confirmado
+  // antes de abrir Clerk y la sesión que el propio componente activa.
+  for (const pieza of [
+    "useAccountFlow",
+    "sessionActivated",
+    "prepareSignupDraft",
+    "ensureClientDraftId"
+  ]) {
     assert.match(flow, new RegExp(pieza), `falta el cableado del paso de cuenta: ${pieza}`);
   }
 });

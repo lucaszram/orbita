@@ -6,9 +6,9 @@ import { buildBirthDataHash, buildNatalChartCacheKey } from "../convex/lib/birth
 import {
   chartMatchesCompletionBirthData,
   deriveOnboardingCompletion,
+  hasCompletionUser,
   hasValidCompletionBirthData,
-  hasValidCompletionBirthInput,
-  hasValidCompletionProfile
+  hasValidCompletionBirthInput
 } from "../convex/lib/onboardingCompletion";
 import { ASTROLOGY_API_CHART_CALCULATION_VERSION } from "../convex/lib/orbita";
 
@@ -34,10 +34,10 @@ const CHART = {
 };
 
 describe("authoritative onboarding completion", () => {
-  it("requires explicit persisted first and last name", () => {
-    assert.equal(hasValidCompletionProfile(USER), true);
-    assert.equal(hasValidCompletionProfile({ ...USER, firstName: "  " }), false);
-    assert.equal(hasValidCompletionProfile({ ...USER, lastName: undefined }), false);
+  it("does not require a name when Clerk did not provide one", () => {
+    assert.equal(hasCompletionUser(USER), true);
+    assert.equal(hasCompletionUser({ _id: USER._id }), true);
+    assert.equal(hasCompletionUser(null), false);
     assert.equal(
       deriveOnboardingCompletion({
         authenticated: true,
@@ -46,7 +46,26 @@ describe("authoritative onboarding completion", () => {
         birthData: BIRTH,
         chart: CHART
       }).status,
-      "needs_name"
+      "chart_ready"
+    );
+  });
+
+  it("keeps a missing internal user in recovery without inventing a name step", () => {
+    assert.deepEqual(
+      deriveOnboardingCompletion({
+        authenticated: true,
+        user: null,
+        signupInProgress: true,
+        birthData: null,
+        chart: null
+      }),
+      {
+        status: "onboarding_incomplete",
+        recovery: "onboarding",
+        profileReady: false,
+        birthDataReady: false,
+        chartReady: false
+      }
     );
   });
 

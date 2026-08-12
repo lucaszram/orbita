@@ -2,8 +2,8 @@
 
 ## 2026-08-11 — Readiness natal autoritativo para alta y recuperación
 
-- **Qué cambia:** `onboardingDrafts` suma el campo aditivo `flowOrigin?: "anonymous_signup" | "authenticated_recovery"`. Se incorpora `onboarding.confirmSignupDraft({ clientDraftId })`, confirmación anónima e idempotente que sólo devuelve `{ ready: true }` para un borrador remoto completo, y la consulta pública `onboarding.getCompletionStatus({ clientDraftId? })`, que devuelve un estado sin PII: `signed_out | needs_name | onboarding_incomplete | profile_incomplete | chart_pending | chart_ready`, el destino de recuperación `complete_name | onboarding | edit_birth_data | null` y los booleanos `profileReady`/`birthDataReady`/`chartReady`.
-- **Autoridad:** `chart_ready` exige identidad Clerk, fila `users` con nombre y apellido explícitos, datos natales completos y válidos, y una `natalChart` cuyo `birthDataId`, `birthDataHash`, `cacheKey` y versión correspondan exactamente a los datos natales vigentes. Un paso local, `isSignedIn` o el retorno de `completeBirthData` no habilitan Home.
+- **Qué cambia:** `onboardingDrafts` suma el campo aditivo `flowOrigin?: "anonymous_signup" | "authenticated_recovery"`. Se incorpora `onboarding.confirmSignupDraft({ clientDraftId })`, confirmación anónima e idempotente que sólo devuelve `{ ready: true }` para un borrador remoto completo, y la consulta pública `onboarding.getCompletionStatus({ clientDraftId? })`, que devuelve un estado sin PII: `signed_out | onboarding_incomplete | profile_incomplete | chart_pending | chart_ready`, el destino de recuperación `onboarding | edit_birth_data | null` y los booleanos `profileReady`/`birthDataReady`/`chartReady`.
+- **Autoridad:** `chart_ready` exige identidad Clerk, fila `users`, datos natales completos y válidos, y una `natalChart` cuyo `birthDataId`, `birthDataHash`, `cacheKey` y versión correspondan exactamente a los datos natales vigentes. El nombre que Clerk pueda aportar se conserva, pero es opcional y nunca bloquea el alta. Un paso local, `isSignedIn` o el retorno de `completeBirthData` no habilitan Home.
 - **Recuperación:** un alta iniciada anónimamente conserva su origen al adjuntarse a Clerk y vuelve al onboarding si falla la finalización. Una cuenta existente incompleta vuelve a `/editar-datos`; nunca se borra ni se recrea.
 - **Rendimiento:** la consulta es reactiva y sólo confirma el resultado persistido; no llama al proveedor, no hace polling ni dispara cálculos. La única cadena de finalización reutiliza el cálculo idempotente por `cacheKey`.
 - **Rollout:** contrato compatible primero en Convex preview/dev. Producción requiere el mismo commit aprobado, desplegando primero Convex compatible y luego un build web con variables productivas.
@@ -15,12 +15,12 @@
 - **Privacidad:** el claim identifica la combinación ya guardada de etiqueta y coordenadas, no se devuelve en respuestas de producto ni se usa como autoridad natal.
 - **Rollout:** desplegar primero este schema compatible y después el worker interno; rollback eliminando el worker y, en una entrega posterior, el campo opcional.
 
-## 2026-08-11 — Nombre y apellido explícitos durante el alta gratuita
+## 2026-08-11 — Nombre y apellido opcionales cuando Clerk los provee
 
-- **Qué cambia:** `users` incorpora `firstName?` y `lastName?` de forma aditiva. El alta web podrá persistir ambos campos después de la autenticación, además del `name` de presentación compatible con clientes anteriores.
-- **Por qué:** Clerk no garantiza que el flujo email/clave actual entregue esos atributos en la identidad. Sin captura explícita, las cuentas nuevas quedan sin nombre aunque el onboarding natal finalice.
+- **Qué cambia:** `users` incorpora `firstName?` y `lastName?` de forma aditiva para conservarlos cuando Clerk los provee, además del `name` de presentación compatible con clientes anteriores. El onboarding no los solicita ni los exige.
+- **Por qué:** Clerk no garantiza que el flujo email/clave entregue esos atributos, mientras que Google puede aportarlos. Se conserva la diferencia real sin convertirla en un requisito de producto.
 - **Privacidad y acceso:** son datos de perfil de la propia cuenta; sólo la identidad autenticada puede escribirlos. No se incluyen en telemetría ni logs.
-- **Rollout:** coordinar con el `SignUp` oficial de Clerk y validar en una cuenta nueva que nombre, apellido, `birthData` y `natalChart` existan antes de habilitar Home. Sin despliegue de producción en esta tarea.
+- **Rollout:** coordinar con el `SignUp` oficial de Clerk y validar que `birthData` y `natalChart` existan antes de habilitar Home, tanto si Clerk aporta un nombre como si no. Sin despliegue de producción en esta tarea.
 
 ## 2026-08-08 — Hotfix definitivo: restaurar el contrato natal público
 

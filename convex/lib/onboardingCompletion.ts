@@ -4,17 +4,15 @@ import {
   type BirthDataForHash
 } from "./birthDataConsistency";
 import { ASTROLOGY_API_CHART_CALCULATION_VERSION } from "./orbita";
-import { isValidPersistedProfileNamePart } from "./userProfile";
 
 export type OnboardingCompletionStatus =
   | "signed_out"
-  | "needs_name"
   | "onboarding_incomplete"
   | "profile_incomplete"
   | "chart_pending"
   | "chart_ready";
 
-export type OnboardingRecoveryDestination = "complete_name" | "onboarding" | "edit_birth_data" | null;
+export type OnboardingRecoveryDestination = "onboarding" | "edit_birth_data" | null;
 
 type BirthDataDocument = BirthDataForHash & {
   _id: unknown;
@@ -29,14 +27,14 @@ type NatalChartDocument = {
   payload?: unknown;
 };
 
-export function hasValidCompletionProfile(value: unknown): value is { _id: unknown; firstName: string; lastName: string } {
+/**
+ * Readiness sólo exige que exista la cuenta interna. Clerk puede aportar un
+ * nombre (por ejemplo con Google), pero el alta por email no tiene por qué
+ * hacerlo y la ausencia de nombre nunca bloquea Órbita.
+ */
+export function hasCompletionUser(value: unknown): value is { _id: unknown } {
   if (!value || typeof value !== "object") return false;
-  const profile = value as Record<string, unknown>;
-  return Boolean(
-    profile._id &&
-      isValidPersistedProfileNamePart(profile.firstName) &&
-      isValidPersistedProfileNamePart(profile.lastName)
-  );
+  return Boolean((value as Record<string, unknown>)._id);
 }
 
 function isCanonicalDate(value: unknown) {
@@ -139,10 +137,10 @@ export function deriveOnboardingCompletion(args: {
     };
   }
 
-  if (!hasValidCompletionProfile(args.user)) {
+  if (!hasCompletionUser(args.user)) {
     return {
-      status: "needs_name",
-      recovery: "complete_name",
+      status: args.signupInProgress ? "onboarding_incomplete" : "profile_incomplete",
+      recovery: args.signupInProgress ? "onboarding" : "edit_birth_data",
       profileReady: false,
       birthDataReady: false,
       chartReady: false

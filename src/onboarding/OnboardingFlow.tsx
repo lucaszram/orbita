@@ -12,8 +12,9 @@ import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { WebLayoutProvider } from "@/components/web/web-layout-provider";
 import { backendConfig } from "@/services/backendProviders";
-import { clearDraft, readDraft, writeDraft } from "@/domain/onboardingDraft";
+import { clearDraft, ensureClientDraftId, readDraft, writeDraft } from "@/domain/onboardingDraft";
 import { resolveDebugStep } from "@/domain/onboardingDebug";
+import { isChartReady } from "@/domain/onboardingReadiness";
 import { INTERNAL_TOOLS_ENABLED } from "@/services/internalTools";
 
 import { BirthPayloadError, birthPayloadMessage } from "@/domain/birthPayload";
@@ -37,13 +38,14 @@ import { type Identity, IdentifyScreen } from "./screens/IdentifyScreen";
 import { PaywallScreen, type PlanId } from "./screens/PaywallScreen";
 import { PersonalizingScreen } from "./screens/PersonalizingScreen";
 import { SplashScreen } from "./screens/SplashScreen";
-import { validateSignupPassword } from "./signup";
 import { orbita } from "./theme";
 import {
   useAccountFlow,
-  useOnboardingBirthDataPersist,
   useOnboardingChart,
-  useOnboardingComputeTriad
+  useOnboardingCompletion,
+  useOnboardingComputeTriad,
+  useOnboardingFinalize,
+  useOnboardingSignupDraft
 } from "./useAccount";
 import type { OnboardingChart } from "./useAccount";
 
@@ -105,6 +107,18 @@ function to24hFromParts(t: BirthTime): string {
   return `${String(t.hour).padStart(2, "0")}:${String(t.minute).padStart(2, "0")}`;
 }
 
+/**
+ * La identidad de la UI usa guiones y el contrato Convex usa guiones bajos
+ * (`v.literal("prefiero_no_decirlo")`). La traducción vive acá, en el borde de
+ * escritura: mandarla tal cual la rechazaba el validador y el borrador remoto
+ * nunca llegaba a guardarse.
+ */
+const IDENTITY_TO_BACKEND: Record<Identity, "ella" | "el" | "prefiero_no_decirlo"> = {
+  ella: "ella",
+  el: "el",
+  "prefiero-no-decirlo": "prefiero_no_decirlo",
+};
+
 /** Onboarding container — owns flow state and navigation, dispatches screens. */
 export function OnboardingFlow({
   inspectStep,
@@ -143,21 +157,26 @@ export function OnboardingFlow({
   );
   const [birthTime, setBirthTime] = useState<BirthTime>(saved?.birthTime ?? { hour: 12, minute: 0 });
   const [timeUnknown, setTimeUnknown] = useState(saved?.timeUnknown ?? false);
-  // Email tipeado en el login y traído por "Crear una cuenta" (`?email=`): el
-  // usuario no lo vuelve a escribir; llega ya cargado al paso de cuenta.
-  const [email, setEmail] = useState(() =>
+  // Email tipeado en el login y traído por "Crear una cuenta" (`?email=`). El
+  // alta ya no tiene campo de email propio —lo pide la UI oficial de Clerk—:
+  // sólo viaja al paso 13 como PRELLENADO y se conserva en el borrador para no
+  // perderlo en la vuelta. Nunca se escribe ni se valida acá.
+  const [email] = useState(() =>
     typeof params.email === "string" && params.email ? params.email : saved?.email ?? ""
   );
-  // Clerk Producción exige contraseña en el alta: se pide + confirmación.
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [accountFormError, setAccountFormError] = useState<string | null>(null);
-  const [accountCode, setAccountCode] = useState("");
   const [plan, setPlan] = useState<PlanId>("annual");
   const account = useAccountFlow();
-  // Persistencia ESTRICTA: propaga el error. Con el wrapper anterior el catch
-  // de `submit` era inalcanzable y el alta navegaba sin haber escrito.
-  const persistBackend = useOnboardingBirthDataPersist();
+  // Identidad del borrador REMOTO de este alta. Se genera una sola vez y
+  // sobrevive a la vuelta de Clerk: es lo que permite adjuntar a la cuenta
+  // recién creada el borrador guardado anónimo (`flowOrigin: anonymous_signup`).
+  const clientDraftId = useMemo(() => (inspectStep != null ? null : ensureClientDraftId()), [inspectStep]);
+  const prepareSignupDraft = useOnboardingSignupDraft();
+  const finalizeOnboarding = useOnboardingFinalize();
+  // Autoridad ÚNICA de acceso: ni `isSignedIn` ni el retorno de las escrituras.
+  const completion = useOnboardingCompletion(clientDraftId ?? undefined);
+  const [draftPhase, setDraftPhase] = useState<"preparing" | "error" | "ready">("preparing");
+  const [draftError, setDraftError] = useState<string | null>(null);
+  const [draftTick, setDraftTick] = useState(0);
   const chartPreview = useOnboardingChart();
   const computeTriad = useOnboardingComputeTriad();
   const [computed, setComputed] = useState<OnboardingChart | undefined>();
@@ -171,6 +190,9 @@ export function OnboardingFlow({
   // se toma en la primera línea; sólo se libera al fallar (en el éxito ya
   // navegamos fuera del flujo).
   const submitLock = useRef(false);
+  // La salida corre UNA sola vez: la query de readiness es reactiva y su
+  // confirmación puede volver a emitirse mientras la navegación está en vuelo.
+  const enterLock = useRef(false);
   const computedSig = useRef<string | null>(null);
   // La sesión se activó EN este flujo (verify/oauth ok): fuente de verdad
   // inmediata, porque `useAuth` puede seguir stale en el render siguiente.
@@ -229,8 +251,20 @@ export function OnboardingFlow({
     // En inspección no se guarda: un salto arranca con los valores por defecto
     // y sobrescribiría el borrador real de la persona.
     if (inspeccion) return;
-    writeDraft({ step, identity, birthDate, placeQuery, birthPlace, birthTime, timeUnknown, email });
-  }, [step, identity, birthDate, placeQuery, birthPlace, birthTime, timeUnknown, email, inspeccion]);
+    writeDraft({
+      step,
+      identity,
+      birthDate,
+      placeQuery,
+      birthPlace,
+      birthTime,
+      timeUnknown,
+      email,
+      // El id del borrador remoto viaja con el borrador local: es lo único que
+      // permite reencontrar la fila anónima después de que Clerk remonte.
+      clientDraftId: clientDraftId ?? undefined
+    });
+  }, [step, identity, birthDate, placeQuery, birthPlace, birthTime, timeUnknown, email, clientDraftId, inspeccion]);
 
   const next = () => setStep((s) => Math.min(TOTAL - 1, s + 1));
   const back = () => {
@@ -289,126 +323,80 @@ export function OnboardingFlow({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, computeTriad, birthPlace, birthDateISO, timeUnknown, birthTime.hour, birthTime.minute, retryTick, inspeccion]);
 
-  // `codeOverride`: la auto-verificación del CodeInput pasa el código recién
-  // completado directo (el estado `accountCode` todavía no re-renderizó).
-  const accountNext = async (codeOverride?: string) => {
-    // Inspección: nunca se crea una cuenta ni se avanza.
-    if (inspeccion) return;
-    if (!account || account.isSignedIn) {
-      next();
-      return;
-    }
-    const trimmed = email.trim().toLowerCase();
-    if (account.phase === "email") {
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(trimmed)) {
-        setAccountFormError("Revisá el email.");
-        return;
-      }
-      const pwError = validateSignupPassword(password, confirmPassword);
-      if (pwError) {
-        setAccountFormError(pwError);
-        return;
-      }
-      setAccountFormError(null);
-      await account.start(trimmed, password);
-      return;
-    }
-    const ok = await account.verify((codeOverride ?? accountCode).trim());
-    if (ok) {
-      sessionActivated.current = true;
-      next();
-    }
-  };
-
-  const accountOAuth = async (provider: "google") => {
-    // Inspección: no se abre un flujo de OAuth ni se activa sesión.
-    if (inspeccion) return;
-    if (!account) {
-      next();
-      return;
-    }
-    const ok = await account.oauth(provider);
-    if (ok) {
-      sessionActivated.current = true;
-      next();
-    }
-  };
-
-  // Llegar al paso de cuenta con la sesión YA activa (volvió del alta web, o
-  // entró por login y sigue el alta): no se pide una segunda cuenta.
+  // ANTES de abrir Clerk: el borrador del alta tiene que estar guardado y
+  // CONFIRMADO en el backend, con su `flowOrigin: "anonymous_signup"`. Crear
+  // primero la identidad y escribir después es lo que dejaba cuentas sin datos
+  // que ninguna pantalla sabía recuperar.
+  //
+  // `confirmSignupDraft` exige contexto anónimo, así que esto corre sólo
+  // mientras no hay sesión; con la sesión ya activa el paso se saltea entero.
   useEffect(() => {
     if (inspeccion) return;
-    if (step === STEP_ACCOUNT && account?.isSignedIn) next();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, account?.isSignedIn, inspeccion]);
-
-  const submit = async () => {
-    // Inspección visual: ninguna escritura, ni siquiera desde un CTA.
-    if (inspeccion) return;
-    // Reentrada: el lock va PRIMERO y es sincrónico.
-    if (submitLock.current) return;
-    submitLock.current = true;
-    const birthTimeValue = timeUnknown ? undefined : timeLabel;
-
-    // NADA sale del dispositivo sin una cuenta confirmada.
-    //
-    // Hasta el paso de cuenta el alta vive entera en el borrador local: es lo
-    // que permite que la experiencia inmersiva enganche antes de pedir nada.
-    // El precio es que este cierre es el ÚNICO punto donde eso se vuelve un
-    // dato remoto, y sólo puede hacerlo si hay un usuario Clerk activo. Sin él
-    // se vuelve al paso de cuenta con el borrador intacto — jamás se escribe
-    // "por si acaso" ni se pierde lo cargado.
-    const cuentaActiva = sessionActivated.current || !!auth?.isSignedIn || !!account?.isSignedIn;
-    if (persistBackend && !cuentaActiva) {
-      submitLock.current = false;
-      setStep(STEP_ACCOUNT);
+    if (step !== STEP_ACCOUNT) return;
+    if (!prepareSignupDraft || !clientDraftId) {
+      // Sin backend configurado el alta es local: no hay borrador remoto que
+      // confirmar y Clerk tampoco se monta.
+      setDraftPhase("ready");
       return;
     }
-
-    // ÚNICA ruta de persistencia del onboarding, y se ESPERA. Antes había dos:
-    // un efecto al montar el paso 14 (con `void`, sin manejo de error) y otra
-    // acá, también con `void`. Ese efecto sin guarda persistía los valores por
-    // defecto cuando se saltaba directo al paso 14, y el `void` hacía que un
-    // fallo pasara desapercibido mientras el flujo navegaba a la recepción como
-    // si todo hubiera salido bien.
-    if (persistBackend) {
-      setSubmitError(null);
-      setSubmitting(true);
-      try {
-        await persistBackend({
-          birthDate: birthDateISO,
-          birthTime: birthTimeValue,
-          birthPlaceLabel: birthPlace?.label,
-          latitude: birthPlace?.latitude,
-          longitude: birthPlace?.longitude,
-          timezone: birthPlace?.timezone,
-        });
-      } catch (e) {
-        // Nada de perfil local, nada de limpiar el borrador, nada de navegar: la
-        // persona ve el error y puede reintentar sin perder lo cargado.
-        setSubmitError(
-          e instanceof BirthPayloadError
-            ? birthPayloadMessage(e.problem)
-            : "Tus datos siguen acá. Puede ser la conexión; probá de nuevo y la guardamos."
+    if (sesionActiva) return;
+    let cancelled = false;
+    setDraftPhase("preparing");
+    setDraftError(null);
+    prepareSignupDraft({
+      clientDraftId,
+      currentStep: STEP_ACCOUNT,
+      identity: IDENTITY_TO_BACKEND[identity],
+      birthDate: birthDateISO,
+      birthTime: timeUnknown ? undefined : to24hFromParts(birthTime),
+      birthTimePrecision: timeUnknown ? "unknown" : "known",
+      birthPlaceLabel: birthPlace?.label,
+      latitude: birthPlace?.latitude,
+      longitude: birthPlace?.longitude,
+      timezone: birthPlace?.timezone
+    })
+      .then(() => {
+        if (!cancelled) setDraftPhase("ready");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setDraftPhase("error");
+        setDraftError(
+          "Tus datos siguen acá. No pudimos guardarlos todavía; probá de nuevo antes de crear la cuenta."
         );
-        setSubmitting(false);
-        submitLock.current = false;
-        return;
-      }
-      setSubmitting(false);
-    }
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, clientDraftId, prepareSignupDraft, sesionActiva, draftTick, inspeccion]);
 
-    // Con sesión activa (alta con cuenta, OAuth o resume=datos post-login) el
-    // perfil queda marcado con su dueño: el próximo arranque lo reconoce como
-    // propio en vez de mandarlo a reconciliar. Guest → sin dueño. Carrera
-    // post-verify: si useAuth sigue stale (userId todavía no llegó), el
+  // La UI oficial de Clerk activa la sesión por su cuenta: cuando eso pasa, el
+  // alta avanza al cierre. No hay callback propio ni segunda cuenta.
+  useEffect(() => {
+    if (inspeccion) return;
+    if (step !== STEP_ACCOUNT || !sesionActiva) return;
+    sessionActivated.current = true;
+    next();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, sesionActiva, inspeccion]);
+
+  /**
+   * Salida del alta: perfil local + recepción. Se llama UNA sola vez, y con
+   * backend configurado SÓLO después de que el estado autoritativo diga
+   * `chart_ready`. Ni `isSignedIn`, ni el retorno de `completeBirthData`, ni un
+   * paso local alcanzan para entrar.
+   */
+  const enterApp = async () => {
+    if (enterLock.current) return;
+    enterLock.current = true;
+    const birthTimeValue = timeUnknown ? undefined : timeLabel;
+    // Con sesión activa el perfil queda marcado con su dueño: el próximo
+    // arranque lo reconoce como propio en vez de mandarlo a reconciliar.
+    // Carrera post-verify: si useAuth sigue stale (userId todavía no llegó), el
     // perfil se crea sin dueño con ADOPCIÓN PENDIENTE y se marca solo apenas
     // aparece el userId (resolveProfileOwnerAtCreation + AppState).
     const owner = resolveProfileOwnerAtCreation({
-      // La sesión se activa DENTRO del flujo (paso de cuenta), así que
-      // `useAuth` puede seguir stale en este render: el ref que setea
-      // verify/oauth es la señal inmediata. Sin esto el perfil quedaba sin
-      // dueño y el próximo arranque lo mandaba a reconciliar.
       sessionActive: sessionActivated.current || !!auth?.isSignedIn || !!account?.isSignedIn,
       knownUserId: auth?.userId ?? null,
     });
@@ -440,6 +428,65 @@ export function OnboardingFlow({
     });
   };
 
+  const submit = async () => {
+    // Inspección visual: ninguna escritura, ni siquiera desde un CTA.
+    if (inspeccion) return;
+    // Reentrada: el lock va PRIMERO y es sincrónico.
+    if (submitLock.current) return;
+    submitLock.current = true;
+
+    // NADA sale del dispositivo sin una cuenta confirmada.
+    //
+    // Hasta el paso de cuenta el alta vive entera en el borrador local: es lo
+    // que permite que la experiencia inmersiva enganche antes de pedir nada.
+    // El precio es que este cierre es el ÚNICO punto donde eso se vuelve un
+    // dato remoto, y sólo puede hacerlo si hay un usuario Clerk activo. Sin él
+    // se vuelve al paso de cuenta con el borrador intacto — jamás se escribe
+    // "por si acaso" ni se pierde lo cargado.
+    const cuentaActiva = sessionActivated.current || !!auth?.isSignedIn || !!account?.isSignedIn;
+    if (finalizeOnboarding && !cuentaActiva) {
+      submitLock.current = false;
+      setStep(STEP_ACCOUNT);
+      return;
+    }
+
+    // Sin backend configurado (builds locales) no hay nada remoto que esperar.
+    if (!finalizeOnboarding) {
+      await enterApp();
+      return;
+    }
+
+    // Cadena idempotente: adjuntar el borrador anónimo a la cuenta, escribir los
+    // datos natales y calcular la carta. Reintentarla no duplica filas ni
+    // recalcula contra el proveedor. NO navega: quien autoriza entrar es
+    // `getCompletionStatus`, y su confirmación llega por la query reactiva.
+    setSubmitError(null);
+    setSubmitting(true);
+    try {
+      await finalizeOnboarding({
+        clientDraftId: clientDraftId ?? undefined,
+        birthDate: birthDateISO,
+        birthTime: timeUnknown ? undefined : timeLabel,
+        birthPlaceLabel: birthPlace?.label,
+        latitude: birthPlace?.latitude,
+        longitude: birthPlace?.longitude,
+        timezone: birthPlace?.timezone,
+      });
+    } catch (e) {
+      // Nada de perfil local, nada de limpiar el borrador, nada de navegar: la
+      // persona ve el error y puede reintentar sin perder lo cargado.
+      setSubmitError(
+        e instanceof BirthPayloadError
+          ? birthPayloadMessage(e.problem)
+          : "Tus datos siguen acá. Puede ser la conexión; probá de nuevo y la guardamos."
+      );
+      setSubmitting(false);
+      submitLock.current = false;
+      return;
+    }
+    setSubmitting(false);
+  };
+
   // Sin paywall: al llegar al paso de pago (step 14) se entra directo a la app.
   useEffect(() => {
     if (inspeccion) return;
@@ -447,8 +494,17 @@ export function OnboardingFlow({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, inspeccion]);
 
-  // Sesión ya activa (login previo o continuación del alta): el paso de crear
-  // cuenta se saltea solo — nunca pedir crear/iniciar sesión de nuevo.
+  // La única puerta de salida con backend: la carta ya está PERSISTIDA y
+  // verificada contra los datos natales vigentes. Mientras el estado sea
+  // `chart_pending` u `onboarding_incomplete`, el cierre sigue esperando.
+  useEffect(() => {
+    if (inspeccion || !finalizeOnboarding) return;
+    if (step !== FINAL_STEP) return;
+    if (!isChartReady(completion)) return;
+    void enterApp();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, completion, finalizeOnboarding, inspeccion]);
+
   if (!fontsLoaded) return <View style={styles.fill} />;
 
   let screen: ReactNode;
@@ -548,21 +604,16 @@ export function OnboardingFlow({
       screen = <BeforeAfterScreen step={step} onNext={next} onBack={back} />;
       break;
     case STEP_ACCOUNT:
+      // La cuenta se crea con la UI OFICIAL de Clerk. La pantalla sólo aporta
+      // el escenario y la puerta: Clerk no se monta hasta que el borrador del
+      // alta está guardado y confirmado en el backend.
       screen = (
         <AccountScreen
           step={step}
+          phase={draftPhase}
+          error={draftError}
           email={email}
-          onEmail={setEmail}
-          password={password}
-          onPassword={setPassword}
-          confirmPassword={confirmPassword}
-          onConfirmPassword={setConfirmPassword}
-          formError={accountFormError}
-          code={accountCode}
-          onCode={setAccountCode}
-          account={account}
-          onNext={accountNext}
-          onOAuth={accountOAuth}
+          onRetry={() => setDraftTick((t) => t + 1)}
           onBack={back}
         />
       );

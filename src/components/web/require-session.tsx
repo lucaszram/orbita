@@ -37,7 +37,8 @@ export function RequireSession({ children }: { children: ReactNode }) {
     );
   }
   // El destino lo decide el resolver único: sin sesión va a login, y una cuenta
-  // sin `birthData` va al onboarding en vez de entrar a una Home sin carta.
+  // sin carta natal persistida va al onboarding (o al editor de datos, si ya
+  // existía) en vez de entrar a una Home que no tiene nada que dibujar.
   return (
     <AccountGate
       surface="app"

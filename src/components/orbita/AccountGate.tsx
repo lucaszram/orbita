@@ -1,7 +1,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { Redirect } from "expo-router";
-import { destinationAllows } from "@/domain/accountDestination";
-import { HOME_ROUTE, ONBOARDING_ROUTE, SIGN_IN_ROUTE } from "@/domain/appRoutes";
+import { destinationAllows, type AccountSurface } from "@/domain/accountDestination";
+import { EDIT_BIRTH_DATA_ROUTE, HOME_ROUTE, ONBOARDING_ROUTE, SIGN_IN_ROUTE } from "@/domain/appRoutes";
 import { useAccountBootstrap } from "@/hooks/useAccountBootstrap";
 import { useAccountDestination } from "@/hooks/useAccountDestination";
 import { ErrorState, MinimalLoading } from "@/components/orbita/states";
@@ -21,7 +21,7 @@ export function AccountGate({
   error,
   sticky = false
 }: {
-  surface: "landing" | "auth" | "onboarding" | "app";
+  surface: AccountSurface;
   children: ReactNode;
   /** Carga propia de la superficie (la web usa su spinner sobre fondo oscuro). */
   loading?: ReactNode;
@@ -91,6 +91,10 @@ export function AccountGate({
       return <Redirect href={SIGN_IN_ROUTE as never} />;
     case "onboarding":
       return <Redirect href={ONBOARDING_ROUTE as never} />;
+    case "edit-birth-data":
+      // Cuenta preexistente incompleta: se completa donde SÍ se puede editar y
+      // recalcular. Nunca se la manda al alta, que es create-only.
+      return <Redirect href={EDIT_BIRTH_DATA_ROUTE as never} />;
     case "app-home":
       return <Redirect href={HOME_ROUTE as never} />;
   }

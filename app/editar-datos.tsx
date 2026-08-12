@@ -10,7 +10,11 @@ import {
 } from "react-native";
 import { Redirect, useRouter } from "expo-router";
 
+import { AccountGate } from "@/components/orbita/AccountGate";
+import { WebLoading } from "@/components/web/require-session";
 import { Text } from "@/components/ui/text";
+import { HOME_ROUTE } from "@/domain/appRoutes";
+import { onboardingInputFromBirthData } from "@/domain/sessionStart";
 import {
   applyBirthEdits,
   birthSaveGate,
@@ -38,6 +42,7 @@ import { Body, Label, Title } from "@/onboarding/components/Type";
 import { font, GUTTER, orbita } from "@/onboarding/theme";
 import { BirthPayloadError, birthPayloadMessage } from "@/domain/birthPayload";
 import { useProfileBirthDataPersist } from "@/onboarding/useAccount";
+import { backendConfig } from "@/services/backendProviders";
 import { searchPlaces, type PlaceHit } from "@/services/geocoding";
 
 /**
@@ -60,9 +65,23 @@ const SYNC_REMOTE_TIMEOUT_MS = 10000;
 export default function EditarDatosRoute() {
   // Misma razón que en `/iniciar-sesion`: esta ruta monta el shell del alta
   // fuera de `OnboardingFlow` y necesita el modo responsive.
+  //
+  // El gate declara `edit-birth-data`: es el destino de recuperación de una
+  // cuenta que ya existía y quedó incompleta, y también la ruta normal de
+  // "Editar datos" desde Perfil con la cuenta completa. Las dos entran; una
+  // cuenta sin sesión no.
+  //
+  // Sin envs no hay cuenta que resolver (builds locales): el editor guarda sólo
+  // en el teléfono y no pasa por el gate.
   return (
     <WebLayoutProvider>
-      <EditarDatosSurface />
+      {backendConfig.isConfigured ? (
+        <AccountGate surface="edit-birth-data" loading={<WebLoading />}>
+          <EditarDatosSurface />
+        </AccountGate>
+      ) : (
+        <EditarDatosSurface />
+      )}
     </WebLayoutProvider>
   );
 }
@@ -70,7 +89,7 @@ export default function EditarDatosRoute() {
 function EditarDatosSurface() {
   const router = useRouter();
   const fontsLoaded = useOrbitaFonts();
-  const { isReady, profile, updateProfile } = useAppState();
+  const { isReady, profile, createProfile, updateProfile } = useAppState();
   const { isLive, isAuthLoading, auth, retryUser } = useLiveApp();
   const { birthData: remoteBirthData, birthDataResolved } = useLiveAppDocs(isLive);
   // Editar datos usa el endpoint de PERFIL: `completeBirthData` es create-only
@@ -170,8 +189,12 @@ function EditarDatosSurface() {
   const blockMessage = birthEditorBlockMessage(readiness);
 
   if (!fontsLoaded) return <View style={styles.fill} />;
-  if (isReady && !profile) return <Redirect href="/" />;
-  if (!profile) return <View style={styles.fill} />;
+  // Sin sesión, sin perfil local no hay nada que editar. CON sesión sí lo hay:
+  // una cuenta que quedó incompleta llega acá justamente para completarse, y en
+  // un navegador nuevo todavía no tiene perfil local. Rebotarla a "/" era un
+  // bucle — el gate la devolvía acá en el render siguiente.
+  if (isReady && !profile && !signedIn) return <Redirect href="/" />;
+  if (!isReady) return <View style={styles.fill} />;
 
   const patchDraft = (patch: Partial<BirthEditorDraft>) =>
     setDraft((current) => (current ? { ...current, ...patch } : current));
@@ -190,9 +213,26 @@ function EditarDatosSurface() {
         // queda el error con reintento y los datos siguen consistentes.
         await persistBackend(buildBackendBirthPayload(edits, remoteBirthData));
       }
-      // Invitado: guardado local solamente.
-      await updateProfile(applyBirthEdits(profile, edits));
-      router.back();
+      if (profile) {
+        // Invitado o cuenta con perfil local: se actualiza lo que ya existe.
+        await updateProfile(applyBirthEdits(profile, edits));
+      } else {
+        // Cuenta incompleta en un dispositivo/navegador sin perfil local: el
+        // remoto ya quedó escrito y acá se crea la copia local marcada con su
+        // dueño, en vez de dejar la cuenta sin nada que mostrar.
+        await createProfile(
+          onboardingInputFromBirthData({
+            birthDate: edits.birthDate,
+            birthTime: edits.birthTime ?? undefined,
+            birthPlaceLabel: edits.place.label
+          }),
+          auth?.userId ?? null
+        );
+      }
+      // Sin perfil local previo se llegó acá por una recuperación, no desde
+      // Perfil: no hay pantalla atrás a la cual volver.
+      if (profile) router.back();
+      else router.replace(HOME_ROUTE as never);
     } catch (e) {
       setSaveError(
         e instanceof BirthPayloadError

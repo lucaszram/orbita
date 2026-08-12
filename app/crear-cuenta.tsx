@@ -3,7 +3,7 @@ import { AccountGate } from "@/components/orbita/AccountGate";
 import { WebLoading } from "@/components/web/require-session";
 import { SIGN_IN_ROUTE } from "@/domain/appRoutes";
 import { SignUpGateScreen } from "@/onboarding/screens/SignUpGateScreen";
-import { useAccountFlow } from "@/onboarding/useAccount";
+import { backendConfig } from "@/services/backendProviders";
 
 /**
  * Formulario de alta suelto. NO es la entrada del alta.
@@ -28,25 +28,19 @@ export default function CrearCuentaRoute() {
 
 function SignUpGateInner() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ email?: string | string[] }>();
-  const account = useAccountFlow();
-  // El login manda el email tipeado: llega cargado al alta.
-  const raw = Array.isArray(params.email) ? params.email[0] : params.email;
-  const initialEmail = typeof raw === "string" ? raw : "";
+  // `?email=`: quien llega desde el login con el email ya escrito no lo vuelve
+  // a tipear. Es sólo un prellenado del campo de Clerk — el dueño del alta
+  // sigue siendo Clerk, así que no se valida ni se persiste acá.
+  const params = useLocalSearchParams<{ email?: string }>();
+  const email = typeof params.email === "string" ? params.email : undefined;
 
-  // Sin backend no hay cuenta que crear: se va al onboarding local.
-  if (!account) {
+  // Sin backend no hay proveedor real que montar.
+  if (!backendConfig.isConfigured) {
     return <WebLoading />;
   }
 
-  return (
-    <SignUpGateScreen
-      account={account}
-      initialEmail={initialEmail}
-      onSignIn={() => router.replace(SIGN_IN_ROUTE as never)}
-      // No se navega a mano: al quedar la sesión activa, el resolver reevalúa y
-      // `AccountGate` manda al onboarding (o a Home si ya hubiera datos).
-      onVerified={() => undefined}
-    />
-  );
+  // La UI oficial de Clerk activa la sesión por su cuenta. No se navega a mano:
+  // al quedar activa, el resolver reevalúa y `AccountGate` manda al onboarding
+  // (o al editor de datos / Home, según el estado autoritativo de la cuenta).
+  return <SignUpGateScreen email={email} onSignIn={() => router.replace(SIGN_IN_ROUTE as never)} />;
 }

@@ -136,8 +136,10 @@ test("todo campo de texto del producto tiene etiqueta accesible", () => {
  * pantalla no lo menciona: la persona vuelve a tocar el botón sin saber qué pasó.
  */
 const CON_ERROR: Array<[string, string]> = [
-  ["src/onboarding/screens/AccountScreen.tsx", "shownError"],
-  ["src/onboarding/screens/SignUpGateScreen.tsx", "shownError"],
+  // El alta ya no tiene formulario propio: el único fallo que le queda a la
+  // pantalla es el del borrador remoto que se guarda ANTES de abrir Clerk, y es
+  // el más importante de anunciar — sin él la cuenta se crearía sin datos.
+  ["src/onboarding/screens/AccountScreen.tsx", "styles.error"],
   ["src/onboarding/screens/SignInScreen.tsx", "flow.error"],
   ["src/onboarding/components/CodeHelp.tsx", "feedback"],
   ["app/editar-datos.tsx", "saveError"]
@@ -152,6 +154,16 @@ test("el error de cada formulario se anuncia solo", () => {
     assert.match(codigo, /accessibilityLiveRegion="polite"/, `${rel} no lo pone en una región viva`);
     assert.match(codigo, new RegExp(variable.replace(".", "\\.")), `${rel} ya no muestra ${variable}`);
   }
+});
+
+test("los errores del alta con Clerk los anuncia Clerk, no una copia nuestra", () => {
+  // `/crear-cuenta` tenía su propio `shownError` porque tenía su propio
+  // formulario. Ahora monta la UI oficial, que trae sus mensajes accesibles: un
+  // segundo cartel nuestro anunciaría el mismo fallo dos veces, o —peor— uno
+  // desactualizado respecto del estado real de Clerk.
+  const alta = sinComentarios(leer("src/onboarding/screens/SignUpGateScreen.tsx"));
+  assert.match(alta, /<ClerkSignUp email=\{email\} \/>/, "el alta suelta monta la UI oficial");
+  assert.doesNotMatch(alta, /shownError|<TextInput/, "no puede volver a tener formulario ni error propios");
 });
 
 // --- El contenido no queda debajo de la barra inferior ----------------------

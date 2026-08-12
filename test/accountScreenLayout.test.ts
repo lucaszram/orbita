@@ -3,10 +3,16 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 
-// Verificación ESTRUCTURAL del bloqueo visual del alta: el formulario (email +
-// contraseña + confirmación) crece más que un iPhone chico con el teclado
-// abierto, así que tiene que ser scrolleable + keyboard-avoiding con el header
-// FIJO. No se puede renderizar RN en node; se valida la estructura del fuente.
+// Verificación ESTRUCTURAL del paso de cuenta. La cuenta la crea la UI OFICIAL
+// de Clerk (`ClerkSignUp`), que trae su propio formulario, su propio manejo de
+// teclado y su propio botón: acá ya no hay campos, ni CTA "Guardar mi carta",
+// ni KeyboardAvoidingView propio — envolver el widget de Clerk en uno anidaba
+// dos manejos del teclado.
+//
+// Lo que SÍ sigue siendo responsabilidad de la pantalla: que el escenario
+// (sello + título + copy) y el widget entren en una pantalla chica sin dejar
+// nada fuera de alcance, con el header fijo. No se puede renderizar RN en node;
+// se valida la estructura del fuente.
 const SRC = readFileSync(
   path.join(process.cwd(), "src/onboarding/screens/AccountScreen.tsx"),
   "utf8"
@@ -14,13 +20,21 @@ const SRC = readFileSync(
 
 const idx = (needle: string) => SRC.indexOf(needle);
 
-describe("AccountScreen — formulario scrolleable + keyboard-avoiding", () => {
-  it("importa KeyboardAvoidingView y ScrollView de react-native", () => {
-    assert.match(SRC, /KeyboardAvoidingView/);
-    assert.match(SRC, /ScrollView/);
+describe("AccountScreen — escenario scrolleable alrededor de la UI de Clerk", () => {
+  it("monta la UI oficial de Clerk y ningún campo propio", () => {
+    // Con el email como PRELLENADO: la pantalla no tiene campo de email, sólo
+    // le pasa a Clerk el que la persona ya escribió antes de llegar.
+    assert.match(SRC, /<ClerkSignUp email=\{email\} \/>/);
+    for (const prohibido of ["TextInput", "CodeInput", "secureTextEntry", "Guardar mi carta"]) {
+      assert.ok(!SRC.includes(prohibido), `el formulario propio no puede volver: ${prohibido}`);
+    }
+    // El widget de Clerk maneja su propio teclado: anidar otro descoordinaba
+    // los dos y dejaba el botón de Clerk fuera de pantalla.
+    assert.ok(!SRC.includes("KeyboardAvoidingView"), "no se anida un keyboard-avoiding propio");
   });
 
-  it("usa keyboardShouldPersistTaps=\"handled\" (el CTA se puede tocar con el teclado abierto)", () => {
+  it("el contenido scrollea", () => {
+    assert.match(SRC, /<ScrollView/);
     assert.match(SRC, /keyboardShouldPersistTaps=["']handled["']/);
   });
 
@@ -34,22 +48,26 @@ describe("AccountScreen — formulario scrolleable + keyboard-avoiding", () => {
     assert.equal(SRC.indexOf("<Header ", scrollOpen), -1, "el Header no debe vivir dentro del ScrollView");
   });
 
-  it("el KeyboardAvoidingView envuelve al ScrollView", () => {
-    const kav = idx("<KeyboardAvoidingView");
-    const scrollOpen = idx("<ScrollView");
-    assert.ok(kav >= 0 && kav < scrollOpen, "el ScrollView debe estar dentro del KeyboardAvoidingView");
-  });
-
-  it("el contenido del scroll tiene padding inferior (llegar al error y al botón)", () => {
+  it("el contenido del scroll tiene padding inferior (llegar al final del widget)", () => {
     assert.match(SRC, /scrollContent:\s*\{[^}]*paddingBottom/);
   });
 
-  it("el CTA 'Guardar mi carta' y el error viven dentro del scroll", () => {
+  it("el área de Clerk vive DENTRO del scroll", () => {
     const scrollOpen = idx("<ScrollView");
     const scrollClose = idx("</ScrollView>");
-    const cta = idx("label={ctaLabel}");
+    const clerk = idx("<ClerkSignUp ");
+    assert.ok(clerk > scrollOpen && clerk < scrollClose, "el widget debe estar dentro del scroll");
+    // Y con alto reservado: sin esto el widget arranca colapsado dentro de un
+    // contenedor que se encoge a su contenido.
+    assert.match(SRC, /clerkZone:\s*\{[^}]*minHeight/);
+  });
+
+  it("el error del borrador y su reintento también viven dentro del scroll", () => {
+    const scrollOpen = idx("<ScrollView");
+    const scrollClose = idx("</ScrollView>");
     const error = idx("styles.error");
-    assert.ok(cta > scrollOpen && cta < scrollClose, "el CTA debe estar dentro del scroll");
+    const retry = idx('label="Reintentar"');
     assert.ok(error > scrollOpen && error < scrollClose, "el error debe estar dentro del scroll");
+    assert.ok(retry > scrollOpen && retry < scrollClose, "el reintento debe estar dentro del scroll");
   });
 });

@@ -2,6 +2,7 @@ import { anyApi } from "convex/server";
 import type { FunctionReference } from "convex/server";
 import type { PublicDailyHome } from "./publicLabRefs";
 import type { CheckoutStatus, WebOffer } from "@/domain/paywall";
+import type { OnboardingCompletion } from "@/domain/onboardingReadiness";
 
 /**
  * Capa de datos del front para la Web B0 (usuario autenticado con Clerk).
@@ -365,6 +366,28 @@ export const appApi = {
   },
   onboarding: {
     saveDraft: anyApi.onboarding.saveDraft as FunctionReference<"mutation", "public", OnboardingDraftInput, string>,
+    /**
+     * Autoridad ÚNICA de acceso durante alta y recuperación. Reactiva y de sólo
+     * lectura: no llama al proveedor ni dispara cálculos, sólo confirma lo que
+     * quedó persistido. Ver `src/domain/onboardingReadiness.ts`.
+     */
+    getCompletionStatus: anyApi.onboarding.getCompletionStatus as FunctionReference<
+      "query",
+      "public",
+      { clientDraftId?: string },
+      OnboardingCompletion
+    >,
+    /**
+     * Confirmación ANÓNIMA e idempotente previa a montar Clerk: sólo devuelve
+     * `{ ready: true }` si el borrador remoto está completo y su origen es
+     * `anonymous_signup`. Si tira, no se crea la cuenta.
+     */
+    confirmSignupDraft: anyApi.onboarding.confirmSignupDraft as FunctionReference<
+      "mutation",
+      "public",
+      { clientDraftId: string },
+      { ready: true }
+    >,
     // devuelve el Id del birthData (string)
     completeBirthData: anyApi.onboarding.completeBirthData as FunctionReference<
       "mutation",
@@ -372,7 +395,17 @@ export const appApi = {
       CompleteBirthDataInput,
       string
     >,
-    markAccountCreated: anyApi.onboarding.markAccountCreated as FunctionReference<"mutation", "public", Empty, null>,
+    /**
+     * Adjunta a la cuenta recién creada el borrador guardado anónimo. El
+     * `clientDraftId` es lo que conserva el origen del alta: sin él, el mismo
+     * usuario parecería una recuperación de una cuenta preexistente.
+     */
+    markAccountCreated: anyApi.onboarding.markAccountCreated as FunctionReference<
+      "mutation",
+      "public",
+      { clientDraftId?: string },
+      string
+    >,
     markPaymentState: anyApi.onboarding.markPaymentState as FunctionReference<
       "mutation",
       "public",
