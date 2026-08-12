@@ -93,9 +93,9 @@ export function WebNotice({
  * Superficie recortada por plan. El backend ya no manda el dato; esto sólo lo
  * nombra, para que un bloque vacío no se lea como una falla.
  *
- * No muestra precios: los precios sólo existen en `/paywall`, que los pide a
- * Stripe vía `getWebOffer`. Con el comercio apagado esa página dice
- * "estará disponible pronto" y no ofrece ningún camino a checkout.
+ * No muestra precios: el importe, la moneda y la prueba son los del Price de
+ * Stripe y se ven en Checkout. `/paywall` ya no es una pantalla de oferta —
+ * crea la sesión de pago y redirige.
  */
 export function PlusLocked({ title, body }: { title: string; body: string }) {
   return (
@@ -109,8 +109,9 @@ export function PlusLocked({ title, body }: { title: string; body: string }) {
       <Text selectable style={styles.lockedBody}>
         {body}
       </Text>
-      {/* `/paywall` resuelve por sí solo el estado del comercio: con `off`
-          muestra "estará disponible pronto" y no ofrece checkout. */}
+      {/* `/paywall` abre el pago directo: no hay una oferta intermedia que
+          leer, y el estado del comercio lo resuelve el backend al crear la
+          sesión. */}
       <Link href="/paywall" asChild>
         <Pressable style={styles.lockedLink}>
           <Text selectable style={styles.lockedLinkText}>Ver Órbita Plus</Text>

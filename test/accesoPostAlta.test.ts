@@ -120,31 +120,43 @@ test("la carta conserva rueda, tríada y posiciones", () => {
   assert.match(CARTA, /payload\.placements\.map/);
 });
 
-// --- 4. El copy de la paywall ----------------------------------------------
+// --- 4. Qué desbloquea Plus, dicho ANTES de mandar al pago -------------------
+//
+// La oferta intermedia de `/paywall` se eliminó: la ruta es el lanzador del
+// checkout (ver `test/paywall.test.ts`). La explicación de qué se desbloquea
+// tiene que vivir entonces en la superficie que trae a la persona hasta ahí —
+// que además es donde el bloqueo se está viviendo—, no después del CTA.
 
-test("la oferta nombra la carta natal completa: rueda, casas, aspectos y siete capítulos", () => {
-  const beneficio = PAYWALL.slice(PAYWALL.indexOf("const BENEFITS"), PAYWALL.indexOf("];"));
-  for (const palabra of ["rueda", "casas", "aspectos", "siete capítulos"]) {
-    assert.ok(beneficio.includes(palabra), `la oferta no nombra "${palabra}"`);
+test("la carta natal completa se nombra donde se ofrece Plus: rueda, casas, aspectos y capítulos", () => {
+  const oferta = PLAN_BLOCK.slice(PLAN_BLOCK.indexOf('if (activacion === "activar")'));
+  for (const palabra of ["rueda", "casas", "aspectos", "capítulos"]) {
+    assert.ok(oferta.includes(palabra), `Perfil no nombra "${palabra}" al ofrecer Plus`);
   }
+  // Y la carta bloqueada dice exactamente qué falta antes de mandar al pago.
+  assert.match(CARTA, /Los siete capítulos de tu carta son parte de Órbita Plus/);
 });
 
-test("la oferta explica que Free revela siete cartas y que la octava pide Plus", () => {
-  assert.match(PAYWALL, /revelás siete cartas/);
-  assert.match(PAYWALL, /desde la octava/i);
+test("el límite del Tarot se explica en la Home, no después del CTA", () => {
+  assert.match(HOME, /Órbita Free incluye siete cartas de Tarot/);
   // Voseo, como el resto de la marca.
-  assert.match(PAYWALL, /necesitás Plus/);
+  assert.match(HOME, /seguís sacando una carta/);
 });
 
-test("el copy nuevo no toca Stripe, el precio, el trial, el checkout ni los legales", () => {
-  assert.match(PAYWALL, /formatPlanPrice\(plan\)/);
-  assert.match(PAYWALL, /planTrialLabel\(plan\)/);
-  assert.match(PAYWALL, /checkoutCtaLabel\(plan\)/);
-  assert.match(PAYWALL, /createCheckout\(\{ plan: plan\.id \}\)/);
-  assert.match(PAYWALL, /<PaywallLegalLinks \/>/);
-  assert.match(PAYWALL, /SUPPORT_MAILTO/);
-  // Ningún importe escrito a mano: el precio es el de Stripe.
-  assert.doesNotMatch(PAYWALL, /\$\s?\d/);
+test("ninguna de esas superficies escribe precios: el importe es el de Stripe", () => {
+  for (const [nombre, src] of [["Perfil", PLAN_BLOCK], ["Carta", CARTA], ["Home", HOME]] as const) {
+    assert.doesNotMatch(src, /\$\s?\d|USD\s?\d/, `${nombre} escribe un importe a mano`);
+  }
+  // El único camino a checkout sigue siendo `/paywall`.
+  assert.doesNotMatch(PLAN_BLOCK, /createCheckoutSession/);
+  assert.doesNotMatch(CARTA, /createCheckoutSession/);
+  assert.doesNotMatch(HOME, /createCheckoutSession/);
+});
+
+test("`/paywall` abre Stripe directo, así que los CTA existentes siguen sirviendo", () => {
+  assert.match(PAYWALL, /createCheckout\(\{ plan: "monthly" \}\)/);
+  assert.match(PAYWALL, /Abriendo el pago seguro…/);
+  // Y ya no hay una oferta intermedia que leer.
+  assert.equal(PAYWALL.includes("QUÉ INCLUYE"), false);
 });
 
 // --- 5. Activación de Plus desde Perfil ------------------------------------

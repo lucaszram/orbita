@@ -1,5 +1,18 @@
 # Contrato — CHANGELOG
 
+## 2026-08-12 — Checkout directo sin pantalla comercial intermedia
+
+- **Checkout alojado:** la sesión mensual agrega
+  `custom_text[submit][message]` con el resumen de beneficios que antes vivía en
+  “Qué incluye”. Stripe lo muestra junto a la confirmación; el Price sigue
+  siendo la única autoridad de importe, moneda e intervalo.
+- **Cancelación:** `cancel_url` vuelve a `/home`, no a `/paywall`. Esa ruta pasa
+  a ser un lanzador automático y volver a ella crearía una segunda sesión.
+- **Sin cambio de seguridad:** Clerk, customer, Price, trial, metadata, webhook
+  y concesión autoritativa del entitlement quedan intactos.
+- **Rollout:** validar exclusivamente con Stripe test y Vercel Preview.
+  Producción permanece fuera de alcance.
+
 ## 2026-08-12 — Timezone natal por coordenadas, sin API paga
 
 - **Contrato aditivo:** nueva action pública

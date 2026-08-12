@@ -7,6 +7,14 @@ export type StripePlan = "monthly";
 
 export const MONTHLY_TRIAL_DAYS = 7;
 
+/**
+ * Resumen que Stripe muestra junto al botón de confirmación del Checkout.
+ * Reemplaza la pantalla comercial intermedia: la persona llega directo al
+ * pago pero sigue viendo qué desbloquea, sin duplicar ni inventar el precio.
+ */
+export const STRIPE_CHECKOUT_BENEFITS =
+  "Incluye tu carta natal completa (rueda, casas, aspectos y siete capítulos), Tarot diario sin tope, lectura diaria personalizada, tránsitos por área, cinco preguntas por día en El Umbral y Diario completo.";
+
 export function trialDaysForPlan(plan: StripePlan | "lifetime"): number {
   return plan === "monthly" ? MONTHLY_TRIAL_DAYS : 0;
 }
@@ -51,6 +59,9 @@ export function buildStripeCheckoutForm(args: {
     payment_method_collection: mode === "subscription" ? "always" : undefined,
     "line_items[0][price]": args.priceId,
     "line_items[0][quantity]": 1,
+    "custom_text[submit][message]": legacyLifetime
+      ? undefined
+      : STRIPE_CHECKOUT_BENEFITS,
     client_reference_id: args.clerkUserId,
     "metadata[clerkUserId]": args.clerkUserId,
     "metadata[plan]": args.plan,
@@ -67,7 +78,10 @@ export function buildStripeCheckoutForm(args: {
           "payment_intent_data[metadata][plan]": args.plan
         }),
     success_url: `${args.webUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${args.webUrl}/paywall`
+    // `/paywall` es ahora sólo un lanzador automático de Checkout: volver ahí
+    // crearía otra sesión y encerraría a la persona en un bucle. Cancelar sale
+    // a la Home autenticada.
+    cancel_url: `${args.webUrl}/home`
   };
 }
 

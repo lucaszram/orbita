@@ -254,13 +254,11 @@ test("no se afirma nada mientras el plan o el comercio no resolvieron", () => {
 const ROOT = join(import.meta.dirname, "..");
 const paywallSrc = readFileSync(join(ROOT, "src/components/web/orbita-paywall.tsx"), "utf8");
 
-test("el paywall monta WebLayoutProvider alrededor de RequireSession", () => {
-  // El paywall es una pantalla standalone: monta WebNav (dentro de Shell) fuera
-  // de WebAppShell. Sin WebLayoutProvider, useIsDesktop() cae al default del
-  // contexto ("mobile") y la barra de escritorio nunca aparece, aunque el
-  // comercio esté prendido o apagado.
+test("el paywall exige sesión y monta su provider standalone", () => {
+  // La ruta no cuelga de `WebAppShell`: el provider se monta acá para que el
+  // subárbol autenticado resuelva su modo igual que el resto de la app.
   assert.match(paywallSrc, /from "@\/components\/web\/web-layout-provider"/);
-  assert.match(paywallSrc, /<WebLayoutProvider>\s*<RequireSession>\s*<PaywallWithBackend \/>\s*<\/RequireSession>\s*<\/WebLayoutProvider>/);
+  assert.match(paywallSrc, /<WebLayoutProvider>\s*<RequireSession>\s*<CheckoutLauncher \/>\s*<\/RequireSession>\s*<\/WebLayoutProvider>/);
 });
 
 test("OrbitaPaywall monta un solo provider de layout", () => {
@@ -278,24 +276,56 @@ test("el paywall no conserva restos del picker de dos planes", () => {
   assert.doesNotMatch(paywallSrc, /setSelected|sortedPlans/);
 });
 
-test("la promesa del trial: cancelar antes del fin de la prueba no cobra nada", () => {
-  // La divulgación de la rama con trial promete explícitamente que cancelar
-  // antes de que termine la prueba no genera ningún cobro, con los días
-  // dinámicos del plan (nunca un "7" hardcodeado), y conserva la divulgación
-  // de renovación mensual automática hasta que el usuario cancele.
-  assert.match(
-    paywallSrc,
-    /Si cancelás antes de que terminen los \$\{plan\.trialDays\} días de prueba, no se te cobra nada\. Al terminar la prueba, la suscripción se renueva sola cada mes al precio de arriba, hasta que la cancelés\./
-  );
-  // La rama sin trial mantiene su propia divulgación de renovación automática.
-  assert.match(paywallSrc, /La suscripción se renueva sola cada mes hasta que la cancelés\./);
-  // Los días de prueba nunca se escriben a mano en la divulgación.
-  assert.doesNotMatch(paywallSrc, /los 7 días de prueba/);
+// --- `/paywall` es el lanzador del pago, no una pantalla de venta ------------
+
+test("al montarse crea UNA sesión mensual y redirige a la URL de Stripe", () => {
+  assert.match(paywallSrc, /useAction\(proposedApi\.createCheckoutSession\)/);
+  assert.match(paywallSrc, /createCheckout\(\{ plan: "monthly" \}\)/);
+  // Una sola llamada en todo el archivo: no hay un segundo camino a checkout.
+  assert.equal((paywallSrc.match(/createCheckout\(/g) ?? []).length, 1);
+  // Se abre EXCLUSIVAMENTE la URL que devolvió el backend.
+  assert.match(paywallSrc, /window\.location\.assign\(url\)/);
+  assert.doesNotMatch(paywallSrc, /https:\/\/(?!orbitaastrologia)/, "ninguna URL de pago escrita a mano");
 });
 
-test("el CTA y el precio salen del plan que devolvió Stripe", () => {
-  assert.match(paywallSrc, /checkoutCtaLabel\(plan\)/);
-  assert.match(paywallSrc, /formatPlanPrice\(plan\)/);
-  // Ningún importe hardcodeado en el componente (el precio es el de Stripe).
-  assert.doesNotMatch(paywallSrc, /\$\s?\d|USD\s?\d/);
+test("un guard SINCRÓNICO impide sesiones duplicadas por re-render o StrictMode", () => {
+  // Cada llamada crea una sesión de pago real: el guard es un ref marcado ANTES
+  // del await, no estado React (que recién se refleja en el próximo render).
+  assert.match(paywallSrc, /const startedFor = useRef<number \| null>\(null\)/);
+  assert.match(paywallSrc, /if \(startedFor\.current === attempt\) return;\s*startedFor\.current = attempt;/);
+  // El efecto marca antes de llamar.
+  const efecto = paywallSrc.slice(paywallSrc.indexOf("useEffect(() => {"));
+  assert.ok(efecto.indexOf("startedFor.current = attempt") < efecto.indexOf("createCheckout({"));
+  // La limpieza NO libera el guard: en StrictMode el desmontaje simulado
+  // dejaría entrar una segunda creación.
+  assert.doesNotMatch(efecto, /return \(\) => \{\s*startedFor\.current = null/);
+});
+
+test("mientras abre sólo se dice que se está abriendo: sin oferta ni navegación", () => {
+  assert.match(paywallSrc, /Abriendo el pago seguro…/);
+  // Nada de la pantalla comercial que había antes.
+  for (const resto of [
+    "QUÉ INCLUYE",
+    "BENEFITS",
+    "MonthlyOffer",
+    "PaywallLegalLinks",
+    "WebNav",
+    "getWebOffer",
+    "formatPlanPrice",
+    "checkoutCtaLabel",
+    "planTrialLabel",
+    "offerPhase"
+  ]) {
+    assert.equal(paywallSrc.includes(resto), false, `el lanzador todavía arrastra "${resto}"`);
+  }
+  assert.doesNotMatch(paywallSrc, /\$\s?\d|USD\s?\d/, "ningún importe en el cliente");
+});
+
+test("si falla se ofrece Reintentar, y una cuenta ya Plus va a Perfil", () => {
+  assert.match(paywallSrc, /checkoutStartErrorKind\(err\) === "ya_plus" \? "ya_plus" : "error"/);
+  assert.match(paywallSrc, /label: "Reintentar", onPress: \(\) => setAttempt\(\(a\) => a \+ 1\)/);
+  assert.match(paywallSrc, /Ya tenés Órbita Plus/);
+  assert.match(paywallSrc, /router\.replace\("\/perfil"\)/);
+  // El error no afirma un cobro que no ocurrió.
+  assert.match(paywallSrc, /No se generó ningún cobro/);
 });

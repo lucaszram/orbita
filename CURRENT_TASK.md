@@ -1,5 +1,34 @@
 # Current Task
 
+## Checkout directo — `/paywall` abre Stripe sin pantalla intermedia (2026-08-12)
+
+**Objetivo:** respetar el CTA ya aceptado en Recepción, Carta, Perfil o Home y
+abrir directamente Stripe Checkout, sin volver a mostrar una segunda pantalla
+comercial propia. El resumen de lo que incluye Plus debe acompañar la
+confirmación dentro de Stripe.
+
+**Implementación:** `src/components/web/orbita-paywall.tsx` quedó reducido a un
+lanzador autenticado: crea una única sesión mensual al montarse, usa sólo la URL
+devuelta por `payments.createCheckoutSession` y muestra únicamente el estado
+“Abriendo el pago seguro…”. Un guard sincrónico por intento evita duplicados por
+StrictMode o re-render; el reintento explícito sí inicia un intento nuevo. Los
+estados de error y cuenta ya Plus permanecen cerrados y accionables. Se retiraron
+de esa ruta precio, oferta, beneficios, navegación y legales; los CTA de origen
+siguen explicando qué se desbloquea.
+
+**Contrato Stripe:** `buildStripeCheckoutForm` agrega
+`custom_text[submit][message]` al Checkout mensual con carta natal completa,
+Tarot diario, lectura personalizada, tránsitos, Umbral y Diario. Precio, moneda,
+intervalo y prueba continúan gobernados exclusivamente por el Price de Stripe.
+`cancel_url` pasa a `/home`: volver a `/paywall` abriría otra sesión y formaría un
+bucle. Customer, metadata, trial, webhook y entitlement no cambian.
+
+**Validación local:** regresiones focalizadas frontend/backend **85/85** y
+`pnpm typecheck` en verde. Pendiente antes de cerrar: suite completa, build/export
+web, sincronización exclusiva de Convex Development, commit/push de esta rama,
+Vercel Preview y recorrido real autenticado hasta Stripe test. Producción queda
+fuera de alcance.
+
 ## Editar datos — contraste legible y timezone automático (2026-08-12)
 
 **Objetivo:** reparar `/editar-datos` para que todos sus estados sean legibles
