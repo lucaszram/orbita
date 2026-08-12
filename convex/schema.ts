@@ -37,6 +37,10 @@ const productEventName = v.union(
   v.literal("onboarding_step_viewed"),
   v.literal("account_created"),
   v.literal("onboarding_completed"),
+  // Legacy event already persisted in development before the analytics
+  // contract was narrowed. Keep it readable so schema deploys never require
+  // deleting historical telemetry; new writes use `onboarding_completed`.
+  v.literal("natal_chart_created"),
   v.literal("natal_chart_viewed"),
   v.literal("daily_guide_viewed"),
   v.literal("daily_card_revealed"),

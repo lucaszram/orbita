@@ -165,6 +165,11 @@ describe("product analytics", () => {
     assert.doesNotMatch(telemetry, /properties:\s*v\.any/);
     assert.match(telemetry, /withIndex\("by_event_id"/);
     assert.match(schema, /productEvents:[\s\S]*?\.index\("by_event_id", \["eventId"\]\)/);
+    assert.match(
+      schema,
+      /v\.literal\("natal_chart_created"\)/,
+      "el schema conserva eventos históricos sin volver a emitirlos desde el contrato actual"
+    );
     assert.match(crons, /hourUTC:\s*12,\s*minuteUTC:\s*0/);
   });
 });
