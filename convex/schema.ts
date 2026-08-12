@@ -104,7 +104,11 @@ export default defineSchema({
     appVersion: v.optional(v.string()),
     buildNumber: v.optional(v.string()),
     onboardingStep: v.optional(v.number()),
-    entryPoint: v.optional(v.string())
+    entryPoint: v.optional(v.string()),
+    // Read-only compatibility for telemetry backfilled before the current
+    // product analytics contract. Current writers do not emit these fields.
+    backfilled: v.optional(v.boolean()),
+    resourceId: v.optional(v.string())
   })
     .index("by_event_id", ["eventId"])
     .index("by_date_event", ["localDate", "eventName"])

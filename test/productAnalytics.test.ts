@@ -170,6 +170,8 @@ describe("product analytics", () => {
       /v\.literal\("natal_chart_created"\)/,
       "el schema conserva eventos históricos sin volver a emitirlos desde el contrato actual"
     );
+    assert.match(schema, /backfilled:\s*v\.optional\(v\.boolean\(\)\)/);
+    assert.match(schema, /resourceId:\s*v\.optional\(v\.string\(\)\)/);
     assert.match(crons, /hourUTC:\s*12,\s*minuteUTC:\s*0/);
   });
 });
