@@ -7,7 +7,7 @@
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import {
@@ -183,15 +183,83 @@ test("una fecha imposible o futura bloquea Continuar y se dice por qué", () => 
 
 // --- 3. Composición responsive del alta -------------------------------------
 
-test("el alta compone su propio escenario, no una columna de la app", () => {
-  // El alta dejó de usar el lienzo: sus quince pasos son pantallas
-  // cinematográficas, no columnas de texto. En escritorio montan una escena
-  // centrada o dos columnas; en móvil las dos colapsan a la columna de siempre.
+/**
+ * Todo el alta: el shell y los quince pasos. Las prohibiciones de esta sección
+ * se afirman sobre el conjunto, no sobre los archivos que hoy fallaban — si la
+ * composición ancha vuelve por otra pantalla, tiene que romper igual.
+ */
+const ALTA = [
+  "src/onboarding/components/Screen.tsx",
+  ...readdirSync(join(ROOT, "src/onboarding/screens")).map((n) => `src/onboarding/screens/${n}`)
+];
+
+test("el alta compone en UNA columna de formulario, no en un escenario ancho", () => {
+  // La regresión: el shell montaba un escenario de 1200 con dos composiciones de
+  // escritorio (`split` y `scene`). Con eso, en un viewport bajo el CTA quedaba
+  // cortado, el título de la fecha natal se iba a la izquierda y el picker a la
+  // derecha, y la nota se despegaba de su control. La columna de 480 es la misma
+  // en teléfono y en monitor: título, control, nota y CTA, en ese orden.
   const shell = sinComentarios(leer("src/onboarding/components/Screen.tsx"));
   assert.doesNotMatch(shell, /ContentCanvas/, "el alta no monta el lienzo de la app");
-  assert.match(shell, /export type ScreenLayout =/);
-  assert.match(shell, /const STAGE_MAX = 1200;/, "el escenario de escritorio es ancho de verdad");
-  assert.match(shell, /const COPY_COLUMN = 520;/, "y el copy queda en medida legible");
+  assert.match(shell, /const FORM_COLUMN = 480;/, "una sola medida, y es la de un formulario");
+  assert.match(
+    shell,
+    /column: \{ alignSelf: "center", flex: 1, maxWidth: FORM_COLUMN, minHeight: 0, width: "100%" \}/,
+    "la columna se centra sobre el fondo full-bleed"
+  );
+  // El fondo sigue siendo atmósfera de viewport completo: lo acotado es el
+  // contenido, no la imagen.
+  assert.match(shell, /style=\{StyleSheet\.absoluteFill\}/, "el fondo sigue siendo full-bleed");
+  assert.match(shell, /<LinearGradient/, "y el wash de legibilidad se conserva");
+});
+
+test("la composición ancha del alta no puede volver por ninguna vía", () => {
+  // Los nombres exactos que tenía la regresión, prohibidos en todo el alta: si
+  // alguien reintroduce el escenario de 1200, la segunda columna o el slot que
+  // mudaba controles de lugar, este test cae antes que cualquier captura.
+  const PROHIBIDO = [
+    "ScreenLayout",
+    "useSplitSlot",
+    "STAGE_MAX",
+    "STAGE_COLUMN",
+    "COPY_COLUMN",
+    "columnDesktop",
+    "columnCentered",
+    "stageDesktop",
+    'layout="split"',
+    'layout="scene"',
+    "aside"
+  ];
+  for (const rel of ALTA) {
+    const codigo = sinComentarios(leer(rel));
+    for (const nombre of PROHIBIDO) {
+      assert.ok(!codigo.includes(nombre), `${rel}: la composición ancha volvió por «${nombre}»`);
+    }
+  }
+});
+
+test("el alta no vuelve a componer por ancho de ventana", () => {
+  // El breakpoint del alta es IMPLÍCITO: debajo de 480 la columna es ancho
+  // completo, así que el teléfono y el nativo quedan idénticos sin ninguna rama
+  // por viewport. La única excepción es la entrada, y no compone: elige el
+  // master del fondo full-bleed (panorámico en ventana ancha, vertical en
+  // teléfono), que es el mismo par de assets que usa la landing.
+  for (const rel of ALTA) {
+    const codigo = sinComentarios(leer(rel));
+    assert.doesNotMatch(codigo, /useWindowDimensions|Dimensions\.get|window\.inner/, `${rel} mide la ventana`);
+    if (rel === "src/onboarding/screens/SplashScreen.tsx") continue;
+    assert.doesNotMatch(codigo, /useIsDesktop|useLayoutMode/, `${rel} vuelve a ramificar por modo de layout`);
+  }
+  const splash = sinComentarios(leer("src/onboarding/screens/SplashScreen.tsx"));
+  const usos = splash.match(/\bdesktop\b/g) ?? [];
+  assert.deepEqual(
+    usos.length,
+    2,
+    "en la entrada el modo se usa DOS veces: declararlo y elegir el fondo. Nada más."
+  );
+  assert.match(splash, /const desktop = useIsDesktop\(\);/);
+  assert.match(splash, /bg=\{entryBackground\(desktop\)\}/, "y sólo para el master del fondo");
+  assert.doesNotMatch(splash, /desktop \?|desktop &&/, "ninguna rama de composición por modo");
 });
 
 test("el tope del lienzo se centra con alignSelf, no con alignItems del padre", () => {
@@ -204,13 +272,15 @@ test("el tope del lienzo se centra con alignSelf, no con alignItems del padre", 
   assert.match(canvas, /outer: \{ width: "100%" \}/);
 });
 
-test("Splash y Align componen sin leer el viewport", () => {
-  // El breakpoint del alta es implícito: debajo de 480 la variante es ancho
-  // completo, así que el móvil queda idéntico sin ninguna rama por ancho.
-  for (const rel of ["src/onboarding/screens/SplashScreen.tsx", "src/onboarding/screens/AlignScreen.tsx"]) {
+test("cada paso del alta monta el shell, y ninguno dibuja su propio marco", () => {
+  // El marco —fondo full-bleed, wash, safe area y columna— lo pone el shell una
+  // sola vez. Una pantalla que se dibujara su propio contenedor volvería a tener
+  // una medida distinta a la de los otros catorce pasos.
+  for (const rel of ALTA) {
+    if (rel === "src/onboarding/components/Screen.tsx") continue;
     const codigo = sinComentarios(leer(rel));
-    assert.doesNotMatch(codigo, /useWindowDimensions|Dimensions\.get|window\.inner/, `${rel} no puede medir la ventana`);
-    assert.match(codigo, /<Screen[\s>]/, `${rel} monta el shell que aplica el lienzo`);
+    assert.match(codigo, /<Screen[\s>]/, `${rel} no monta el shell del alta`);
+    assert.doesNotMatch(codigo, /maxWidth: (5[0-9]{2}|[6-9][0-9]{2}|1[0-9]{3})/, `${rel} se pone una medida propia`);
   }
 });
 
@@ -251,41 +321,32 @@ test("la grilla de Align se adapta al alto disponible y nunca pasa su alto natur
   assert.doesNotMatch(align, /h=\{188\}/, "los altos ya no son píxeles fijos");
 });
 
-const SPLIT_SCREENS = [
-  "src/onboarding/screens/AlignScreen.tsx",
-  "src/onboarding/screens/BirthdateScreen.tsx",
-  "src/onboarding/screens/BirthTimeScreen.tsx"
+/** Los tres pasos que tienen una pieza interactiva además del copy. */
+const PASOS_CON_CONTROL: Array<[string, string]> = [
+  ["src/onboarding/screens/AlignScreen.tsx", "<TileGrid />"],
+  ["src/onboarding/screens/BirthdateScreen.tsx", "<BirthDatePicker value={value} onChange={onChange} />"],
+  [
+    "src/onboarding/screens/BirthTimeScreen.tsx",
+    "<BirthTimePicker value={value} onChange={onChange} unknown={unknown} />"
+  ]
 ];
 
-test("la pieza visual se monta UNA vez, y en móvil en su lugar del flujo", () => {
-  // El bug: el shell renderizaba `{column}{aside}`, así que en móvil la grilla
-  // de Align y los pickers caían DESPUÉS de la nota y del CTA, dejando un hueco
-  // vacío donde tenían que estar. Y montar la pieza dos veces —una inline y
-  // otra en el aside— sería peor: dos controles con el mismo nombre accesible
-  // para el mismo dato.
-  const shell = sinComentarios(leer("src/onboarding/components/Screen.tsx"));
-  assert.match(shell, /export function useSplitSlot/, "hace falta el slot que garantiza un solo montaje");
-  assert.match(
-    shell,
-    /return desktop \? \{ inline: null, aside: node \} : \{ inline: node, aside: undefined \};/,
-    "inline y aside son mutuamente excluyentes"
-  );
-  // Fuera de la composición de dos columnas el shell IGNORA `aside`: no puede
-  // volver a colgarlo al final de la columna.
-  assert.doesNotMatch(shell, /asideStacked/, "el aside apilado al final es exactamente el bug");
-  assert.match(shell, /\) : \(\s*column\s*\)/, "sin split, sólo la columna");
-
-  for (const rel of SPLIT_SCREENS) {
+test("la pieza visual se monta UNA vez, inline, en su lugar del flujo", () => {
+  // El bug: el shell mudaba la pieza a una segunda columna en escritorio, así
+  // que el picker de la fecha quedaba lejos del título y de su nota. Y montarla
+  // dos veces —una inline y otra en la segunda columna— sería peor: dos
+  // controles con el mismo nombre accesible para el mismo dato.
+  for (const [rel, montaje] of PASOS_CON_CONTROL) {
     const codigo = sinComentarios(leer(rel));
-    assert.match(codigo, /const \{ inline, aside \} = useSplitSlot\(/, `${rel} tiene que usar el slot`);
-    assert.match(codigo, /aside=\{aside\}/, `${rel} pasa el aside del slot, no un nodo suelto`);
-    assert.match(codigo, /\{inline\}|\{inline \?/, `${rel} tiene que renderizar la pieza en el flujo`);
+    const montajes = codigo.split(montaje).length - 1;
+    assert.equal(montajes, 1, `${rel}: la pieza tiene que montarse exactamente una vez (hay ${montajes})`);
   }
 });
 
-test("el orden móvil de cada paso es el original", () => {
+test("el orden de cada paso es el original, y es UNO solo", () => {
   // El orden del DOM ES el orden de lectura y de tabulación: se verifica por
-  // posición en el archivo, no por estilos.
+  // posición en el archivo, no por estilos. Con una sola composición, el orden
+  // del teléfono y el del monitor son literalmente el mismo.
   const orden = (rel: string, hitos: string[]) => {
     const codigo = sinComentarios(leer(rel));
     let prev = -1;
@@ -298,27 +359,27 @@ test("el orden móvil de cada paso es el original", () => {
   };
   // Align: header → título → subtítulo → grilla → nota → CTA.
   orden("src/onboarding/screens/AlignScreen.tsx", [
-    "<Header step={1}", "<Title", "<Body", "<View style={styles.gridZone}>{inline}", "<Caption", "<CTA"
+    "<Header step={1}", "<Title", "<Body", "<View style={styles.gridZone}>", "<TileGrid />", "<Caption", "<CTA"
   ]);
   // Fecha: header → título → subtítulo → error → picker → privacidad → CTA.
   orden("src/onboarding/screens/BirthdateScreen.tsx", [
-    "<Header step={step}", "<Title", "<Body style={styles.sub}", "accessibilityRole=\"alert\"", "{inline}", "<Caption", "<CTA"
+    "<Header step={step}", "<Title", "<Body style={styles.sub}", "accessibilityRole=\"alert\"", "<BirthDatePicker", "<Caption", "<CTA"
   ]);
   // Hora: header → título → subtítulo → picker → "No sé la hora" → nota → CTA.
   orden("src/onboarding/screens/BirthTimeScreen.tsx", [
-    "<Header step={step}", "<Title", "<Body style={styles.sub}", "{inline}", "<Pressable", "<Caption", "<CTA"
+    "<Header step={step}", "<Title", "<Body style={styles.sub}", "<BirthTimePicker", "<Pressable", "<Caption", "<CTA"
   ]);
 });
 
-test("la escena centrada se CENTRA; la de dos columnas no", () => {
-  // El defecto: `columnDesktop` sólo tenía `maxWidth`, así que la columna de
-  // 520 quedaba pegada al borde izquierdo de los 1240 y dejaba media pantalla
-  // muerta. Medido a 1440: la columna quedaba en x=172 en vez de centrada.
+test("la columna se centra con alignSelf, no con alignItems del padre", () => {
+  // `alignItems: "center"` sobre un hijo que declara `width: "100%"` deja el
+  // ancho a merced de cómo el motor cruce alineación y porcentaje; en
+  // react-native-web esa combinación colapsaba la columna y el alta salía como
+  // una tira angosta con el texto cortado. El centrado va EN la columna.
   const shell = sinComentarios(leer("src/onboarding/components/Screen.tsx"));
-  assert.match(shell, /desktop && layout === "stage" && styles\.columnCentered/, "la escena centrada se centra");
-  assert.match(shell, /columnCentered: \{ alignSelf: "center", maxWidth: STAGE_COLUMN \}/);
-  // Y en `split` NO se centra: ahí la columna es la mitad izquierda.
-  assert.doesNotMatch(shell, /columnDesktop: \{[^}]*alignSelf/, "la columna de dos columnas no puede centrarse");
+  assert.match(shell, /column: \{ alignSelf: "center",/, "el centrado es de la columna");
+  assert.doesNotMatch(shell, /alignItems: "center"/, "nunca desde el contenedor");
+  assert.match(shell, /stage: \{ flex: 1, minHeight: 0, width: "100%" \}/, "y el contenedor garantiza el ancho");
 });
 
 test("los contenedores flex pueden encogerse para acotar un scroll interno", () => {
@@ -327,21 +388,29 @@ test("los contenedores flex pueden encogerse para acotar un scroll interno", () 
   // acotarlo y el CTA anclado al pie quedaba fuera del viewport.
   const shell = sinComentarios(leer("src/onboarding/components/Screen.tsx"));
   assert.match(shell, /stage: \{ flex: 1, minHeight: 0, width: "100%" \}/);
-  assert.match(shell, /column: \{ flex: 1, minHeight: 0, width: "100%" \}/);
+  assert.match(shell, /column: \{[^}]*flex: 1,[^}]*minHeight: 0,/);
+  // Y el contenido del scroll crece con el viewport: sin esto el CTA de los
+  // pasos scrolleables deja de apoyarse abajo cuando sobra alto.
+  assert.match(shell, /scrollContent: \{ flexGrow: 1 \}/);
   const denso = sinComentarios(leer("src/onboarding/screens/BeforeAfterScreen.tsx"));
   assert.match(denso, /body: \{ flex: 1, minHeight: 0/);
   assert.match(denso, /scroll: \{ flex: 1, minHeight: 0 \}/);
 });
 
-test("la entrada compone de verdad en escritorio", () => {
-  // El defecto: post-intro, a 1440x900 la marca quedaba diminuta y centrada con
-  // media pantalla muerta — una captura de teléfono en un monitor.
+test("la entrada es una sola composición: marca centrada y puertas al pie", () => {
+  // El defecto: en escritorio la entrada montaba el escenario ANCHO con la
+  // marca de 96px anclada abajo a la izquierda. En un viewport bajo —o con la
+  // barra de depuración abierta— eso empujaba las dos puertas fuera del pliegue
+  // y el CTA quedaba cortado.
   const splash = sinComentarios(leer("src/onboarding/screens/SplashScreen.tsx"));
-  assert.match(splash, /layout=\{desktop \? "scene" : "stage"\}/, "en escritorio la pantalla compone el escenario entero");
-  assert.match(splash, /bodyDesktop: \{ justifyContent: "flex-end"/, "hero anclado abajo");
-  assert.match(splash, /doorsDesktop: \{ alignItems: "flex-start", maxWidth: 340/, "CTA con ancho de botón, no de columna");
-  // Y el móvil no cambia: sigue centrado con las puertas al pie.
-  assert.match(splash, /hero: \{ alignItems: "center", flex: 1, justifyContent: "center" \}/);
+  assert.match(splash, /hero: \{ alignItems: "center", flex: 1, justifyContent: "center" \}/, "marca centrada");
+  assert.match(splash, /doors: \{ paddingBottom: 18 \}/, "puertas al pie de la columna");
+  // Ni la tipografía de escritorio ni el anclaje del hero editorial pueden
+  // volver: eran las piezas del escenario ancho.
+  for (const prohibido of ["WORDMARK_DESKTOP", "TAGLINE_DESKTOP", "bodyDesktop", "heroDesktop", "doorsDesktop"]) {
+    assert.ok(!splash.includes(prohibido), `la escena ancha volvió por «${prohibido}»`);
+  }
+  assert.doesNotMatch(splash, /fontSize: 96/, "la marca de 96px era del escenario de 1200");
 });
 
 test("la tipografía de la entrada no puede perder contra Tailwind", () => {
@@ -352,9 +421,9 @@ test("la tipografía de la entrada no puede perder contra Tailwind", () => {
   // el atributo `style` y gana siempre.
   const splash = sinComentarios(leer("src/onboarding/screens/SplashScreen.tsx"));
   assert.match(splash, /const WORDMARK = \{[\s\S]*?fontSize: 46/, "la marca es un literal, no una hoja registrada");
-  assert.match(splash, /const WORDMARK_DESKTOP = \{ \.\.\.WORDMARK, fontSize: 96/);
-  assert.match(splash, /style=\{desktop \? WORDMARK_DESKTOP : WORDMARK\}/);
-  assert.match(splash, /style=\{desktop \? TAGLINE_DESKTOP : TAGLINE\}/);
+  assert.match(splash, /const TAGLINE = \{[\s\S]*?fontSize: 15/);
+  assert.match(splash, /style=\{WORDMARK\}/);
+  assert.match(splash, /style=\{TAGLINE\}/);
   // Y ya no quedan en la hoja registrada, donde volverían a perder.
   assert.doesNotMatch(splash, /\n  wordmark: \{/, "el wordmark no puede volver a StyleSheet.create");
   assert.doesNotMatch(splash, /\n  tagline: \{/);
@@ -370,10 +439,7 @@ test("el intro del splash no puede desbordar el viewport", () => {
   assert.match(splash, /style=\{styles\.introVideo\}/, "el video usa el estilo acotado, no sólo absoluteFill");
 });
 
-test("cada paso declara su composición de escritorio", () => {
-  for (const rel of SPLIT_SCREENS) {
-    assert.match(sinComentarios(leer(rel)), /layout="split"/, `${rel} no declara dos columnas`);
-  }
+test("los pasos densos scrollean y los que ya scrollean no anidan otro scroll", () => {
   // Los pasos densos scrollean: sin eso un viewport de 320x568 esconde el CTA.
   for (const rel of [
     "src/onboarding/screens/BirthplaceSearchScreen.tsx",
@@ -423,17 +489,18 @@ test("la vista combinada es interna y de sólo lectura", () => {
   }
 });
 
-test("«Guardá tu carta»: el sello es una pieza y la cuenta la crea Clerk", () => {
+test("«Guardá tu carta»: una columna, el sello compacto y Clerk oficial", () => {
   const cuenta = sinComentarios(leer("src/onboarding/screens/AccountScreen.tsx"));
-  // Escritorio: el sello en su propia columna.
-  assert.match(cuenta, /layout=\{desktop \? "split" : "stage"\}/);
-  assert.match(cuenta, /aside=\{[\s\S]*?styles\.seal/, "en escritorio el sello es la pieza");
-  // Móvil: el arte del sobre baja a atmósfera y el sello sube como pieza
-  // compacta arriba del título. A 0.9 era el FONDO del formulario.
-  assert.match(cuenta, /bgOpacity=\{desktop \? 0\.55 : 0\.32\}/);
-  assert.match(cuenta, /wash=\{desktop \? 0\.5 : 0\.74\}/);
-  assert.match(cuenta, /\{desktop \? null : \(\s*<View style=\{styles\.sealMobile\}>/, "sello compacto en móvil");
-  assert.match(cuenta, /sealMobile: \{[\s\S]*?height: 88,/, "compacto, no un fondo");
+  // Una sola composición: el arte del sobre queda como atmósfera y el sello
+  // sube como pieza compacta arriba del título, en la MISMA columna que el
+  // formulario. A 0.9 el fondo competía con los campos de Clerk.
+  assert.match(cuenta, /<Screen bg=\{A\.accountBg\} bgOpacity=\{0\.32\} wash=\{0\.74\}>/);
+  assert.match(cuenta, /<View style=\{styles\.seal\}>/, "el sello es una pieza del paso");
+  assert.match(cuenta, /seal: \{[\s\S]*?height: 88,/, "compacto, no un disco de media pantalla");
+  assert.doesNotMatch(cuenta, /borderRadius: 220|maxWidth: 420/, "el sello de la segunda columna no puede volver");
+  // El widget de Clerk conserva su scroll propio y su alto reservado.
+  assert.match(cuenta, /<ScrollView/, "la pantalla maneja su propio scroll");
+  assert.match(cuenta, /clerkZone: \{ marginTop: 22, minHeight: 380, width: "100%" \}/);
   // La cuenta la crea la UI OFICIAL de Clerk.
   assert.match(cuenta, /<ClerkSignUp email=\{email\} \/>/);
   assert.match(cuenta, /Guardá tu carta\./, "la copy del paso se conserva");
@@ -578,14 +645,16 @@ test("«Continuar con Google» va arriba del divisor, con marca real y accesible
   assert.ok(codigo.indexOf("<GoogleButton") < codigo.indexOf("<EmailDivider"), "Google va ARRIBA del divisor");
 });
 
-test("la escena centrada usa una columna de lectura ancha, no una tira", () => {
+test("la medida del alta es de formulario, no de lectura ni de escenario", () => {
+  // 480 y no 720: cada paso es UNA pregunta con un CTA al pie. A 720 el botón
+  // mide media ventana; a 1200 el paso se parte en dos columnas y el control se
+  // separa de su copy. Es la medida aprobada en la rama de referencia.
   const shell = sinComentarios(leer("src/onboarding/components/Screen.tsx"));
-  assert.match(shell, /const STAGE_COLUMN = 720;/, "la escena centrada lee a 720, no a 520");
-  assert.match(shell, /const STAGE_MAX = 1200;/);
-  assert.match(shell, /columnCentered: \{ alignSelf: "center", maxWidth: STAGE_COLUMN \}/);
-  // `split` mantiene su columna de media composición.
-  assert.match(shell, /columnDesktop: \{ justifyContent: "center", maxWidth: COPY_COLUMN \}/);
-  assert.match(shell, /const COPY_COLUMN = 520;/);
+  assert.match(shell, /const FORM_COLUMN = 480;/);
+  assert.ok(480 < 720, "la columna del alta es más angosta que la de lectura de la app");
+  // Y es la ÚNICA medida del shell: ninguna segunda composición escondida.
+  const medidas = (shell.match(/maxWidth: [A-Z_]+|maxWidth: \d+/g) ?? []).filter((m) => m !== "maxWidth: FORM_COLUMN");
+  assert.deepEqual(medidas, [], "el shell no puede tener una segunda medida");
 });
 
 test("el cierre del alta usa la pieza orbital y respeta reducir movimiento", () => {

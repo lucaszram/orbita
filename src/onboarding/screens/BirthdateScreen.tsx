@@ -6,7 +6,7 @@ import { A } from "../assets";
 import { BirthDatePicker } from "../components/BirthPicker";
 import { CTA } from "../components/CTA";
 import { Header } from "../components/Header";
-import { Screen, useSplitSlot } from "../components/Screen";
+import { Screen } from "../components/Screen";
 import { Body, Caption, Title } from "../components/Type";
 import { GUTTER } from "../theme";
 
@@ -36,12 +36,8 @@ export function BirthdateScreen({ step, value, onChange, onNext, onBack }: Props
   // El `max` del control nativo se fue con el control nativo: la regla sigue.
   const future = isFutureDateParts(value, new Date());
   const usable = real && !future;
-  // El control se monta UNA vez: en móvil en su lugar del flujo, en escritorio
-  // en la segunda columna. Nunca los dos: serían dos fuentes de verdad para la
-  // misma fecha.
-  const { inline, aside } = useSplitSlot(<BirthDatePicker value={value} onChange={onChange} />);
   return (
-    <Screen bg={A.dailyTexture} wash={0.52} layout="split" aside={aside}>
+    <Screen bg={A.dailyTexture} wash={0.52}>
       <Header step={step} total={15} onBack={onBack} />
       <View style={styles.body}>
         <Title>¿Cuándo naciste?</Title>
@@ -55,7 +51,10 @@ export function BirthdateScreen({ step, value, onChange, onNext, onBack }: Props
           </Body>
         )}
 
-        {inline}
+        {/* El control se monta UNA vez y en su lugar del flujo: después del
+            aviso, antes de la privacidad y del CTA. Dos montajes serían dos
+            controles con el mismo nombre accesible para la misma fecha. */}
+        <BirthDatePicker value={value} onChange={onChange} />
 
         <View style={styles.spacer} />
         <Caption style={styles.privacy}>

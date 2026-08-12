@@ -57,7 +57,7 @@ export function SplashScreen({ onNext, onSignIn }: Props) {
  * cada regla a una CLASE atómica. El `Text` compartido (`components/ui/text`)
  * agrega además la clase `text-base` de Tailwind, que fija `font-size: 16px` y
  * `line-height: 24px`. Clase contra clase ganaba Tailwind, así que el wordmark
- * se dibujaba a 16px —no a 46, ni a 96— mientras que `textAlign`, que
+ * se dibujaba a 16px —no a 46— mientras que `textAlign`, que
  * `text-base` no toca, sí se aplicaba. Un literal viaja en el atributo `style`
  * y le gana a cualquier clase. Es el mismo mecanismo que ya rompió el enlace de
  * "Ya tengo cuenta".
@@ -71,48 +71,40 @@ const WORDMARK = {
   lineHeight: 60,
   textAlign: "center"
 } as const;
-const WORDMARK_DESKTOP = { ...WORDMARK, fontSize: 96, lineHeight: 112, textAlign: "left" } as const;
 
 const TAGLINE = { color: orbita.muted, fontFamily: font.sans, fontSize: 15, lineHeight: 22, marginTop: 10, textAlign: "center" } as const;
-const TAGLINE_DESKTOP = { ...TAGLINE, fontSize: 21, lineHeight: 30, marginTop: 6, maxWidth: 520, textAlign: "left" } as const;
 
 /**
  * Entrada estable (estática, comprobable): las dos puertas.
  *
- * **Escritorio.** En móvil la marca va centrada y las puertas al pie: es una
- * pantalla de teléfono y funciona. Estirada a 1440x900 eso mismo se vuelve una
- * marca diminuta flotando en el medio de una foto enorme, con el CTA perdido
- * abajo — una captura de teléfono en un monitor.
- *
- * En escritorio se compone entonces como el hero editorial que Órbita ya usa en
- * web: tipografía grande anclada ABAJO A LA IZQUIERDA, el asset cósmico dueño
- * del resto del cuadro, y las dos puertas juntas debajo de la bajada con el CTA
- * en ancho de botón y no de columna. Misma copy, mismo paso 0, misma secuencia:
- * cambia la composición, no el flujo.
+ * Una sola composición: la marca centrada sobre el fondo full-bleed y las dos
+ * puertas al pie, dentro de la columna del alta. El hero editorial anclado
+ * abajo a la izquierda ocupaba el escenario ANCHO —1200px— y con eso volvía
+ * todo lo que había que sacar: en un viewport bajo la marca de 96px empujaba
+ * las puertas fuera del pliegue y el CTA quedaba cortado. El fondo sigue siendo
+ * dueño del cuadro entero; lo que se acota es el contenido.
  */
 function EntryDoors({ onNext, onSignIn }: Props) {
+  // ÚNICO uso del modo de layout en todo el alta, y no compone nada: elige el
+  // MASTER del fondo full-bleed. En web hay un derivado por breakpoint
+  // (candidato 3): el panorámico de 2560×1440 para una ventana ancha y el
+  // vertical de 1170×2532 para un teléfono — el mismo par que usa la landing.
+  // En nativo `entryBackground` devuelve siempre el asset V4.4 de siempre.
   const desktop = useIsDesktop();
   return (
-    // En web el fondo es responsive (un master por breakpoint, candidato 3);
-    // en nativo `entryBackground` devuelve siempre el asset V4.4 de siempre.
-    <Screen
-      bg={entryBackground(desktop)}
-      bgOpacity={0.9}
-      wash={desktop ? 0.44 : 0.5}
-      layout={desktop ? "scene" : "stage"}
-    >
-      <View style={[styles.body, desktop && styles.bodyDesktop]}>
-        <View style={[styles.hero, desktop && styles.heroDesktop]}>
-          <Text style={desktop ? WORDMARK_DESKTOP : WORDMARK}>Órbita</Text>
-          <Text style={desktop ? TAGLINE_DESKTOP : TAGLINE}>Tu cielo, todos los días.</Text>
+    <Screen bg={entryBackground(desktop)} bgOpacity={0.9} wash={0.5}>
+      <View style={styles.body}>
+        <View style={styles.hero}>
+          <Text style={WORDMARK}>Órbita</Text>
+          <Text style={TAGLINE}>Tu cielo, todos los días.</Text>
         </View>
-        <View style={[styles.doors, desktop && styles.doorsDesktop]}>
+        <View style={styles.doors}>
           <CTA label="Empezar a usar Órbita" onPress={onNext} />
           {onSignIn ? (
             <Pressable
               onPress={onSignIn}
               hitSlop={10}
-              style={[SIGN_IN_LINK_ROW, desktop && styles.signInRowDesktop]}
+              style={SIGN_IN_LINK_ROW}
               accessibilityRole="link"
               accessibilityLabel="Ya tengo cuenta: iniciar sesión"
             >
@@ -186,18 +178,5 @@ const styles = StyleSheet.create({
   intro: { overflow: "hidden" },
   // Ancho y alto explícitos, no sólo `absoluteFill`: `absoluteFill` fija los
   // cuatro lados pero no impide que el elemento reporte su tamaño natural.
-  introVideo: { height: "100%", left: 0, position: "absolute", top: 0, width: "100%" },
-  // 44px de alto real: `hitSlop` no existe en web.
-
-  // --- Escritorio: hero editorial anclado abajo a la izquierda -------------
-  // El contenido ocupa el escenario completo (layout `scene`) y se apoya en el
-  // borde inferior; el aire de arriba y de la derecha queda para el asset, que
-  // pasa a ser parte de la composición en vez de espacio muerto.
-  bodyDesktop: { justifyContent: "flex-end", paddingBottom: 72, paddingHorizontal: 0 },
-  heroDesktop: { alignItems: "flex-start", flex: 0, justifyContent: "flex-end" },
-  // 96px: la marca es LA pieza tipográfica de la entrada, no una etiqueta.
-  // Las dos puertas juntas, alineadas a la marca. CTA con ancho de BOTÓN: a 520
-  // se leía como una barra cruzando la pantalla.
-  doorsDesktop: { alignItems: "flex-start", maxWidth: 340, paddingBottom: 0, paddingTop: 36 },
-  signInRowDesktop: { alignSelf: "flex-start", justifyContent: "flex-start", marginTop: 12 }
+  introVideo: { height: "100%", left: 0, position: "absolute", top: 0, width: "100%" }
 });

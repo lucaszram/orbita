@@ -77,27 +77,35 @@ test("cada shell envuelve su contenido con el lienzo compartido", () => {
 });
 
 /**
- * El alta NO usa el lienzo: tiene composición propia. Es la excepción
- * deliberada — sus quince pasos son pantallas cinematográficas, no columnas de
- * texto, así que en escritorio montan una escena centrada o dos columnas en vez
- * de una columna de ancho fijo. Sigue siendo un shell: ninguna de sus pantallas
- * dibuja su propio marco.
+ * El alta NO usa el lienzo de la app: tiene su propia medida, la de un
+ * formulario (480), más angosta que la columna de lectura de 720. Sigue siendo
+ * un shell: ninguna de sus quince pantallas dibuja su propio marco, y ninguna
+ * compone distinto según el ancho de la ventana.
  */
-test("el alta compone con su propio escenario, no con el lienzo de la app", () => {
+test("el alta compone en una columna de formulario, autocontenida", () => {
   const shell = sinComentarios(leer("src/onboarding/components/Screen.tsx"));
+  // Autocontenido: la medida del alta no toca el contrato de layout compartido
+  // ni el lienzo de la app. Esas dos superficies son de la app autenticada.
   assert.doesNotMatch(shell, /ContentCanvas/, "el alta no monta la columna de la app");
-  assert.match(shell, /const desktop = useIsDesktop\(\);/, "consume el modo por contexto");
-  // Las dos composiciones de escritorio.
-  assert.match(shell, /layout === "split" && aside/, "dos columnas cuando hay una pieza visual");
-  assert.match(shell, /stageDesktop: \{ alignSelf: "center", maxWidth: STAGE_MAX/, "escena centrada con tope propio");
-  assert.match(shell, /columnDesktop: \{ justifyContent: "center", maxWidth: COPY_COLUMN \}/, "copy en medida legible");
-  assert.match(shell, /columnCentered: \{ alignSelf: "center", maxWidth: STAGE_COLUMN \}/, "y en escena centrada, centrada de verdad");
-  // El escenario de escritorio NO puede ser una columna de teléfono.
-  assert.match(shell, /const STAGE_MAX = 1200;/);
-  assert.match(shell, /const COPY_COLUMN = 520;/);
-  assert.ok(1200 > 900, "el escenario supera el breakpoint: es una composición ancha de verdad");
-  // `minWidth: 0` en la columna de la escena: sin eso una imagen desborda la fila.
-  assert.match(shell, /aside: \{ flex: 1, justifyContent: "center", minHeight: 0, minWidth: 0 \}/);
+  assert.doesNotMatch(shell, /webLayout|canvasMaxWidth|CANVAS_MAX_WIDTH/, "ni le agrega una variante al contrato");
+  assert.match(shell, /const FORM_COLUMN = 480;/, "su medida vive en el propio shell");
+  assert.ok(480 < CONTENT_CANVAS_MAX_WIDTH, "y es más angosta que la columna de lectura de la app");
+  assert.match(
+    shell,
+    /column: \{ alignSelf: "center", flex: 1, maxWidth: FORM_COLUMN, minHeight: 0, width: "100%" \}/,
+    "una sola columna, centrada sobre el fondo full-bleed"
+  );
+
+  // La regresión que este test existe para impedir: el escenario ancho de 1200,
+  // la segunda columna y el slot que mudaba controles de lugar en escritorio.
+  // Con eso, en un viewport bajo el CTA quedaba cortado y el picker de la fecha
+  // terminaba lejos de su título.
+  for (const nombre of ["STAGE_MAX", "STAGE_COLUMN", "COPY_COLUMN", "ScreenLayout", "useSplitSlot", "aside"]) {
+    assert.ok(!shell.includes(nombre), `el shell del alta volvió a la composición ancha: «${nombre}»`);
+  }
+  // Y no vuelve a mirar el modo de layout: debajo de 480 la columna es ancho
+  // completo, así que el breakpoint del alta es implícito y el nativo no cambia.
+  assert.doesNotMatch(shell, /useIsDesktop|useLayoutMode/, "el shell del alta no compone por viewport");
 });
 
 test("el Umbral envuelve TODAS sus fases, no sólo la de entrada", () => {

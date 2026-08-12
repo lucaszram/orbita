@@ -1,7 +1,6 @@
 import { Image, ScrollView, StyleSheet, View } from "react-native";
 
 import { Text } from "@/components/ui/text";
-import { useIsDesktop } from "@/hooks/useLayoutMode";
 
 import { A } from "../assets";
 import { ClerkSignUp } from "../components/ClerkSignUp";
@@ -9,7 +8,7 @@ import { CTA } from "../components/CTA";
 import { Header } from "../components/Header";
 import { Screen } from "../components/Screen";
 import { Body, Title } from "../components/Type";
-import { font, GUTTER, orbita } from "../theme";
+import { font, GUTTER } from "../theme";
 
 /** En qué estado está el borrador remoto que habilita abrir Clerk. */
 export type SignupDraftPhase = "preparing" | "error" | "ready";
@@ -45,22 +44,11 @@ type Props = {
  * lo que produce cuentas sin datos que ninguna pantalla sabe recuperar.
  */
 export function AccountScreen({ step, phase, error, email, onRetry, onBack }: Props) {
-  const desktop = useIsDesktop();
-
   return (
-    <Screen
-      bg={A.accountBg}
-      bgOpacity={desktop ? 0.55 : 0.32}
-      wash={desktop ? 0.5 : 0.74}
-      layout={desktop ? "split" : "stage"}
-      aside={
-        desktop ? (
-          <View style={styles.seal}>
-            <Image source={A.accountBg} style={styles.sealImg} resizeMode="cover" />
-          </View>
-        ) : undefined
-      }
-    >
+    // El arte del sobre queda como atmósfera detrás del formulario: a más
+    // opacidad competía con los campos de Clerk. El sello sube como pieza
+    // compacta arriba del título, dentro de la MISMA columna.
+    <Screen bg={A.accountBg} bgOpacity={0.32} wash={0.74}>
       <Header step={step} total={15} onBack={onBack} />
       <ScrollView
         style={styles.scroll}
@@ -69,11 +57,9 @@ export function AccountScreen({ step, phase, error, email, onRetry, onBack }: Pr
         keyboardDismissMode="interactive"
         showsVerticalScrollIndicator={false}
       >
-        {desktop ? null : (
-          <View style={styles.sealMobile}>
-            <Image source={A.accountBg} style={styles.sealMobileImg} resizeMode="cover" />
-          </View>
-        )}
+        <View style={styles.seal}>
+          <Image source={A.accountBg} style={styles.sealImg} resizeMode="cover" />
+        </View>
         <Title>Guardá tu carta.</Title>
         <Body style={styles.sub}>Tu historial, tus lecturas y tus tránsitos quedan en tu cuenta.</Body>
 
@@ -114,20 +100,10 @@ const styles = StyleSheet.create({
   preparing: { textAlign: "center" },
   scroll: { flex: 1 },
   scrollContent: { paddingBottom: 56, paddingHorizontal: GUTTER, paddingTop: 26 },
-  // Escritorio: el sello como pieza de la escena, no como fondo.
+  // El sello, compacto y deliberado, arriba del título. Un disco de 420px en
+  // una segunda columna empujaba el formulario contra el borde y dejaba el
+  // botón de Clerk fuera de alcance en cualquier viewport bajo.
   seal: {
-    alignSelf: "center",
-    aspectRatio: 1,
-    borderColor: orbita.lineStrong,
-    borderRadius: 220,
-    borderWidth: 1,
-    maxWidth: 420,
-    overflow: "hidden",
-    width: "100%"
-  },
-  sealImg: { height: "100%", width: "100%" },
-  // Móvil: el sello, compacto y deliberado, arriba del título.
-  sealMobile: {
     alignSelf: "center",
     borderColor: "rgba(214,154,106,0.55)",
     borderRadius: 44,
@@ -137,7 +113,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     width: 88
   },
-  sealMobileImg: { height: "100%", width: "100%" },
+  sealImg: { height: "100%", width: "100%" },
   stateZone: { justifyContent: "center", marginTop: 32, minHeight: 160 },
   sub: { marginTop: 10 }
 });

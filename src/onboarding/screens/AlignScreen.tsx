@@ -9,7 +9,7 @@ import type { AstroGlyphKey } from "@/domain/astroGlyphs";
 import { A } from "../assets";
 import { CTA } from "../components/CTA";
 import { Header } from "../components/Header";
-import { Screen, useSplitSlot } from "../components/Screen";
+import { Screen } from "../components/Screen";
 import { Body, Caption, Title } from "../components/Type";
 import { font, GUTTER, orbita } from "../theme";
 
@@ -25,21 +25,20 @@ import { font, GUTTER, orbita } from "../theme";
  * grilla se queda en su alto natural: no crece hasta deformarse.
  */
 export function AlignScreen({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
-  // La grilla se monta UNA vez: en móvil acá, entre el subtítulo y la nota;
-  // en escritorio, en la segunda columna.
-  const { inline, aside } = useSplitSlot(<TileGrid />);
   return (
-    <Screen bg={A.dailyTexture} wash={0.44} layout="split" aside={aside}>
+    <Screen bg={A.dailyTexture} wash={0.44}>
       <Header step={1} total={15} onBack={onBack} />
       <View style={styles.body}>
         <Title style={styles.title}>Alineate con el ritmo del universo</Title>
         <Body style={styles.sub}>Descifrá amor, trabajo y camino personal desde tu carta.</Body>
 
-        {/* La zona se monta SIEMPRE. En móvil contiene la grilla; en escritorio
-            queda vacía y su `flex: 1` es el resorte que reparte el aire de la
-            columna, para que la nota y el CTA se apoyen abajo en vez de
-            amontonarse contra el título. */}
-        <View style={styles.gridZone}>{inline}</View>
+        {/* La grilla se monta UNA vez y acá: entre el subtítulo y la nota, que
+            es su lugar en el flujo. Su `flex: 1` es el resorte que reparte el
+            aire de la columna, para que la nota y el CTA se apoyen abajo en vez
+            de amontonarse contra el título. */}
+        <View style={styles.gridZone}>
+          <TileGrid />
+        </View>
 
         <Caption style={styles.note}>Órbita ordena señales, no dicta destino.</Caption>
         <View style={styles.footer}>
