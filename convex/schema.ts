@@ -129,6 +129,10 @@ export default defineSchema({
     latitude: v.optional(v.number()),
     longitude: v.optional(v.number()),
     timezone: v.optional(v.string()),
+    // Claim durable del enriquecimiento técnico. Evita que cada autoguardado
+    // programe otro worker para el mismo lugar; se libera al resolver, agotar
+    // los reintentos o cambiar la elección.
+    timezoneResolutionKey: v.optional(v.string()),
     accountState: v.union(v.literal("anonymous"), v.literal("created")),
     paymentState,
     createdAt: v.number(),

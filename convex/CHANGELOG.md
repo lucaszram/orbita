@@ -1,5 +1,12 @@
 # Contrato — CHANGELOG
 
+## 2026-08-11 — Alta durable: claim interno para resolver la zona horaria
+
+- **Contrato aditivo:** `onboardingDrafts` suma `timezoneResolutionKey?: string` para deduplicar el enriquecimiento interno del lugar natal.
+- **Compatibilidad:** no cambia ninguna firma pública ni se exige el campo a clientes existentes; el backend lo crea, rota y elimina de forma interna.
+- **Privacidad:** el claim identifica la combinación ya guardada de etiqueta y coordenadas, no se devuelve en respuestas de producto ni se usa como autoridad natal.
+- **Rollout:** desplegar primero este schema compatible y después el worker interno; rollback eliminando el worker y, en una entrega posterior, el campo opcional.
+
 ## 2026-08-08 — Hotfix definitivo: restaurar el contrato natal público
 
 - **Qué cambia:** `charts.current()` vuelve a entregar la carta sanitizada directamente en `payload` (`placements`, `houses`, `aspects`, `summary`, etc.) en vez de envolverla en `payload.chart.normalized`. El cliente acepta temporalmente ambas formas y rechaza payloads malformados o sin Sol/Luna/Ascendente, salvo el Ascendente legítimamente ausente con `noon_fallback`.
