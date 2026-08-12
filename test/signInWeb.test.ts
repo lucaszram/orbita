@@ -78,9 +78,11 @@ test("el pie «Registrate» de Clerk queda oculto: es una segunda salida y evade
   // lo del dueño anterior antes de soltar el equipo y entra al onboarding
   // canónico. Con el link de Órbita debajo, además, quedaba duplicado.
   const decl = appearanceDe(sinComentarios(leer(WEB)));
+  // El modificador nombra la tarjeta que emite el pie, no el destino del link:
+  // en el DOM de `@clerk/expo` 3.6.5 es `cl-footerAction cl-footerAction__signIn`.
   assert.match(
     decl,
-    /elements:\s*\{\s*footerAction__signUp:\s*\{\s*display:\s*"none"\s*\}\s*\}/,
+    /elements:\s*\{\s*footerAction__signIn:\s*\{\s*display:\s*"none"\s*\}\s*\}/,
     "la salida al alta de Clerk tiene que quedar oculta"
   );
   // Sacarlo del árbol, no maquillarlo: escondido pero enfocable sigue siendo
@@ -118,13 +120,14 @@ test("esa `appearance` oculta un elemento y nada más: no tematiza ni recrea la 
   for (const tema of ["baseTheme", "variables", "layout", "color", "font", "cssLayerName"]) {
     assert.ok(!decl.includes(tema), `la excepción se convirtió en un tema propio por «${tema}»`);
   }
-  // Un solo selector, y con `__signUp`: los otros pies de tarjeta (probar otro
-  // método, tengo problemas, passkey) son pasos del flujo y los pinta Clerk.
+  // Un solo selector, y con el modificador `__signIn` que Clerk le pone a ese
+  // pie: los otros pies de tarjeta (probar otro método, tengo problemas,
+  // passkey) son pasos del flujo y los pinta Clerk.
   const dentroDeElements = decl.match(/elements:\s*\{([\s\S]*)\}/)?.[1] ?? "";
   const pisados = [...dentroDeElements.matchAll(/(\w+):\s*\{/g)].map((m) => m[1]);
   assert.deepEqual(
     pisados,
-    ["footerAction__signUp"],
+    ["footerAction__signIn"],
     `la excepción es UN elemento y es el pie del alta; se están pisando: ${pisados.join(", ")}`
   );
 });

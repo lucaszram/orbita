@@ -82,7 +82,13 @@ type Props = {
  * demás lo sigue pintando y resolviendo Clerk: campos, Google, errores, pasos,
  * y el resto de los pies de tarjeta (probar otro método, tengo problemas,
  * passkey), que son parte del flujo y no se tocan — por eso el selector lleva
- * `__signUp` y no es `footerAction` a secas.
+ * modificador y no es `footerAction` a secas.
+ *
+ * El modificador es `__signIn` y no `__signUp`: nombra la tarjeta que emite el
+ * pie, no el destino del link. En el DOM que renderiza `@clerk/expo` 3.6.5 ese
+ * pie es `cl-footerAction cl-footerAction__signIn` (y su link,
+ * `cl-footerActionLink`); con `__signUp` la regla no enganchaba con ningún
+ * elemento y el link al alta seguía a la vista.
  *
  * `display: "none"` y no `visibility`/`opacity`: saca el link del orden de
  * tabulación y del árbol de accesibilidad. Escondido pero enfocable seguiría
@@ -92,7 +98,7 @@ type Props = {
  * Constante de módulo: identidad estable entre renders, para no reconfigurar el
  * componente montado en cada uno.
  */
-const SIN_ALTA_DE_CLERK = { elements: { footerAction__signUp: { display: "none" } } } as const;
+const SIN_ALTA_DE_CLERK = { elements: { footerAction__signIn: { display: "none" } } } as const;
 
 export function SignInScreen({ onCreateAccount, onBack }: Props) {
   return (
