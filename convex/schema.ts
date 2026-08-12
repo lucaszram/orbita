@@ -133,6 +133,10 @@ export default defineSchema({
     // programe otro worker para el mismo lugar; se libera al resolver, agotar
     // los reintentos o cambiar la elección.
     timezoneResolutionKey: v.optional(v.string()),
+    // Conserva el origen después de que Clerk adjunta la cuenta. Permite
+    // separar un alta nueva recuperable de una cuenta existente que debe
+    // completar sus datos desde /editar-datos.
+    flowOrigin: v.optional(v.union(v.literal("anonymous_signup"), v.literal("authenticated_recovery"))),
     accountState: v.union(v.literal("anonymous"), v.literal("created")),
     paymentState,
     createdAt: v.number(),

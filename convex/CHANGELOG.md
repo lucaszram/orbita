@@ -1,5 +1,13 @@
 # Contrato — CHANGELOG
 
+## 2026-08-11 — Readiness natal autoritativo para alta y recuperación
+
+- **Qué cambia:** `onboardingDrafts` suma el campo aditivo `flowOrigin?: "anonymous_signup" | "authenticated_recovery"`. Se incorpora la consulta pública `onboarding.getCompletionStatus({ clientDraftId? })`, que devuelve un estado sin PII: `signed_out | onboarding_incomplete | profile_incomplete | chart_pending | chart_ready`, el destino de recuperación `onboarding | edit_birth_data | null` y los booleanos `birthDataReady`/`chartReady`.
+- **Autoridad:** `chart_ready` exige identidad Clerk, fila `users`, datos natales completos y válidos, y una `natalChart` cuyo `birthDataId`, `birthDataHash`, `cacheKey` y versión correspondan exactamente a los datos natales vigentes. Un paso local, `isSignedIn` o el retorno de `completeBirthData` no habilitan Home.
+- **Recuperación:** un alta iniciada anónimamente conserva su origen al adjuntarse a Clerk y vuelve al onboarding si falla la finalización. Una cuenta existente incompleta vuelve a `/editar-datos`; nunca se borra ni se recrea.
+- **Rendimiento:** la consulta es reactiva y sólo confirma el resultado persistido; no llama al proveedor, no hace polling ni dispara cálculos. La única cadena de finalización reutiliza el cálculo idempotente por `cacheKey`.
+- **Rollout:** contrato compatible primero en Convex preview/dev. Producción requiere el mismo commit aprobado, desplegando primero Convex compatible y luego un build web con variables productivas.
+
 ## 2026-08-11 — Alta durable: claim interno para resolver la zona horaria
 
 - **Contrato aditivo:** `onboardingDrafts` suma `timezoneResolutionKey?: string` para deduplicar el enriquecimiento interno del lugar natal.
