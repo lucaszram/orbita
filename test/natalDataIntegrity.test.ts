@@ -125,9 +125,11 @@ test("sin herramientas internas no hay inspección posible", () => {
 
 // --- Separación de endpoints -------------------------------------------------
 
-test("el onboarding persiste por completeBirthData (create-only)", () => {
-  const inner = bloqueDesde(PERSIST, "function useBackendPersistInner()");
-  assert.ok(/appApi\.onboarding\.completeBirthData/.test(inner));
+test("el onboarding finaliza desde el borrador remoto autoritativo", () => {
+  const inner = bloqueDesde(PERSIST, "function useOnboardingFinalizeInner()");
+  assert.ok(/appApi\.onboarding\.completeSignupFromDraft/.test(inner));
+  assert.ok(!/appApi\.onboarding\.completeBirthData/.test(inner));
+  assert.ok(!/appApi\.onboarding\.markAccountCreated/.test(inner));
   assert.ok(!/upsertForCurrentUser/.test(inner), "el alta no debe usar el endpoint de edición");
 });
 
@@ -206,13 +208,13 @@ test("no queda ningún cierre con `void` ni el ref calcFired", () => {
   assert.ok(!/calcFired/.test(FLOW_CODE), "el efecto de persistencia del paso 14 debe estar eliminado");
 });
 
-test("el cierre se ESPERA dentro de submit, y el perfil/navegación esperan a la carta", () => {
+test("el cierre se espera dentro de submit, y la salida espera sólo los datos", () => {
   const submit = bloqueDesde(FLOW, "const submit = async () => {");
   const i = submit.indexOf("await finalizeOnboarding({");
   assert.notEqual(i, -1, "la persistencia debe estar dentro de submit y con await");
-  // `submit` YA NO navega: escribir no es estar listo. Crear el perfil local,
-  // limpiar el borrador y entrar a la recepción vive en `enterApp`, que corre
-  // sólo cuando el estado autoritativo confirma la carta persistida.
+  // `submit` no navega: el retorno de una llamada no reemplaza a la autoridad
+  // reactiva. Perfil, limpieza y Home viven en `enterApp`, que corre sólo
+  // cuando el estado autoritativo confirma los datos natales persistidos.
   for (const prohibido of ["await createProfile(", "clearDraft()", "router.replace("]) {
     assert.ok(!submit.includes(prohibido), `${prohibido} no puede depender del retorno de la escritura`);
   }
@@ -221,48 +223,48 @@ test("el cierre se ESPERA dentro de submit, y el perfil/navegación esperan a la
   const limpiar = salida.indexOf("clearDraft()");
   const navegar = salida.indexOf("router.replace(");
   assert.ok(perfil !== -1 && limpiar > perfil && navegar > limpiar, "el orden de salida se conserva");
-  // Y la única puerta que la abre es `chart_ready`.
-  assert.match(FLOW_CODE, /if \(!isChartReady\(completion\)\) return;\s*void enterApp\(\);/);
+  // La carta no participa de la puerta; `birthDataReady` sí.
+  assert.match(FLOW_CODE, /if \(!isBirthDataReady\(completion\)\) return;\s*void enterApp\(\);/);
+  assert.match(salida, /router\.replace\(HOME_ROUTE as never\)/);
+  assert.doesNotMatch(salida, /RECEPTION_ROUTE|\/recepcion/);
   assert.match(FLOW_CODE, /if \(enterLock\.current\) return;/, "y se sale una sola vez");
 });
 
 test("si la persistencia falla no se crea perfil, no se limpia el borrador y no se navega", () => {
   const submit = bloqueDesde(FLOW, "const submit = async () => {");
-  const catchBlock = submit.slice(submit.indexOf("} catch (e) {"));
+  const catchBlock = submit.slice(submit.indexOf("} catch {"));
   assert.ok(/setSubmitError\(/.test(catchBlock), "el fallo tiene que ser visible");
   assert.ok(/return;/.test(catchBlock), "y tiene que cortar el cierre");
   assert.ok(/submitLock\.current = false/.test(catchBlock), "el lock se libera para poder reintentar");
-  // Y hay una pantalla de error con reintento.
-  assert.ok(/submitError !== null \?/.test(FLOW), "el paso de cierre debe renderizar el error");
-  assert.ok(/label=\{submitting \? "Guardando…" : "Reintentar"\}/.test(FLOW), "con reintento visible");
+  // El mismo estado de guardado muestra recuperación inline: no existe una
+  // pantalla terminal por fallo del cálculo de la carta.
+  assert.match(FLOW, /<SavingBirthData[\s\S]*?error=\{submitError\}/);
+  assert.match(FLOW, /retrying \? "Guardando…" : "Reintentar guardado"/);
+  assert.doesNotMatch(FLOW, /No pudimos guardar tu carta/);
 });
 
 // --- El alta normal sigue funcionando ---------------------------------------
 
 test("el alta normal sigue creando datos natales una vez, y el reintento es idempotente", () => {
-  // El frontend manda SIEMPRE el mismo payload para los mismos datos, que es lo
-  // que le permite al backend tratar el reintento como idempotente en vez de
-  // conflicto: no hay timestamps ni valores derivados del reloj en el payload.
+  // El frontend sólo manda el id estable. Los datos —incluida la timezone ya
+  // enriquecida— se copian del borrador remoto dentro de la mutación atómica.
   const inner = bloqueDesde(PERSIST, "function useOnboardingFinalizeInner()");
   assert.ok(!/Date\.now\(\)/.test(inner), "un valor por llamada rompería la idempotencia");
   assert.ok(!/Math\.random/.test(inner));
-  // Derivado del payload YA VALIDADO, no del entorno: es lo que hace que el
-  // reintento mande el mismo hash y el backend lo trate como idempotente.
-  assert.ok(/birthTimePrecision: payload\.birthTime \? "known" : "unknown"/.test(inner), "derivado del input, no del entorno");
+  assert.match(inner, /clientDraftId: input\.clientDraftId/);
+  for (const campo of ["birthDate", "birthTime", "birthPlaceLabel", "latitude", "longitude", "timezone"]) {
+    assert.ok(!new RegExp(`input\\.${campo}`).test(inner), `${campo} no vuelve desde el navegador`);
+  }
   // Y el flujo canónico usa el cierre del alta.
   assert.ok(/useOnboardingFinalize\(\)/.test(FLOW));
 });
 
-test("la cadena de cierre es una sola, en orden, y toda idempotente", () => {
-  // Los cuatro pasos se pueden repetir sin duplicar filas ni volver a pegarle al
-  // proveedor: `markAccountCreated` patchea la misma fila, `completeBirthData`
-  // es create-only e idempotente y el cálculo reutiliza el cache por `cacheKey`.
+test("la cadena obligatoria es atómica y la carta queda en mejor esfuerzo", () => {
   const inner = bloqueDesde(PERSIST, "function useOnboardingFinalizeInner()");
   let prev = -1;
   for (const paso of [
     "appApi.users.getOrCreateCurrentUser",
-    "appApi.onboarding.markAccountCreated",
-    "appApi.onboarding.completeBirthData",
+    "appApi.onboarding.completeSignupFromDraft",
     "appApi.charts.calculateOrCreateNatalChart"
   ]) {
     const i = inner.indexOf(paso);
@@ -275,6 +277,10 @@ test("la cadena de cierre es una sola, en orden, y toda idempotente", () => {
   // Reintentos acotados, no un bucle infinito ni un fallo silencioso.
   assert.ok(/runSessionAttempts\(\{/.test(inner));
   assert.ok(/ONBOARDING_FINALIZE_FAILED/.test(inner), "el agotamiento tiene que ser visible");
+  const iResult = inner.indexOf('if (result.status === "error")');
+  const iChart = inner.indexOf("appApi.charts.calculateOrCreateNatalChart");
+  assert.ok(iChart > iResult, "la carta se intenta después de confirmar el guardado");
+  assert.match(inner.slice(iChart - 40), /void convex\.action[\s\S]*?\.catch\(\(\) => undefined\)/);
   // Y el editor NO comparte esta cadena: completar el alta y editar el perfil
   // son endpoints distintos a propósito.
   assert.ok(!/upsertForCurrentUser/.test(inner));
@@ -285,18 +291,19 @@ test("la cadena de cierre es una sola, en orden, y toda idempotente", () => {
 // resolvía como éxito, así que el catch de `submit` era inalcanzable y el cierre
 // creaba perfil, limpiaba borrador y navegaba sin haber escrito en Convex.
 
-test("el hook del alta propaga el fallo: no queda ningún wrapper que lo trague", () => {
+test("el hook propaga el fallo de guardado y sólo absorbe el derivado", () => {
   assert.ok(
     !/useBackendPersistSwallowInner/.test(PERSIST),
     "el wrapper que atrapaba los errores debe estar eliminado, no sólo sin usar"
   );
   const hook = bloqueDesde(PERSIST, "export function useOnboardingFinalize()");
   assert.ok(/useOnboardingFinalizeInner\(\)/.test(hook), "el alta usa el cierre estricto");
-  // Y el inner no tiene try/catch propio: los reintentos son del presupuesto de
-  // `runSessionAttempts`, que al agotarse TIRA en vez de resolver en falso.
+  // El guardado agota su presupuesto y tira. El único catch pertenece a la
+  // carta mejor-esfuerzo, que no puede convertir datos guardados en un error.
   const inner = bloqueDesde(PERSIST, "function useOnboardingFinalizeInner()");
-  assert.ok(!/catch/.test(inner), "un catch acá volvería a esconder el fallo");
   assert.ok(/throw new Error\("ONBOARDING_FINALIZE_FAILED"\)/.test(inner));
+  assert.equal((inner.match(/\.catch\(/g) ?? []).length, 1);
+  assert.match(inner, /calculateOrCreateNatalChart[\s\S]*?\.catch\(\(\) => undefined\)/);
 });
 
 test("sesión no lista RECHAZA en vez de resolver como éxito", () => {
@@ -308,11 +315,10 @@ test("sesión no lista RECHAZA en vez de resolver como éxito", () => {
   assert.ok(!/if \(!isSignedIn\) return;/.test(inner));
 });
 
-test("el payload se valida antes de tocar Convex, sin rellenar faltantes", () => {
+test("el cierre no reconstruye ni completa el payload en el cliente", () => {
   const inner = bloqueDesde(PERSIST, "function useOnboardingFinalizeInner()");
-  const iValida = inner.indexOf("validateBirthPayload(input)");
-  const iEscribe = inner.indexOf("completeBirthData,");
-  assert.ok(iValida !== -1 && iValida < iEscribe, "validar ANTES de escribir");
+  assert.ok(!/validateBirthPayload\(input\)/.test(inner));
+  assert.match(inner, /completeSignupFromDraft/);
   assert.ok(!/"Sin especificar"/.test(inner), "el lugar no se rellena");
   assert.ok(!/deviceTimezone\(\)/.test(inner), "la zona no sale del dispositivo");
 });
@@ -358,6 +364,9 @@ test("el editor valida el payload antes de cualquier mutación", () => {
   const iEscribe = inner.indexOf("upsertBirthData({");
   assert.ok(iValida !== -1, "el editor debe validar");
   assert.ok(iValida < iEscribe, "validar ANTES de escribir");
+  assert.ok(inner.indexOf("await upsertBirthData") < inner.indexOf("void calculateChart"));
+  assert.match(inner, /void calculateChart\(\{\}\)\.catch\(\(\) => undefined\)/);
+  assert.doesNotMatch(inner, /await calculateChart/);
 });
 
 test("el editor no rellena lugar ni zona", () => {

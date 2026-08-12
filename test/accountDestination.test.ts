@@ -46,7 +46,7 @@ const LEGACY_INCOMPLETA = {
 /** Datos natales completos pero SIN carta persistida. */
 const SIN_CARTA = {
   status: "chart_pending",
-  recovery: "edit_birth_data",
+  recovery: null,
   profileReady: true,
   birthDataReady: true,
   chartReady: false
@@ -75,7 +75,7 @@ test("sin sesión: landing, login y el ALTA; nunca la app", () => {
   assert.ok(!destinationAllows("sign-in", "app"));
 });
 
-test("sólo `chart_ready` abre la app, y con perfil local propio", () => {
+test("los datos persistidos abren la app, y con perfil local propio", () => {
   assert.equal(resolveAccountDestination(conCuenta(READY)), "app-home");
   assert.ok(destinationAllows("app-home", "app"));
   // Y no puede quedarse en landing, login ni onboarding.
@@ -86,15 +86,13 @@ test("sólo `chart_ready` abre la app, y con perfil local propio", () => {
   assert.equal(resolveAccountDestination(conCuenta(READY, { localProfileReady: false })), "bootstrap");
 });
 
-test("datos natales SIN carta persistida no entran a la app", () => {
-  // El gate viejo miraba `birthData` remoto: con datos y sin carta calculada la
-  // cuenta entraba a una Home que no podía dibujar nada.
-  assert.equal(resolveAccountDestination(conCuenta(SIN_CARTA)), "edit-birth-data");
-  assert.ok(!destinationAllows("edit-birth-data", "app"));
-  // Y un `chart_ready` al que no lo sostiene su booleano tampoco abre nada.
+test("datos natales persistidos abren Home aunque la carta siga pendiente", () => {
+  assert.equal(resolveAccountDestination(conCuenta(SIN_CARTA)), "app-home");
+  assert.ok(destinationAllows("app-home", "app"));
+  // La disponibilidad del derivado no cambia el acceso si birthData sigue listo.
   assert.equal(
     resolveAccountDestination(conCuenta({ ...READY, chartReady: false })),
-    "edit-birth-data"
+    "app-home"
   );
 });
 
@@ -104,7 +102,7 @@ test("alta en curso → onboarding; cuenta preexistente incompleta → editar da
   // cuenta que ya existía no puede volver ahí.
   assert.equal(resolveAccountDestination(conCuenta(EN_ALTA, { localProfileReady: false })), "onboarding");
   assert.ok(destinationAllows("onboarding", "onboarding"));
-  assert.ok(!destinationAllows("onboarding", "app"), "una cuenta sin carta no entra a Home");
+  assert.ok(!destinationAllows("onboarding", "app"), "una cuenta sin datos no entra a Home");
 
   assert.equal(
     resolveAccountDestination(conCuenta(LEGACY_INCOMPLETA, { localProfileReady: false })),
@@ -187,7 +185,7 @@ test("`birthData` dejó de ser la autoridad de acceso", () => {
   assert.ok(/clientDraftId/.test(hook), "con el id del borrador, que distingue alta de recuperación");
 });
 
-test("las tabs no tienen bypass de web: bloquean hasta `chart_ready`", () => {
+test("las tabs no tienen bypass de web: bloquean hasta datos natales persistidos", () => {
   const layout = sinComentarios(readFileSync(join(ROOT, "app/(tabs)/_layout.tsx"), "utf8"));
   // El bypass dejaba entrar a la web con cualquier sesión, sin datos ni carta.
   assert.ok(!/IS_WEB\s*\?\s*"allow"/.test(layout), "el bypass de web no puede volver");

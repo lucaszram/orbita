@@ -167,7 +167,9 @@ export function deriveOnboardingCompletion(args: {
   if (!chartReady) {
     return {
       status: "chart_pending",
-      recovery: args.signupInProgress ? "onboarding" : "edit_birth_data",
+      // La cuenta y sus datos ya están completos. La carta es un derivado
+      // reintentable y no devuelve a la persona al alta ni al editor.
+      recovery: null,
       profileReady: true,
       birthDataReady: true,
       chartReady: false

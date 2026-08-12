@@ -816,24 +816,18 @@ function useOnboardingSignupDraftInner(): (input: SignupDraftInput) => Promise<v
 }
 
 /**
- * Cierre del alta con la sesión YA activa: adjuntar el borrador anónimo a la
- * cuenta, escribir los datos natales y calcular la carta.
+ * Cierre del alta con la sesión YA activa: copiar atómicamente el borrador
+ * remoto confirmado a la cuenta. El cálculo de carta se intenta después, pero
+ * es un derivado y nunca participa del resultado del guardado.
  *
- * Los tres pasos son idempotentes (`markAccountCreated` patchea la misma fila,
- * `completeBirthData` es create-only e idempotente, `calculateOrCreateNatalChart`
- * reutiliza el cache por `cacheKey`), así que la cadena entera se puede
- * reintentar sin duplicar nada ni recalcular contra el proveedor.
+ * `completeSignupFromDraft` adjunta el borrador y crea `birthData` dentro de
+ * una sola mutation idempotente. Así la timezone resuelta por el servidor no
+ * puede perderse por una copia vieja en React o sessionStorage.
  *
  * NO decide el destino: quien autoriza entrar es `getCompletionStatus`.
  */
 export type FinalizeOnboarding = (input: {
-  clientDraftId?: string;
-  birthDate: string;
-  birthTime?: string;
-  birthPlaceLabel?: string;
-  latitude?: number;
-  longitude?: number;
-  timezone?: string;
+  clientDraftId: string;
 }) => Promise<void>;
 
 export function useOnboardingFinalize(): FinalizeOnboarding | null {
@@ -850,36 +844,26 @@ function useOnboardingFinalizeInner(): FinalizeOnboarding {
     async (input) => {
       // Sin sesión no se escribe: sería el cierre navegando sobre nada.
       if (!isSignedIn) throw new Error("ONBOARDING_SESSION_NOT_READY");
-      const payload = validateBirthPayload(input);
       const result = await runSessionAttempts({
         budgetMs: FINALIZE_BUDGET_MS,
         callTimeoutMs: FINALIZE_CALL_TIMEOUT_MS,
         retryPauseMs: FINALIZE_RETRY_PAUSE_MS,
         attempt: async (timebox) => {
           await timebox(convex.mutation(appApi.users.getOrCreateCurrentUser, {}));
-          // Adjunta el borrador anónimo a ESTA cuenta conservando su origen.
+          // Una sola escritura autoritativa: adjunta el borrador confirmado y
+          // copia SUS datos, no una réplica enviada por el navegador.
           await timebox(
-            convex.mutation(appApi.onboarding.markAccountCreated, {
+            convex.mutation(appApi.onboarding.completeSignupFromDraft, {
               clientDraftId: input.clientDraftId
             })
           );
-          await timebox(
-            convex.mutation(appApi.onboarding.completeBirthData, {
-              clientDraftId: input.clientDraftId,
-              birthDate: payload.birthDate,
-              birthTime: payload.birthTime,
-              birthTimePrecision: payload.birthTime ? "known" : "unknown",
-              birthPlaceLabel: payload.birthPlaceLabel,
-              latitude: payload.latitude,
-              longitude: payload.longitude,
-              timezone: payload.timezone
-            })
-          );
-          await timebox(convex.action(appApi.charts.calculateOrCreateNatalChart, {}));
           return true as const;
         }
       });
       if (result.status === "error") throw new Error("ONBOARDING_FINALIZE_FAILED");
+      // Mejor esfuerzo: la action puede seguir viva después de navegar. Si el
+      // proveedor falla, Carta vuelve a dispararla al abrirse y ofrece reintento.
+      void convex.action(appApi.charts.calculateOrCreateNatalChart, {}).catch(() => undefined);
     },
     [convex, isSignedIn]
   );
@@ -933,7 +917,9 @@ function useProfilePersistInner(): PersistBirthData {
         // Marca la intención: es una edición del perfil, no el alta.
         source: "profile"
       });
-      await calculateChart({});
+      // Guardar los datos es la operación obligatoria. La carta derivada no
+      // puede convertir un guardado confirmado en un falso error del editor.
+      void calculateChart({}).catch(() => undefined);
     },
     [calculateChart, ensureUser, isSignedIn, upsertBirthData]
   );

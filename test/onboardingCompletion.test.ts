@@ -157,15 +157,21 @@ describe("authoritative onboarding completion", () => {
       }
     );
 
-    assert.equal(
+    assert.deepEqual(
       deriveOnboardingCompletion({
         authenticated: true,
         user: USER,
         signupInProgress: true,
         birthData: BIRTH,
         chart: null
-      }).status,
-      "chart_pending"
+      }),
+      {
+        status: "chart_pending",
+        recovery: null,
+        profileReady: true,
+        birthDataReady: true,
+        chartReady: false
+      }
     );
   });
 
@@ -189,18 +195,19 @@ describe("authoritative onboarding completion", () => {
     assert.doesNotMatch(confirmation, /scheduler|runAction|AstrologyAPI/);
   });
 
-  it("records completion only with the persisted chart and reuses an existing provider result", () => {
+  it("records completion with persisted birth data and keeps chart cache reuse", () => {
     const onboarding = readFileSync(join(import.meta.dirname, "../convex/onboarding.ts"), "utf8");
     const charts = readFileSync(join(import.meta.dirname, "../convex/charts.ts"), "utf8");
-    const completeBirthStart = onboarding.indexOf("export const completeBirthData");
+    const completeBirthStart = onboarding.indexOf("export const completeSignupFromDraft");
     const completeBirthEnd = onboarding.indexOf("export const markAccountCreated", completeBirthStart);
-    assert.doesNotMatch(onboarding.slice(completeBirthStart, completeBirthEnd), /onboarding_completed/);
+    const completionWrite = onboarding.slice(completeBirthStart, completeBirthEnd);
+    assert.match(completionWrite, /eventName: "onboarding_completed"/);
+    assert.match(completionWrite, /dedupeKey: String\(birthDataId\)/);
 
     const persistStart = charts.indexOf("export const persistCalculatedNatalChart");
     const actionStart = charts.indexOf("export const calculateOrCreateNatalChart");
     const persist = charts.slice(persistStart, actionStart);
-    assert.match(persist, /eventName: "onboarding_completed"/);
-    assert.match(persist, /dedupeKey: String\(birthData\._id\)/);
+    assert.doesNotMatch(persist, /onboarding_completed/);
 
     const action = charts.slice(actionStart);
     const cacheHit = action.indexOf("if (state.existingChart)");

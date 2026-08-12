@@ -396,6 +396,16 @@ export const appApi = {
       string
     >,
     /**
+     * Alta nueva: copia atómicamente a la cuenta el borrador remoto que ya fue
+     * confirmado antes de Clerk. El cliente no vuelve a enviar datos natales.
+     */
+    completeSignupFromDraft: anyApi.onboarding.completeSignupFromDraft as FunctionReference<
+      "mutation",
+      "public",
+      { clientDraftId: string },
+      string
+    >,
+    /**
      * Adjunta a la cuenta recién creada el borrador guardado anónimo. El
      * `clientDraftId` es lo que conserva el origen del alta: sin él, el mismo
      * usuario parecería una recuperación de una cuenta preexistente.

@@ -16,6 +16,7 @@ import {
 } from "./lib/onboardingCompletion";
 import { normalizeBirthTime } from "./lib/orbita";
 import { decideOnboardingBirthDataWrite } from "./lib/onboardingBirthData";
+import { recordBackendProductEvent } from "./lib/productAnalytics";
 import {
   pickTimezoneCandidate,
   timezoneResolutionKey,
@@ -457,6 +458,159 @@ export const resolveDraftTimezone = internalAction({
   }
 });
 
+type OnboardingBirthInput = {
+  birthDate: string;
+  birthTime?: string;
+  birthTimePrecision: "known" | "approximate" | "unknown";
+  birthPlaceLabel: string;
+  placeId?: string;
+  placeProvider?: string;
+  latitude?: number;
+  longitude?: number;
+  timezone: string;
+};
+
+/**
+ * Escritura canónica de los datos natales del alta. Vive fuera de las
+ * mutations públicas para que el alta nueva pueda copiar el borrador remoto
+ * confirmado sin volver a confiar en una réplica del formulario en el cliente.
+ */
+async function persistOnboardingBirthData(
+  ctx: any,
+  user: any,
+  args: OnboardingBirthInput,
+  draft: any
+) {
+  const now = Date.now();
+  const normalizedBirthTime = normalizeBirthTime(args.birthTime);
+  if (
+    !hasValidCompletionBirthInput({
+      birthDate: args.birthDate,
+      birthTime: normalizedBirthTime,
+      birthTimePrecision: args.birthTimePrecision,
+      birthPlaceLabel: args.birthPlaceLabel,
+      latitude: args.latitude,
+      longitude: args.longitude,
+      timezone: args.timezone
+    })
+  ) {
+    throw new Error("ONBOARDING_BIRTH_DATA_INCOMPLETE");
+  }
+  const existingBirthData = await findCurrentBirthData(ctx, user._id);
+
+  const payloadWithoutTime = omitUndefined({
+    userId: user._id,
+    birthDate: args.birthDate,
+    birthTimePrecision: args.birthTimePrecision,
+    birthPlaceLabel: args.birthPlaceLabel,
+    placeId: args.placeId,
+    placeProvider: args.placeProvider,
+    latitude: args.latitude,
+    longitude: args.longitude,
+    timezone: args.timezone,
+    source: "onboarding",
+    updatedAt: now
+  });
+
+  const writeDecision = decideOnboardingBirthDataWrite(
+    existingBirthData,
+    {
+      birthDate: args.birthDate,
+      birthTime: normalizedBirthTime,
+      birthTimePrecision: args.birthTimePrecision,
+      birthPlaceLabel: args.birthPlaceLabel,
+      latitude: args.latitude,
+      longitude: args.longitude,
+      timezone: args.timezone
+    }
+  );
+
+  const birthDataId =
+    writeDecision === "idempotent"
+      ? existingBirthData!._id
+      : await ctx.db.insert("birthData", {
+        ...payloadWithoutTime,
+        ...omitUndefined({ birthTime: normalizedBirthTime }),
+        createdAt: now
+      });
+
+  if (draft) {
+    await ctx.db.patch(
+      draft._id,
+      {
+        ...omitUndefined({
+          userId: user._id,
+          currentStep: Math.max(draft.currentStep ?? 0, 11),
+          birthDate: args.birthDate,
+          birthTimePrecision: args.birthTimePrecision,
+          birthPlaceLabel: args.birthPlaceLabel,
+          placeId: args.placeId,
+          placeProvider: args.placeProvider,
+          latitude: args.latitude,
+          longitude: args.longitude,
+          timezone: args.timezone,
+          flowOrigin:
+            draft.flowOrigin ??
+            (!draft.userId && draft.clientDraftId ? "anonymous_signup" : "authenticated_recovery"),
+          accountState: "created",
+          updatedAt: now
+        }),
+        // Igual que birthData: limpiar una hora previa cuando pasa a unknown.
+        birthTime: normalizedBirthTime
+      }
+    );
+  }
+
+  return birthDataId;
+}
+
+/**
+ * Cierre atómico del alta nueva. El único input del navegador es el id opaco
+ * del borrador que el backend ya confirmó antes de montar Clerk. Fecha, lugar,
+ * coordenadas y timezone salen de esa misma fila autoritativa.
+ */
+export const completeSignupFromDraft = mutation({
+  args: { clientDraftId: v.string() },
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx);
+    const draft = await findDraftByClientId(ctx, args.clientDraftId);
+    if (draftBelongsToAnotherUser(draft, user._id)) {
+      throw new Error("ONBOARDING_DRAFT_ACCOUNT_CONFLICT");
+    }
+    if (!draft || draft.flowOrigin !== "anonymous_signup" || !hasValidCompletionBirthInput(draft)) {
+      throw new Error("ONBOARDING_SIGNUP_DRAFT_INCOMPLETE");
+    }
+    const confirmedDraft: any = draft;
+
+    const birthDataId = await persistOnboardingBirthData(
+      ctx,
+      user,
+      {
+        birthDate: confirmedDraft.birthDate,
+        birthTime: confirmedDraft.birthTime,
+        birthTimePrecision: confirmedDraft.birthTimePrecision,
+        birthPlaceLabel: confirmedDraft.birthPlaceLabel,
+        placeId: confirmedDraft.placeId,
+        placeProvider: confirmedDraft.placeProvider,
+        latitude: confirmedDraft.latitude,
+        longitude: confirmedDraft.longitude,
+        timezone: confirmedDraft.timezone
+      },
+      confirmedDraft
+    );
+    await recordBackendProductEvent(ctx, {
+      eventName: "onboarding_completed",
+      userId: user._id,
+      dedupeKey: String(birthDataId)
+    });
+    return birthDataId;
+  }
+});
+
+/**
+ * Contrato legado: conserva la firma para builds publicados. El alta nueva usa
+ * `completeSignupFromDraft`, que no acepta una copia cliente de estos campos.
+ */
 export const completeBirthData = mutation({
   args: {
     clientDraftId: v.optional(v.string()),
@@ -472,59 +626,6 @@ export const completeBirthData = mutation({
   },
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
-    const now = Date.now();
-    const normalizedBirthTime = normalizeBirthTime(args.birthTime);
-    if (
-      !hasValidCompletionBirthInput({
-        birthDate: args.birthDate,
-        birthTime: normalizedBirthTime,
-        birthTimePrecision: args.birthTimePrecision,
-        birthPlaceLabel: args.birthPlaceLabel,
-        latitude: args.latitude,
-        longitude: args.longitude,
-        timezone: args.timezone
-      })
-    ) {
-      throw new Error("ONBOARDING_BIRTH_DATA_INCOMPLETE");
-    }
-    const existingBirthData = await findCurrentBirthData(ctx, user._id);
-
-    const payloadWithoutTime = omitUndefined({
-      userId: user._id,
-      birthDate: args.birthDate,
-      birthTimePrecision: args.birthTimePrecision,
-      birthPlaceLabel: args.birthPlaceLabel,
-      placeId: args.placeId,
-      placeProvider: args.placeProvider,
-      latitude: args.latitude,
-      longitude: args.longitude,
-      timezone: args.timezone,
-      source: "onboarding",
-      updatedAt: now
-    });
-
-    const writeDecision = decideOnboardingBirthDataWrite(
-      existingBirthData,
-      {
-        birthDate: args.birthDate,
-        birthTime: normalizedBirthTime,
-        birthTimePrecision: args.birthTimePrecision,
-        birthPlaceLabel: args.birthPlaceLabel,
-        latitude: args.latitude,
-        longitude: args.longitude,
-        timezone: args.timezone
-      }
-    );
-
-    const birthDataId =
-      writeDecision === "idempotent"
-        ? existingBirthData!._id
-        : await ctx.db.insert("birthData", {
-          ...payloadWithoutTime,
-          ...omitUndefined({ birthTime: normalizedBirthTime }),
-          createdAt: now
-        });
-
     const draft = args.clientDraftId
       ? await findDraftByClientId(ctx, args.clientDraftId)
       : await ctx.db
@@ -536,33 +637,12 @@ export const completeBirthData = mutation({
       throw new Error("ONBOARDING_DRAFT_ACCOUNT_CONFLICT");
     }
 
-    if (draft) {
-      await ctx.db.patch(
-        draft._id,
-        {
-          ...omitUndefined({
-            userId: user._id,
-            currentStep: Math.max(draft.currentStep ?? 0, 11),
-            birthDate: args.birthDate,
-            birthTimePrecision: args.birthTimePrecision,
-            birthPlaceLabel: args.birthPlaceLabel,
-            placeId: args.placeId,
-            placeProvider: args.placeProvider,
-            latitude: args.latitude,
-            longitude: args.longitude,
-            timezone: args.timezone,
-            flowOrigin:
-              draft.flowOrigin ??
-              (!draft.userId && draft.clientDraftId ? "anonymous_signup" : "authenticated_recovery"),
-            accountState: "created",
-            updatedAt: now
-          }),
-          // Igual que birthData: limpiar una hora previa cuando pasa a unknown.
-          birthTime: normalizedBirthTime
-        }
-      );
-    }
-
+    const birthDataId = await persistOnboardingBirthData(ctx, user, args, draft);
+    await recordBackendProductEvent(ctx, {
+      eventName: "onboarding_completed",
+      userId: user._id,
+      dedupeKey: String(birthDataId)
+    });
     return birthDataId;
   }
 });

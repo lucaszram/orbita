@@ -5,7 +5,7 @@
  * propia versión en paralelo y las dos derivaban. La ruta ahora es un wrapper
  * fino sobre este módulo; no se duplica ninguna pantalla por plataforma.
  */
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { useAction, useQuery } from "convex/react";
@@ -165,16 +165,11 @@ function CartaLive() {
     );
   }
   if (gate === "vacio" || chartGate === "sinCarta") {
-    // El backend confirmó que no hay carta: vacío real.
+    // Los datos están completos y el backend confirmó que todavía no hay
+    // carta. Abrir esta superficie dispara el intento automáticamente.
     return (
       <CartaShell>
-        <EmptyState
-          eyebrow="TU CARTA NATAL"
-          title="Todavía no hay carta"
-          body="Completá tu fecha, hora y lugar de nacimiento para calcular tu carta natal."
-          cta="COMPLETAR MIS DATOS"
-          onCta={() => router.push("/(tabs)/perfil")}
-        />
+        <RecalculateChart reason="missing" />
       </CartaShell>
     );
   }
@@ -184,7 +179,7 @@ function CartaLive() {
     // vez de mostrar la vieja como si fuera la actual.
     return (
       <CartaShell>
-        <RecalculateChart />
+        <RecalculateChart reason="stale" />
       </CartaShell>
     );
   }
@@ -223,28 +218,46 @@ function CartaLive() {
  * `calculateOrCreateNatalChart` devuelve la carta exacta si ya existe y la crea
  * si no, así que reintentar es seguro.
  */
-function RecalculateChart() {
+function RecalculateChart({ reason }: { reason: "missing" | "stale" }) {
   const calculate = useAction(appApi.charts.calculateOrCreateNatalChart);
   const [state, setState] = useState<"idle" | "working" | "failed">("idle");
-  const run = () => {
-    if (state === "working") return;
+  const running = useRef(false);
+  const autoAttempted = useRef(false);
+  const run = useCallback(() => {
+    if (running.current) return;
+    running.current = true;
     setState("working");
     calculate({})
       .then(() => setState("idle"))
-      .catch(() => setState("failed"));
-  };
+      .catch(() => setState("failed"))
+      .finally(() => {
+        running.current = false;
+      });
+  }, [calculate]);
+
+  // Entrar a Carta es la intención explícita de verla: se intenta una vez sin
+  // exigir un tap adicional. Si falla, el mismo bloque ofrece reintento.
+  useEffect(() => {
+    if (autoAttempted.current) return;
+    autoAttempted.current = true;
+    run();
+  }, [run]);
+
+  const missing = reason === "missing";
   return (
     <Section>
       <Eyebrow>Tu carta natal</Eyebrow>
-      <H2>Tu carta tiene que recalcularse.</H2>
+      <H2>{missing ? "Estamos preparando tu carta." : "Tu carta tiene que recalcularse."}</H2>
       <Body>
         {state === "failed"
-          ? "No pudimos recalcularla. Tus datos están guardados: probá de nuevo."
-          : "Tus datos de nacimiento cambiaron desde el último cálculo. Recalculamos tu carta con los datos actuales."}
+          ? "No pudimos calcularla ahora. Tus datos están guardados: probá de nuevo cuando quieras."
+          : missing
+            ? "Tus datos de nacimiento ya están guardados. El cálculo puede tardar unos segundos."
+            : "Tus datos de nacimiento cambiaron desde el último cálculo. Recalculamos tu carta con los datos actuales."}
       </Body>
       <View style={{ height: orbita.spacing.lg }} />
       <Pill
-        label={state === "working" ? "RECALCULANDO…" : state === "failed" ? "REINTENTAR" : "RECALCULAR MI CARTA"}
+        label={state === "working" ? "CALCULANDO…" : state === "failed" ? "REINTENTAR" : "CALCULAR MI CARTA"}
         onPress={run}
       />
     </Section>

@@ -597,7 +597,7 @@ test("el cierre del alta usa la pieza orbital y respeta reducir movimiento", () 
   assert.match(flow, /if \(reduced\) return;/, "con movimiento reducido no se anima");
   assert.match(flow, /!reduced && \{ transform: \[\{ rotate \}\] \}/, "y la pieza queda quieta");
   // El texto de estado sigue anunciado.
-  assert.match(flow, /Guardando tu carta…/);
+  assert.match(flow, /Guardando tus datos…/);
   assert.match(flow, /accessibilityRole="progressbar"/);
   assert.match(flow, /accessibilityLiveRegion="polite"/);
 });
@@ -716,21 +716,22 @@ test("Antes/Después scrollea y deja el CTA anclado con respiro seguro", () => {
 });
 
 test("el cierre del alta muestra que está guardando, no una pantalla vacía", () => {
-  // Con `PAYWALL_ENABLED=false` el último paso persiste la carta y entra a la
+  // Con `PAYWALL_ENABLED=false` el último paso persiste los datos y entra a la
   // app. Mientras tanto se renderizaba un `View` negro y vacío: parecía que la
   // app se había colgado justo en el momento más frágil del alta.
   const flow = sinComentarios(leer("src/onboarding/OnboardingFlow.tsx"));
-  assert.match(flow, /function SavingChart\(\)/, "hace falta un estado de guardado con marca");
-  assert.match(flow, /<SavingChart \/>/, "y el cierre tiene que montarlo");
-  assert.match(flow, /Guardando tu carta…/, "con copy en español");
+  assert.match(flow, /function SavingBirthData\(/, "hace falta un estado de guardado con marca");
+  assert.match(flow, /<SavingBirthData\b/, "y el cierre tiene que montarlo");
+  assert.match(flow, /Guardando tus datos…/, "con copy en español");
   assert.match(flow, /source=\{A\.heroEclipse\}/, "y la pieza orbital como señal de actividad");
   // Anunciado: rol de progreso + región viva para un lector de pantalla.
   assert.match(flow, /accessibilityRole="progressbar"/);
-  assert.match(flow, /accessibilityLabel="Guardando tu carta"/);
+  assert.match(flow, /accessibilityLabel=\{error \? "No pudimos sincronizar tus datos" : "Guardando tus datos"\}/);
   assert.match(flow, /accessibilityLiveRegion="polite"/);
+  assert.match(flow, /Reintentar guardado/);
 
   // Y el relleno negro vacío ya no se monta en ninguna rama del switch.
-  const cierre = flow.slice(flow.indexOf("case FINAL_STEP:"), flow.indexOf("function SavingChart"));
+  const cierre = flow.slice(flow.indexOf("case FINAL_STEP:"), flow.indexOf("function SavingBirthData"));
   assert.doesNotMatch(cierre, /<View style=\{styles\.fill\} \/>/, "el relleno vacío no puede volver al cierre");
 
   // El envío y el paywall no cambian: sólo lo que se dibuja mientras tanto.

@@ -25,7 +25,6 @@ import {
   buildWebB0ValuesMapPayload
 } from "./lib/orbita";
 import { buildPublicNatalChartDocument } from "./lib/publicNatalChart";
-import { recordBackendProductEvent } from "./lib/productAnalytics";
 import { isUserPro } from "./lib/subscriptionAccess";
 import { findCurrentUser, findUserByTokenIdentifier, requireIdentity } from "./lib/users";
 
@@ -521,17 +520,6 @@ export const persistCalculatedNatalChart = internalMutation({
         payload: cachePayload,
         createdAt: now,
         updatedAt: now
-      });
-    }
-
-    // El onboarding sólo se considera completo cuando la carta exacta quedó
-    // persistida. Reintentos y doble submit reutilizan cacheKey y dedupeKey.
-    if (birthData.source === "onboarding") {
-      await recordBackendProductEvent(ctx, {
-        eventName: "onboarding_completed",
-        userId: user._id,
-        dedupeKey: String(birthData._id),
-        occurredAt: now
       });
     }
 

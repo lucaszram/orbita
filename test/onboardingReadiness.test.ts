@@ -1,9 +1,9 @@
 /**
  * Alta con la UI oficial de Clerk y readiness autoritativo (frontend).
  *
- * Lo que se fija acá no es estética: es que Órbita no se abra antes de que la
- * carta exista de verdad, y que una cuenta creada en Clerk nunca quede sin los
- * datos que la persona ya cargó.
+ * Lo que se fija acá no es estética: es que Órbita no se abra antes de guardar
+ * los datos, que una cuenta creada en Clerk no pierda lo ya cargado y que el
+ * proveedor de cartas no pueda convertir el alta en una pantalla terminal.
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -12,6 +12,7 @@ import { join } from "node:path";
 
 import {
   createClientDraftId,
+  isBirthDataReady,
   isChartReady,
   isClientDraftId,
   isCompletionPending,
@@ -35,16 +36,19 @@ const completion = (patch: Partial<OnboardingCompletion>): OnboardingCompletion 
 
 // --- 1. Qué abre Órbita ------------------------------------------------------
 
-test("sólo la carta PERSISTIDA abre la app", () => {
+test("los datos PERSISTIDOS abren la app; la carta se deriva aparte", () => {
   assert.equal(resolveReadinessDestination(completion({})), "app");
+  assert.equal(isBirthDataReady(completion({})), true);
   assert.equal(isChartReady(completion({})), true);
 
-  // Ninguna señal intermedia alcanza. `chart_pending` es exactamente el caso
-  // que el gate viejo dejaba pasar: datos natales sí, carta todavía no.
-  for (const status of ["onboarding_incomplete", "profile_incomplete", "chart_pending"] as const) {
+  for (const status of ["onboarding_incomplete", "profile_incomplete"] as const) {
+    assert.equal(isBirthDataReady(completion({ status, birthDataReady: false, chartReady: false })), false, status);
     assert.equal(isChartReady(completion({ status, chartReady: false })), false, status);
   }
-  // Y un `chart_ready` sin el booleano que lo sostiene tampoco abre nada.
+  const pending = completion({ status: "chart_pending", recovery: null, chartReady: false });
+  assert.equal(resolveReadinessDestination(pending), "app");
+  assert.equal(isBirthDataReady(pending), true);
+  assert.equal(isChartReady(pending), false);
   assert.equal(isChartReady(completion({ chartReady: false })), false);
   assert.equal(isChartReady(undefined), false, "sin resolver NO es listo");
 });
@@ -59,22 +63,13 @@ test("estados nuevos vuelven al alta; una cuenta preexistente va a editar datos"
     ),
     "onboarding"
   );
+  assert.equal(resolveReadinessDestination(completion({ status: "chart_pending", recovery: null, chartReady: false })), "app");
   assert.equal(
     resolveReadinessDestination(
-      completion({ status: "chart_pending", recovery: "onboarding", chartReady: false })
+      completion({ status: "profile_incomplete", recovery: "edit_birth_data", birthDataReady: false, chartReady: false })
     ),
-    "onboarding",
-    "el cálculo pendiente de un alta en curso sigue siendo el alta"
+    "edit-birth-data"
   );
-  for (const status of ["profile_incomplete", "chart_pending"] as const) {
-    assert.equal(
-      resolveReadinessDestination(
-        completion({ status, recovery: "edit_birth_data", chartReady: false })
-      ),
-      "edit-birth-data",
-      status
-    );
-  }
 });
 
 test("la consulta manda sobre Clerk cuando dice que no hay identidad", () => {
@@ -88,8 +83,8 @@ test("la consulta manda sobre Clerk cuando dice que no hay identidad", () => {
 
 test("el cierre en vuelo no es un error", () => {
   assert.equal(isCompletionPending(undefined), true, "sin resolver todavía");
-  assert.equal(isCompletionPending(completion({ status: "chart_pending", chartReady: false })), true);
-  assert.equal(isCompletionPending(completion({ status: "onboarding_incomplete", chartReady: false })), true);
+  assert.equal(isCompletionPending(completion({ status: "chart_pending", chartReady: false })), false);
+  assert.equal(isCompletionPending(completion({ status: "onboarding_incomplete", birthDataReady: false, chartReady: false })), true);
   assert.equal(isCompletionPending(completion({})), false);
 });
 
@@ -157,7 +152,7 @@ test("el borrador remoto se persiste y se CONFIRMA antes de abrir Clerk", () => 
   assert.match(gate, /ONBOARDING_SIGNUP_DRAFT_NOT_READY/);
 });
 
-test("el cierre adjunta el borrador, escribe y calcula — todo idempotente", () => {
+test("el cierre copia el borrador atómicamente y calcula sólo como mejor esfuerzo", () => {
   const hook = sinComentarios(leer("src/onboarding/useAccount.ts"));
   const cierre = hook.slice(
     hook.indexOf("function useOnboardingFinalizeInner"),
@@ -166,8 +161,7 @@ test("el cierre adjunta el borrador, escribe y calcula — todo idempotente", ()
   assert.ok(cierre.length > 0);
   const orden = [
     "appApi.users.getOrCreateCurrentUser",
-    "appApi.onboarding.markAccountCreated",
-    "appApi.onboarding.completeBirthData",
+    "appApi.onboarding.completeSignupFromDraft",
     "appApi.charts.calculateOrCreateNatalChart"
   ];
   let prev = -1;
@@ -178,12 +172,11 @@ test("el cierre adjunta el borrador, escribe y calcula — todo idempotente", ()
   }
   // El borrador anónimo se adjunta con SU id: sin eso la misma persona parece
   // una recuperación de cuenta preexistente y termina en /editar-datos.
-  assert.match(cierre, /markAccountCreated, \{\s*clientDraftId: input\.clientDraftId/);
-  assert.match(cierre, /clientDraftId: input\.clientDraftId,\s*birthDate/);
-  // Reintentos: los cuatro pasos son idempotentes, así que la cadena entera
-  // se puede repetir sin duplicar filas ni recalcular contra el proveedor.
+  assert.match(cierre, /completeSignupFromDraft, \{\s*clientDraftId: input\.clientDraftId/);
+  assert.doesNotMatch(cierre, /birthDate:|birthPlaceLabel:|timezone:/, "el cliente no reenvía datos natales");
   assert.match(cierre, /runSessionAttempts\(\{/);
   assert.match(cierre, /ONBOARDING_FINALIZE_FAILED/);
+  assert.match(cierre, /calculateOrCreateNatalChart, \{\}\)\.catch/, "el cálculo no puede rechazar el guardado");
 });
 
 test("la salida del alta la autoriza el estado autoritativo, no la escritura", () => {
@@ -196,8 +189,31 @@ test("la salida del alta la autoriza el estado autoritativo, no la escritura", (
   assert.ok(submit.length > 0);
   assert.doesNotMatch(submit, /router\.replace/, "el cierre no puede navegar por su cuenta");
   assert.doesNotMatch(submit, /clearDraft\(\)/, "ni dar por terminado el alta");
-  // Quien navega es el efecto que espera `chart_ready`.
-  assert.match(flow, /if \(!isChartReady\(completion\)\) return;\s*void enterApp\(\);/);
+  // Quien navega es el efecto que espera los datos persistidos.
+  assert.match(flow, /if \(!isBirthDataReady\(completion\)\) return;\s*void enterApp\(\);/);
+  assert.match(flow, /router\.replace\(HOME_ROUTE as never\)/);
   // Y una sola vez: la query es reactiva y puede volver a emitir.
   assert.match(flow, /if \(enterLock\.current\) return;\s*enterLock\.current = true;/);
+});
+
+test("Home muestra un estado navegable de carta pendiente antes que cualquier spinner", () => {
+  const home = sinComentarios(leer("src/screens/HomeScreen.tsx"));
+  const renderState = home.slice(home.indexOf("{!chartReady || !heroTriad"));
+  assert.ok(renderState.length > 0);
+  assert.ok(
+    renderState.indexOf("!chartReady || !heroTriad") < renderState.indexOf('dailyState.status === "error"'),
+    "la falta de carta se resuelve antes de esperar la guía diaria"
+  );
+  assert.match(renderState, /Tus datos ya están guardados\./);
+  assert.match(renderState, /router\.push\("\/\(tabs\)\/carta"\)/);
+  assert.match(renderState, /VER MI CARTA/);
+});
+
+test("Carta intenta calcular al abrir y conserva un reintento manual", () => {
+  const carta = sinComentarios(leer("src/screens/CartaScreen.tsx"));
+  assert.match(carta, /<RecalculateChart reason="missing" \/>/);
+  const retry = carta.slice(carta.indexOf("function RecalculateChart"));
+  assert.match(retry, /autoAttempted\.current = true;\s*run\(\);/);
+  assert.match(retry, /Tus datos están guardados: probá de nuevo cuando quieras\./);
+  assert.match(retry, /state === "failed" \? "REINTENTAR"/);
 });

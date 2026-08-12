@@ -195,7 +195,8 @@ export function HomeScreen() {
   const chartReady = chart !== null;
   const heroTriad = chart ? triadFromChart(chart) : null;
 
-  // ¿Qué se puede mostrar? Con sesión: cuando la guía Y la carta natal llegaron.
+  // La guía diaria puede abrirse aunque la carta natal derivada siga pendiente.
+  // Sólo la composición que necesita tríada espera la carta.
   // booting/reconnecting/error de sesión: nunca contenido a medias.
   const sessionPending = isAuthLoading;
   const dayReady = dailyState.status === "ready" && chartReady;
@@ -266,9 +267,6 @@ export function HomeScreen() {
             El fondo (`HomeBackdrop`) queda full-bleed detrás. */}
         <ContentCanvas variant="wide">
         {showHeader ? <HomeHeader /> : null}
-        {/* La recepción de la carta natal ya no es un banner acá: es la ceremonia
-            full-screen (/recepcion) a la que el onboarding entra antes de la Home. */}
-
         {sessionPending ? (
           /* Sesión resolviéndose (arranque o reconexión): carga estable. NUNCA mocks —
              una sesión existente no ve datos demo ni siquiera un segundo. */
@@ -345,19 +343,33 @@ export function HomeScreen() {
 
         {/* Guía del día en vuelo o caída: carga estable / error con reintento. Nunca el
             texto del engine local pisado después por el real ("flash de maqueta"). */}
-        {!dayReady || !heroTriad ? (
-          dailyState.status === "error" ? (
+        {!chartReady || !heroTriad ? (
+          <View style={styles.chartPending}>
+            <Text style={styles.chartPendingEyebrow}>TU CARTA NATAL</Text>
+            <Text style={styles.chartPendingTitle}>Tus datos ya están guardados.</Text>
+            <Text style={styles.chartPendingBody}>
+              Estamos preparando tu carta. Podés seguir en Órbita y volver a intentarlo cuando quieras verla.
+            </Text>
+            <Pressable
+              onPress={() => router.push("/(tabs)/carta")}
+              accessibilityRole="button"
+              accessibilityLabel="Abrir mi carta natal"
+              style={styles.retryBtn}
+            >
+              <Text style={styles.retryText}>VER MI CARTA</Text>
+            </Pressable>
+          </View>
+        ) : dailyState.status === "error" ? (
             <View style={styles.loadingBlock}>
               <Text style={styles.errorTitle}>{dailyState.message}</Text>
               <Pressable onPress={retryDaily} accessibilityRole="button" style={styles.retryBtn}>
                 <Text style={styles.retryText}>REINTENTAR</Text>
               </Pressable>
             </View>
-          ) : (
+        ) : dailyState.status !== "ready" ? (
             <View style={styles.loadingBlock}>
               <LoadingState />
             </View>
-          )
         ) : (
           <>
         {/* El velo: hasta que no sacás la carta, la lectura del día está atenuada. Eso es
@@ -440,6 +452,36 @@ const styles = StyleSheet.create({
   // alcanza para que se lea "hay algo, pero todavía no es tuyo".
   veiled: { opacity: 0.12 },
   loadingBlock: { paddingVertical: orbita.spacing.xxl },
+  chartPending: {
+    alignItems: "center",
+    borderTopColor: orbita.colors.line,
+    borderTopWidth: 1,
+    marginHorizontal: orbita.spacing.gutter,
+    paddingVertical: orbita.spacing.xxl
+  },
+  chartPendingEyebrow: {
+    color: orbita.colors.copper,
+    fontFamily: orbita.fonts.monoMedium,
+    fontSize: 11,
+    letterSpacing: 1.5
+  },
+  chartPendingTitle: {
+    color: orbita.colors.bone,
+    fontFamily: orbita.fonts.serif,
+    fontSize: 22,
+    lineHeight: 28,
+    marginTop: orbita.spacing.md,
+    textAlign: "center"
+  },
+  chartPendingBody: {
+    color: orbita.colors.muted,
+    fontFamily: orbita.fonts.body,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: orbita.spacing.md,
+    maxWidth: 460,
+    textAlign: "center"
+  },
 
   // Primera vez (Bloque B): intro del tarot (día 1), captions de la tira y EL RITUAL.
   introTarot: { paddingHorizontal: orbita.spacing.gutter, paddingTop: orbita.spacing.xl },

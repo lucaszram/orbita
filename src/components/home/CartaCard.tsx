@@ -109,9 +109,9 @@ export function CartaCard({ variant = "card" }: { variant?: "card" | "hero" }) {
   }
   if (chartPhase === "vacio") {
     return (
-      <CardFrame hero={hero} onPress={() => router.push("/editar-datos")} ctaLabel="COMPLETAR MIS DATOS">
+      <CardFrame hero={hero} onPress={() => router.push("/(tabs)/carta")} ctaLabel="VER MI CARTA →">
         <Text style={styles.stateText}>
-          Todavía no hay carta. Completá tu fecha, hora y lugar de nacimiento para calcularla.
+          Tus datos están guardados. Abrí tu carta para terminar de calcularla.
         </Text>
       </CardFrame>
     );

@@ -18,10 +18,9 @@ import {
  * aunque hubiera sesión, el login decidía por perfil local (`home-local`) y el
  * onboarding se montaba para cuentas ya completas.
  *
- * La autoridad de "esta cuenta completó el alta" es `onboarding.getCompletionStatus`,
- * y sólo su `chart_ready` abre Órbita. Antes alcanzaba con que existiera
- * `birthData` remoto: una cuenta con datos y SIN carta calculada entraba a una
- * Home que no podía dibujar nada. Un perfil local tampoco autoriza: puede
+ * La autoridad de "esta cuenta completó el alta" es `onboarding.getCompletionStatus`.
+ * Cuenta interna + `birthDataReady` abren Órbita; la carta se calcula y
+ * reintenta aparte. Un perfil local nunca autoriza por sí solo: puede
  * restaurar diario y guardadas después de identificar al dueño, pero no
  * reemplaza la prueba remota.
  */
@@ -42,8 +41,8 @@ export type AccountDestination =
   | "bootstrap"
   | "onboarding"
   /**
-   * Una cuenta que YA existía quedó incompleta (sin datos natales válidos o sin
-   * carta calculada). No vuelve al alta: `completeBirthData` es create-only y
+   * Una cuenta que YA existía quedó incompleta (sin datos natales válidos). No
+   * vuelve al alta: `completeBirthData` es create-only y
    * rechazaría el cambio. Se la manda al editor de datos, que sí puede
    * completar y recalcular sin borrar ni recrear la cuenta.
    */
@@ -103,7 +102,7 @@ export function resolveAccountDestination(s: AccountState): AccountDestination {
   if (readiness === "sign-in") return "sign-in";
   if (readiness === "onboarding") return "onboarding";
   if (readiness === "edit-birth-data") return "edit-birth-data";
-  // `chart_ready`: recién se entra cuando el perfil local es de ESTA cuenta.
+  // Datos remotos listos: recién se entra cuando el perfil local es de ESTA cuenta.
   return s.localProfileReady ? "app-home" : "bootstrap";
 }
 

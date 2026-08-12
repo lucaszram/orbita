@@ -14,10 +14,10 @@ import { WebLayoutProvider } from "@/components/web/web-layout-provider";
 import { backendConfig } from "@/services/backendProviders";
 import { clearDraft, ensureClientDraftId, readDraft, writeDraft } from "@/domain/onboardingDraft";
 import { resolveDebugStep } from "@/domain/onboardingDebug";
-import { isChartReady } from "@/domain/onboardingReadiness";
+import { HOME_ROUTE } from "@/domain/appRoutes";
+import { isBirthDataReady } from "@/domain/onboardingReadiness";
 import { INTERNAL_TOOLS_ENABLED } from "@/services/internalTools";
 
-import { BirthPayloadError, birthPayloadMessage } from "@/domain/birthPayload";
 import { A } from "./assets";
 import { CTA } from "./components/CTA";
 import { Screen } from "./components/Screen";
@@ -382,10 +382,10 @@ export function OnboardingFlow({
   }, [step, sesionActiva, inspeccion]);
 
   /**
-   * Salida del alta: perfil local + recepción. Se llama UNA sola vez, y con
+   * Salida del alta: perfil local + Home. Se llama UNA sola vez, y con
    * backend configurado SÓLO después de que el estado autoritativo diga
-   * `chart_ready`. Ni `isSignedIn`, ni el retorno de `completeBirthData`, ni un
-   * paso local alcanzan para entrar.
+   * datos natales persistidos. La carta es un derivado reintentable y no
+   * participa de esta puerta.
    */
   const enterApp = async () => {
     if (enterLock.current) return;
@@ -415,17 +415,9 @@ export function OnboardingFlow({
     );
     // El onboarding terminó: el borrador ya no debe sobrevivir a la sesión.
     clearDraft();
-    // Al salir del onboarding, la primera entrega: la ceremonia de recepción de la
-    // carta natal (/recepcion, full-screen, una sola vez). La tríada calculada viaja
-    // por params para no depender de que Convex ya haya persistido la carta.
-    router.replace({
-      pathname: "/recepcion",
-      params: {
-        ...(computed?.sun ? { sol: computed.sun } : {}),
-        ...(computed?.moon ? { luna: computed.moon } : {}),
-        ...(computed?.ascendant ? { asc: computed.ascendant } : {}),
-      },
-    });
+    // Destino determinista: Home siempre. La carta se intenta en segundo plano
+    // y, si todavía falta, se reintenta al abrir su propia superficie.
+    router.replace(HOME_ROUTE as never);
   };
 
   const submit = async () => {
@@ -456,30 +448,18 @@ export function OnboardingFlow({
       return;
     }
 
-    // Cadena idempotente: adjuntar el borrador anónimo a la cuenta, escribir los
-    // datos natales y calcular la carta. Reintentarla no duplica filas ni
-    // recalcula contra el proveedor. NO navega: quien autoriza entrar es
-    // `getCompletionStatus`, y su confirmación llega por la query reactiva.
+    // Escritura idempotente y atómica desde el borrador remoto confirmado. NO
+    // navega: quien autoriza entrar es `getCompletionStatus`, y su confirmación
+    // llega por la query reactiva.
     setSubmitError(null);
     setSubmitting(true);
     try {
-      await finalizeOnboarding({
-        clientDraftId: clientDraftId ?? undefined,
-        birthDate: birthDateISO,
-        birthTime: timeUnknown ? undefined : timeLabel,
-        birthPlaceLabel: birthPlace?.label,
-        latitude: birthPlace?.latitude,
-        longitude: birthPlace?.longitude,
-        timezone: birthPlace?.timezone,
-      });
-    } catch (e) {
+      if (!clientDraftId) throw new Error("ONBOARDING_DRAFT_ID_MISSING");
+      await finalizeOnboarding({ clientDraftId });
+    } catch {
       // Nada de perfil local, nada de limpiar el borrador, nada de navegar: la
       // persona ve el error y puede reintentar sin perder lo cargado.
-      setSubmitError(
-        e instanceof BirthPayloadError
-          ? birthPayloadMessage(e.problem)
-          : "Tus datos siguen acá. Puede ser la conexión; probá de nuevo y la guardamos."
-      );
+      setSubmitError("Tus datos siguen acá. No pudimos sincronizarlos todavía; revisá la conexión y probá de nuevo.");
       setSubmitting(false);
       submitLock.current = false;
       return;
@@ -494,13 +474,12 @@ export function OnboardingFlow({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, inspeccion]);
 
-  // La única puerta de salida con backend: la carta ya está PERSISTIDA y
-  // verificada contra los datos natales vigentes. Mientras el estado sea
-  // `chart_pending` u `onboarding_incomplete`, el cierre sigue esperando.
+  // La puerta de salida exige cuenta y datos natales PERSISTIDOS. Una carta en
+  // `chart_pending` ya no retiene a la persona en el alta.
   useEffect(() => {
     if (inspeccion || !finalizeOnboarding) return;
     if (step !== FINAL_STEP) return;
-    if (!isChartReady(completion)) return;
+    if (!isBirthDataReady(completion)) return;
     void enterApp();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, completion, finalizeOnboarding, inspeccion]);
@@ -639,24 +618,15 @@ export function OnboardingFlow({
             setRetryTick((t) => t + 1);
           }}
         />
-      ) : submitError !== null ? (
-        // La persistencia falló: se dice, con reintento, y NO se navega a la
-        // recepción. Antes el fallo era invisible (`void persistBackend`) y la
-        // persona entraba a una app sin carta guardada.
-        <Screen bg={undefined}>
-          <View style={styles.closeError}>
-            <Title>No pudimos guardar tu carta.</Title>
-            <Body>{submitError}</Body>
-            <CTA label={submitting ? "Guardando…" : "Reintentar"} onPress={submit} />
-          </View>
-        </Screen>
       ) : (
-        // Cierre en curso (o paywall apagado): estado de guardado estable, sin
-        // flashear el pago. Era un `View` negro y vacío — con
-        // `PAYWALL_ENABLED=false` el último paso del alta era una página en
-        // blanco (negro) mientras se persistía la carta, sin ninguna señal de
-        // que algo estuviera pasando.
-        <SavingChart />
+        // Un solo estado de guardado. Un fallo real de persistencia conserva el
+        // borrador y ofrece recuperación inline; no existe una página terminal
+        // de error de carta.
+        <SavingBirthData
+          error={submitError}
+          retrying={submitting}
+          onRetry={submit}
+        />
       );
       break;
   }
@@ -674,13 +644,21 @@ export function OnboardingFlow({
 }
 
 /**
- * Cierre del alta: se está guardando la carta.
+ * Cierre del alta: se están guardando los datos natales.
  *
  * No cambia nada del envío ni del ruteo — sólo deja de ser una pantalla negra
  * vacía. Es el último paso antes de entrar a la app, así que tiene que decir
  * que está pasando algo y anunciarlo también a un lector de pantalla.
  */
-function SavingChart() {
+function SavingBirthData({
+  error,
+  retrying,
+  onRetry
+}: {
+  error: string | null;
+  retrying: boolean;
+  onRetry: () => void;
+}) {
   const reduced = useReducedMotion();
   const spin = useRef(new Animated.Value(0)).current;
 
@@ -701,17 +679,26 @@ function SavingChart() {
     <Screen bg={A.accountBg} bgOpacity={0.4} wash={0.72}>
       <View
         accessibilityRole="progressbar"
-        accessibilityLabel="Guardando tu carta"
+        accessibilityLabel={error ? "No pudimos sincronizar tus datos" : "Guardando tus datos"}
         style={styles.saving}
       >
-        {/* El orbe del alta, no un spinner sobre negro: el cierre es el momento
-            en que la carta se guarda, y merece la misma pieza que el resto. */}
+        {/* El orbe del alta, no un spinner sobre negro: el cierre confirma los
+            datos natales y merece la misma pieza que el resto. */}
         <Animated.View style={[styles.savingSeal, !reduced && { transform: [{ rotate }] }]}>
           <Image source={A.heroEclipse} style={styles.savingSealImg} resizeMode="cover" />
         </Animated.View>
-        <Body accessibilityLiveRegion="polite" style={styles.savingText}>
-          Guardando tu carta…
-        </Body>
+        {error ? (
+          <>
+            <Body accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.savingText}>
+              {error}
+            </Body>
+            <CTA label={retrying ? "Guardando…" : "Reintentar guardado"} onPress={onRetry} disabled={retrying} />
+          </>
+        ) : (
+          <Body accessibilityLiveRegion="polite" style={styles.savingText}>
+            Guardando tus datos…
+          </Body>
+        )}
       </View>
     </Screen>
   );
@@ -719,7 +706,6 @@ function SavingChart() {
 
 const styles = StyleSheet.create({
   fill: { backgroundColor: orbita.bg, flex: 1 },
-  closeError: { flex: 1, gap: 16, justifyContent: "center", paddingHorizontal: 24 },
   saving: { alignItems: "center", flex: 1, gap: 22, justifyContent: "center", paddingHorizontal: 24 },
   savingSeal: {
     borderColor: "rgba(214,154,106,0.45)",
