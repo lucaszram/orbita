@@ -41,6 +41,12 @@ const productEventName = v.union(
   // contract was narrowed. Keep it readable so schema deploys never require
   // deleting historical telemetry; new writes use `onboarding_completed`.
   v.literal("natal_chart_created"),
+  v.literal("natal_interpretation_created"),
+  v.literal("daily_guide_created"),
+  v.literal("transit_reading_created"),
+  v.literal("void_answer_created"),
+  v.literal("saved_reading_created"),
+  v.literal("journal_entry_created"),
   v.literal("natal_chart_viewed"),
   v.literal("daily_guide_viewed"),
   v.literal("daily_card_revealed"),
