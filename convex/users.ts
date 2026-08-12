@@ -1,7 +1,8 @@
 import { mutationGeneric as mutation, queryGeneric as query } from "convex/server";
 import { v } from "convex/values";
 import { deleteAccountData } from "./lib/accountDeletion";
-import { findUserByTokenIdentifier, getOrCreateUser, requireIdentity } from "./lib/users";
+import { normalizedProfileName } from "./lib/userProfile";
+import { findUserByTokenIdentifier, getOrCreateUser, requireIdentity, requireUser } from "./lib/users";
 
 export const current = query({
   handler: async (ctx) => {
@@ -17,6 +18,38 @@ export const current = query({
 export const getOrCreateCurrentUser = mutation({
   handler: async (ctx) => {
     return await getOrCreateUser(ctx);
+  }
+});
+
+/**
+ * Persists the profile name captured by the official Clerk signup.
+ *
+ * The mutation is intentionally idempotent: onboarding recovery can repeat it
+ * after a redirect or a failed chart finalization without duplicating records.
+ */
+export const setCurrentName = mutation({
+  args: {
+    firstName: v.string(),
+    lastName: v.string()
+  },
+  returns: v.object({
+    userId: v.id("users"),
+    firstName: v.string(),
+    lastName: v.string(),
+    name: v.string()
+  }),
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx);
+    const profileName = normalizedProfileName(args.firstName, args.lastName);
+    await ctx.db.patch(user._id, {
+      ...profileName,
+      updatedAt: Date.now()
+    });
+
+    return {
+      userId: user._id,
+      ...profileName
+    };
   }
 });
 

@@ -279,6 +279,8 @@ test("builds user fields from a Clerk-like identity", () => {
   assert.equal(fields.clerkUserId, "user_123");
   assert.equal(fields.email, "mica@example.com");
   assert.equal(fields.name, "Mica");
+  assert.equal(fields.firstName, "Mica");
+  assert.equal(fields.lastName, undefined);
   assert.equal(fields.updatedAt, 123);
 });
 
