@@ -1,5 +1,22 @@
 # Current Task
 
+## Backend — resolución durable del lugar natal (2026-08-11, Codex)
+
+**Objetivo:** guardar el borrador del alta antes de cualquier enriquecimiento y
+resolver internamente la zona horaria del lugar, con reintentos durables, sin pedirla
+ni mostrar errores técnicos a la persona.
+
+**Implementación:** `onboarding.saveDraft` persiste primero y agenda un único worker
+por combinación lugar/coordenadas. El worker elige el resultado más cercano, aplica
+la zona sólo si el lugar no cambió y reintenta con backoff hasta 12 horas. Un claim
+opcional en `onboardingDrafts` deduplica autoguardados; se libera al resolver o agotar
+la cadena. No existe fallback a la zona del dispositivo y las respuestas viejas no
+pueden pisar una ciudad nueva.
+
+**Verificación:** pruebas focalizadas **23/23**; suite completa **854/854**;
+`tsc --noEmit` y `git diff --check` en verde. Sin commit, push, deploy ni mutaciones
+de producción.
+
 ## Hotfix visual — la mini rueda de la tarjeta de Carta natal (2026-08-08, Claude)
 
 **Objetivo:** que la tarjeta de Carta natal de Perfil vuelva a dibujar su mini rueda en vez del hueco vacío de 232 px que muestra la captura de producción, conservando el tope de 232 y los glifos vectoriales de Sol, Luna y Ascendente.
