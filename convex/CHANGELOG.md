@@ -15,6 +15,13 @@
 - **Privacidad:** el claim identifica la combinación ya guardada de etiqueta y coordenadas, no se devuelve en respuestas de producto ni se usa como autoridad natal.
 - **Rollout:** desplegar primero este schema compatible y después el worker interno; rollback eliminando el worker y, en una entrega posterior, el campo opcional.
 
+## 2026-08-11 — Nombre y apellido explícitos durante el alta gratuita
+
+- **Qué cambia:** `users` incorpora `firstName?` y `lastName?` de forma aditiva. El alta web podrá persistir ambos campos después de la autenticación, además del `name` de presentación compatible con clientes anteriores.
+- **Por qué:** Clerk no garantiza que el flujo email/clave actual entregue esos atributos en la identidad. Sin captura explícita, las cuentas nuevas quedan sin nombre aunque el onboarding natal finalice.
+- **Privacidad y acceso:** son datos de perfil de la propia cuenta; sólo la identidad autenticada puede escribirlos. No se incluyen en telemetría ni logs.
+- **Rollout:** coordinar con el `SignUp` oficial de Clerk y validar en una cuenta nueva que nombre, apellido, `birthData` y `natalChart` existan antes de habilitar Home. Sin despliegue de producción en esta tarea.
+
 ## 2026-08-08 — Hotfix definitivo: restaurar el contrato natal público
 
 - **Qué cambia:** `charts.current()` vuelve a entregar la carta sanitizada directamente en `payload` (`placements`, `houses`, `aspects`, `summary`, etc.) en vez de envolverla en `payload.chart.normalized`. El cliente acepta temporalmente ambas formas y rechaza payloads malformados o sin Sol/Luna/Ascendente, salvo el Ascendente legítimamente ausente con `noon_fallback`.

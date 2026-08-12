@@ -54,6 +54,8 @@ export default defineSchema({
     clerkUserId: v.string(),
     email: v.optional(v.string()),
     name: v.optional(v.string()),
+    firstName: v.optional(v.string()),
+    lastName: v.optional(v.string()),
     locale: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number()
