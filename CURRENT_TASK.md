@@ -1,5 +1,55 @@
 # Current Task
 
+## Post-alta — recepción, acceso a carta y límite Free del Tarot (2026-08-12)
+
+**Objetivo:** ordenar el cierre del alta para que la persona llegue primero a
+`/recepcion`, y convertir desde ahí de forma directa a la carta natal completa
+sin una pantalla Free intermedia confusa. Hacer que Órbita Plus sea visible y
+fácil de activar desde Perfil, y limitar de forma autoritativa a siete las
+cartas de Tarot que una cuenta Free puede revelar.
+
+**Criterios de aceptación:** (1) al terminar el alta durable se navega a
+`/recepcion`, conservando la tríada real calculada; (2) en recepción, una cuenta
+Free ve `DESBLOQUEAR MI CARTA NATAL` y va directo a `/paywall`, mientras una
+cuenta Plus ve `ENTRAR A MI CARTA` y va a `/carta`; (3) si una cuenta Free llega
+a la carta parcial, su CTA dice `DESBLOQUEAR MI CARTA NATAL`; (4) la paywall
+explica qué incluye la carta natal completa y que Free permite siete cartas de
+Tarot, pidiendo Plus desde la octava; (5) Perfil ofrece `ACTIVAR ÓRBITA PLUS` a
+Free y conserva la gestión autoritativa para Plus; (6) `daily.revealCard` deja
+revelar hasta siete cartas a Free, conserva la idempotencia de una carta ya
+revelada y rechaza la octava con un marcador estable que el frontend convierte
+en salida a `/paywall`; (7) typecheck, suite completa, export web y recorrido en
+Chrome sobre Preview en verde; (8) producción intacta.
+
+**Ficha:** owner compartido por territorio — Codex en `convex/**`, Claude en
+`app/**` + `src/**`; branch y worktree existentes
+`feature/onboarding-readiness-clerk-ui` / `.worktrees/orbita-onboarding-readiness`;
+cambio de contrato público no (la firma de `daily.revealCard` no cambia; suma
+una regla de acceso y un marcador de error estable); riesgo alto por tocar
+onboarding, entitlement y pago; rollout únicamente al Vercel Preview de esta
+rama y al deployment Convex dev compartido si la verificación lo requiere;
+rollback por revertir los commits de esta tarea y volver a sincronizar sólo el
+backend dev; fuera de alcance precio, trial, Checkout/webhook/portal, Stripe
+live, schema, producción, diseño visual nuevo y contenido del Tarot.
+
+**Plan de pruebas:** regresiones de navegación/copy/Perfil; pruebas unitarias de
+la regla `7 Free / ilimitado Plus`, incluida la idempotencia; typecheck, suite
+completa, `build:web`, `check:web-export`, `git diff --check`; en Chrome Preview,
+revisar recepción Free → paywall, Carta Free → paywall, Perfil Free → paywall,
+paywall y navegación Plus preservada. La octava carta se demuestra con prueba
+de backend sin fabricar ni sobrescribir datos reales de la cuenta de Lucas.
+
+**Estado de integración:** backend y frontend implementados. Convex dev
+`dutiful-viper-815` quedó sincronizado con la regla de siete revelaciones Free;
+producción no se tocó. El frontend restaura `/recepcion`, decide el CTA con el
+entitlement real, ofrece Plus desde Perfil, corrige los CTA de Carta/paywall y
+convierte el rechazo de la octava carta en una salida visible a `/paywall` sin
+fingir un reveal exitoso. Validación independiente de Codex: `pnpm typecheck`,
+suite completa **953/953**, `pnpm build:web`, `pnpm check:web-export` y
+`git diff --check` en verde; export web 31,99 MB, imagen máxima 479,3 KB y JS
+gzip 978,9 KB. Backend aislado en `744f0eb`. Pendiente al escribir esta línea:
+commit frontend, push, Vercel Preview y recorrido autenticado en Chrome.
+
 ## Alta — vuelve la columna única del alta (2026-08-12, Claude)
 
 **Objetivo:** sacar del alta la composición ancha que reintrodujo `56b8a6d` (escenario de 1200, `split`/`scene` y el slot que mudaba controles a una segunda columna) y volver al shell de formulario de UNA columna aprobado en `feature/web-p5-onboarding-responsive`, sin tocar el layout compartido de la app ni nada del alta durable.

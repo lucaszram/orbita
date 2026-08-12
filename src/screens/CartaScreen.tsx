@@ -391,7 +391,7 @@ function CartaView({
                 posiciones siguen acá.
               </Text>
               <View style={{ marginTop: orbita.spacing.lg }}>
-                <Pill label="VER ÓRBITA PLUS" onPress={() => router.push("/paywall")} />
+                <Pill label="DESBLOQUEAR MI CARTA NATAL" onPress={() => router.push("/paywall")} />
               </View>
             </View>
           ) : (

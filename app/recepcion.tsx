@@ -8,6 +8,8 @@ import { HomeBackdrop } from "@/components/home/HomeBackdrop";
 import { ContentCanvas, MeasuredSquare } from "@/components/orbita/ContentCanvas";
 import { NatalWheel } from "@/components/orbita/NatalWheel";
 import { TriadLine, type TriadLineUnit } from "@/components/orbita/TriadLine";
+import { HOME_ROUTE } from "@/domain/appRoutes";
+import { recepcionCta } from "@/domain/entitlement";
 import { mapNatalChart } from "@/domain/natalChart";
 import { personalChartGate } from "@/domain/natalChartGate";
 import { markFirstRun } from "@/services/firstRun";
@@ -35,9 +37,12 @@ function fechaLarga(iso: string): string {
  *  "13 · Primer día · doble entrega", frame 679:2).
  *
  *  El headline es EL DATO (fecha, hora, lugar): la autoridad sale de la
- *  especificidad. "ENTRAR A MI CARTA" abre el tab Carta (que explica QUÉ ES la
- *  primera vez); "VER DESPUÉS" deja al usuario en la Home, donde la segunda
- *  entrega (el tarot diario) se explica en su lugar de trabajo.
+ *  especificidad. La salida principal depende del plan REAL: con Plus,
+ *  "ENTRAR A MI CARTA" abre el tab Carta (que explica QUÉ ES la primera vez);
+ *  con Free, "DESBLOQUEAR MI CARTA NATAL" va directo a `/paywall` —la carta
+ *  parcial en el medio se leía como algo roto, no como una oferta. "VER
+ *  DESPUÉS" deja al usuario en la Home, donde la segunda entrega (el tarot
+ *  diario) se explica en su lugar de trabajo.
  */
 
 export default function RecepcionScreen() {
@@ -55,6 +60,12 @@ export default function RecepcionScreen() {
   // carta puede estar todavía calculándose.
   const remoteBirth = useQuery(appApi.birthData.getCurrent, isLive ? {} : "skip");
   const chartGate = personalChartGate({ birth: remoteBirth, chart: chartDoc });
+  // La salida la decide el entitlement AUTORITATIVO, no una suposición del
+  // cliente: Free va derecho a la paywall (la carta parcial en el medio se leía
+  // como un error, no como una oferta) y Plus entra a su carta. Mientras la
+  // query está en vuelo el botón espera: nunca se afirma que la cuenta es Free.
+  const entitlement = useQuery(appApi.subscriptions.getCurrent, isLive ? {} : "skip");
+  const cta = recepcionCta({ entitlement, live: isLive });
 
   useEffect(() => {
     void markFirstRun({ recepcionVista: true });
@@ -147,11 +158,29 @@ export default function RecepcionScreen() {
           <Text style={styles.note}>Calculada sin hora exacta: el ascendente y las casas son aproximados.</Text>
         ) : null}
 
-        <Pressable onPress={() => router.replace("/(tabs)/carta")} accessibilityRole="button" style={styles.cta}>
-          <Text style={styles.ctaLabel}>ENTRAR A MI CARTA</Text>
+        {/* Un solo botón principal, con tres estados. Mientras el plan carga
+            queda inhabilitado: no manda a la carta ni a la paywall antes de
+            saber cuál corresponde. */}
+        <Pressable
+          onPress={() => {
+            if (cta === "cargando") return;
+            router.replace(cta === "desbloquear" ? "/paywall" : "/(tabs)/carta");
+          }}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: cta === "cargando" }}
+          disabled={cta === "cargando"}
+          style={[styles.cta, cta === "cargando" && styles.ctaOff]}
+        >
+          <Text style={styles.ctaLabel}>
+            {cta === "cargando"
+              ? "UN MOMENTO…"
+              : cta === "desbloquear"
+                ? "DESBLOQUEAR MI CARTA NATAL"
+                : "ENTRAR A MI CARTA"}
+          </Text>
         </Pressable>
         <Pressable
-          onPress={() => router.replace("/(tabs)")}
+          onPress={() => router.replace(HOME_ROUTE as never)}
           accessibilityRole="button"
           hitSlop={12}
           style={styles.later}
@@ -212,6 +241,7 @@ const styles = StyleSheet.create({
     marginTop: orbita.spacing.xxl,
     paddingVertical: orbita.spacing.lg
   },
+  ctaOff: { opacity: 0.5 },
   ctaLabel: { color: "#1A1A1A", fontFamily: orbita.fonts.monoMedium, fontSize: 13, letterSpacing: 1 },
   later: { alignItems: "center", marginTop: orbita.spacing.xl },
   laterLabel: {

@@ -213,7 +213,7 @@ test("el cierre se espera dentro de submit, y la salida espera sólo los datos",
   const i = submit.indexOf("await finalizeOnboarding({");
   assert.notEqual(i, -1, "la persistencia debe estar dentro de submit y con await");
   // `submit` no navega: el retorno de una llamada no reemplaza a la autoridad
-  // reactiva. Perfil, limpieza y Home viven en `enterApp`, que corre sólo
+  // reactiva. Perfil, limpieza y salida viven en `enterApp`, que corre sólo
   // cuando el estado autoritativo confirma los datos natales persistidos.
   for (const prohibido of ["await createProfile(", "clearDraft()", "router.replace("]) {
     assert.ok(!submit.includes(prohibido), `${prohibido} no puede depender del retorno de la escritura`);
@@ -225,8 +225,10 @@ test("el cierre se espera dentro de submit, y la salida espera sólo los datos",
   assert.ok(perfil !== -1 && limpiar > perfil && navegar > limpiar, "el orden de salida se conserva");
   // La carta no participa de la puerta; `birthDataReady` sí.
   assert.match(FLOW_CODE, /if \(!isBirthDataReady\(completion\)\) return;\s*void enterApp\(\);/);
-  assert.match(salida, /router\.replace\(HOME_ROUTE as never\)/);
-  assert.doesNotMatch(salida, /RECEPTION_ROUTE|\/recepcion/);
+  // El destino del cierre es la recepción del día 1 (decisión 2026-08-12): la
+  // Home directa se saltaba la única entrega ceremonial del alta.
+  assert.match(salida, /router\.replace\(\{\s*pathname: RECEPTION_ROUTE,/);
+  assert.doesNotMatch(salida, /HOME_ROUTE/);
   assert.match(FLOW_CODE, /if \(enterLock\.current\) return;/, "y se sale una sola vez");
 });
 

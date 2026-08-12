@@ -14,7 +14,7 @@ import { WebLayoutProvider } from "@/components/web/web-layout-provider";
 import { backendConfig } from "@/services/backendProviders";
 import { clearDraft, ensureClientDraftId, readDraft, writeDraft } from "@/domain/onboardingDraft";
 import { resolveDebugStep } from "@/domain/onboardingDebug";
-import { HOME_ROUTE } from "@/domain/appRoutes";
+import { RECEPTION_ROUTE } from "@/domain/appRoutes";
 import { isBirthDataReady } from "@/domain/onboardingReadiness";
 import { INTERNAL_TOOLS_ENABLED } from "@/services/internalTools";
 
@@ -382,7 +382,7 @@ export function OnboardingFlow({
   }, [step, sesionActiva, inspeccion]);
 
   /**
-   * Salida del alta: perfil local + Home. Se llama UNA sola vez, y con
+   * Salida del alta: perfil local + recepción. Se llama UNA sola vez, y con
    * backend configurado SÓLO después de que el estado autoritativo diga
    * datos natales persistidos. La carta es un derivado reintentable y no
    * participa de esta puerta.
@@ -415,9 +415,20 @@ export function OnboardingFlow({
     );
     // El onboarding terminó: el borrador ya no debe sobrevivir a la sesión.
     clearDraft();
-    // Destino determinista: Home siempre. La carta se intenta en segundo plano
-    // y, si todavía falta, se reintenta al abrir su propia superficie.
-    router.replace(HOME_ROUTE as never);
+    // Destino determinista: la ceremonia de recepción (`/recepcion`,
+    // full-screen, una sola vez), que es la primera entrega del día 1. Desde
+    // ahí se decide con el entitlement autoritativo si la salida es la carta o
+    // la paywall; "VER DESPUÉS" deja a la persona en Home. La tríada calculada
+    // viaja por params para no depender de que Convex ya haya persistido la
+    // carta: sigue siendo un derivado reintentable y no participa de la puerta.
+    router.replace({
+      pathname: RECEPTION_ROUTE,
+      params: {
+        ...(computed?.sun ? { sol: computed.sun } : {}),
+        ...(computed?.moon ? { luna: computed.moon } : {}),
+        ...(computed?.ascendant ? { asc: computed.ascendant } : {}),
+      },
+    } as never);
   };
 
   const submit = async () => {

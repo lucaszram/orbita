@@ -114,12 +114,22 @@ describe("Perfil — links legales visibles", () => {
   });
 });
 
-describe("Primera versión gratuita — Plus no aparece", () => {
-  it("Perfil no menciona suscripción, plan ni Plus", () => {
-    assert.equal(PERFIL.includes("SUSCRIPCIÓN"), false);
+// La prohibición histórica ("Primera versión gratuita — Plus no aparece") ya no
+// aplica: Órbita Plus se vende y Perfil es la única superficie de la app
+// autenticada donde una cuenta Free puede activarlo (tarea 2026-08-12). Lo que
+// sí se conserva es que la pantalla no invente precios ni planes: eso vive
+// exclusivamente en `/paywall`, que los pide a Stripe.
+describe("Perfil — el plan se ofrece por el bloque autoritativo, sin precios", () => {
+  it("Perfil no escribe precios, planes ni un camino propio a checkout", () => {
     assert.equal(PERFIL.includes("reading/plus"), false);
-    assert.equal(PERFIL.toLowerCase().includes("suscripción"), false);
-    assert.equal(/plus/i.test(PERFIL.replace(/hitSlop/g, "")), false);
+    assert.equal(PERFIL.includes("ANUAL"), false);
+    assert.equal(PERFIL.includes("SEMANAL"), false);
+    assert.equal(PERFIL.includes("$"), false);
+    assert.equal(/createCheckoutSession|getWebOffer/.test(PERFIL), false);
+  });
+
+  it("con sesión monta el bloque de plan, que decide con el entitlement", () => {
+    assert.match(PERFIL, /\{auth\?\.isSignedIn \? <ManageSubscriptionBlock \/> : null\}/);
   });
 
   it("/reading/plus redirige sin mostrar planes ni precios", () => {

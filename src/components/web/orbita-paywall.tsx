@@ -32,7 +32,8 @@ const colors = {
 };
 
 const BENEFITS = [
-  "Tu carta natal completa: casas, aspectos y los siete capítulos de interpretación.",
+  "Tu carta natal completa: la rueda, tus casas, tus aspectos y los siete capítulos de interpretación.",
+  "El Tarot diario sin tope: con Free revelás siete cartas y desde la octava necesitás Plus.",
   "La lectura diaria cruzada con tu carta, no sólo el clima general.",
   "Tránsitos por área: amor, trabajo, vínculos y energía.",
   "Cinco preguntas por día en El Umbral, en vez de tres.",
@@ -100,8 +101,8 @@ function PaywallWithBackend() {
             Órbita Plus estará disponible pronto
           </Text>
           <Text selectable style={styles.soonBody}>
-            Todavía no se puede contratar. Mientras tanto, tu ritual diario, tu carta de Tarot y tu
-            tríada natal siguen siendo gratis.
+            Todavía no se puede contratar. Mientras tanto, tu ritual diario, tus primeras siete
+            cartas de Tarot y tu tríada natal siguen siendo gratis.
           </Text>
         </View>
         <BenefitList />
@@ -255,6 +256,14 @@ function Shell({ children }: { children: React.ReactNode }) {
           <Text selectable style={[styles.title, isNarrow && styles.titleNarrow]}>
             Tu carta, leída entera.
           </Text>
+          {/* Qué cambia exactamente entre un plan y el otro, dicho antes del
+              precio: sin esto la pantalla pedía pagar sin nombrar lo que se
+              abre ni lo que ya venía incluido. */}
+          <Text selectable style={styles.lede}>
+            Con Free ves tu tríada y revelás siete cartas de Tarot. Órbita Plus te abre la carta
+            natal completa —la rueda, tus casas, tus aspectos y los siete capítulos— y el Tarot de
+            todos los días: desde la octava carta necesitás Plus.
+          </Text>
         </View>
         <View style={{ gap: 20, paddingHorizontal: pad, paddingTop: 32 }}>
           {children}
@@ -273,6 +282,7 @@ const styles = StyleSheet.create({
   eyebrow: { color: colors.copperSoft, fontSize: 12, fontWeight: "700", letterSpacing: 1.2 },
   title: { color: colors.bone, fontSize: 44, lineHeight: 50 },
   titleNarrow: { fontSize: 32, lineHeight: 38 },
+  lede: { color: colors.boneMuted, fontSize: 16, lineHeight: 25, maxWidth: 640 },
 
   soonCard: {
     backgroundColor: "rgba(196,106,58,0.08)",

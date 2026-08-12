@@ -26,6 +26,24 @@ export function surfaceAccess(input: {
   return input.entitlement.isPro ? "libre" : "bloqueado";
 }
 
+export type RecepcionCta = "cargando" | "desbloquear" | "entrar";
+
+/**
+ * Qué ofrece la recepción del día 1 (la ceremonia post-alta).
+ *
+ * Free va DIRECTO a `/paywall`: la carta parcial en el medio se leía como un
+ * error ("¿por qué está vacía?") en vez de como una oferta. Plus entra a su
+ * carta. Mientras el entitlement no resolvió NO se afirma que la cuenta es
+ * Free: el botón espera. Sin sesión viva (build local o backend apagado) no hay
+ * plan que consultar y se conserva la salida histórica a la carta.
+ */
+export function recepcionCta(input: { entitlement: Entitlement; live: boolean }): RecepcionCta {
+  if (!input.live) return "entrar";
+  const access = surfaceAccess({ entitlement: input.entitlement });
+  if (access === "cargando") return "cargando";
+  return access === "libre" ? "entrar" : "desbloquear";
+}
+
 export type ValuesMapPhase = "cargando" | "bloqueado" | "sinCarta" | "listo";
 
 /**

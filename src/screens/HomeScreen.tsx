@@ -27,6 +27,7 @@ import { GuestState } from "@/components/orbita/GuestState";
 import { useNotify } from "@/components/orbita/ConfirmHost";
 import { LoadingState } from "@/components/orbita/states";
 import { mapNatalChart } from "@/domain/natalChart";
+import { revealFailureKind } from "@/domain/ritual";
 import { lastNDaysFrom } from "@/domain/dateStrip";
 import { useCanonicalLocalDate } from "@/hooks/useDailyContext";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
@@ -134,6 +135,11 @@ export function HomeScreen() {
     }
   }
 
+  // La octava carta de una cuenta Free: el backend rechaza la revelación con un
+  // marcador estable. No es un error de red ni algo para reintentar, así que la
+  // Home lo nombra y ofrece la salida a Plus en vez de dejar la carta muda.
+  const [tarotLimite, setTarotLimite] = useState(false);
+
   async function pullCard(): Promise<boolean> {
     if (dailyState.status !== "ready" || !daily?.carta) {
       if (dailyState.status === "error") retryDaily();
@@ -147,6 +153,12 @@ export function HomeScreen() {
       marcarPrimerRitual();
       return true;
     } catch (e) {
+      // `false` en los dos casos: la carta vuelve al dorso y NADA se muestra
+      // como si el giro hubiera salido bien (el backend no persistió nada).
+      if (revealFailureKind(e) === "limite_free") {
+        setTarotLimite(true);
+        return false;
+      }
       console.warn("[orbita] daily.revealCard falló:", e instanceof Error ? e.message : e);
       return false;
     }
@@ -324,6 +336,28 @@ export function HomeScreen() {
           ctaLabel={cartaCtaLabel}
           ctaSub={cartaCtaSub}
         />
+
+        {/* Límite Free alcanzado: se dice qué pasó y se da UNA salida visible.
+            No se reintenta (el backend no va a cambiar de opinión) ni se finge
+            que la carta salió: el dorso ya volvió a su lugar. */}
+        {tarotLimite ? (
+          <View style={styles.tarotLimite}>
+            <Text style={styles.introEyebrow}>TU TAROT DIARIO</Text>
+            <Text style={styles.ritualTitle}>Usaste tus siete cartas.</Text>
+            <Text style={styles.introBody}>
+              Órbita Free incluye siete cartas de Tarot. Con Órbita Plus seguís sacando una carta
+              cada día, y tu carta natal se abre entera.
+            </Text>
+            <Pressable
+              onPress={() => router.push("/paywall")}
+              accessibilityRole="button"
+              accessibilityLabel="Desbloquear el Tarot diario con Órbita Plus"
+              style={styles.retryBtn}
+            >
+              <Text style={styles.retryText}>DESBLOQUEAR TAROT DIARIO</Text>
+            </Pressable>
+          </View>
+        ) : null}
 
         {/* Nota de cadencia (B1): una vez en la vida, después del primer reveal. Ya no
             re-explica el método (la lectura de la carta ahora habla sola) — solo el ritmo. */}
@@ -508,6 +542,13 @@ const styles = StyleSheet.create({
     marginTop: orbita.spacing.md,
     paddingHorizontal: orbita.spacing.gutter,
     textAlign: "center"
+  },
+  tarotLimite: {
+    borderTopColor: orbita.colors.line,
+    borderTopWidth: 1,
+    marginHorizontal: orbita.spacing.gutter,
+    marginTop: orbita.spacing.xl,
+    paddingTop: orbita.spacing.lg
   },
   ritualBlock: {
     borderTopColor: orbita.colors.line,

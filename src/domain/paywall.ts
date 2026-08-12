@@ -152,6 +152,34 @@ export function manageSubscription(input: {
   return input.commerceEnabled ? "portal" : "soporte";
 }
 
+export type PlusActivation = "oculto" | "cargando" | "activar";
+
+/**
+ * Si Perfil ofrece ACTIVAR ÓRBITA PLUS.
+ *
+ * Es la contracara exacta de `manageSubscription`: quien ya tiene acceso lo
+ * gestiona (o pide soporte) y NUNCA ve una invitación a contratar de nuevo;
+ * quien no lo tiene necesita una puerta visible, que hasta ahora no existía en
+ * ninguna pantalla de la app autenticada.
+ *
+ * Mientras el entitlement no resolvió se devuelve `cargando`: no se afirma que
+ * la cuenta es Free antes de saberlo. El estado del comercio NO participa —
+ * `/paywall` resuelve por sí solo el caso "comercio apagado" mostrando
+ * "próximamente" sin precios ni camino a checkout.
+ */
+export function plusActivation(input: {
+  /** `subscriptions.getCurrent`; `undefined` mientras la query resuelve. */
+  entitlement: { isPro: boolean; canManageInStripePortal: boolean } | null | undefined;
+}): PlusActivation {
+  if (input.entitlement === undefined) return "cargando";
+  // Fallar cerrado: sin entitlement legible no se empuja a pagar.
+  if (input.entitlement === null) return "oculto";
+  // `canManageInStripePortal` cubre al Plus de Stripe; `isPro` suma lifetime y
+  // cualquier otro proveedor que el portal no gestiona.
+  if (input.entitlement.isPro || input.entitlement.canManageInStripePortal) return "oculto";
+  return "activar";
+}
+
 // ---------------------------------------------------------------------------
 // Inicio del checkout
 // ---------------------------------------------------------------------------

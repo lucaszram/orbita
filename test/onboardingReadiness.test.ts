@@ -191,7 +191,12 @@ test("la salida del alta la autoriza el estado autoritativo, no la escritura", (
   assert.doesNotMatch(submit, /clearDraft\(\)/, "ni dar por terminado el alta");
   // Quien navega es el efecto que espera los datos persistidos.
   assert.match(flow, /if \(!isBirthDataReady\(completion\)\) return;\s*void enterApp\(\);/);
-  assert.match(flow, /router\.replace\(HOME_ROUTE as never\)/);
+  // Y el destino es la ceremonia de recepción, con la tríada real calculada por
+  // el alta viajando en params (la carta puede no estar persistida todavía).
+  assert.match(flow, /router\.replace\(\{\s*pathname: RECEPTION_ROUTE,/);
+  assert.match(flow, /sol: computed\.sun/);
+  assert.match(flow, /luna: computed\.moon/);
+  assert.match(flow, /asc: computed\.ascendant/);
   // Y una sola vez: la query es reactiva y puede volver a emitir.
   assert.match(flow, /if \(enterLock\.current\) return;\s*enterLock\.current = true;/);
 });
