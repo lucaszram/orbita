@@ -1,5 +1,23 @@
 # Contrato — CHANGELOG
 
+## 2026-08-12 — Límite durable de siete revelaciones Tarot para Free
+
+- **Qué cambia:** `daily.revealCard({ localDate })` conserva sus argumentos y su
+  retorno, pero una cuenta Free puede revelar como máximo siete cartas nuevas.
+  La octava y siguientes rechazan con el marcador estable
+  `FREE_TAROT_REVEAL_LIMIT_REACHED`; Plus mantiene acceso ilimitado.
+- **Idempotencia:** si la carta del día ya estaba revelada, la mutación devuelve
+  la marca original antes de evaluar el límite. Reabrir un ritual existente no
+  consume cupo ni exige pago.
+- **Autoridad:** el conteo y el entitlement se resuelven dentro de la misma
+  transacción Convex. El cliente sólo presenta la salida a la paywall y no puede
+  eludir la regla.
+- **Compatibilidad:** no cambia schema, firma pública, argumentos ni forma de
+  éxito. Los clientes anteriores reciben un error normal al superar el nuevo
+  límite.
+- **Rollout:** sincronizar primero Convex dev y validar el frontend en Preview.
+  Producción queda fuera de esta tarea.
+
 ## 2026-08-11 — Readiness natal autoritativo para alta y recuperación
 
 - **Qué cambia:** `onboardingDrafts` suma el campo aditivo `flowOrigin?: "anonymous_signup" | "authenticated_recovery"`. Se incorpora `onboarding.confirmSignupDraft({ clientDraftId })`, confirmación anónima e idempotente que sólo devuelve `{ ready: true }` para un borrador remoto completo, y la consulta pública `onboarding.getCompletionStatus({ clientDraftId? })`, que devuelve un estado sin PII: `signed_out | onboarding_incomplete | profile_incomplete | chart_pending | chart_ready`, el destino de recuperación `onboarding | edit_birth_data | null` y los booleanos `profileReady`/`birthDataReady`/`chartReady`.

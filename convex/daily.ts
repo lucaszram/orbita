@@ -19,6 +19,11 @@ import {
 import { recordBackendProductEvent } from "./lib/productAnalytics";
 import { findExactNatalChart } from "./lib/birthDataConsistency";
 import { cardById, drawCard, type TarotDraw } from "./lib/tarot";
+import {
+  canRevealNewTarotCard,
+  FREE_TAROT_REVEAL_LIMIT_REACHED
+} from "./lib/tarotAccess";
+import { isUserPro } from "./lib/subscriptionAccess";
 import { findCurrentUser, findUserByTokenIdentifier, omitUndefined, requireIdentity, requireUser } from "./lib/users";
 
 /**
@@ -1498,6 +1503,25 @@ export const revealCard = mutation({
       throw new Error("Sólo se puede revelar la carta del día actual");
     }
     if (doc.revealedAt) return doc.revealedAt;
+
+    // Free puede construir un archivo de siete rituales. Desde la octava
+    // revelación, Plus es obligatorio. La decisión vive acá — no alcanza con
+    // esconder el botón en el cliente— y se evalúa DESPUÉS de la salida
+    // idempotente para que reabrir la carta del día nunca quede bloqueado.
+    const pro = await isUserPro(ctx, user._id);
+    if (!pro) {
+      const guides = await ctx.db
+        .query("dailyGuides")
+        .withIndex("by_user_date", (q: any) => q.eq("userId", user._id))
+        .collect();
+      const revealedCount = guides.reduce(
+        (count: number, guide: { revealedAt?: number }) => count + (guide.revealedAt ? 1 : 0),
+        0
+      );
+      if (!canRevealNewTarotCard({ isPro: false, revealedCount })) {
+        throw new Error(FREE_TAROT_REVEAL_LIMIT_REACHED);
+      }
+    }
 
     const revealedAt = Date.now();
     await ctx.db.patch(doc._id, { revealedAt });

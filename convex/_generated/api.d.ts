@@ -36,6 +36,7 @@ import type * as lib_stripeApi from "../lib/stripeApi.js";
 import type * as lib_stripeSubscription from "../lib/stripeSubscription.js";
 import type * as lib_subscriptionAccess from "../lib/subscriptionAccess.js";
 import type * as lib_tarot from "../lib/tarot.js";
+import type * as lib_tarotAccess from "../lib/tarotAccess.js";
 import type * as lib_userProfile from "../lib/userProfile.js";
 import type * as lib_users from "../lib/users.js";
 import type * as migrations from "../migrations.js";
@@ -94,6 +95,7 @@ declare const fullApi: ApiFromModules<{
   "lib/stripeSubscription": typeof lib_stripeSubscription;
   "lib/subscriptionAccess": typeof lib_subscriptionAccess;
   "lib/tarot": typeof lib_tarot;
+  "lib/tarotAccess": typeof lib_tarotAccess;
   "lib/userProfile": typeof lib_userProfile;
   "lib/users": typeof lib_users;
   migrations: typeof migrations;
