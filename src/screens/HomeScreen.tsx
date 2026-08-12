@@ -164,6 +164,14 @@ export function HomeScreen() {
     }
   }
 
+  function handleCardPress(): boolean | Promise<boolean> {
+    if (tarotLimite) {
+      router.push("/paywall");
+      return false;
+    }
+    return pullCard();
+  }
+
   // Estados de la tira para el reconocimiento del regreso (solo con archivo real).
   const prevRevealed = (strip ?? []).filter((d) => d.localDate !== today && d.revealed).length;
   const ayer = stripDays[stripDays.length - 2];
@@ -175,7 +183,9 @@ export function HomeScreen() {
   // Día 2+: el eyebrow de la carta boca abajo reconoce el regreso (B3).
   let cartaCtaLabel: string | undefined;
   let cartaCtaSub: string | undefined;
-  if (prevRevealed > 0) {
+  if (tarotLimite) {
+    cartaCtaLabel = "DESBLOQUEAR TAROT DIARIO";
+  } else if (prevRevealed > 0) {
     cartaCtaLabel = "HAY UNA CARTA NUEVA";
     cartaCtaSub = huecoAyer
       ? "Las de ayer no se recuperan. La de hoy sí."
@@ -331,15 +341,16 @@ export function HomeScreen() {
         <CartaDelDia
           carta={carta}
           revealed={revealed}
-          onReveal={pullCard}
+          onReveal={handleCardPress}
           disabled={dailyState.status !== "ready"}
           ctaLabel={cartaCtaLabel}
           ctaSub={cartaCtaSub}
+          ctaMode={tarotLimite ? "unlock" : "reveal"}
         />
 
-        {/* Límite Free alcanzado: se dice qué pasó y se da UNA salida visible.
-            No se reintenta (el backend no va a cambiar de opinión) ni se finge
-            que la carta salió: el dorso ya volvió a su lugar. */}
+        {/* Límite Free alcanzado: se explica qué pasó, pero no se agrega un
+            segundo botón. El dorso —ahora rotulado DESBLOQUEAR TAROT DIARIO—
+            es la única salida a Plus. */}
         {tarotLimite ? (
           <View style={styles.tarotLimite}>
             <Text style={styles.introEyebrow}>TU TAROT DIARIO</Text>
@@ -348,14 +359,6 @@ export function HomeScreen() {
               Órbita Free incluye siete cartas de Tarot. Con Órbita Plus seguís sacando una carta
               cada día, y tu carta natal se abre entera.
             </Text>
-            <Pressable
-              onPress={() => router.push("/paywall")}
-              accessibilityRole="button"
-              accessibilityLabel="Desbloquear el Tarot diario con Órbita Plus"
-              style={styles.retryBtn}
-            >
-              <Text style={styles.retryText}>DESBLOQUEAR TAROT DIARIO</Text>
-            </Pressable>
           </View>
         ) : null}
 

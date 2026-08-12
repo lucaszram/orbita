@@ -240,12 +240,26 @@ test("la Home no muestra el giro como exitoso y abre una salida a Plus", () => {
   // El error desconocido conserva su rama: aviso en consola y `false`.
   assert.match(pull, /console\.warn\("\[orbita\] daily\.revealCard falló:"/);
   assert.match(HOME, /DESBLOQUEAR TAROT DIARIO/);
-  assert.match(HOME, /onPress=\{\(\) => router\.push\("\/paywall"\)\}/);
+  assert.match(pull, /if \(tarotLimite\) \{\s*router\.push\("\/paywall"\);\s*return false;/);
+  assert.match(HOME, /onReveal=\{handleCardPress\}/);
+  assert.match(HOME, /ctaMode=\{tarotLimite \? "unlock" : "reveal"\}/);
   assert.match(HOME, /\{tarotLimite \? \(/);
 });
 
-test("el estado del límite no ofrece reintentar la revelación", () => {
+test("el estado del límite no agrega un botón duplicado: la carta es el CTA", () => {
   const bloque = HOME.slice(HOME.indexOf("{tarotLimite ? ("), HOME.indexOf("{revealed && primerRitualHoy ? ("));
-  assert.doesNotMatch(bloque, /REINTENTAR/);
+  assert.doesNotMatch(bloque, /REINTENTAR|Pressable|router\.push|DESBLOQUEAR TAROT DIARIO/);
   assert.match(bloque, /Usaste tus siete cartas\./);
+  assert.match(HOME, /if \(tarotLimite\) \{\s*cartaCtaLabel = "DESBLOQUEAR TAROT DIARIO";/);
+});
+
+test("la carta en modo unlock navega sin animar un reveal imposible", () => {
+  const carta = leer("src/components/home/CartaDelDia.tsx");
+  const pull = carta.slice(carta.indexOf("async function pull()"), carta.indexOf("// Las dos caras"));
+  assert.match(pull, /if \(ctaMode === "unlock"\) \{\s*await Promise\.resolve\(onReveal\(\)\);\s*return;/);
+  assert.ok(
+    pull.indexOf('if (ctaMode === "unlock")') < pull.indexOf("setPulling(true)"),
+    "unlock debe salir antes del flip optimista"
+  );
+  assert.match(carta, /Desbloquear el Tarot diario con Órbita Plus/);
 });

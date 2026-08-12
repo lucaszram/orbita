@@ -1,5 +1,19 @@
 # Current Task
 
+## Tarot Free — la carta misma abre Plus al llegar al límite (2026-08-12)
+
+**Objetivo:** evitar el estado confuso donde la octava carta quedaba boca abajo
+con “TOCÁ PARA SACARLA” y aparecía además un botón separado. El primer toque
+sigue consultando al backend; si informa que Free ya usó siete cartas, se muestra
+el aviso y el dorso cambia a `DESBLOQUEAR TAROT DIARIO`. El siguiente toque sobre
+la propia carta abre `/paywall` sin volver a animar un reveal imposible.
+
+**Implementación:** `HomeScreen` conserva el rechazo autoritativo y cambia la
+acción/label de `CartaDelDia` cuando `tarotLimite` es verdadero. El bloque de
+explicación ya no contiene un `Pressable`. `CartaDelDia` suma el modo `unlock`,
+con etiqueta accesible propia y salida antes de iniciar el flip optimista.
+Producción queda fuera de alcance; rollout únicamente por este Preview.
+
 ## Checkout directo — `/paywall` abre Stripe sin pantalla intermedia (2026-08-12)
 
 **Objetivo:** respetar el CTA ya aceptado en Recepción, Carta, Perfil o Home y

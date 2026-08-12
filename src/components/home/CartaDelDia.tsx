@@ -37,7 +37,8 @@ export function CartaDelDia({
   onReveal,
   disabled,
   ctaLabel,
-  ctaSub
+  ctaSub,
+  ctaMode = "reveal"
 }: {
   /** Carta del día, del backend. `undefined` mientras carga o sin sesión. */
   carta?: DailyCarta;
@@ -54,6 +55,9 @@ export function CartaDelDia({
   ctaLabel?: string;
   /** Línea bajo el eyebrow ("La segunda de tu tira." / variante del hueco). */
   ctaSub?: string;
+  /** `unlock` convierte el dorso en la salida a Plus: ejecuta la acción sin
+   *  fingir un nuevo giro ni dejar la carta en un estado intermedio. */
+  ctaMode?: "reveal" | "unlock";
 }) {
   // 0 = boca abajo, 1 = dada vuelta. Es la fuente de verdad de TODA la animación.
   const flip = useSharedValue(revealed && carta ? 1 : 0);
@@ -97,6 +101,12 @@ export function CartaDelDia({
   async function pull() {
     // Sin carta no hay tirón: girar hacia una cara vacía era el bug del marco cobre.
     if (isRevealed || disabled || pulling || !carta) return;
+    // Cuando el backend ya informó el límite Free, la misma carta pasa a ser el
+    // único CTA hacia Plus. No anima un reveal que sabemos imposible.
+    if (ctaMode === "unlock") {
+      await Promise.resolve(onReveal());
+      return;
+    }
     setPulling(true);
     // Sin háptico: `expo-haptics` rompe el build de iOS. Sumarlo cambia el conjunto de pods,
     // eso corre la asignación de uuids determinísticos de CocoaPods, y un paquete SPM de Clerk
@@ -163,7 +173,13 @@ export function CartaDelDia({
           <AnimatedPressable
             onPress={pull}
             accessibilityRole="button"
-            accessibilityLabel={isRevealed && carta ? `Tu carta de hoy: ${carta.nombre}` : "Tocá para sacar tu carta de hoy"}
+            accessibilityLabel={
+              isRevealed && carta
+                ? `Tu carta de hoy: ${carta.nombre}`
+                : ctaMode === "unlock"
+                  ? "Desbloquear el Tarot diario con Órbita Plus"
+                  : "Tocá para sacar tu carta de hoy"
+            }
             accessibilityState={{ disabled: Boolean(disabled) || isRevealed }}
             style={[styles.cardBack, backStyle]}
           >
