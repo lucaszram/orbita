@@ -71,8 +71,11 @@ function CheckoutLauncher() {
     setState("abriendo");
     createCheckout({ plan: "monthly" })
       .then(({ url }) => {
-        // Se abre EXCLUSIVAMENTE la URL que devolvió el backend.
-        if (typeof window !== "undefined") window.location.assign(url);
+        // Se abre EXCLUSIVAMENTE la URL que devolvió el backend. `replace` es
+        // deliberado: `/paywall` es un lanzador técnico y no puede quedar en
+        // el historial, porque Atrás desde Stripe volvería a montarlo y abriría
+        // otra sesión. Así Atrás regresa a Carta/Perfil/Recepción/Home.
+        if (typeof window !== "undefined") window.location.replace(url);
       })
       .catch((err) => {
         if (!alive) return;

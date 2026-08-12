@@ -154,6 +154,8 @@ test("ninguna de esas superficies escribe precios: el importe es el de Stripe", 
 
 test("`/paywall` abre Stripe directo, así que los CTA existentes siguen sirviendo", () => {
   assert.match(PAYWALL, /createCheckout\(\{ plan: "monthly" \}\)/);
+  assert.match(PAYWALL, /window\.location\.replace\(url\)/);
+  assert.doesNotMatch(PAYWALL, /window\.location\.assign\(/);
   assert.match(PAYWALL, /Abriendo el pago seguro…/);
   // Y ya no hay una oferta intermedia que leer.
   assert.equal(PAYWALL.includes("QUÉ INCLUYE"), false);

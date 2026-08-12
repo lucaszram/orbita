@@ -278,13 +278,16 @@ test("el paywall no conserva restos del picker de dos planes", () => {
 
 // --- `/paywall` es el lanzador del pago, no una pantalla de venta ------------
 
-test("al montarse crea UNA sesión mensual y redirige a la URL de Stripe", () => {
+test("al montarse crea UNA sesión mensual y REEMPLAZA el lanzador por Stripe", () => {
   assert.match(paywallSrc, /useAction\(proposedApi\.createCheckoutSession\)/);
   assert.match(paywallSrc, /createCheckout\(\{ plan: "monthly" \}\)/);
   // Una sola llamada en todo el archivo: no hay un segundo camino a checkout.
   assert.equal((paywallSrc.match(/createCheckout\(/g) ?? []).length, 1);
-  // Se abre EXCLUSIVAMENTE la URL que devolvió el backend.
-  assert.match(paywallSrc, /window\.location\.assign\(url\)/);
+  // Se abre EXCLUSIVAMENTE la URL que devolvió el backend. `replace` saca
+  // `/paywall` del historial: Atrás desde Stripe vuelve a la superficie que
+  // originó el CTA, no al lanzador que crearía otra sesión.
+  assert.match(paywallSrc, /window\.location\.replace\(url\)/);
+  assert.doesNotMatch(paywallSrc, /window\.location\.assign\(/);
   assert.doesNotMatch(paywallSrc, /https:\/\/(?!orbitaastrologia)/, "ninguna URL de pago escrita a mano");
 });
 

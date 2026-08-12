@@ -9,7 +9,9 @@ confirmación dentro de Stripe.
 
 **Implementación:** `src/components/web/orbita-paywall.tsx` quedó reducido a un
 lanzador autenticado: crea una única sesión mensual al montarse, usa sólo la URL
-devuelta por `payments.createCheckoutSession` y muestra únicamente el estado
+devuelta por `payments.createCheckoutSession` con `window.location.replace`
+—para que `/paywall` no quede atrapado en el historial y Atrás desde Stripe
+regrese al CTA de origen— y muestra únicamente el estado
 “Abriendo el pago seguro…”. Un guard sincrónico por intento evita duplicados por
 StrictMode o re-render; el reintento explícito sí inicia un intento nuevo. Los
 estados de error y cuenta ya Plus permanecen cerrados y accionables. Se retiraron
