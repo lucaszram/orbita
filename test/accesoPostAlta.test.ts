@@ -263,3 +263,17 @@ test("la carta en modo unlock navega sin animar un reveal imposible", () => {
   );
   assert.match(carta, /Desbloquear el Tarot diario con Órbita Plus/);
 });
+
+test("el texto bajo el dorso también es clicable, igual que la carta", () => {
+  const carta = leer("src/components/home/CartaDelDia.tsx");
+  assert.equal(
+    (carta.match(/onPress=\{pull\}/g) ?? []).length,
+    2,
+    "la imagen y su CTA textual deben ejecutar la misma acción"
+  );
+  assert.match(
+    carta,
+    /<Pressable\s+onPress=\{pull\}\s+disabled=\{closedActionDisabled\}[\s\S]*?accessibilityLabel=\{closedActionLabel\}[\s\S]*?<Text style=\{styles\.revealCta\}>/
+  );
+  assert.match(carta, /ctaMode === "unlock"[\s\S]*?Desbloquear el Tarot diario con Órbita Plus/);
+});

@@ -161,6 +161,11 @@ export function CartaDelDia({
   // Carta con id fuera del mazo local (payload futuro/dañado): la cara cae
   // al dorso, nunca queda sin imagen.
   const image = carta ? cardById(carta.id)?.image ?? CARD_BACK : undefined;
+  const closedActionLabel =
+    ctaMode === "unlock"
+      ? "Desbloquear el Tarot diario con Órbita Plus"
+      : "Tocá para sacar tu carta de hoy";
+  const closedActionDisabled = Boolean(disabled) || pulling || !carta;
 
   return (
     <Section style={styles.section}>
@@ -176,9 +181,7 @@ export function CartaDelDia({
             accessibilityLabel={
               isRevealed && carta
                 ? `Tu carta de hoy: ${carta.nombre}`
-                : ctaMode === "unlock"
-                  ? "Desbloquear el Tarot diario con Órbita Plus"
-                  : "Tocá para sacar tu carta de hoy"
+                : closedActionLabel
             }
             accessibilityState={{ disabled: Boolean(disabled) || isRevealed }}
             style={[styles.cardBack, backStyle]}
@@ -200,10 +203,17 @@ export function CartaDelDia({
         </View>
 
         {showCta ? (
-          <>
+          <Pressable
+            onPress={pull}
+            disabled={closedActionDisabled}
+            accessibilityRole="button"
+            accessibilityLabel={closedActionLabel}
+            accessibilityState={{ disabled: closedActionDisabled }}
+            style={styles.ctaHit}
+          >
             <Text style={styles.revealCta}>{disabled ? "PREPARANDO TU CARTA…" : ctaLabel ?? "TOCÁ PARA SACARLA"}</Text>
             {!disabled && ctaSub ? <Text style={styles.revealSub}>{ctaSub}</Text> : null}
-          </>
+          </Pressable>
         ) : null}
       </View>
 
@@ -287,6 +297,7 @@ const styles = StyleSheet.create({
     marginTop: orbita.spacing.xl,
     textAlign: "center"
   },
+  ctaHit: { alignItems: "center" },
   revealSub: {
     color: orbita.colors.mutedDim,
     fontFamily: orbita.fonts.body,

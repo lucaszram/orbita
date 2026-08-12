@@ -11,7 +11,9 @@ la propia carta abre `/paywall` sin volver a animar un reveal imposible.
 **Implementación:** `HomeScreen` conserva el rechazo autoritativo y cambia la
 acción/label de `CartaDelDia` cuando `tarotLimite` es verdadero. El bloque de
 explicación ya no contiene un `Pressable`. `CartaDelDia` suma el modo `unlock`,
-con etiqueta accesible propia y salida antes de iniciar el flip optimista.
+con etiqueta accesible propia y salida antes de iniciar el flip optimista. Tanto
+el dorso como el texto inferior son controles reales con la misma acción: tocar
+`TOCÁ PARA SACARLA` revela y tocar `DESBLOQUEAR TAROT DIARIO` abre Plus.
 Producción queda fuera de alcance; rollout únicamente por este Preview.
 
 ## Checkout directo — `/paywall` abre Stripe sin pantalla intermedia (2026-08-12)
