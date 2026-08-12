@@ -11,6 +11,13 @@
  * El nativo NO cambia: ahí la superficie oficial es otra y el formulario propio
  * sigue siendo el camino. Por eso la separación es por plataforma (`.web.tsx`),
  * la misma que usan `BirthPicker` y `ClerkSignUp`.
+ *
+ * La salida al alta es UNA y está DENTRO de la tarjeta oficial: su pie «¿No
+ * tenés cuenta? Registrate», apuntado al onboarding canónico. Hubo un momento
+ * en que ese pie se ocultaba y Órbita ponía su propio enlace debajo — dos
+ * salidas apiladas, una escondida y una visible. Lo que queda pinchado acá es
+ * la forma final: pie a la vista, `signUpUrl` al onboarding, cero enlaces
+ * propios, y ningún camino que cree la cuenta desde el login.
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -46,102 +53,101 @@ test("la pantalla web monta el componente oficial de Clerk, sin tema ni rutas pr
   // El login es UNA ruta sin sub-rutas: declarar `path` obligaría a un
   // catch-all en el router.
   assert.doesNotMatch(web, /\brouting=|\bpath=/, "el login no tiene rutas propias");
-  // El tema es el que Clerk resuelve para la instancia: pisarlo acoplaba la
-  // pantalla a variables internas del componente, que ya cambiaron una vez. La
-  // única `appearance` permitida es la que oculta la salida al alta, y no
-  // tematiza: se verifica pieza por pieza en el bloque de más abajo.
+  // Los ÚNICOS props son los dos que deciden qué puede pasar con una cuenta que
+  // todavía no existe; cada uno tiene su test abajo. Nada de layout ni de tema:
+  // el componente se monta pelado porque Clerk es el dueño del login.
   const props = web.match(/<SignIn([^>]*)\/>/);
   assert.ok(props, "el componente oficial se monta en la pantalla");
   assert.match(
     props[1],
-    /^ appearance=\{SIN_ALTA_DE_CLERK\} $/,
-    "salvo esa `appearance`, el componente se monta pelado: Clerk es el dueño del login"
+    /^ signUpUrl=\{ONBOARDING_ROUTE\} transferable=\{false\} $/,
+    "salvo esos dos props, el componente se monta pelado: Clerk es el dueño del login"
   );
 });
 
-// --- La salida al alta es UNA sola, y es la de Órbita ------------------------
+// --- La salida al alta es UNA, y es el pie de la tarjeta oficial --------------
 
-/**
- * La declaración de la `appearance`, aislada del resto del archivo: los estilos
- * propios de Órbita (el `StyleSheet` del shell) también hablan de `fontFamily`
- * o de alturas, y no son un tema para Clerk.
- */
-const appearanceDe = (web: string) => {
-  const decl = web.match(/const SIN_ALTA_DE_CLERK\s*=([\s\S]*?);/)?.[1];
-  assert.ok(decl, "la excepción vive en una constante de módulo, con su nombre a la vista");
-  return decl;
-};
-
-test("el pie «Registrate» de Clerk queda oculto: es una segunda salida y evade el callback", () => {
-  // El link del pie oficial va a la instancia alojada (`…accounts.dev/sign-up`)
-  // sin pasar por `onCreateAccount` → `leaveWithoutSignIn`, que archiva y limpia
-  // lo del dueño anterior antes de soltar el equipo y entra al onboarding
-  // canónico. Con el link de Órbita debajo, además, quedaba duplicado.
-  const decl = appearanceDe(sinComentarios(leer(WEB)));
-  // El modificador nombra la tarjeta que emite el pie, no el destino del link:
-  // en el DOM de `@clerk/expo` 3.6.5 es `cl-footerAction cl-footerAction__signIn`.
-  assert.match(
-    decl,
-    /elements:\s*\{\s*footerAction__signIn:\s*\{\s*display:\s*"none"\s*\}\s*\}/,
-    "la salida al alta de Clerk tiene que quedar oculta"
-  );
-  // Sacarlo del árbol, no maquillarlo: escondido pero enfocable sigue siendo
-  // alcanzable con teclado o lector de pantalla, o sea sigue siendo la salida.
-  assert.doesNotMatch(
-    decl,
-    /visibility:|opacity:|fontSize:|height:/,
-    "el pie se oculta con `display: none`, no con un maquillaje que lo deja enfocable"
-  );
-});
-
-test("no se configura un `signUpUrl` que evada el callback", () => {
-  // Cambiar el destino del link no lo hace seguro: seguiría siendo una salida
-  // que navega sin ejecutar `onCreateAccount`, ahora hacia adentro de Órbita —
-  // y sin archivar lo del dueño anterior. Por eso se saca, no se redirige.
+test("el pie «Registrate» de Clerk queda A LA VISTA: es la única salida al alta", () => {
+  // Estuvo oculto con una `appearance` (`footerAction__signIn: display none`)
+  // mientras Órbita ponía su propio enlace debajo. Eran dos salidas apiladas y
+  // la persona buscaba la que la tarjeta ya traía. Ahora se restituye el pie y
+  // se le cambia el DESTINO (`signUpUrl`), que es lo que había que arreglar.
   const web = sinComentarios(leer(WEB));
+  assert.doesNotMatch(web, /appearance=/, "sin `appearance`: el pie no se vuelve a ocultar");
+  assert.doesNotMatch(web, /SIN_ALTA_DE_CLERK/, "la constante que lo ocultaba no puede volver");
+  // Ni por el nombre del elemento ni por la regla, con `appearance` o sin ella.
+  assert.doesNotMatch(web, /footerAction/, "no se toca el pie de ninguna tarjeta de Clerk");
+  assert.doesNotMatch(web, /display:\s*"none"/, "nada de la UI oficial se saca del árbol");
+});
+
+test("el registro del pie va al onboarding canónico (`/empezar`), no a accounts.dev ni al alta suelta", () => {
+  // Sin `signUpUrl` el pie apunta a la instancia alojada
+  // (`…accounts.dev/sign-up`): crea la cuenta AFUERA de la secuencia. Y el
+  // formulario suelto (`/crear-cuenta`) tampoco es la entrada del alta.
+  const web = sinComentarios(leer(WEB));
+  assert.match(web, /signUpUrl=\{ONBOARDING_ROUTE\}/, "el pie tiene que ir al onboarding canónico");
+  assert.match(
+    web,
+    /import \{ ONBOARDING_ROUTE \} from "@\/domain\/appRoutes"/,
+    "el destino sale de la constante canónica, no de un string suelto que se desincroniza"
+  );
+  // Y esa constante es `/empezar` en web, que es donde tiene que caer.
+  assert.match(
+    sinComentarios(leer("src/domain/appRoutes.ts")),
+    /export const ONBOARDING_ROUTE = IS_WEB \? "\/empezar" : "\/onboarding";/,
+    "`ONBOARDING_ROUTE` en web es `/empezar`"
+  );
+  for (const destino of ["accounts.dev", "SIGN_UP_ROUTE", "/crear-cuenta"]) {
+    assert.ok(!web.includes(destino), `el registro no puede apuntar a «${destino}»`);
+  }
+  // Nada de redirecciones propias: adónde va DESPUÉS de entrar lo resuelve
+  // `AccountGate`, que es quien conoce el estado real de la cuenta.
   assert.doesNotMatch(
     web,
-    /signUpUrl|signInUrl|forceRedirectUrl|fallbackRedirectUrl/,
-    "la salida de Clerk no se redirige a ningún lado: igual evadiría el callback"
+    /signInUrl|forceRedirectUrl|fallbackRedirectUrl/,
+    "el destino post-login es del gate, no de esta pantalla"
   );
-  // Y tampoco desde el provider, que aplica a TODOS los componentes de Clerk.
+  // El destino se declara en el componente que lo usa. Desde el provider
+  // aplicaría a TODAS las superficies de Clerk —incluido el `SignUp` del paso
+  // de cuenta— sin aparecer en este archivo.
   assert.doesNotMatch(
     leer("src/services/backendProviders.tsx"),
     /signUpUrl|signInUrl/,
-    "un `signUpUrl` global le devolvería el link al pie de la tarjeta"
+    "un `signUpUrl` global repunta en silencio todos los componentes de Clerk"
   );
 });
 
-test("esa `appearance` oculta un elemento y nada más: no tematiza ni recrea la UI", () => {
-  const decl = appearanceDe(sinComentarios(leer(WEB)));
-  // Nada de lo que ya se rompió cuando las variables internas de Clerk
-  // cambiaron: sin tema base, sin variables, sin layout, sin colores ni
-  // tipografías propias.
-  for (const tema of ["baseTheme", "variables", "layout", "color", "font", "cssLayerName"]) {
-    assert.ok(!decl.includes(tema), `la excepción se convirtió en un tema propio por «${tema}»`);
-  }
-  // Un solo selector, y con el modificador `__signIn` que Clerk le pone a ese
-  // pie: los otros pies de tarjeta (probar otro método, tengo problemas,
-  // passkey) son pasos del flujo y los pinta Clerk.
-  const dentroDeElements = decl.match(/elements:\s*\{([\s\S]*)\}/)?.[1] ?? "";
-  const pisados = [...dentroDeElements.matchAll(/(\w+):\s*\{/g)].map((m) => m[1]);
-  assert.deepEqual(
-    pisados,
-    ["footerAction__signIn"],
-    `la excepción es UN elemento y es el pie del alta; se están pisando: ${pisados.join(", ")}`
-  );
-});
-
-test("hay UNA sola salida al alta en la pantalla, y es la que archiva", () => {
+test("desde el login NO se crea una cuenta: ni con `withSignUp` ni por Google", () => {
   const web = sinComentarios(leer(WEB));
-  const salidas = [...web.matchAll(/onCreateAccount\(/g)];
-  assert.equal(salidas.length, 1, `la salida al alta está duplicada (${salidas.length} veces)`);
-  assert.match(web, /onCreateAccount\(""\)/, "y es la que archiva antes de soltar el equipo");
-  // Y un solo control que la ofrezca: dos enlaces al alta son la misma
-  // duplicación que se vino a sacar, aunque los dos sean de Órbita. El de
-  // volver es `role="button"`, así que no cuenta acá.
+  // `withSignUp` (sign-in-or-up) dejaría registrarse en esta misma tarjeta:
+  // salta los quince pasos y el borrador durable. La cuenta se crea con Clerk
+  // en el paso 14 (índice 13), con fecha, lugar y hora ya confirmados.
+  assert.doesNotMatch(web, /withSignUp/, "el login no habilita el alta en la propia tarjeta");
+  // La misma puerta, por el lado social: `transferable` es `true` por defecto,
+  // así que "Continuar con Google" con un email inexistente creaba la cuenta en
+  // silencio (opaque sign-up) sin que la persona pidiera registrarse. La
+  // semántica está en el contrato instalado: `TransferableOption` en
+  // `@clerk/shared` 4.23.0, vía `@clerk/expo` 3.6.5 → `@clerk/react` 6.11.3.
+  assert.match(web, /transferable=\{false\}/, "Google no puede crear una cuenta desde el login");
+});
+
+test("no queda ningún enlace propio al alta: la salida es sólo la de la tarjeta", () => {
+  const web = sinComentarios(leer(WEB));
+  // El `Pressable` de Órbita («Todavía no tengo cuenta · Crear una cuenta») se
+  // fue: duplicaba el pie oficial. `onCreateAccount` sigue en el contrato de
+  // props porque el nativo la monta, pero acá no se invoca.
+  assert.doesNotMatch(web, /onCreateAccount\(/, "la pantalla web ya no llama a la salida propia");
+  for (const resto of [
+    "Crear una cuenta",
+    "Todavía no tengo cuenta",
+    "SIGN_IN_LINK_ROW", // el par de estilos del enlace compartido
+    "SIGN_IN_LINK_TEXT",
+  ]) {
+    assert.ok(!web.includes(resto), `el enlace exterior volvió por «${resto}»`);
+  }
+  // Y ningún otro control con rol de enlace: el de volver es `role="button"`.
   const enlaces = [...web.matchAll(/accessibilityRole="link"/g)];
-  assert.equal(enlaces.length, 1, `hay ${enlaces.length} enlaces a la vista, tiene que haber uno`);
+  assert.equal(enlaces.length, 0, `hay ${enlaces.length} enlaces propios, no tiene que haber ninguno`);
 });
 
 test("la pantalla web no recrea ni un campo, ni un paso, ni un botón, ni un error del login", () => {
@@ -171,7 +177,7 @@ test("la pantalla web no recrea ni un campo, ni un paso, ni un botón, ni un err
 
 // --- Lo que sigue siendo de Órbita ------------------------------------------
 
-test("el escenario de Órbita y las dos salidas se conservan", () => {
+test("el escenario de Órbita y la salida de volver se conservan", () => {
   const web = sinComentarios(leer(WEB));
   // Mismo fondo full-bleed y mismo wash que el resto del alta: la UI oficial se
   // apoya sobre el escenario de Órbita, no lo reemplaza.
@@ -180,10 +186,9 @@ test("el escenario de Órbita y las dos salidas se conservan", () => {
     /<Screen bg=\{A\.splashBg\} bgOpacity=\{0\.9\} wash=\{0\.55\} scroll>/,
     "el fondo inmersivo y el scroll del shell tienen que quedar"
   );
-  // Volver y crear cuenta son de Órbita porque archivan los datos del dueño
-  // anterior antes de soltar el equipo (`leaveWithoutSignIn` en la ruta).
+  // Volver sigue siendo de Órbita: pasa por `leaveWithoutSignIn`, que archiva
+  // los datos del dueño anterior antes de soltar el equipo (ruta).
   assert.match(web, /onPress=\{onBack\}/, "el control de volver sigue existiendo");
-  assert.match(web, /onCreateAccount\(""\)/, "y la salida al alta también");
   assert.match(web, /minHeight: 44/, "sin `hitSlop` en web, el objetivo táctil va declarado");
 });
 

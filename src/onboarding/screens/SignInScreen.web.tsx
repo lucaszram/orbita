@@ -2,11 +2,12 @@ import { Pressable, StyleSheet, View } from "react-native";
 import { SignIn } from "@clerk/expo/web";
 
 import { Text } from "@/components/ui/text";
+import { ONBOARDING_ROUTE } from "@/domain/appRoutes";
 
 import { A } from "../assets";
 import { Screen } from "../components/Screen";
 import { Body, Title } from "../components/Type";
-import { font, GUTTER, orbita, SIGN_IN_LINK_ROW, SIGN_IN_LINK_TEXT } from "../theme";
+import { font, GUTTER, orbita } from "../theme";
 import { type SignInFlow } from "../useAccount";
 
 type Props = {
@@ -23,7 +24,12 @@ type Props = {
    * destino y desmonta esta pantalla. No hay nada que avisar a mano.
    */
   onSignedIn: () => Promise<void>;
-  /** Salida al alta. Archiva lo del dueño anterior antes de soltar el equipo. */
+  /**
+   * Salida al alta. En web tampoco se usa: la ofrece el pie de la tarjeta
+   * oficial, que navega solo al onboarding canónico (`signUpUrl`, ver abajo).
+   * Se conserva en el contrato porque el nativo SÍ la monta y las dos variantes
+   * tienen que exportar la misma firma.
+   */
   onCreateAccount: (email: string) => void;
   onBack: () => void;
 };
@@ -46,61 +52,57 @@ type Props = {
  * y no tiene sub-rutas propias, así que se usa el modo por defecto. Declarar un
  * `path` obligaría a un catch-all en el router.
  *
- * Tampoco se pisa el tema: el que Clerk resuelve para la instancia. Ajustarlo
- * desde acá acoplaba la pantalla a variables internas del componente, que ya
- * cambiaron una vez. La única `appearance` que existe es `SIN_ALTA_DE_CLERK`,
- * y no es tema: ver ahí por qué.
+ * Sin `appearance`: el tema es el que Clerk resuelve para la instancia.
+ * Ajustarlo desde acá acoplaba la pantalla a variables internas del componente,
+ * que ya cambiaron una vez. Hubo una excepción —una regla que ocultaba el pie
+ * «¿No tenés cuenta? Registrate» para dejar debajo un enlace propio de Órbita—
+ * y se fue: eran DOS salidas al alta apiladas, una oficial escondida y una
+ * propia visible. Ahora la salida es UNA y vive DENTRO de la tarjeta, donde la
+ * persona la busca.
+ *
+ * ---
+ *
+ * Los dos ÚNICOS props, que son los que deciden qué puede pasar acá con una
+ * cuenta que todavía no existe:
+ *
+ * `signUpUrl` — el pie «¿No tenés cuenta? Registrate» va al onboarding canónico
+ * de Órbita (`ONBOARDING_ROUTE`, que en web es `/empezar`). Sin este prop el
+ * link se va a la instancia alojada (`…accounts.dev/sign-up`), que crea la
+ * cuenta AFUERA de la secuencia; y `/crear-cuenta` —el formulario suelto—
+ * tampoco es la entrada del alta. La cuenta se crea DENTRO del onboarding, en
+ * su paso canónico (`14 / Create Account`, índice 13), cuando fecha, lugar y
+ * hora ya están confirmados y hay una carta que guardar.
+ *
+ * Por eso mismo NO se pasa `withSignUp`: el flujo "iniciar sesión o
+ * registrarse" dejaría crear la cuenta acá mismo, salteando los quince pasos y
+ * el borrador durable. Es exactamente lo que este destino viene a evitar.
+ *
+ * `transferable={false}` cierra la misma puerta por el lado social. El contrato
+ * instalado lo dice textual (`TransferableOption` en `@clerk/shared` 4.23.0,
+ * que es lo que resuelve `@clerk/expo` 3.6.5 → `@clerk/react` 6.11.3): por
+ * defecto es `true`, y en `false` «prevents opaque sign-ups when a user
+ * attempts to sign in via OAuth with an email that doesn't exist». O sea: sin
+ * esto, "Continuar con Google" con un email desconocido crea la cuenta en
+ * silencio desde la pantalla de login — la misma salteada del onboarding, pero
+ * sin que la persona haya pedido registrarse. Con `false`, Clerk resuelve qué
+ * decir y la salida sigue siendo el pie, que va al onboarding.
+ *
+ * Lo que estos props NO hacen: archivar los datos del dueño anterior de este
+ * equipo. Eso ya no vive acá — está centralizado en `AccountGate` →
+ * `runAccountBootstrap`, que al activarse la sesión archiva bajo SU dueño lo
+ * local y lo limpia ANTES de decidir cualquier destino, incluso cuando la
+ * cuenta nueva todavía no tiene `birthData`. Que es, además, el único momento
+ * en que hay una cuenta real a la cual atribuir lo que sigue. No duplicar ni
+ * debilitar ese paso desde esta pantalla.
+ *
+ * ---
  *
  * Lo que SÍ es de Órbita se conserva: el escenario full-bleed del alta (el
- * mismo `Screen` con `A.splashBg`), el control de volver y la salida al alta.
- * Los dos pasan por `onBack`/`onCreateAccount`, que archivan los datos del
- * dueño anterior antes de dejar el equipo. La sesión y el bootstrap siguen
- * siendo de `AccountGate`, no de esta pantalla.
+ * mismo `Screen` con `A.splashBg`) y el control de volver, que pasa por
+ * `onBack` → `leaveWithoutSignIn`. La sesión y el bootstrap siguen siendo de
+ * `AccountGate`, no de esta pantalla.
  */
-/**
- * La ÚNICA excepción al "no se toca la UI de Clerk": se oculta su salida al
- * alta. No es un tema.
- *
- * La tarjeta oficial cierra con su propio pie «¿No tenés cuenta? Registrate»
- * apuntando a la instancia alojada (`…accounts.dev/sign-up`). Ese link es una
- * SEGUNDA salida al alta, y encima una insegura: se va de la pantalla sin pasar
- * por `onCreateAccount` → `leaveWithoutSignIn`, que archiva bajo su cuenta lo
- * del dueño anterior de este equipo y lo limpia antes de soltarlo. Quien toca
- * "crear cuenta" es, justamente, el que no pudo entrar como ese dueño: por ahí
- * el alta nueva heredaba guardadas y diario ajenos, y además salía del
- * onboarding canónico. Con el link propio de Órbita debajo, el pie de Clerk
- * quedaba encima duplicado.
- *
- * `signUpUrl` NO alcanza: cambia el destino del link, no el hecho de que sea
- * una salida que no ejecuta el callback. Sigue siendo la salida insegura, ahora
- * hacia adentro de Órbita.
- *
- * Por qué esto no tematiza ni recrea nada: no hay `baseTheme`, ni `variables`,
- * ni `layout`, ni un color, ni una tipografía — nada de lo que ya se rompió una
- * vez cuando esas variables internas cambiaron. Es UNA regla de visibilidad
- * sobre UN elemento, el que Órbita reemplaza por su propia salida. Todo lo
- * demás lo sigue pintando y resolviendo Clerk: campos, Google, errores, pasos,
- * y el resto de los pies de tarjeta (probar otro método, tengo problemas,
- * passkey), que son parte del flujo y no se tocan — por eso el selector lleva
- * modificador y no es `footerAction` a secas.
- *
- * El modificador es `__signIn` y no `__signUp`: nombra la tarjeta que emite el
- * pie, no el destino del link. En el DOM que renderiza `@clerk/expo` 3.6.5 ese
- * pie es `cl-footerAction cl-footerAction__signIn` (y su link,
- * `cl-footerActionLink`); con `__signUp` la regla no enganchaba con ningún
- * elemento y el link al alta seguía a la vista.
- *
- * `display: "none"` y no `visibility`/`opacity`: saca el link del orden de
- * tabulación y del árbol de accesibilidad. Escondido pero enfocable seguiría
- * siendo alcanzable con teclado o lector de pantalla, o sea seguiría siendo la
- * salida que se quiere sacar.
- *
- * Constante de módulo: identidad estable entre renders, para no reconfigurar el
- * componente montado en cada uno.
- */
-const SIN_ALTA_DE_CLERK = { elements: { footerAction__signIn: { display: "none" } } } as const;
-
-export function SignInScreen({ onCreateAccount, onBack }: Props) {
+export function SignInScreen({ onBack }: Props) {
   return (
     <Screen bg={A.splashBg} bgOpacity={0.9} wash={0.55} scroll>
       <View style={styles.header}>
@@ -119,22 +121,12 @@ export function SignInScreen({ onCreateAccount, onBack }: Props) {
           Iniciá sesión y volvés directo a tu cielo — sin repetir el onboarding.
         </Body>
 
+        {/* La salida al alta es el pie de esta tarjeta y no hay ningún enlace
+            de Órbita debajo: era una segunda salida, apilada sobre la oficial.
+            Por qué estos dos props, en el bloque de arriba. */}
         <View style={styles.clerkZone}>
-          <SignIn appearance={SIN_ALTA_DE_CLERK} />
+          <SignIn signUpUrl={ONBOARDING_ROUTE} transferable={false} />
         </View>
-
-        {/* La ÚNICA salida al alta (la de Clerk queda oculta, ver arriba): es la
-            que archiva y limpia lo del dueño anterior y entra al onboarding
-            canónico. Va sin email: el campo ahora es de Clerk, así que no hay
-            nada tipeado que Órbita pueda leer para no pedirlo dos veces. */}
-        <Pressable
-          onPress={() => onCreateAccount("")}
-          accessibilityRole="link"
-          accessibilityLabel="Todavía no tengo cuenta: crear una cuenta"
-          style={SIGN_IN_LINK_ROW}
-        >
-          <Text style={SIGN_IN_LINK_TEXT}>Todavía no tengo cuenta · Crear una cuenta</Text>
-        </Pressable>
       </View>
     </Screen>
   );
