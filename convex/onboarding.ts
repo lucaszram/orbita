@@ -8,6 +8,12 @@ import {
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { resolvePlaceWithAstrologyApi } from "./lib/astrologyApi";
+import { findCurrentBirthData, findExactNatalChart } from "./lib/birthDataConsistency";
+import {
+  deriveOnboardingCompletion,
+  hasValidCompletionBirthData,
+  hasValidCompletionBirthInput
+} from "./lib/onboardingCompletion";
 import { normalizeBirthTime } from "./lib/orbita";
 import { decideOnboardingBirthDataWrite } from "./lib/onboardingBirthData";
 import {
@@ -15,7 +21,6 @@ import {
   timezoneResolutionKey,
   timezoneRetryDelayMs
 } from "./lib/onboardingTimezone";
-import { recordBackendProductEvent } from "./lib/productAnalytics";
 import { findUserByTokenIdentifier, getOrCreateUser, omitUndefined, requireUser } from "./lib/users";
 
 const internalApi = internal as any;
@@ -24,6 +29,32 @@ const MAX_TIMEZONE_RESOLUTION_ATTEMPTS = 9;
 const identityValidator = v.union(v.literal("ella"), v.literal("el"), v.literal("prefiero_no_decirlo"));
 const birthTimePrecisionValidator = v.union(v.literal("known"), v.literal("approximate"), v.literal("unknown"));
 const paymentStateValidator = v.union(v.literal("not_started"), v.literal("started"), v.literal("paid"), v.literal("skipped"));
+const completionStatusValidator = v.union(
+  v.literal("signed_out"),
+  v.literal("needs_name"),
+  v.literal("onboarding_incomplete"),
+  v.literal("profile_incomplete"),
+  v.literal("chart_pending"),
+  v.literal("chart_ready")
+);
+const recoveryDestinationValidator = v.union(
+  v.literal("complete_name"),
+  v.literal("onboarding"),
+  v.literal("edit_birth_data"),
+  v.null()
+);
+
+async function findDraftByClientId(ctx: any, clientDraftId?: string) {
+  if (!clientDraftId) return null;
+  return await ctx.db
+    .query("onboardingDrafts")
+    .withIndex("by_clientDraftId", (q: any) => q.eq("clientDraftId", clientDraftId))
+    .first();
+}
+
+function draftBelongsToAnotherUser(draft: any, userId: unknown) {
+  return Boolean(draft?.userId && draft.userId !== userId);
+}
 
 async function findDraftForCurrentContext(ctx: any, clientDraftId?: string) {
   const identity = await ctx.auth.getUserIdentity();
@@ -44,10 +75,9 @@ async function findDraftForCurrentContext(ctx: any, clientDraftId?: string) {
     return null;
   }
 
-  return await ctx.db
-    .query("onboardingDrafts")
-    .withIndex("by_clientDraftId", (q: any) => q.eq("clientDraftId", clientDraftId))
-    .first();
+  const draft = await findDraftByClientId(ctx, clientDraftId);
+  if (identity && draft?.userId && (!user || draftBelongsToAnotherUser(draft, user._id))) return null;
+  return draft;
 }
 
 export const getDraft = query({
@@ -56,6 +86,93 @@ export const getDraft = query({
   },
   handler: async (ctx, args) => {
     return await findDraftForCurrentContext(ctx, args.clientDraftId);
+  }
+});
+
+/**
+ * Única autoridad de acceso a Recepción/Home durante alta y recuperación.
+ * Es una query reactiva y puramente de lectura: no llama a AstrologyAPI ni
+ * programa trabajo, por lo que añade sólo la confirmación final al cierre.
+ */
+export const getCompletionStatus = query({
+  args: {
+    clientDraftId: v.optional(v.string())
+  },
+  returns: v.object({
+    status: completionStatusValidator,
+    recovery: recoveryDestinationValidator,
+    profileReady: v.boolean(),
+    birthDataReady: v.boolean(),
+    chartReady: v.boolean()
+  }),
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return deriveOnboardingCompletion({
+        authenticated: false,
+        user: null,
+        signupInProgress: false,
+        birthData: null,
+        chart: null
+      });
+    }
+
+    const user = await findUserByTokenIdentifier(ctx, identity.tokenIdentifier);
+    const explicitDraft = await findDraftByClientId(ctx, args.clientDraftId);
+    const safeExplicitDraft =
+      explicitDraft &&
+      (!explicitDraft.userId || (user && !draftBelongsToAnotherUser(explicitDraft, user._id)))
+        ? explicitDraft
+        : null;
+    const userDraft = user
+      ? await ctx.db
+          .query("onboardingDrafts")
+          .withIndex("by_user", (q: any) => q.eq("userId", user._id))
+          .order("desc")
+          .first()
+      : null;
+    const draft = safeExplicitDraft ?? userDraft;
+    // Los drafts legacy sin `flowOrigin` nunca se interpretan como un alta
+    // nueva. Sólo el save anónimo de esta versión puede fijar ese origen.
+    const signupInProgress = draft?.flowOrigin === "anonymous_signup";
+    const birthData = user ? await findCurrentBirthData(ctx, user._id) : null;
+    const chart =
+      user && hasValidCompletionBirthData(birthData)
+        ? await findExactNatalChart(ctx, user._id, birthData)
+        : null;
+
+    return deriveOnboardingCompletion({
+      authenticated: true,
+      user,
+      signupInProgress,
+      birthData,
+      chart
+    });
+  }
+});
+
+/**
+ * Confirmación imperativa previa a montar Clerk. El cliente primero espera el
+ * saveDraft progresivo final y luego llama esta mutación de sólo lectura. Si la
+ * red o el enriquecimiento fallan, no recibe `ready` y no debe crear la cuenta.
+ */
+export const confirmSignupDraft = mutation({
+  args: { clientDraftId: v.string() },
+  returns: v.object({ ready: v.literal(true) }),
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (identity) throw new Error("ONBOARDING_SIGNUP_DRAFT_REQUIRES_ANONYMOUS_CONTEXT");
+    const draft = await findDraftByClientId(ctx, args.clientDraftId);
+    if (
+      !draft ||
+      draft.userId ||
+      draft.accountState !== "anonymous" ||
+      draft.flowOrigin !== "anonymous_signup" ||
+      !hasValidCompletionBirthInput(draft)
+    ) {
+      throw new Error("ONBOARDING_SIGNUP_DRAFT_INCOMPLETE");
+    }
+    return { ready: true as const };
   }
 });
 
@@ -82,15 +199,24 @@ export const saveDraft = mutation({
       throw new Error("clientDraftId is required for anonymous onboarding drafts");
     }
 
-    const existing = user
+    const userDraft = user
       ? await ctx.db
           .query("onboardingDrafts")
           .withIndex("by_user", (q: any) => q.eq("userId", user._id))
           .first()
-      : await ctx.db
-          .query("onboardingDrafts")
-          .withIndex("by_clientDraftId", (q: any) => q.eq("clientDraftId", args.clientDraftId))
-          .first();
+      : null;
+    const clientDraft = await findDraftByClientId(ctx, args.clientDraftId);
+    if (user && draftBelongsToAnotherUser(clientDraft, user._id)) {
+      throw new Error("ONBOARDING_DRAFT_ACCOUNT_CONFLICT");
+    }
+    const existing = user ? userDraft ?? clientDraft : clientDraft;
+    const flowOrigin =
+      existing?.flowOrigin ??
+      (!existing?.userId && existing?.clientDraftId
+        ? "anonymous_signup"
+        : user
+          ? "authenticated_recovery"
+          : "anonymous_signup");
 
     const patch = omitUndefined({
       userId: user?._id,
@@ -106,6 +232,7 @@ export const saveDraft = mutation({
       latitude: args.latitude,
       longitude: args.longitude,
       timezone: args.timezone,
+      flowOrigin,
       accountState: user ? "created" : "anonymous",
       updatedAt: now
     });
@@ -349,10 +476,20 @@ export const completeBirthData = mutation({
     const user = await requireUser(ctx);
     const now = Date.now();
     const normalizedBirthTime = normalizeBirthTime(args.birthTime);
-    const existingBirthData = await ctx.db
-      .query("birthData")
-      .withIndex("by_user", (q: any) => q.eq("userId", user._id))
-      .first();
+    if (
+      !hasValidCompletionBirthInput({
+        birthDate: args.birthDate,
+        birthTime: normalizedBirthTime,
+        birthTimePrecision: args.birthTimePrecision,
+        birthPlaceLabel: args.birthPlaceLabel,
+        latitude: args.latitude,
+        longitude: args.longitude,
+        timezone: args.timezone
+      })
+    ) {
+      throw new Error("ONBOARDING_BIRTH_DATA_INCOMPLETE");
+    }
+    const existingBirthData = await findCurrentBirthData(ctx, user._id);
 
     const payloadWithoutTime = omitUndefined({
       userId: user._id,
@@ -391,14 +528,15 @@ export const completeBirthData = mutation({
         });
 
     const draft = args.clientDraftId
-      ? await ctx.db
-          .query("onboardingDrafts")
-          .withIndex("by_clientDraftId", (q: any) => q.eq("clientDraftId", args.clientDraftId))
-          .first()
+      ? await findDraftByClientId(ctx, args.clientDraftId)
       : await ctx.db
           .query("onboardingDrafts")
           .withIndex("by_user", (q: any) => q.eq("userId", user._id))
           .first();
+
+    if (draftBelongsToAnotherUser(draft, user._id)) {
+      throw new Error("ONBOARDING_DRAFT_ACCOUNT_CONFLICT");
+    }
 
     if (draft) {
       await ctx.db.patch(
@@ -415,6 +553,9 @@ export const completeBirthData = mutation({
             latitude: args.latitude,
             longitude: args.longitude,
             timezone: args.timezone,
+            flowOrigin:
+              draft.flowOrigin ??
+              (!draft.userId && draft.clientDraftId ? "anonymous_signup" : "authenticated_recovery"),
             accountState: "created",
             updatedAt: now
           }),
@@ -422,15 +563,6 @@ export const completeBirthData = mutation({
           birthTime: normalizedBirthTime
         }
       );
-    }
-
-    if (!existingBirthData) {
-      await recordBackendProductEvent(ctx, {
-        eventName: "onboarding_completed",
-        userId: user._id,
-        dedupeKey: String(birthDataId),
-        occurredAt: now
-      });
     }
 
     return birthDataId;
@@ -445,20 +577,22 @@ export const markAccountCreated = mutation({
     const user = await requireUser(ctx);
     const now = Date.now();
     const draft = args.clientDraftId
-      ? await ctx.db
-          .query("onboardingDrafts")
-          .withIndex("by_clientDraftId", (q: any) => q.eq("clientDraftId", args.clientDraftId))
-          .first()
+      ? await findDraftByClientId(ctx, args.clientDraftId)
       : await ctx.db
           .query("onboardingDrafts")
           .withIndex("by_user", (q: any) => q.eq("userId", user._id))
           .first();
+
+    if (draftBelongsToAnotherUser(draft, user._id)) {
+      throw new Error("ONBOARDING_DRAFT_ACCOUNT_CONFLICT");
+    }
 
     if (!draft) {
       return await ctx.db.insert("onboardingDrafts", omitUndefined({
         userId: user._id,
         clientDraftId: args.clientDraftId,
         currentStep: 14,
+        flowOrigin: args.clientDraftId ? "anonymous_signup" : "authenticated_recovery",
         accountState: "created",
         paymentState: "not_started",
         createdAt: now,
@@ -469,6 +603,9 @@ export const markAccountCreated = mutation({
     await ctx.db.patch(draft._id, {
       userId: user._id,
       currentStep: Math.max(draft.currentStep ?? 0, 14),
+      flowOrigin:
+        draft.flowOrigin ??
+        (!draft.userId && draft.clientDraftId ? "anonymous_signup" : "authenticated_recovery"),
       accountState: "created",
       updatedAt: now
     });
@@ -493,6 +630,7 @@ export const markPaymentState = mutation({
       return await ctx.db.insert("onboardingDrafts", {
         userId: user._id,
         currentStep: 15,
+        flowOrigin: "authenticated_recovery",
         accountState: "created",
         paymentState: args.state,
         createdAt: now,

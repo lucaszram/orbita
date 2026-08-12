@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { normalizeProfileNamePart, normalizedProfileName } from "../convex/lib/userProfile";
+import {
+  isValidPersistedProfileNamePart,
+  normalizeProfileNamePart,
+  normalizedProfileName
+} from "../convex/lib/userProfile";
 
 describe("explicit onboarding profile names", () => {
   it("normalizes unicode names and repeated whitespace", () => {
@@ -21,5 +25,12 @@ describe("explicit onboarding profile names", () => {
     const first = normalizedProfileName("Lucas", "Ramos");
     const retry = normalizedProfileName(" Lucas ", " Ramos ");
     assert.deepEqual(retry, first);
+  });
+
+  it("uses the same rules when readiness validates persisted names", () => {
+    assert.equal(isValidPersistedProfileNamePart("María José"), true);
+    assert.equal(isValidPersistedProfileNamePart("  "), false);
+    assert.equal(isValidPersistedProfileNamePart("a".repeat(81)), false);
+    assert.equal(isValidPersistedProfileNamePart("Lu\u0000cas"), false);
   });
 });

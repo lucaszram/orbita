@@ -25,6 +25,7 @@ import {
   buildWebB0ValuesMapPayload
 } from "./lib/orbita";
 import { buildPublicNatalChartDocument } from "./lib/publicNatalChart";
+import { recordBackendProductEvent } from "./lib/productAnalytics";
 import { isUserPro } from "./lib/subscriptionAccess";
 import { findCurrentUser, findUserByTokenIdentifier, requireIdentity } from "./lib/users";
 
@@ -523,6 +524,17 @@ export const persistCalculatedNatalChart = internalMutation({
       });
     }
 
+    // El onboarding sólo se considera completo cuando la carta exacta quedó
+    // persistida. Reintentos y doble submit reutilizan cacheKey y dedupeKey.
+    if (birthData.source === "onboarding") {
+      await recordBackendProductEvent(ctx, {
+        eventName: "onboarding_completed",
+        userId: user._id,
+        dedupeKey: String(birthData._id),
+        occurredAt: now
+      });
+    }
+
     return await ctx.db.get(chartId);
   }
 });
@@ -536,10 +548,22 @@ export const calculateOrCreateNatalChart = action({
     });
 
     if (state.existingChart) {
-      await ctx.scheduler.runAfter(0, internalApi.charts.generatePersonalityReadingForChart, {
-        natalChartId: state.existingChart._id
+      // Un cache existente evita por completo otra llamada al proveedor. La
+      // misma mutación canónica reafirma los metadatos de identidad y registra
+      // el completion idempotente antes de que readiness pueda dar ready.
+      const chart = await ctx.runMutation(internalApi.charts.persistCalculatedNatalChart, {
+        tokenIdentifier: identity.tokenIdentifier,
+        birthDataId: state.birthData._id,
+        birthDataHash: state.birthDataHash,
+        cacheKey: state.cacheKey,
+        providerVersion: state.existingChart.providerVersion ?? "astrologyapi",
+        calculationVersion: ASTROLOGY_API_CHART_CALCULATION_VERSION,
+        payload: state.existingChart.payload
       });
-      return state.existingChart;
+      await ctx.scheduler.runAfter(0, internalApi.charts.generatePersonalityReadingForChart, {
+        natalChartId: chart._id
+      });
+      return chart;
     }
 
     const birthData = state.birthData;
