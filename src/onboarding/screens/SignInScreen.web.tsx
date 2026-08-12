@@ -48,7 +48,8 @@ type Props = {
  *
  * Tampoco se pisa el tema: el que Clerk resuelve para la instancia. Ajustarlo
  * desde acá acoplaba la pantalla a variables internas del componente, que ya
- * cambiaron una vez.
+ * cambiaron una vez. La única `appearance` que existe es `SIN_ALTA_DE_CLERK`,
+ * y no es tema: ver ahí por qué.
  *
  * Lo que SÍ es de Órbita se conserva: el escenario full-bleed del alta (el
  * mismo `Screen` con `A.splashBg`), el control de volver y la salida al alta.
@@ -56,6 +57,43 @@ type Props = {
  * dueño anterior antes de dejar el equipo. La sesión y el bootstrap siguen
  * siendo de `AccountGate`, no de esta pantalla.
  */
+/**
+ * La ÚNICA excepción al "no se toca la UI de Clerk": se oculta su salida al
+ * alta. No es un tema.
+ *
+ * La tarjeta oficial cierra con su propio pie «¿No tenés cuenta? Registrate»
+ * apuntando a la instancia alojada (`…accounts.dev/sign-up`). Ese link es una
+ * SEGUNDA salida al alta, y encima una insegura: se va de la pantalla sin pasar
+ * por `onCreateAccount` → `leaveWithoutSignIn`, que archiva bajo su cuenta lo
+ * del dueño anterior de este equipo y lo limpia antes de soltarlo. Quien toca
+ * "crear cuenta" es, justamente, el que no pudo entrar como ese dueño: por ahí
+ * el alta nueva heredaba guardadas y diario ajenos, y además salía del
+ * onboarding canónico. Con el link propio de Órbita debajo, el pie de Clerk
+ * quedaba encima duplicado.
+ *
+ * `signUpUrl` NO alcanza: cambia el destino del link, no el hecho de que sea
+ * una salida que no ejecuta el callback. Sigue siendo la salida insegura, ahora
+ * hacia adentro de Órbita.
+ *
+ * Por qué esto no tematiza ni recrea nada: no hay `baseTheme`, ni `variables`,
+ * ni `layout`, ni un color, ni una tipografía — nada de lo que ya se rompió una
+ * vez cuando esas variables internas cambiaron. Es UNA regla de visibilidad
+ * sobre UN elemento, el que Órbita reemplaza por su propia salida. Todo lo
+ * demás lo sigue pintando y resolviendo Clerk: campos, Google, errores, pasos,
+ * y el resto de los pies de tarjeta (probar otro método, tengo problemas,
+ * passkey), que son parte del flujo y no se tocan — por eso el selector lleva
+ * `__signUp` y no es `footerAction` a secas.
+ *
+ * `display: "none"` y no `visibility`/`opacity`: saca el link del orden de
+ * tabulación y del árbol de accesibilidad. Escondido pero enfocable seguiría
+ * siendo alcanzable con teclado o lector de pantalla, o sea seguiría siendo la
+ * salida que se quiere sacar.
+ *
+ * Constante de módulo: identidad estable entre renders, para no reconfigurar el
+ * componente montado en cada uno.
+ */
+const SIN_ALTA_DE_CLERK = { elements: { footerAction__signUp: { display: "none" } } } as const;
+
 export function SignInScreen({ onCreateAccount, onBack }: Props) {
   return (
     <Screen bg={A.splashBg} bgOpacity={0.9} wash={0.55} scroll>
@@ -76,11 +114,13 @@ export function SignInScreen({ onCreateAccount, onBack }: Props) {
         </Body>
 
         <View style={styles.clerkZone}>
-          <SignIn />
+          <SignIn appearance={SIN_ALTA_DE_CLERK} />
         </View>
 
-        {/* Salida al alta. Va sin email: el campo ahora es de Clerk, así que no
-            hay nada tipeado que Órbita pueda leer para no pedirlo dos veces. */}
+        {/* La ÚNICA salida al alta (la de Clerk queda oculta, ver arriba): es la
+            que archiva y limpia lo del dueño anterior y entra al onboarding
+            canónico. Va sin email: el campo ahora es de Clerk, así que no hay
+            nada tipeado que Órbita pueda leer para no pedirlo dos veces. */}
         <Pressable
           onPress={() => onCreateAccount("")}
           accessibilityRole="link"
