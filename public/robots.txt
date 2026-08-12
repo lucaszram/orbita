@@ -1,0 +1,22 @@
+# Órbita — orbitaastrologia.xyz
+#
+# Archivo REAL: vive en `public/`, así que el export lo copia tal cual a `dist/`
+# y Vercel lo sirve antes de aplicar el rewrite de la SPA (los rewrites sólo
+# corren cuando la ruta no matchea un archivo estático). Sin este archivo, cada
+# pedido de /robots.txt caía en el rewrite y devolvía el `index.html`.
+#
+# El JavaScript y el CSS del bundle NO se bloquean a propósito: Google necesita
+# ejecutar la app para ver la landing completa.
+
+User-agent: *
+Allow: /
+
+# Herramientas internas: nunca son contenido público.
+Disallow: /backoffice
+Disallow: /lab
+Disallow: /studio
+
+# Retorno de pago: no aporta nada a un buscador.
+Disallow: /checkout/
+
+Sitemap: https://orbitaastrologia.xyz/sitemap.xml

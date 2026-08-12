@@ -9,10 +9,14 @@
 // Falla (exit 1) si:
 //   · el export completo pasa de 50 MB;
 //   · alguna imagen emitida pasa de 500 KB;
-//   · el JavaScript de aplicación comprimido pasa de 1,25 MB.
+//   · el JavaScript de aplicación comprimido pasa de 1,25 MB;
+//   · falta alguno de los estáticos públicos (favicon, ícono de marca, imagen
+//     de compartido, robots, sitemap) o el `index.html` emitido perdió los
+//     metadatos de la ficha de búsqueda.
 //
-// La decisión es pura (`evaluateExport`) y está testeada en
-// `test/webExportLimits.test.ts`. Este archivo sólo agrega I/O y reporte.
+// Las decisiones son puras (`evaluateExport`, `evaluatePublicSeo`) y están
+// testeadas en `test/webExportLimits.test.ts`. Este archivo sólo agrega I/O y
+// reporte.
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
@@ -112,6 +116,84 @@ export function evaluateExport(measured, limits = DEFAULT_LIMITS) {
   return { ok: failures.length === 0, failures };
 }
 
+/**
+ * Estáticos que la web pública necesita servir desde su propia URL, sin hash.
+ * Los cinco últimos salen de `public/`; `favicon.ico` lo genera Expo desde
+ * `expo.web.favicon`. Si Expo dejara de copiar `public/` —o si alguien borrara
+ * uno de esos archivos— hoy nada avisaría: el export saldría en verde y el
+ * sitio publicado se quedaría sin robots, sin sitemap o sin el ícono declarado.
+ */
+export const REQUIRED_PUBLIC_FILES = [
+  "favicon.ico",
+  "index.html",
+  "orbita-icon-192.png",
+  "orbita-og.jpg",
+  "robots.txt",
+  "sitemap.xml"
+];
+
+/**
+ * Marcas que el `index.html` EMITIDO tiene que conservar. La suite ya revisa la
+ * plantilla de `public/`; acá se revisa lo que realmente se publica, que es lo
+ * único que ve Google. Cada entrada es `[qué es, cómo se reconoce]`.
+ */
+const REQUIRED_HTML_MARKS = [
+  ["la canónica productiva", /<link rel="canonical" href="https:\/\/orbitaastrologia\.xyz\/"/],
+  ["el ícono de marca de 192 px", /<link rel="icon" type="image\/png" sizes="192x192"/],
+  ["el contenido inicial de la landing", /<div id="orbita-pre-js">/],
+  ["los datos estructurados", /<script type="application\/ld\+json">/],
+  ["la meta description que inyecta Expo", /<meta name="description" content="[^"]+"/]
+];
+
+/** Marcadores sin sustituir: el documento saldría con el literal a la vista. */
+const HTML_PLACEHOLDERS = ["%LANG_ISO_CODE%", "%WEB_TITLE%"];
+
+/**
+ * Decisión pura sobre la ficha de búsqueda del export. No toca el disco:
+ * recibe las rutas emitidas y el `index.html` ya leído (`null` si no existe).
+ *
+ * @param {{ paths?: string[], indexHtml?: string | null }} [input]
+ */
+export function evaluatePublicSeo({ paths = [], indexHtml = null } = {}) {
+  const failures = [];
+  const emitted = new Set(paths);
+
+  const missing = REQUIRED_PUBLIC_FILES.filter((file) => !emitted.has(file));
+  if (missing.length > 0) {
+    failures.push({
+      check: "publicFiles",
+      message: `faltan ${missing.length} estático(s) público(s) en la raíz del export`,
+      offenders: missing
+    });
+  }
+
+  if (indexHtml === null) {
+    // Sin documento no hay nada que revisar, y la falta ya la reporta el bloque
+    // de arriba: no se duplica el fallo.
+    return { ok: failures.length === 0, failures };
+  }
+
+  const missingMarks = REQUIRED_HTML_MARKS.filter(([, pattern]) => !pattern.test(indexHtml));
+  if (missingMarks.length > 0) {
+    failures.push({
+      check: "indexHtml",
+      message: `el \`index.html\` emitido perdió ${missingMarks.length} metadato(s) de la ficha de búsqueda`,
+      offenders: missingMarks.map(([label]) => label)
+    });
+  }
+
+  const leftovers = HTML_PLACEHOLDERS.filter((placeholder) => indexHtml.includes(placeholder));
+  if (leftovers.length > 0) {
+    failures.push({
+      check: "indexHtml",
+      message: "el `index.html` emitido conserva marcadores de la plantilla sin sustituir",
+      offenders: leftovers
+    });
+  }
+
+  return { ok: failures.length === 0, failures };
+}
+
 /** Recorre `dist/` y devuelve cada archivo con su ruta relativa y su tamaño. */
 export function collectFiles(root) {
   const files = [];
@@ -140,7 +222,7 @@ export function measureExport(root) {
     else if (kind === "appJs") appJs.push({ ...file, gzipBytes: gzipSync(readFileSync(join(root, file.path)), { level: 9 }).length });
   }
 
-  return { totalBytes, fileCount: files.length, images, appJs };
+  return { totalBytes, fileCount: files.length, images, appJs, paths: files.map((file) => file.path) };
 }
 
 function main(argv) {
@@ -154,7 +236,15 @@ function main(argv) {
   }
 
   const measured = measureExport(root);
-  const { ok, failures } = evaluateExport(measured);
+  const limits = evaluateExport(measured);
+  let indexHtml = null;
+  try {
+    indexHtml = readFileSync(join(root, "index.html"), "utf8");
+  } catch {
+    // Sin `index.html` no hay documento: lo reporta `evaluatePublicSeo`.
+  }
+  const seo = evaluatePublicSeo({ paths: measured.paths, indexHtml });
+  const failures = [...limits.failures, ...seo.failures];
   const appJsGzip = measured.appJs.reduce((sum, file) => sum + file.gzipBytes, 0);
   const biggestImage = measured.images.slice().sort((a, b) => b.bytes - a.bytes)[0];
 
@@ -166,9 +256,12 @@ function main(argv) {
   console.log(
     `  JS de app (gzip)     ${formatBytes(appJsGzip)}  / ${formatBytes(DEFAULT_LIMITS.appJsGzipBytes)}   ${measured.appJs.length} archivo(s)`
   );
+  console.log(
+    `  ficha de búsqueda    ${seo.ok ? "completa" : "INCOMPLETA"}   ${REQUIRED_PUBLIC_FILES.length} estáticos + metadatos del \`index.html\``
+  );
 
-  if (ok) {
-    console.log("✓ el export entra en todos los límites.");
+  if (failures.length === 0) {
+    console.log("✓ el export entra en todos los límites y publica la ficha completa.");
     return 0;
   }
 

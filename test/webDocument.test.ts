@@ -18,7 +18,7 @@ import { ROOT } from "./moduleGraph";
 
 const html = readFileSync(join(ROOT, "public", "index.html"), "utf8");
 const appJson = JSON.parse(readFileSync(join(ROOT, "app.json"), "utf8")) as {
-  expo: { name: string; web?: { lang?: string; name?: string; description?: string } };
+  expo: { name: string; web?: { lang?: string; name?: string; description?: string; themeColor?: string } };
 };
 const web = appJson.expo.web ?? {};
 
@@ -28,6 +28,16 @@ test("cada marcador de la plantilla aparece UNA sola vez", () => {
   // Dos apariciones = la primera se sustituye y la del documento queda literal.
   assert.equal(apariciones("%LANG_ISO_CODE%"), 1);
   assert.equal(apariciones("%WEB_TITLE%"), 1);
+});
+
+test("los cierres de `head` y `body` aparecen UNA sola vez", () => {
+  // Mismo defecto que los marcadores, con otra víctima: Expo inyecta la meta
+  // description, el <link> del favicon y el CSS pisando la PRIMERA aparición
+  // del cierre del head, y los <script> del bundle la del body. Un cierre
+  // escrito antes (en un comentario, en un ejemplo) se los come y el sitio sale
+  // publicado sin descripción, sin estilos o sin JavaScript.
+  assert.equal(apariciones("</head>"), 1);
+  assert.equal(apariciones("</body>"), 1);
 });
 
 test("los marcadores están donde tienen que estar: el idioma en `<html>` y el título en `<title>`", () => {
@@ -40,8 +50,26 @@ test("la plantilla declara la canónica productiva", () => {
 });
 
 test("la plantilla conserva el punto de montaje y el reset de react-native-web", () => {
-  assert.match(html, /<div id="root"><\/div>/);
+  // El contenedor ya no está vacío (ver `webSearchPreview.test.ts`), pero sigue
+  // siendo el `#root` que busca `registerRootComponent` — sin él la app ni
+  // arranca.
+  assert.match(html, /<div id="root">/);
   assert.match(html, /id="expo-reset"/);
+});
+
+test("la descripción y el theme-color no se declaran dos veces", () => {
+  // Expo agrega `<meta name="description">` desde `expo.web.description` y
+  // `<meta name="theme-color">` desde `expo.web.themeColor`. La descripción se
+  // deja en `app.json` (la plantilla no la escribe) y el theme-color se declara
+  // en la plantilla (`app.json` no lo trae): cualquiera de los dos en los dos
+  // lugares publica metadatos duplicados.
+  // Sin comentarios: el documento explica esta regla en prosa y esa mención no
+  // es una etiqueta.
+  const marcado = html.replace(/<!--[\s\S]*?-->/g, "");
+  assert.doesNotMatch(marcado, /<meta\s+name="description"/);
+  assert.ok(web.description, "la meta description sale de `expo.web.description`");
+  assert.equal(web.themeColor, undefined, "el theme-color ya lo declara `public/index.html`");
+  assert.match(html, /<meta name="theme-color" content="#07080A" \/>/);
 });
 
 test("el documento se sirve en español", () => {
