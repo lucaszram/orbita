@@ -354,6 +354,24 @@ export const appApi = {
       { deleted: true }
     >
   },
+  placeTimezone: {
+    /**
+     * Zona IANA del lugar de nacimiento, derivada de las coordenadas que ya
+     * eligió la persona (ver `convex/CHANGELOG.md`, 2026-08-12).
+     *
+     * Photon —el autocomplete— devuelve etiqueta y coordenadas, pero NO
+     * timezone, y `validateBirthPayload` la exige antes de escribir. El backend
+     * la resuelve con límites geográficos empaquetados: no hay provider pago ni
+     * llamada externa, y la zona del dispositivo no participa (para alguien
+     * nacido en otra zona, esa sería la zona equivocada).
+     */
+    atCoordinates: anyApi.placeTimezone.atCoordinates as FunctionReference<
+      "action",
+      "public",
+      { latitude: number; longitude: number },
+      { timezone: string }
+    >
+  },
   birthData: {
     getCurrent: anyApi.birthData.getCurrent as FunctionReference<"query", "public", Empty, BirthDataDoc | null>,
     // devuelve el Id del doc birthData (string), no el doc completo

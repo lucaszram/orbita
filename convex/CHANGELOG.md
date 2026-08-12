@@ -1,5 +1,23 @@
 # Contrato — CHANGELOG
 
+## 2026-08-12 — Timezone natal por coordenadas, sin API paga
+
+- **Contrato aditivo:** nueva action pública
+  `placeTimezone.atCoordinates({ latitude, longitude })` → `{ timezone }`.
+- **Autoridad:** usa los límites geográficos empaquetados de `geo-tz` y devuelve
+  una zona IANA desde las coordenadas elegidas en Photon. No llama a un provider,
+  no consume créditos y no usa la zona del dispositivo.
+- **Empaquetado:** `convex.json` instala `geo-tz` como dependencia externa del
+  runtime Node para no sumar su dataset geográfico al límite del bundle de
+  funciones. La versión sigue fijada por `package.json`/`pnpm-lock.yaml`.
+- **Motivo:** Photon entrega etiqueta y coordenadas pero no timezone. El editor
+  exigía timezone antes de persistir y convertía una selección válida en el
+  error repetitivo “No pudimos determinar la zona horaria”.
+- **Compatibilidad:** no cambia ninguna firma existente. El frontend del editor
+  llama la nueva action sólo cuando la persona selecciona un lugar nuevo.
+- **Rollout:** sincronizar únicamente Convex dev y validar el guardado en Vercel
+  Preview. Producción queda fuera de esta tarea.
+
 ## 2026-08-12 — Límite durable de siete revelaciones Tarot para Free
 
 - **Qué cambia:** `daily.revealCard({ localDate })` conserva sus argumentos y su

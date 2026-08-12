@@ -54,6 +54,7 @@
     "expo-updates": "~29.0.18",
     "expo-video": "~3.0.16",
     "expo-web-browser": "~15.0.11",
+    "geo-tz": "^7.0.7",
     "lucide-react-native": "^1.23.0",
     "nativewind": "^4.2.6",
     "react": "19.1.0",

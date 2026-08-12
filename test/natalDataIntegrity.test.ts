@@ -362,9 +362,14 @@ test("el lock de reentrada es un ref sincrónico, no estado de React", () => {
 
 test("el editor valida el payload antes de cualquier mutación", () => {
   const inner = bloqueDesde(PERSIST, "function useProfilePersistInner()");
-  const iValida = inner.indexOf("validateBirthPayload(input)");
+  // La zona horaria del lugar se resuelve ANTES de validar (Photon no la trae):
+  // lo validado es el payload YA completo, no el crudo del editor.
+  const iZona = inner.indexOf("timezoneLookupFor(input)");
+  const iValida = inner.indexOf("validateBirthPayload(resolved)");
   const iEscribe = inner.indexOf("upsertBirthData({");
+  assert.ok(iZona !== -1, "el editor debe resolver la zona faltante");
   assert.ok(iValida !== -1, "el editor debe validar");
+  assert.ok(iZona < iValida, "la zona se resuelve antes de validar");
   assert.ok(iValida < iEscribe, "validar ANTES de escribir");
   assert.ok(inner.indexOf("await upsertBirthData") < inner.indexOf("void calculateChart"));
   assert.match(inner, /void calculateChart\(\{\}\)\.catch\(\(\) => undefined\)/);

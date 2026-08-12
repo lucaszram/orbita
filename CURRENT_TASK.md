@@ -1,5 +1,68 @@
 # Current Task
 
+## Editar datos — contraste legible y timezone automático (2026-08-12)
+
+**Objetivo:** reparar `/editar-datos` para que todos sus estados sean legibles
+sobre el fondo oscuro y para que elegir una ciudad con coordenadas siempre
+resuelva su zona horaria automáticamente, sin pedirle a la persona que repita
+la selección ni usar la zona del dispositivo.
+
+**Criterios de aceptación:** (1) resultados de ciudad, `No sé la hora`, mensajes
+de ayuda/error y `Cancelar` mantienen contraste suficiente en web y móvil;
+(2) Photon sigue siendo el autocomplete gratuito y fuente de etiqueta +
+coordenadas; (3) la timezone IANA se deriva server-side de esas coordenadas con
+datos geográficos empaquetados, sin llamada paga ni dependencia de la zona del
+aparato; (4) el editor espera esa resolución al guardar y persiste la zona
+resuelta junto con los demás datos; (5) cambiar sólo fecha/hora conserva la
+timezone remota; (6) errores reales de red/guardado siguen fallando cerrado y
+sin modificar el perfil local; (7) regresiones focalizadas, typecheck, suite,
+build/export web y comparación visual en Chrome; (8) producción intacta.
+
+**Ficha:** owner dividido por territorio — Codex en `convex/**`, contrato y
+resolver geográfico; Claude en `app/**`, `src/**` y estilos; misma rama/worktree
+del Preview `feature/onboarding-readiness-clerk-ui` /
+`.worktrees/orbita-onboarding-readiness`; cambio de contrato aditivo (nueva
+action de timezone por coordenadas, sin romper firmas existentes); riesgo medio
+por tocar el guardado natal; rollout local primero y Vercel Preview sólo con
+autorización de Lucas; rollback revirtiendo los commits de esta tarea; fuera de
+alcance onboarding, Clerk, carta, paywall, producción y rediseño visual.
+
+**Diagnóstico confirmado:** Photon no devuelve timezone. El editor tomaba sus
+resultados y luego `validateBirthPayload` exigía una timezone antes de invocar
+Convex, por lo que el flujo se bloqueaba por construcción. En paralelo, varios
+textos usan estilos registrados de React Native Web que pierden contra la clase
+`text-foreground` del componente compartido y se renderizan casi negros. La
+solución es resolver IANA desde latitud/longitud en backend y usar estilos de
+texto con precedencia explícita en esta pantalla.
+
+**Estado frontend (Claude, 2026-08-12):** implementado.
+`src/services/appRefs.ts` registra `placeTimezone.atCoordinates` como action
+pública (`{ latitude, longitude }` → `{ timezone }`). El helper puro
+`src/domain/placeTimezone.ts` (`timezoneLookupFor`, `withResolvedTimezone`)
+decide cuándo consultar: con zona presente no se pisa nada, y sin coordenadas
+usables no se consulta —el rechazo correcto sigue siendo `coordenadasFaltantes`—.
+El camino ESTRICTO del editor (`useProfilePersistInner`) espera esa resolución
+ANTES de `validateBirthPayload` y antes de `upsertBirthData`; si falla, el error
+se propaga, el editor lo muestra y no se toca el perfil local. Nunca se usa la
+zona del dispositivo ni un provider externo, y cambiar sólo fecha u hora
+conserva la zona remota. Contraste: en `app/editar-datos.tsx` los textos que
+pasan por el `Text` compartido usan objetos LITERALES (`TEXT`) en vez de la hoja
+registrada —en react-native-web una hoja compilada a clase pierde contra
+`text-foreground`/`text-base`, y por eso salían casi negros y a 16px—; mismos
+colores de siempre, sin rediseño. Regresiones nuevas en
+`test/placeTimezoneEditor.test.ts` (15) más el ajuste de
+`test/natalDataIntegrity.test.ts`. Verde: focalizadas 15/15, suite **971/971**,
+`check:test-count`, `pnpm typecheck`, `pnpm build:web`, `pnpm check:web-export`
+(32,01 MB / 50 MB; JS gzip 984,0 KB / 1,25 MB) y `git diff --check`. Pendiente:
+comparación visual y guardado real en Chrome sobre el Preview.
+
+**Estado backend/rollout local (Codex, 2026-08-12):** la action Node y el
+dataset geográfico compacto de `geo-tz@7.0.7` quedaron sincronizados únicamente
+con Convex Development (`dutiful-viper-815`). `geo-tz` se instala como paquete
+externo mediante `convex.json`; la versión 8 completa excedía el máximo
+comprimido de Convex y fue descartada antes de publicar. Producción permanece
+intacta. Export web verde: 32,01 MB / 50 MB y JS gzip 986,8 KB / 1,25 MB.
+
 ## Post-alta — recepción, acceso a carta y límite Free del Tarot (2026-08-12)
 
 **Objetivo:** ordenar el cierre del alta para que la persona llegue primero a

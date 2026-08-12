@@ -6,6 +6,7 @@ import {
   ScrollView,
   StyleSheet,
   TextInput,
+  type TextStyle,
   View
 } from "react-native";
 import { Redirect, useRouter } from "expo-router";
@@ -254,7 +255,7 @@ function EditarDatosSurface() {
           accessibilityRole="button"
           accessibilityLabel="Cancelar y volver al Perfil"
         >
-          <Text style={styles.chev}>‹</Text>
+          <Text style={TEXT.chev}>‹</Text>
         </Pressable>
       </View>
 
@@ -281,7 +282,7 @@ function EditarDatosSurface() {
         {draft === null ? (
           <View style={styles.loadingBlock}>
             {readiness === "retry-remote" ? (
-              <Body accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.saveError}>
+              <Body accessibilityRole="alert" accessibilityLiveRegion="polite" style={TEXT.saveError}>
                 {blockMessage}
               </Body>
             ) : (
@@ -310,7 +311,7 @@ function EditarDatosSurface() {
                 accessibilityLabel="No sé la hora"
               >
                 <View style={[styles.toggle, draft.timeUnknown && styles.toggleOn]}>
-                  <Text style={[styles.toggleText, draft.timeUnknown && styles.toggleTextOn]}>
+                  <Text style={[TEXT.toggle, draft.timeUnknown && TEXT.toggleOn]}>
                     {draft.timeUnknown ? "✓ No sé la hora" : "No sé la hora"}
                   </Text>
                 </View>
@@ -362,7 +363,7 @@ function EditarDatosSurface() {
                 style={styles.hit}
                 accessibilityRole="button"
               >
-                <Text style={styles.hitText}>{hit.label}</Text>
+                <Text style={TEXT.hit}>{hit.label}</Text>
               </Pressable>
             ))}
 
@@ -377,7 +378,7 @@ function EditarDatosSurface() {
           <Body
             accessibilityRole="alert"
             accessibilityLiveRegion="polite"
-            style={styles.saveError}
+            style={TEXT.saveError}
           >
             {saveError}
           </Body>
@@ -385,7 +386,7 @@ function EditarDatosSurface() {
         {/* Qué falta para poder guardar, dicho en el mismo lugar donde se
             resuelve. Sin esto, un Guardar deshabilitado no se explica. */}
         {draft !== null && blockMessage !== null ? (
-          <Body accessibilityLiveRegion="polite" style={styles.blockNote}>
+          <Body accessibilityLiveRegion="polite" style={TEXT.blockNote}>
             {blockMessage}
           </Body>
         ) : null}
@@ -410,7 +411,7 @@ function EditarDatosSurface() {
           style={styles.cancelRow}
           accessibilityRole="button"
         >
-          <Text style={styles.cancelText}>Cancelar</Text>
+          <Text style={TEXT.cancel}>Cancelar</Text>
         </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -418,20 +419,46 @@ function EditarDatosSurface() {
   );
 }
 
+/**
+ * Estilos de TEXTO en objetos LITERALES, no en `StyleSheet.create`.
+ *
+ * Es el mismo mecanismo ya documentado en `@/onboarding/theme` para
+ * `SIGN_IN_LINK_TEXT`: en react-native-web una hoja registrada se compila a una
+ * CLASE atómica, y el `Text` compartido (`components/ui/text`) ya trae las
+ * clases `text-foreground` y `text-base` de Tailwind, que fijan color, tamaño y
+ * altura de línea. Clase contra clase ganaba Tailwind, así que los resultados
+ * de ciudades, "No sé la hora" y "Cancelar" salían casi negros —y a 16px—
+ * sobre el fondo casi negro de la pantalla. Un literal viaja en el atributo
+ * `style` y le gana a cualquier clase.
+ *
+ * `saveError` tenía la misma falla por otro camino: `Body` aplica su propio
+ * color como literal (inline) y recibía el color del error como clase, así que
+ * el mensaje se pintaba del gris de cuerpo en vez del cobre de alerta. Dos
+ * literales sí compiten entre sí, y gana el último del array.
+ *
+ * Los colores son EXACTAMENTE los que ya tenía la pantalla: esto arregla la
+ * precedencia, no rediseña nada.
+ */
+const TEXT = {
+  cancel: { color: orbita.faint, fontFamily: font.sans, fontSize: 14, lineHeight: 20 },
+  chev: { color: orbita.bone, fontFamily: font.sans, fontSize: 26, lineHeight: 30 },
+  hit: { color: orbita.bone, fontFamily: font.sans, fontSize: 15, lineHeight: 21 },
+  toggle: { color: orbita.bone, fontFamily: font.sansMed, fontSize: 13, lineHeight: 18 },
+  toggleOn: { color: orbita.ink },
+  saveError: { color: "#D07A5A", marginBottom: 12 },
+  blockNote: { color: orbita.muted, marginBottom: 12 }
+} satisfies Record<string, TextStyle>;
+
 const styles = StyleSheet.create({
   // 44px reales: `hitSlop` no existe en web, así que el objetivo de "cancelar"
   // eran los 28×30 del chevron.
   backBtn: { alignItems: "flex-start", justifyContent: "center", minHeight: 44, minWidth: 44 },
-  blockNote: { color: orbita.muted, marginBottom: 12 },
   body: { flexGrow: 1, paddingBottom: 48, paddingHorizontal: GUTTER, paddingTop: 18 },
   cancelRow: { alignItems: "center", marginTop: 16, paddingBottom: 10 },
-  cancelText: { color: orbita.faint, fontFamily: font.sans, fontSize: 14 },
-  chev: { color: orbita.bone, fontFamily: font.sans, fontSize: 26, lineHeight: 30 },
   fieldLabel: { marginTop: 26 },
   fill: { backgroundColor: orbita.bg, flex: 1 },
   header: { paddingHorizontal: GUTTER, paddingTop: 6 },
   hit: { borderBottomColor: orbita.line, borderBottomWidth: 1, paddingVertical: 12 },
-  hitText: { color: orbita.bone, fontFamily: font.sans, fontSize: 15 },
   input: {
     color: orbita.bone,
     fontFamily: font.serifReg,
@@ -443,7 +470,6 @@ const styles = StyleSheet.create({
   loadingBlock: { paddingVertical: 40 },
   noTimeNote: { marginTop: 8 },
   placeCurrent: { marginTop: 6 },
-  saveError: { color: "#D07A5A", marginBottom: 12 },
   spacer: { height: 24 },
   sub: { marginTop: 10 },
   timeRow: {
@@ -459,7 +485,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 7
   },
-  toggleOn: { backgroundColor: orbita.copper, borderColor: orbita.copper },
-  toggleText: { color: orbita.bone, fontFamily: font.sansMed, fontSize: 13 },
-  toggleTextOn: { color: orbita.ink }
+  toggleOn: { backgroundColor: orbita.copper, borderColor: orbita.copper }
 });

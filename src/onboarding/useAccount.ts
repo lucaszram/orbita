@@ -17,6 +17,7 @@ import {
   makeReentrancyGuard
 } from "@/onboarding/signup";
 import { validateBirthPayload } from "@/domain/birthPayload";
+import { timezoneLookupFor, withResolvedTimezone } from "@/domain/placeTimezone";
 import type { OnboardingCompletion } from "@/domain/onboardingReadiness";
 import { deviceTimezone } from "@/hooks/useLiveApp";
 import { useOrbitaAuth } from "@/hooks/useOrbitaAuth";
@@ -892,6 +893,7 @@ function useProfilePersistInner(): PersistBirthData {
   const ensureUser = useMutation(appApi.users.getOrCreateCurrentUser);
   const upsertBirthData = useMutation(appApi.birthData.upsertForCurrentUser);
   const calculateChart = useAction(appApi.charts.calculateOrCreateNatalChart);
+  const resolveTimezone = useAction(appApi.placeTimezone.atCoordinates);
   const isSignedIn = auth.isSignedIn;
 
   return useCallback(
@@ -899,12 +901,20 @@ function useProfilePersistInner(): PersistBirthData {
       // Sesión no lista: rechazar, no resolver. Si resolviera, el editor
       // aplicaría el cambio local como si el backend lo hubiera guardado.
       if (!isSignedIn) throw new Error("PROFILE_SESSION_NOT_READY");
+      // Zona horaria del LUGAR, derivada de sus coordenadas en el backend. Va
+      // antes de validar y antes de escribir: Photon no trae timezone, así que
+      // sin esto una ciudad recién elegida (o un documento legado con coords y
+      // sin zona) moría en `zonaFaltante`. Si la resolución falla, el error se
+      // propaga y no se escribe nada — ni remoto ni local. Nunca se cae a la
+      // zona del dispositivo: para alguien nacido en otra zona es la equivocada.
+      const lookup = timezoneLookupFor(input);
+      const resolved = lookup ? withResolvedTimezone(input, (await resolveTimezone(lookup)).timezone) : input;
       // Validación en el BORDE de escritura. `birthSaveGate` espera el doc
       // remoto, pero no lo valida: con un documento legado incompleto (sin
       // coordenadas y con el lugar en "Sin especificar"), cambiar sólo la fecha
       // o la hora arrastraba ese lugar vacío y volvía a escribirlo, recalculando
       // la carta sobre datos que no son de nadie.
-      const payload = validateBirthPayload(input);
+      const payload = validateBirthPayload(resolved);
       await ensureUser({});
       await upsertBirthData({
         birthDate: payload.birthDate,
@@ -921,6 +931,6 @@ function useProfilePersistInner(): PersistBirthData {
       // puede convertir un guardado confirmado en un falso error del editor.
       void calculateChart({}).catch(() => undefined);
     },
-    [calculateChart, ensureUser, isSignedIn, upsertBirthData]
+    [calculateChart, ensureUser, isSignedIn, resolveTimezone, upsertBirthData]
   );
 }
