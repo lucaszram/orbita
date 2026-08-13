@@ -15,6 +15,8 @@
  * las funciones de acceso no-opean.
  */
 
+import { createClientDraftId, isClientDraftId } from "./onboardingReadiness";
+
 export const ONBOARDING_DRAFT_KEY = "orbita:onboarding-draft";
 
 /** Espejo de los tipos del flujo canónico, sin importarlos (evita un ciclo). */
@@ -46,6 +48,16 @@ export type OnboardingDraft = {
    * trae, y eso no puede invalidarlo — simplemente queda sin email.
    */
   email?: string;
+  /**
+   * Id del borrador REMOTO de este alta (`onboardingDrafts.clientDraftId`).
+   *
+   * Es lo que sobrevive a la vuelta de Clerk y permite adjuntar a la cuenta
+   * recién creada el borrador que se guardó anónimo, conservando su
+   * `flowOrigin: "anonymous_signup"`. Sin él, la misma persona quedaría como una
+   * recuperación de cuenta preexistente y volvería a `/editar-datos` en vez de
+   * cerrar su alta.
+   */
+  clientDraftId?: string;
 };
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -111,7 +123,12 @@ export function parseDraft(raw: string | null, stepCount: number): OnboardingDra
     // igual que el resto de los campos opcionales. `writeDraft` ya lo serializa
     // y `OnboardingFlow` ya lo lee — sin esta línea el ida y vuelta lo
     // descartaba en silencio y `saved?.email` era código muerto.
-    email: optStr(d.email)
+    email: optStr(d.email),
+    // Un id manipulado a mano no puede adjuntar el borrador de otra persona:
+    // se acepta sólo la forma opaca que emite `createClientDraftId`. La
+    // propiedad se agrega SÓLO si existe: un `clientDraftId: undefined` fijo
+    // rompía la igualdad del ida y vuelta de un borrador que nunca lo tuvo.
+    ...(isClientDraftId(d.clientDraftId) ? { clientDraftId: d.clientDraftId } : {})
   };
 }
 
@@ -159,6 +176,7 @@ export function writeDraft(draft: OnboardingDraft): void {
 
 /** El onboarding terminó: el borrador no debe sobrevivir. */
 export function clearDraft(): void {
+  memoryClientDraftId = null;
   const s = storage();
   if (!s) return;
   try {
@@ -166,4 +184,35 @@ export function clearDraft(): void {
   } catch {
     // no-op
   }
+}
+
+// --- Id del borrador remoto --------------------------------------------------
+
+/**
+ * Espejo en memoria del `clientDraftId`.
+ *
+ * En nativo no hay `sessionStorage` y el alta tampoco remonta por redirect, así
+ * que la memoria del proceso alcanza. En web el espejo evita releer y reescribir
+ * el borrador entero en cada consulta; `sessionStorage` sigue siendo el que
+ * sobrevive a la vuelta de Clerk.
+ */
+let memoryClientDraftId: string | null = null;
+
+/** El id de ESTE alta, o `null` si todavía no se generó ninguno. */
+export function readClientDraftId(): string | null {
+  if (memoryClientDraftId) return memoryClientDraftId;
+  const saved = readDraft(Number.MAX_SAFE_INTEGER)?.clientDraftId;
+  if (saved) memoryClientDraftId = saved;
+  return memoryClientDraftId;
+}
+
+/**
+ * Id estable del alta: se genera UNA sola vez y después siempre devuelve el
+ * mismo. Volver a generarlo dejaría huérfano el borrador remoto ya guardado.
+ */
+export function ensureClientDraftId(): string {
+  const existing = readClientDraftId();
+  if (existing) return existing;
+  memoryClientDraftId = createClientDraftId();
+  return memoryClientDraftId;
 }

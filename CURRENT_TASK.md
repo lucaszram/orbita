@@ -1,5 +1,236 @@
 # Current Task
 
+## Tarot Free — la carta misma abre Plus al llegar al límite (2026-08-12)
+
+**Objetivo:** evitar el estado confuso donde la octava carta quedaba boca abajo
+con “TOCÁ PARA SACARLA” y aparecía además un botón separado. El primer toque
+sigue consultando al backend; si informa que Free ya usó siete cartas, se muestra
+el aviso y el dorso cambia a `DESBLOQUEAR TAROT DIARIO`. El siguiente toque sobre
+la propia carta abre `/paywall` sin volver a animar un reveal imposible.
+
+**Implementación:** `HomeScreen` conserva el rechazo autoritativo y cambia la
+acción/label de `CartaDelDia` cuando `tarotLimite` es verdadero. El bloque de
+explicación ya no contiene un `Pressable`. `CartaDelDia` suma el modo `unlock`,
+con etiqueta accesible propia y salida antes de iniciar el flip optimista. Tanto
+el dorso como el texto inferior son controles reales con la misma acción: tocar
+`TOCÁ PARA SACARLA` revela y tocar `DESBLOQUEAR TAROT DIARIO` abre Plus.
+Producción queda fuera de alcance; rollout únicamente por este Preview.
+
+## Checkout directo — `/paywall` abre Stripe sin pantalla intermedia (2026-08-12)
+
+**Objetivo:** respetar el CTA ya aceptado en Recepción, Carta, Perfil o Home y
+abrir directamente Stripe Checkout, sin volver a mostrar una segunda pantalla
+comercial propia. El resumen de lo que incluye Plus debe acompañar la
+confirmación dentro de Stripe.
+
+**Implementación:** `src/components/web/orbita-paywall.tsx` quedó reducido a un
+lanzador autenticado: crea una única sesión mensual al montarse, usa sólo la URL
+devuelta por `payments.createCheckoutSession` con `window.location.replace`
+—para que `/paywall` no quede atrapado en el historial y Atrás desde Stripe
+regrese al CTA de origen— y muestra únicamente el estado
+“Abriendo el pago seguro…”. Un guard sincrónico por intento evita duplicados por
+StrictMode o re-render; el reintento explícito sí inicia un intento nuevo. Los
+estados de error y cuenta ya Plus permanecen cerrados y accionables. Se retiraron
+de esa ruta precio, oferta, beneficios, navegación y legales; los CTA de origen
+siguen explicando qué se desbloquea.
+
+**Contrato Stripe:** `buildStripeCheckoutForm` agrega
+`custom_text[submit][message]` al Checkout mensual con carta natal completa,
+Tarot diario, lectura personalizada, tránsitos, Umbral y Diario. Precio, moneda,
+intervalo y prueba continúan gobernados exclusivamente por el Price de Stripe.
+`cancel_url` pasa a `/home`: volver a `/paywall` abriría otra sesión y formaría un
+bucle. Customer, metadata, trial, webhook y entitlement no cambian.
+
+**Validación local:** regresiones focalizadas frontend/backend **85/85** y
+`pnpm typecheck` en verde. Pendiente antes de cerrar: suite completa, build/export
+web, sincronización exclusiva de Convex Development, commit/push de esta rama,
+Vercel Preview y recorrido real autenticado hasta Stripe test. Producción queda
+fuera de alcance.
+
+## Editar datos — contraste legible y timezone automático (2026-08-12)
+
+**Objetivo:** reparar `/editar-datos` para que todos sus estados sean legibles
+sobre el fondo oscuro y para que elegir una ciudad con coordenadas siempre
+resuelva su zona horaria automáticamente, sin pedirle a la persona que repita
+la selección ni usar la zona del dispositivo.
+
+**Criterios de aceptación:** (1) resultados de ciudad, `No sé la hora`, mensajes
+de ayuda/error y `Cancelar` mantienen contraste suficiente en web y móvil;
+(2) Photon sigue siendo el autocomplete gratuito y fuente de etiqueta +
+coordenadas; (3) la timezone IANA se deriva server-side de esas coordenadas con
+datos geográficos empaquetados, sin llamada paga ni dependencia de la zona del
+aparato; (4) el editor espera esa resolución al guardar y persiste la zona
+resuelta junto con los demás datos; (5) cambiar sólo fecha/hora conserva la
+timezone remota; (6) errores reales de red/guardado siguen fallando cerrado y
+sin modificar el perfil local; (7) regresiones focalizadas, typecheck, suite,
+build/export web y comparación visual en Chrome; (8) producción intacta.
+
+**Ficha:** owner dividido por territorio — Codex en `convex/**`, contrato y
+resolver geográfico; Claude en `app/**`, `src/**` y estilos; misma rama/worktree
+del Preview `feature/onboarding-readiness-clerk-ui` /
+`.worktrees/orbita-onboarding-readiness`; cambio de contrato aditivo (nueva
+action de timezone por coordenadas, sin romper firmas existentes); riesgo medio
+por tocar el guardado natal; rollout local primero y Vercel Preview sólo con
+autorización de Lucas; rollback revirtiendo los commits de esta tarea; fuera de
+alcance onboarding, Clerk, carta, paywall, producción y rediseño visual.
+
+**Diagnóstico confirmado:** Photon no devuelve timezone. El editor tomaba sus
+resultados y luego `validateBirthPayload` exigía una timezone antes de invocar
+Convex, por lo que el flujo se bloqueaba por construcción. En paralelo, varios
+textos usan estilos registrados de React Native Web que pierden contra la clase
+`text-foreground` del componente compartido y se renderizan casi negros. La
+solución es resolver IANA desde latitud/longitud en backend y usar estilos de
+texto con precedencia explícita en esta pantalla.
+
+**Estado frontend (Claude, 2026-08-12):** implementado.
+`src/services/appRefs.ts` registra `placeTimezone.atCoordinates` como action
+pública (`{ latitude, longitude }` → `{ timezone }`). El helper puro
+`src/domain/placeTimezone.ts` (`timezoneLookupFor`, `withResolvedTimezone`)
+decide cuándo consultar: con zona presente no se pisa nada, y sin coordenadas
+usables no se consulta —el rechazo correcto sigue siendo `coordenadasFaltantes`—.
+El camino ESTRICTO del editor (`useProfilePersistInner`) espera esa resolución
+ANTES de `validateBirthPayload` y antes de `upsertBirthData`; si falla, el error
+se propaga, el editor lo muestra y no se toca el perfil local. Nunca se usa la
+zona del dispositivo ni un provider externo, y cambiar sólo fecha u hora
+conserva la zona remota. Contraste: en `app/editar-datos.tsx` los textos que
+pasan por el `Text` compartido usan objetos LITERALES (`TEXT`) en vez de la hoja
+registrada —en react-native-web una hoja compilada a clase pierde contra
+`text-foreground`/`text-base`, y por eso salían casi negros y a 16px—; mismos
+colores de siempre, sin rediseño. Regresiones nuevas en
+`test/placeTimezoneEditor.test.ts` (15) más el ajuste de
+`test/natalDataIntegrity.test.ts`. Verde: focalizadas 15/15, suite **971/971**,
+`check:test-count`, `pnpm typecheck`, `pnpm build:web`, `pnpm check:web-export`
+(32,01 MB / 50 MB; JS gzip 984,0 KB / 1,25 MB) y `git diff --check`. Pendiente:
+comparación visual y guardado real en Chrome sobre el Preview.
+
+**Estado backend/rollout local (Codex, 2026-08-12):** la action Node y el
+dataset geográfico compacto de `geo-tz@7.0.7` quedaron sincronizados únicamente
+con Convex Development (`dutiful-viper-815`). `geo-tz` se instala como paquete
+externo mediante `convex.json`; la versión 8 completa excedía el máximo
+comprimido de Convex y fue descartada antes de publicar. Producción permanece
+intacta. Export web verde: 32,01 MB / 50 MB y JS gzip 986,8 KB / 1,25 MB.
+
+## Post-alta — recepción, acceso a carta y límite Free del Tarot (2026-08-12)
+
+**Objetivo:** ordenar el cierre del alta para que la persona llegue primero a
+`/recepcion`, y convertir desde ahí de forma directa a la carta natal completa
+sin una pantalla Free intermedia confusa. Hacer que Órbita Plus sea visible y
+fácil de activar desde Perfil, y limitar de forma autoritativa a siete las
+cartas de Tarot que una cuenta Free puede revelar.
+
+**Criterios de aceptación:** (1) al terminar el alta durable se navega a
+`/recepcion`, conservando la tríada real calculada; (2) en recepción, una cuenta
+Free ve `DESBLOQUEAR MI CARTA NATAL` y va directo a `/paywall`, mientras una
+cuenta Plus ve `ENTRAR A MI CARTA` y va a `/carta`; (3) si una cuenta Free llega
+a la carta parcial, su CTA dice `DESBLOQUEAR MI CARTA NATAL`; (4) la paywall
+explica qué incluye la carta natal completa y que Free permite siete cartas de
+Tarot, pidiendo Plus desde la octava; (5) Perfil ofrece `ACTIVAR ÓRBITA PLUS` a
+Free y conserva la gestión autoritativa para Plus; (6) `daily.revealCard` deja
+revelar hasta siete cartas a Free, conserva la idempotencia de una carta ya
+revelada y rechaza la octava con un marcador estable que el frontend convierte
+en salida a `/paywall`; (7) typecheck, suite completa, export web y recorrido en
+Chrome sobre Preview en verde; (8) producción intacta.
+
+**Ficha:** owner compartido por territorio — Codex en `convex/**`, Claude en
+`app/**` + `src/**`; branch y worktree existentes
+`feature/onboarding-readiness-clerk-ui` / `.worktrees/orbita-onboarding-readiness`;
+cambio de contrato público no (la firma de `daily.revealCard` no cambia; suma
+una regla de acceso y un marcador de error estable); riesgo alto por tocar
+onboarding, entitlement y pago; rollout únicamente al Vercel Preview de esta
+rama y al deployment Convex dev compartido si la verificación lo requiere;
+rollback por revertir los commits de esta tarea y volver a sincronizar sólo el
+backend dev; fuera de alcance precio, trial, Checkout/webhook/portal, Stripe
+live, schema, producción, diseño visual nuevo y contenido del Tarot.
+
+**Plan de pruebas:** regresiones de navegación/copy/Perfil; pruebas unitarias de
+la regla `7 Free / ilimitado Plus`, incluida la idempotencia; typecheck, suite
+completa, `build:web`, `check:web-export`, `git diff --check`; en Chrome Preview,
+revisar recepción Free → paywall, Carta Free → paywall, Perfil Free → paywall,
+paywall y navegación Plus preservada. La octava carta se demuestra con prueba
+de backend sin fabricar ni sobrescribir datos reales de la cuenta de Lucas.
+
+**Estado de integración:** backend y frontend implementados. Convex dev
+`dutiful-viper-815` quedó sincronizado con la regla de siete revelaciones Free;
+producción no se tocó. El frontend restaura `/recepcion`, decide el CTA con el
+entitlement real, ofrece Plus desde Perfil, corrige los CTA de Carta/paywall y
+convierte el rechazo de la octava carta en una salida visible a `/paywall` sin
+fingir un reveal exitoso. Validación independiente de Codex: `pnpm typecheck`,
+suite completa **953/953**, `pnpm build:web`, `pnpm check:web-export` y
+`git diff --check` en verde; export web 31,99 MB, imagen máxima 479,3 KB y JS
+gzip 978,9 KB. Backend aislado en `744f0eb`. Pendiente al escribir esta línea:
+commit frontend, push, Vercel Preview y recorrido autenticado en Chrome.
+
+## Alta — vuelve la columna única del alta (2026-08-12, Claude)
+
+**Objetivo:** sacar del alta la composición ancha que reintrodujo `56b8a6d` (escenario de 1200, `split`/`scene` y el slot que mudaba controles a una segunda columna) y volver al shell de formulario de UNA columna aprobado en `feature/web-p5-onboarding-responsive`, sin tocar el layout compartido de la app ni nada del alta durable.
+
+**Criterios de aceptación:** (1) primera pantalla legible en una sola columna, con el CTA visible o alcanzable por scroll; (2) fecha y hora natal con título, control, nota y CTA en la misma secuencia vertical, sin control aislado a la derecha; (3) Cuenta con Clerk oficial, su scroll propio y su alto reservado; (4) Splash sin escena ancha; (5) ningún control duplicado en el DOM; (6) fondo full-bleed, wash, assets, tipografía y copy intactos; (7) regresiones que PROHÍBAN la vuelta del layout ancho; (8) `completeSignupFromDraft`, readiness, Home y la carta no bloqueante sin tocar.
+
+**Ficha:** owner Claude (frontend); branch `feature/onboarding-readiness-clerk-ui` sobre HEAD `3f9faff`, worktree `.worktrees/orbita-onboarding-readiness`; territorio autorizado por Lucas y acotado a `src/onboarding/**`, `test/onboardingLaunch.test.ts`, `test/responsiveShells.test.ts` y esta ficha; cambio de contrato no; riesgo medio — toca el marco de los quince pasos del alta más `/editar-datos` y `/iniciar-sesion`, que montan el mismo shell; rollout por Vercel Preview del PR #72; rollback revirtiendo el commit único; fuera de alcance `convex/**`, `src/domain/webLayout.ts`, `ContentCanvas`, copy, assets, Home, Carta y el alta durable.
+
+**Implementación:** el arreglo es autocontenido: la medida vive en el shell del alta, no en el contrato compartido.
+
+- **`src/onboarding/components/Screen.tsx`:** una sola columna de `FORM_COLUMN = 480` centrada con `alignSelf` sobre el fondo full-bleed. Se eliminaron `ScreenLayout`, `layout`, `aside`, `useSplitSlot`, `STAGE_MAX` (1200), `STAGE_COLUMN` (720), `COPY_COLUMN` (520) y el `useIsDesktop` del shell. Se conservan `bg`/`bgOpacity`/`wash`, el `LinearGradient` de legibilidad, la safe area, el `scroll` opcional y los `minHeight: 0` que permiten acotar un `ScrollView` interno sin mandar el CTA fuera del viewport. La estructura sigue siendo `stage > column > children`: misma profundidad que antes, sin cadenas de flex nuevas.
+- **Align, fecha natal y hora natal:** la grilla y los dos pickers se montan INLINE, una sola vez, en su lugar real del flujo. Sin `useSplitSlot` ya no hay dos posiciones posibles para el mismo control.
+- **Cuenta:** una columna, con el sello compacto de 88 px arriba del título (el disco de 420 px de la segunda columna se fue) y el arte del sobre como atmósfera fija (`bgOpacity 0.32`, `wash 0.74`). El widget OFICIAL de Clerk, su `ScrollView` propio, el `keyboardShouldPersistTaps` y el `minHeight: 380` de su zona quedan igual.
+- **Splash:** una sola composición —marca centrada, puertas al pie—; se fueron `WORDMARK_DESKTOP` (96 px), `TAGLINE_DESKTOP` y los estilos del hero editorial anclado abajo a la izquierda. **Queda una excepción deliberada:** `useIsDesktop()` sobrevive SÓLO para elegir el master del fondo (`entryBackground(desktop)`: panorámico 2560×1440 en ventana ancha, vertical 1170×2532 en teléfono, el mismo par aprobado en el PR #57 y que usa la landing). No compone nada; sacarlo obligaría a servir un master recortado y sería un cambio de assets.
+
+**Regresiones:** `test/onboardingLaunch.test.ts` y `test/responsiveShells.test.ts` pasaron de exigir el layout ancho a prohibirlo. Ahora: la medida del shell es `FORM_COLUMN = 480` y es la ÚNICA del archivo; `STAGE_MAX`, `STAGE_COLUMN`, `COPY_COLUMN`, `ScreenLayout`, `useSplitSlot`, `aside`, `columnDesktop`, `columnCentered`, `stageDesktop`, `layout="split"` y `layout="scene"` están prohibidos en el shell **y en los diecisiete pasos**, no sólo en los archivos que fallaban; ningún archivo del alta mide la ventana ni ramifica por modo de layout salvo la entrada, donde se afirma que el modo se usa exactamente dos veces y sólo para el fondo; cada pieza interactiva se monta exactamente una vez; el orden de Align, fecha y hora se verifica por posición en el archivo; el sello de Cuenta es el compacto y Clerk sigue siendo el oficial; la entrada conserva marca centrada y puertas al pie, sin tipografía de escritorio.
+
+**Validación:** Codex ejecutó las pruebas que Claude no pudo correr por su gate local: focalizadas responsive **73/73**, `pnpm typecheck` verde, suite completa **911/911**, `pnpm build:web` verde, `pnpm check:web-export` verde (36,33 MB / 50 MB; imagen máxima 479,3 KB / 500 KB; JS gzip 1,10 MB / 1,25 MB; ficha de búsqueda completa) y `git diff --check` limpio. Smoke visual local de sólo lectura: Align 1440×900, Fecha 1024×768 y 390×844 quedan en una columna, sin overflow horizontal y con CTA dentro del marco; Hora 320×568 conserva el comportamiento extremo previo de P5 y deja el CTA debajo del marco, pero la matriz obligatoria empieza en 360×800 y se verificará exacta sobre Vercel Preview antes de cerrar. La cuenta real de Clerk tampoco puede probarse localmente porque este worktree no tiene toda su configuración; queda para el Preview con variables reales.
+
+**Handoff:** **Estado:** implementado y validado localmente, listo para commit + Vercel Preview. **Branch:** `feature/onboarding-readiness-clerk-ui` (base `3f9faff`), todavía sin commit, push ni deploy al escribir esta entrada. **Qué cambió:** `src/onboarding/components/Screen.tsx`, `src/onboarding/screens/{Align,Birthdate,BirthTime,Account,Splash}Screen.tsx`, `test/onboardingLaunch.test.ts`, `test/responsiveShells.test.ts` y esta ficha. **Qué NO cambió:** `convex/**`, `completeSignupFromDraft`, la readiness, Home, la carta no bloqueante, el copy, los assets, `src/domain/webLayout.ts`, `ContentCanvas` y el resto de `app/**` y `src/**`. **Efecto colateral esperado:** `/editar-datos` y `/iniciar-sesion` montan el mismo shell, así que también pasan a la columna de 480 — es el comportamiento de P5, no un desvío. **Próximo paso exacto:** revisar el diff final, commitear con un solo objetivo, push y recorrer en Chrome la matriz visual (1440×900, 1440×780, 1280×720, 1024×768, 768×1024, 393×852, 360×800) y la funcional del handoff sobre Vercel Preview. Producción intacta.
+
+## Backend — resolución durable del lugar natal (2026-08-11, Codex)
+
+**Objetivo:** guardar el borrador del alta antes de cualquier enriquecimiento y
+resolver internamente la zona horaria del lugar, con reintentos durables, sin pedirla
+ni mostrar errores técnicos a la persona.
+
+**Implementación:** `onboarding.saveDraft` persiste primero y agenda un único worker
+por combinación lugar/coordenadas. El worker elige el resultado más cercano, aplica
+la zona sólo si el lugar no cambió y reintenta con backoff hasta 12 horas. Un claim
+opcional en `onboardingDrafts` deduplica autoguardados; se libera al resolver o agotar
+la cadena. No existe fallback a la zona del dispositivo y las respuestas viejas no
+pueden pisar una ciudad nueva.
+
+**Verificación:** pruebas focalizadas **23/23**; suite completa **854/854**;
+`tsc --noEmit` y `git diff --check` en verde. Sin commit, push, deploy ni mutaciones
+de producción.
+
+## Web — la vista previa de Google de orbitaastrologia.xyz (2026-08-11, Claude)
+
+**Objetivo:** darle a los buscadores todo lo que hoy le falta a `orbitaastrologia.xyz` para armar bien su ficha —un ícono de marca declarado de forma explícita y estable, un extracto real de la landing en el HTML inicial, y `robots.txt`/`sitemap.xml` servidos de verdad—, sin romper la SPA ni la UI autenticada. Lo que Google termine mostrando y cuándo lo actualice no es algo que este cambio pueda forzar.
+
+**Criterios de aceptación:** (1) el documento declara un favicon de marca explícito y estable, cuadrado y múltiplo de 48 px, servido desde una URL fija; (2) `robots.txt` y `sitemap.xml` se sirven como archivos reales, no como `index.html`; (3) el HTML inicial trae contenido semántico de la landing —el mismo que ve una persona— para que el buscador tenga de dónde sacar el extracto sin ejecutar JavaScript; (4) metadatos esenciales de robots, Open Graph, Twitter, `theme-color` y datos estructurados válidos; (5) nada del contenido pre-JS queda oculto, fuera de pantalla ni distinto de lo visible (sin cloaking); (6) React sigue montando sobre `#root` y no queda un flash feo; (7) los deep links de la SPA y la UI autenticada siguen igual; (8) regresiones focalizadas sobre la fuente y sobre `dist/`; (9) `pnpm typecheck`, `pnpm test`, `pnpm build:web` y `pnpm check:web-export` en verde.
+
+**Ficha:** owner Claude (frontend); branch `fix/web-seo-search-preview` desde `main` `c6b32df`, worktree `.worktrees/orbita-web-seo` (no es `feature/web`: Lucas pidió trabajar en este worktree); territorio permitido `public/**` (documento y estáticos servidos tal cual), `scripts/check-web-export.mjs`, `test/**` y `CURRENT_TASK.md`; cambio de contrato no; riesgo bajo-medio — toca el documento que sirve TODAS las rutas web, no toca `app/**` ni `src/**`; plan de pruebas: regresiones de documento + export, suite completa, typecheck, `build:web` e inspección del `dist/` real; rollout por PR a `main` y despliegue web cuando Lucas lo autorice; rollback revirtiendo el commit único; fuera de alcance `convex/**`, commit/push/deploy, `app.json`, `vercel.json`, renderizado estático por ruta, canónicas por ruta, manifest PWA, rediseño de la landing y cualquier pantalla de la app.
+
+**Diagnóstico — lo confirmado y lo que NO:**
+
+- **Confirmado (defecto real):** `robots.txt` y `sitemap.xml` no existían como archivos. Vercel resuelve `rewrites` DESPUÉS del filesystem, así que `/robots.txt` y `/sitemap.xml` caían en `"/(.*)" → "/index.html"` y devolvían el documento de la SPA. Reproducido local y arreglado acá.
+- **Confirmado (defecto real):** el documento llegaba con `<div id="root"></div>` vacío, así que el único texto del HTML inicial era el aviso de JavaScript y el buscador nunca tuvo contenido mejor del cual sacar el extracto. El resto que Google muestra hoy —“You need to enable JavaScript to run this app.”, en inglés— es textual el aviso de la plantilla por defecto de Expo; la plantilla propia lo tiene traducido desde el PR #50, o sea que ese extracto viene de un rastreo anterior a aquel deploy. El `#root` vacío está arreglado acá; el extracto lo actualiza Google cuando vuelva a rastrear.
+- **NO confirmado — hipótesis descartada:** que el ícono genérico viniera de un favicon inválido. Codex auditó producción hoy (2026-08-11): `/favicon.ico` responde 200, está enlazado desde el HTML emitido y contiene un frame válido de 48×48 (más 16 y 32), o sea que **cumple** la guía de Google (cuadrado y múltiplo de 48). La explicación razonable del globo genérico en la captura es un crawl/caché viejo, posterior al deploy del favicon del 2026-08-07 — la misma antigüedad que explica el extracto en inglés. **No hay que atribuirlo a un favicon roto ni prometer que el PNG nuevo lo cambie.**
+- **Por qué el PNG de 192 igual entra:** es un refuerzo, no una corrección. El `.ico` que inyecta Expo se declara sin `sizes` ni `type` y sale al final del `head`; el PNG agrega una declaración explícita, autodescripta, estable y de mayor tamaño, que también cumple la guía. Mejora la señal; no garantiza el resultado.
+
+**Implementación:** todo en `public/`, que el export copia tal cual a `dist/` (verificado en el CLI: `copyPublicFolderAsync` corre antes de escribir el `index.html` generado).
+
+- **Ícono estable (refuerzo, no corrección):** `public/orbita-icon-192.png` — copia del emblema oficial `assets/orbita/optimized/brand/orbita_app_icon_web.png` (192×192, 62,9 KB), servido desde una URL fija sin hash de build. La plantilla lo declara explícito (`rel="icon" type="image/png" sizes="192x192"` + `apple-touch-icon`) ANTES del `.ico` que inyecta Expo. El `.ico` **no se toca ni se reemplaza**: sigue siendo válido, se genera con frames 16/32/48 y queda para la pestaña del navegador. Las dos rutas terminan en el mismo emblema; la nueva sólo lo dice de forma explícita y con un tamaño mayor.
+- **Metadatos:** `robots` (`index, follow, max-image-preview:large, max-snippet:-1`), `theme-color` `#07080A`, Open Graph completo (`type`, `site_name`, `locale es_AR`, `url`, `title`, `description`, `image` + tipo/medidas/alt) y Twitter `summary_large_image`. Título y descripción son LOS MISMOS de `app.json` (hay regresión que falla si se desincronizan) y la meta description se sigue dejando a Expo para no duplicarla.
+- **Imagen de compartido:** `public/orbita-og.jpg` (1200×630, 68,7 KB), recorte del fondo orbital APROBADO `assets/orbita/optimized/web-entry/entry_bg_desktop.webp` (2560×1440) — arte real de Órbita, sin tipografía inventada.
+- **Datos estructurados:** un JSON-LD con `WebSite` + `Organization` (nombre, URL, logo 192). Nada de ratings, reseñas ni precios.
+- **Contenido inicial:** dentro de `#root`, `div#orbita-pre-js` con la landing real en HTML plano — emblema, `TU ASTRÓLOGA PERSONAL`, el H1, la promesa, los dos CTAs (`/empezar`, `/iniciar-sesion`), la línea de carta astral base, “Cómo funciona” (3 pasos) y “Qué incluye” (5 filas), más el pie con Privacidad/Términos/Soporte. **Copy textual de `orbita-landing.tsx`**, no una versión para robots. Los estilos van en un `<style id="orbita-prejs-style">` y TODAS las reglas cuelgan de `#orbita-pre-js`, con los colores de la landing: lo primero que se pinta ya es negro `#07080A`, así que se elimina el flash blanco que había antes.
+- **Por qué dentro de `#root`:** `registerRootComponent` monta con `createRoot` (`hydrate` sale de `globalThis.__EXPO_ROUTER_HYDRATE__`, que sólo define el renderizado estático), y React vacía el contenedor en su primer commit. El bloque desaparece entero al montar: no queda duplicado en el DOM ni texto debajo de la app.
+- **`robots.txt` / `sitemap.xml` reales**, con `Sitemap:` absoluto, sin bloquear `_expo`/`assets` (Google necesita el bundle para renderizar) y cerrando sólo `/backoffice`, `/lab`, `/studio` y `/checkout/`. El sitemap lista UNA sola URL a propósito: todas las rutas se sirven desde el mismo documento con canónica al raíz, así que listar `/empezar` o `/privacy` contradiría esa canónica; se las descubre por los enlaces reales del HTML inicial.
+- **Gate de export:** `scripts/check-web-export.mjs` suma `evaluatePublicSeo` — falla si a `dist/` le falta alguno de los seis estáticos (`favicon.ico`, `index.html`, `orbita-icon-192.png`, `orbita-og.jpg`, `robots.txt`, `sitemap.xml`), si el `index.html` emitido perdió la canónica, el ícono de 192, el bloque inicial, el JSON-LD o la meta description, o si quedó un marcador de plantilla sin sustituir.
+
+**Regresiones:** `test/webSearchPreview.test.ts` (nuevo, 15 tests): el ícono existe, es cuadrado, su lado es múltiplo de 48 y su URL no lleva hash (se leen las medidas REALES del PNG, no lo declarado); la imagen de compartido existe y mide exactamente lo que dice el `<meta>` (medidas leídas del JPEG); OG/Twitter repiten literal el título y la descripción de `app.json`; el JSON-LD parsea, apunta al dominio productivo y no trae `aggregateRating`/`review`/`offers`/`price`; el bloque inicial vive dentro de `#root`, tiene un solo H1 y enlaza cinco rutas que existen en `app/`; **cada frase del bloque aparece textual en `orbita-landing.tsx`** (el guard anti-cloaking); ninguna regla del bloque usa `display:none`, `visibility:hidden`, `opacity:0`, `font-size:0`, `text-indent` negativo, posicionamiento fuera de pantalla ni `clip`, y todo selector cuelga de `#orbita-pre-js`; `robots.txt` abre el sitio, publica el sitemap y sólo cierra rutas que existen; ningún `<loc>` del sitemap contradice la canónica. `test/webDocument.test.ts` suma dos: los cierres de `head`/`body` aparecen una sola vez (Expo inyecta pisando la primera aparición) y ni la descripción ni el `theme-color` se declaran dos veces. `test/webExportLimits.test.ts` suma cinco sobre `evaluatePublicSeo`.
+
+**Validación ejecutada (2026-08-11):** `pnpm typecheck` verde; suite completa **868/868** (846 antes, +22 nuevos), `check:test-count` verde; `pnpm build:web` completo; `pnpm check:web-export` verde — 36,33 MB / 50 MB, imagen máxima 479,3 KB / 500 KB, JS gzip 1,10 MB / 1,25 MB y ficha de búsqueda completa; `git diff --check` limpio. Inspección del `dist/` real: `robots.txt`, `sitemap.xml`, `orbita-icon-192.png` y `orbita-og.jpg` en la raíz; `index.html` con `lang="es"`, el título sustituido, la meta description inyectada una sola vez, el CSS, el `<link rel="icon" href="/favicon.ico" />` de Expo después del PNG de 192 y el `<script defer>` al final; `favicon.ico` con frames 16×16, 32×32 y **48×48**. Servido con un servidor que imita a Vercel (filesystem primero, rewrite después): `/robots.txt` y `/sitemap.xml` responden `text/plain` y `application/xml`, y `/empezar` sigue devolviendo el documento de la SPA. Chrome headless: el documento sin JavaScript se ve como la landing real (negro, emblema, H1 serif, CTAs) a 1280 y a 500 px, sin desbordes (`scrollWidth == clientWidth` en `html`, `body`, `#root` y el bloque); con el bundle, `/privacy` monta la app entera y el bloque inicial **desaparece del DOM** (`#orbita-pre-js` ya no existe, la nav web se dibuja normal): React reemplaza, no superpone.
+
+**Limitaciones / pendientes:** (1) la landing autenticada no se pudo ver localmente: este worktree no tiene `.env`, así que sin `EXPO_PUBLIC_CONVEX_URL`/Clerk la app corta con `Could not find Convex client!` en `/` — se comprobó que el mismo build con el documento ANTERIOR (con `#root` vacío) falla igual, así que no lo introduce este cambio; la prueba de montaje se hizo sobre `/privacy`, que no depende del backend. Falta una pasada visual en producción/preview con las variables reales. (2) En una ruta profunda con sesión (por ejemplo recargar `/carta`) el HTML inicial muestra un instante la portada pública antes de que monte la app; antes se veía una pantalla en blanco. Es consecuencia de servir un solo documento para todas las rutas y se resolvería con renderizado estático por ruta (fuera de alcance). (3) No se tocó `vercel.json`: el rewrite `"/(.*)"` sigue igual y funciona porque Vercel resuelve `rewrites` después del filesystem — si alguna vez se migra a `routes`, hay que excluir explícitamente los estáticos. (4) La imagen de compartido es arte aprobado sin marca tipográfica; una placa diseñada con el wordmark tendría que salir de Figma. (5) **La ficha que se ve hoy en Google es vieja, y este cambio no la actualiza por sí solo.** El favicon publicado ya era válido y el snippet en inglés viene del documento anterior; Google puede tardar semanas en revisitar. Después del deploy corresponde pedir la reindexación de `https://orbitaastrologia.xyz/` en Search Console y recién ahí evaluar el resultado: si el ícono siguiera genérico con el PNG explícito servido y rastreable, la causa es otra y hay que investigarla de nuevo, no insistir con el ícono.
+
+**Handoff:** **Estado:** completo, sin commitear. **Branch y commit:** `fix/web-seo-search-preview` sobre `main` `c6b32df`, worktree `.worktrees/orbita-web-seo`, sin commit/push/deploy. **Qué cambió:** `public/index.html` (metadatos + contenido inicial), `public/robots.txt`, `public/sitemap.xml`, `public/orbita-icon-192.png` y `public/orbita-og.jpg` nuevos, `scripts/check-web-export.mjs` (+`evaluatePublicSeo`), `test/webSearchPreview.test.ts` nuevo, `test/webDocument.test.ts` y `test/webExportLimits.test.ts` ampliados, y esta ficha. **Qué NO cambió:** `app/**`, `src/**`, `convex/**`, `app.json`, `vercel.json`, `assets/**`, la landing React, el onboarding, la sesión, Stripe y los deep links (`vercel.json` intacto; `/empezar` verificado). **Pruebas:** typecheck, 868/868, `check:test-count`, `build:web`, `check:web-export` e inspección del `dist/` servido. **Riesgos:** el documento lo comparten TODAS las rutas web; el error clásico acá es escribir dos veces un marcador o un cierre de `head`/`body` — ya hay regresión para ambos. **Rollback:** revertir el commit único (vuelve el documento anterior; ningún dato ni contrato se toca). **Próximo paso exacto:** commitear como un solo PR `fix(web): arregla la vista previa de búsqueda`, mergear a `main` y, con autorización de Lucas, desplegar la web; después verificar en producción `https://orbitaastrologia.xyz/robots.txt` y `/sitemap.xml`, revisar la URL con la prueba de resultados enriquecidos de Google y pedir reindexación en Search Console.
 ## Hotfix visual — la mini rueda de la tarjeta de Carta natal (2026-08-08, Claude)
 
 **Objetivo:** que la tarjeta de Carta natal de Perfil vuelva a dibujar su mini rueda en vez del hueco vacío de 232 px que muestra la captura de producción, conservando el tope de 232 y los glifos vectoriales de Sol, Luna y Ascendente.

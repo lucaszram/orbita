@@ -165,6 +165,13 @@ describe("product analytics", () => {
     assert.doesNotMatch(telemetry, /properties:\s*v\.any/);
     assert.match(telemetry, /withIndex\("by_event_id"/);
     assert.match(schema, /productEvents:[\s\S]*?\.index\("by_event_id", \["eventId"\]\)/);
+    assert.match(
+      schema,
+      /v\.literal\("natal_chart_created"\)[\s\S]*v\.literal\("natal_interpretation_created"\)[\s\S]*v\.literal\("daily_guide_created"\)[\s\S]*v\.literal\("transit_reading_created"\)[\s\S]*v\.literal\("void_answer_created"\)[\s\S]*v\.literal\("saved_reading_created"\)[\s\S]*v\.literal\("journal_entry_created"\)/,
+      "el schema conserva eventos históricos sin volver a emitirlos desde el contrato actual"
+    );
+    assert.match(schema, /backfilled:\s*v\.optional\(v\.boolean\(\)\)/);
+    assert.match(schema, /resourceId:\s*v\.optional\(v\.string\(\)\)/);
     assert.match(crons, /hourUTC:\s*12,\s*minuteUTC:\s*0/);
   });
 });

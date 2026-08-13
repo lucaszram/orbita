@@ -1,314 +1,131 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAction } from "convex/react";
-import { Link, useRouter } from "expo-router";
-import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
-import { ImmersiveScreen } from "@/components/web/immersive-bg";
+import { useRouter } from "expo-router";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { RequireSession, WebNotice } from "@/components/web/require-session";
 import { WebLayoutProvider } from "@/components/web/web-layout-provider";
-import { WebNav } from "@/components/web/web-nav";
-import {
-  checkoutCtaLabel,
-  checkoutStartErrorKind,
-  formatPlanPrice,
-  monthlyPlan,
-  offerPhase,
-  planIntervalLabel,
-  planTrialLabel,
-  type OfferPlan,
-  type WebOffer
-} from "@/domain/paywall";
-import { SUPPORT_EMAIL, SUPPORT_MAILTO } from "@/domain/support";
+import { checkoutStartErrorKind } from "@/domain/paywall";
 import { proposedApi } from "@/services/appRefs";
 
 const colors = {
   black: "#07080A",
-  copper: "#C46A3A",
   copperSoft: "#D69A6A",
-  bone: "#F4EEE4",
-  boneMuted: "rgba(244, 238, 228, 0.72)",
-  boneDim: "rgba(244, 238, 228, 0.5)",
-  line: "rgba(214, 154, 106, 0.22)",
-  panel: "rgba(11, 12, 15, 0.62)"
+  boneMuted: "rgba(244, 238, 228, 0.72)"
 };
 
-const BENEFITS = [
-  "Tu carta natal completa: casas, aspectos y los siete capítulos de interpretación.",
-  "La lectura diaria cruzada con tu carta, no sólo el clima general.",
-  "Tránsitos por área: amor, trabajo, vínculos y energía.",
-  "Cinco preguntas por día en El Umbral, en vez de tres.",
-  "Tu Diario completo, sin límite de siete días."
-];
-
+/**
+ * `/paywall` — LANZADOR de pago, no una pantalla comercial.
+ *
+ * Antes acá vivía una oferta intermedia (precio, prueba, lista de beneficios,
+ * navegación y legales) que la persona tenía que leer y volver a aceptar
+ * DESPUÉS de haber tocado un CTA que ya decía "activar Plus". Esa pantalla
+ * repetía lo que Stripe Checkout muestra igual —precio, moneda, prueba,
+ * renovación y términos— y agregaba un paso donde se perdía gente.
+ *
+ * Ahora la ruta no vende nada: monta, crea UNA sesión mensual de Checkout y
+ * manda al pago. Los CTA de Perfil, Carta, recepción y Home pueden seguir
+ * apuntando acá sin cambiar: lo que cambia es que este destino abre Stripe.
+ *
+ * Lo único que se muestra mientras tanto es que el pago se está abriendo. La
+ * oferta —qué desbloquea Plus— se explica en la superficie que trae a la
+ * persona hasta acá, que es donde tiene sentido leerla.
+ */
 export function OrbitaPaywall() {
-  // Mismo motivo que `/iniciar-sesion` y `/editar-datos`: esta pantalla standalone
-  // monta `WebNav` fuera de `WebAppShell`, así que sin este provider
-  // `useIsDesktop()` es siempre `false` y la barra de escritorio nunca aparece.
+  // La ruta es standalone (no cuelga de `WebAppShell`): el provider se conserva
+  // para que el subárbol autenticado resuelva su modo igual que antes.
   return (
     <WebLayoutProvider>
       <RequireSession>
-        <PaywallWithBackend />
+        <CheckoutLauncher />
       </RequireSession>
     </WebLayoutProvider>
   );
 }
 
-function PaywallWithBackend() {
-  const getWebOffer = useAction(proposedApi.getWebOffer);
-  const [offer, setOffer] = useState<WebOffer | null | undefined>(undefined);
-  const [failed, setFailed] = useState(false);
+/**
+ * Crea la sesión de Checkout y redirige. La oferta es UNA sola suscripción
+ * mensual: el plan es el único que existe (`monthly`) y el precio, la moneda y
+ * los días de prueba los pone Stripe con el Price configurado en el backend —
+ * el cliente no escribe ni un importe.
+ */
+function CheckoutLauncher() {
+  const createCheckout = useAction(proposedApi.createCheckoutSession);
+  const router = useRouter();
   const [attempt, setAttempt] = useState(0);
+  const [state, setState] = useState<"abriendo" | "error" | "ya_plus">("abriendo");
+  /**
+   * Guard SINCRÓNICO de la creación. Un `useState` no alcanza: el efecto de
+   * React 18 en StrictMode corre montar → desmontar → montar, y un re-render
+   * cualquiera volvería a entrar antes de que el estado se refleje. Cada
+   * intento se marca ANTES del await y por su número, así un reintento explícito
+   * (que incrementa `attempt`) sí puede correr y un remontaje no.
+   *
+   * Importa de verdad: cada llamada crea una sesión de pago en Stripe.
+   */
+  const startedFor = useRef<number | null>(null);
 
   useEffect(() => {
+    if (startedFor.current === attempt) return;
+    startedFor.current = attempt;
     let alive = true;
-    setFailed(false);
-    setOffer(undefined);
-    getWebOffer({})
-      .then((r) => { if (alive) setOffer(r as WebOffer); })
-      .catch(() => { if (alive) setFailed(true); });
-    return () => { alive = false; };
-  }, [getWebOffer, attempt]);
+    setState("abriendo");
+    createCheckout({ plan: "monthly" })
+      .then(({ url }) => {
+        // Se abre EXCLUSIVAMENTE la URL que devolvió el backend. `replace` es
+        // deliberado: `/paywall` es un lanzador técnico y no puede quedar en
+        // el historial, porque Atrás desde Stripe volvería a montarlo y abriría
+        // otra sesión. Así Atrás regresa a Carta/Perfil/Recepción/Home.
+        if (typeof window !== "undefined") window.location.replace(url);
+      })
+      .catch((err) => {
+        if (!alive) return;
+        setState(checkoutStartErrorKind(err) === "ya_plus" ? "ya_plus" : "error");
+      });
+    return () => {
+      alive = false;
+    };
+  }, [createCheckout, attempt]);
 
-  const phase = offerPhase({ offer, failed });
-  // `offerPhase` ya garantiza que en "disponible" existe el plan mensual; el
-  // null acá abajo sólo le cierra el caso al type checker.
-  const plan = offer ? monthlyPlan(offer.plans) : null;
-
-  if (phase === "cargando") {
-    return (
-      <Shell>
-        <View style={styles.centerBlock}>
-          <ActivityIndicator color={colors.copperSoft} />
-        </View>
-      </Shell>
-    );
-  }
-  if (phase === "error") {
+  if (state === "ya_plus") {
     return (
       <WebNotice
-        title="No pudimos cargar los planes"
-        body="Volvé a intentar en un momento."
+        title="Ya tenés Órbita Plus"
+        body="Tu cuenta ya tiene acceso. Podés ver y gestionar tu suscripción desde tu perfil."
+        action={{ label: "Ir a Perfil", onPress: () => router.replace("/perfil") }}
+      />
+    );
+  }
+
+  if (state === "error") {
+    return (
+      <WebNotice
+        title="No pudimos abrir el pago"
+        body="No se generó ningún cobro. Volvé a intentar en un momento."
         action={{ label: "Reintentar", onPress: () => setAttempt((a) => a + 1) }}
       />
     );
   }
-  if (phase === "proximamente" || plan === null) {
-    // Comercio apagado: sin precios, sin planes y sin ningún camino a checkout.
-    return (
-      <Shell>
-        <View style={styles.soonCard}>
-          <Text selectable style={styles.soonTitle}>
-            Órbita Plus estará disponible pronto
-          </Text>
-          <Text selectable style={styles.soonBody}>
-            Todavía no se puede contratar. Mientras tanto, tu ritual diario, tu carta de Tarot y tu
-            tríada natal siguen siendo gratis.
-          </Text>
-        </View>
-        <BenefitList />
-      </Shell>
-    );
-  }
 
   return (
-    <Shell>
-      <MonthlyOffer plan={plan} />
-      <BenefitList />
-    </Shell>
-  );
-}
-
-/**
- * La oferta es UNA sola suscripción mensual: sin selector de planes. Precio,
- * moneda e intervalo salen de Stripe vía getWebOffer; los días de prueba son
- * los mismos que el backend configura en Checkout.
- */
-function MonthlyOffer({ plan }: { plan: OfferPlan }) {
-  const createCheckout = useAction(proposedApi.createCheckoutSession);
-  const router = useRouter();
-  const [state, setState] = useState<"idle" | "abriendo" | "error" | "ya_plus">("idle");
-
-  const start = useCallback(async () => {
-    if (state === "abriendo") return;
-    setState("abriendo");
-    try {
-      const { url } = await createCheckout({ plan: plan.id });
-      if (typeof window !== "undefined") window.location.assign(url);
-    } catch (err) {
-      setState(checkoutStartErrorKind(err) === "ya_plus" ? "ya_plus" : "error");
-    }
-  }, [createCheckout, plan.id, state]);
-
-  const trial = planTrialLabel(plan);
-  return (
-    <View style={styles.plans}>
-      <View style={styles.plan}>
-        <View style={styles.planHead}>
-          <Text selectable style={styles.planName}>Órbita Plus mensual</Text>
-          {trial ? <Text selectable style={styles.planTrial}>{trial}</Text> : null}
-        </View>
-        <Text selectable style={styles.planPrice}>
-          {formatPlanPrice(plan)}{" "}
-          <Text selectable style={styles.planInterval}>{planIntervalLabel(plan)}</Text>
-        </Text>
-        <Text selectable style={styles.planDetail}>
-          {trial
-            ? `Tus ${plan.trialDays} días gratis incluyen todo Órbita Plus: tu carta natal completa y el Tarot de cada día.`
-            : "Incluye todo Órbita Plus: tu carta natal completa y el Tarot de cada día."}
-        </Text>
-      </View>
-
-      <Pressable
-        onPress={start}
-        disabled={state === "abriendo"}
-        accessibilityRole="button"
-        accessibilityState={{ disabled: state === "abriendo" }}
-        style={[styles.cta, state === "abriendo" && styles.ctaOff]}
-      >
-        <Text selectable style={styles.ctaText}>
-          {state === "abriendo" ? "Abriendo el pago…" : checkoutCtaLabel(plan)}
-        </Text>
-      </Pressable>
-      {state === "error" ? (
-        <Text selectable style={styles.error}>No pudimos abrir el pago. Probá de nuevo.</Text>
-      ) : null}
-      {state === "ya_plus" ? (
-        <Text selectable style={styles.error}>
-          Ya tenés Órbita Plus. Podés gestionar tu suscripción desde{" "}
-          <Text
-            style={styles.legalLink}
-            accessibilityRole="link"
-            onPress={() => router.push("/perfil")}
-          >
-            Perfil
-          </Text>
-          .
-        </Text>
-      ) : null}
-      <Text selectable style={styles.legal}>
-        {trial
-          ? `Si cancelás antes de que terminen los ${plan.trialDays} días de prueba, no se te cobra nada. Al terminar la prueba, la suscripción se renueva sola cada mes al precio de arriba, hasta que la cancelés. Podés gestionarla desde tu perfil.`
-          : "La suscripción se renueva sola cada mes hasta que la cancelés. Podés gestionarla desde tu perfil."}
+    <View style={styles.center}>
+      <ActivityIndicator color={colors.copperSoft} />
+      <Text selectable style={styles.status}>
+        Abriendo el pago seguro…
       </Text>
     </View>
-  );
-}
-
-function BenefitList() {
-  return (
-    <View style={styles.benefits}>
-      <Text selectable style={styles.benefitsLabel}>QUÉ INCLUYE</Text>
-      {BENEFITS.map((b) => (
-        <Text key={b} selectable style={styles.benefit}>
-          {b}
-        </Text>
-      ))}
-    </View>
-  );
-}
-
-/**
- * Divulgación legal de la pantalla de compra: privacidad, términos y una vía de
- * soporte real, visibles desde el paywall mismo y en cualquiera de sus estados
- * (con o sin comercio habilitado). No cambia nada del checkout.
- */
-function PaywallLegalLinks() {
-  return (
-    <View style={styles.legalLinks}>
-      <View style={styles.legalRow}>
-        <Link href="/privacy" asChild>
-          <Pressable accessibilityRole="link" hitSlop={8}>
-            <Text style={styles.legalLink}>Privacidad</Text>
-          </Pressable>
-        </Link>
-        <Text style={styles.legalDot}>·</Text>
-        <Link href="/terminos" asChild>
-          <Pressable accessibilityRole="link" hitSlop={8}>
-            <Text style={styles.legalLink}>Términos y condiciones</Text>
-          </Pressable>
-        </Link>
-      </View>
-      <Text selectable style={styles.legal}>
-        ¿Dudas antes de suscribirte? Escribinos a{" "}
-        <Text
-          style={styles.legalLink}
-          accessibilityRole="link"
-          onPress={() => Linking.openURL(SUPPORT_MAILTO)}
-        >
-          {SUPPORT_EMAIL}
-        </Text>
-        .
-      </Text>
-    </View>
-  );
-}
-
-function Shell({ children }: { children: React.ReactNode }) {
-  const { width } = useWindowDimensions();
-  const isNarrow = width < 900;
-  const pad = isNarrow ? 24 : 120;
-  return (
-    <ImmersiveScreen asset="ringSystem" opacity={0.2}>
-      <ScrollView style={styles.page} contentContainerStyle={styles.pageContent} showsVerticalScrollIndicator={false}>
-        <WebNav active="carta" />
-        <View style={[styles.header, { paddingHorizontal: pad }]}>
-          <Text selectable style={styles.eyebrow}>Órbita Plus</Text>
-          <Text selectable style={[styles.title, isNarrow && styles.titleNarrow]}>
-            Tu carta, leída entera.
-          </Text>
-        </View>
-        <View style={{ gap: 20, paddingHorizontal: pad, paddingTop: 32 }}>
-          {children}
-          <PaywallLegalLinks />
-        </View>
-      </ScrollView>
-    </ImmersiveScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { backgroundColor: "transparent", flex: 1 },
-  pageContent: { backgroundColor: "transparent", paddingBottom: 96 },
-  centerBlock: { alignItems: "center", paddingVertical: 64 },
-  header: { gap: 12, paddingTop: 56 },
-  eyebrow: { color: colors.copperSoft, fontSize: 12, fontWeight: "700", letterSpacing: 1.2 },
-  title: { color: colors.bone, fontSize: 44, lineHeight: 50 },
-  titleNarrow: { fontSize: 32, lineHeight: 38 },
-
-  soonCard: {
-    backgroundColor: "rgba(196,106,58,0.08)",
-    borderColor: "rgba(214,154,106,0.35)",
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 10,
-    maxWidth: 640,
+  center: {
+    alignItems: "center",
+    backgroundColor: colors.black,
+    flex: 1,
+    gap: 16,
+    justifyContent: "center",
     padding: 24
   },
-  soonTitle: { color: colors.bone, fontSize: 22, fontWeight: "500" },
-  soonBody: { color: colors.boneMuted, fontSize: 15, lineHeight: 23 },
-
-  plans: { gap: 12, maxWidth: 520 },
-  plan: { backgroundColor: colors.panel, borderColor: colors.copperSoft, borderRadius: 12, borderWidth: 1, gap: 8, padding: 20 },
-  planHead: { alignItems: "center", flexDirection: "row", gap: 10, justifyContent: "space-between" },
-  planName: { color: colors.bone, fontSize: 17, fontWeight: "700" },
-  planTrial: { color: colors.copperSoft, fontSize: 13, fontWeight: "700" },
-  planPrice: { color: colors.bone, fontSize: 26 },
-  planInterval: { color: colors.boneMuted, fontSize: 15 },
-  planDetail: { color: colors.boneMuted, fontSize: 14, lineHeight: 21 },
-
-  cta: { alignItems: "center", backgroundColor: colors.bone, borderRadius: 8, marginTop: 8, paddingVertical: 15 },
-  ctaOff: { opacity: 0.5 },
-  ctaText: { color: colors.black, fontSize: 15, fontWeight: "700" },
-  error: { color: colors.copperSoft, fontSize: 14 },
-  legal: { color: colors.boneDim, fontSize: 13, lineHeight: 19 },
-
-  legalLinks: { borderTopColor: colors.line, borderTopWidth: 1, gap: 10, maxWidth: 640, paddingTop: 20 },
-  legalRow: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  legalLink: { color: colors.copperSoft, fontSize: 13, fontWeight: "500" },
-  legalDot: { color: colors.boneDim, fontSize: 13 },
-
-  benefits: { gap: 10, maxWidth: 640, paddingTop: 12 },
-  benefitsLabel: { color: colors.copperSoft, fontSize: 12, fontWeight: "700", letterSpacing: 1 },
-  benefit: { color: colors.boneMuted, fontSize: 15, lineHeight: 23 }
+  status: { color: colors.boneMuted, fontSize: 15, textAlign: "center" }
 });
 
 export default OrbitaPaywall;

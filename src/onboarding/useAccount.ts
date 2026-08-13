@@ -17,6 +17,8 @@ import {
   makeReentrancyGuard
 } from "@/onboarding/signup";
 import { validateBirthPayload } from "@/domain/birthPayload";
+import { timezoneLookupFor, withResolvedTimezone } from "@/domain/placeTimezone";
+import type { OnboardingCompletion } from "@/domain/onboardingReadiness";
 import { deviceTimezone } from "@/hooks/useLiveApp";
 import { useOrbitaAuth } from "@/hooks/useOrbitaAuth";
 import { appApi, type BirthDataDoc } from "@/services/appRefs";
@@ -652,13 +654,12 @@ export type PersistBirthData = (input: {
  * el flujo no debe cortarse). Para "Editar datos" usar la variante estricta.
  */
 /**
- * Persistencia del ONBOARDING: `onboarding.completeBirthData`, create-only e
- * idempotente del lado del backend.
- *
- * ESTRICTA a propósito: propaga el error. Antes pasaba por un wrapper que
- * atrapaba cualquier fallo del backend y resolvía como si hubiera escrito, así
- * que el cierre del alta creaba el perfil local, limpiaba el borrador y
- * navegaba a la recepción sin que Convex tuviera nada.
+ * @deprecated El cierre del alta usa `useOnboardingFinalize`, que además
+ * adjunta el borrador anónimo a la cuenta (`markAccountCreated` con el
+ * `clientDraftId`) y reintenta la cadena completa. Esta variante escribe los
+ * datos natales sin ese vínculo, así que un alta cerrada por acá queda como una
+ * recuperación de cuenta preexistente. Se conserva sólo para consumidores
+ * previos; no agregar usos nuevos.
  */
 export function useOnboardingBirthDataPersist(): PersistBirthData | null {
   if (!HAS_BACKEND) return null;
@@ -723,12 +724,176 @@ function useBackendPersistInner(): PersistBirthData {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Alta durable: borrador remoto anónimo → Clerk → adjuntar → carta → readiness.
+//
+// El orden NO es decorativo. Antes de que exista una cuenta, el alta entera vive
+// en el borrador local; si Clerk se monta primero y algo falla después, queda
+// una identidad sin datos que ninguna pantalla sabe recuperar. Por eso el
+// borrador se persiste y se CONFIRMA remoto antes de abrir Clerk, y el
+// `clientDraftId` se conserva para adjuntarlo a la cuenta recién creada.
+// ---------------------------------------------------------------------------
+
+/** Presupuestos de las cadenas idempotentes (ver `runSessionAttempts`). */
+const SIGNUP_DRAFT_BUDGET_MS = 20000;
+const SIGNUP_DRAFT_CALL_TIMEOUT_MS = 6000;
+const SIGNUP_DRAFT_RETRY_PAUSE_MS = 800;
+const FINALIZE_BUDGET_MS = 60000;
+const FINALIZE_CALL_TIMEOUT_MS = 25000;
+const FINALIZE_RETRY_PAUSE_MS = 900;
+
+export type SignupDraftInput = {
+  clientDraftId: string;
+  currentStep: number;
+  identity?: "ella" | "el" | "prefiero_no_decirlo";
+  birthDate: string;
+  birthTime?: string;
+  birthTimePrecision: "known" | "approximate" | "unknown";
+  birthPlaceLabel?: string;
+  latitude?: number;
+  longitude?: number;
+  timezone?: string;
+};
+
+/**
+ * Persiste el borrador remoto del alta y espera su confirmación.
+ *
+ * `saveDraft` anónimo con `clientDraftId` deja el borrador con
+ * `flowOrigin: "anonymous_signup"`; `confirmSignupDraft` sólo devuelve
+ * `{ ready: true }` cuando ese borrador está COMPLETO — incluida la zona
+ * horaria, que el backend resuelve solo en segundo plano. Por eso se reintenta:
+ * un enriquecimiento en vuelo no es un error, y la persona no tiene que volver
+ * atrás ni elegir una zona.
+ *
+ * Rechaza si al agotar el presupuesto sigue incompleto: en ese caso NO se abre
+ * Clerk. Crear la identidad primero es exactamente lo que produce cuentas
+ * huérfanas.
+ */
+export function useOnboardingSignupDraft(): ((input: SignupDraftInput) => Promise<void>) | null {
+  if (!HAS_BACKEND) return null;
+  return useOnboardingSignupDraftInner();
+}
+
+function useOnboardingSignupDraftInner(): (input: SignupDraftInput) => Promise<void> {
+  const convex = useConvex();
+  return useCallback(
+    async (input: SignupDraftInput) => {
+      // Acá NO se valida contra `validateBirthPayload`: la zona horaria es un
+      // enriquecimiento que el backend resuelve solo DESPUÉS de guardar el
+      // borrador. Exigirla antes de escribir impediría justamente el guardado
+      // que dispara esa resolución. El juez es `confirmSignupDraft`.
+      const result = await runSessionAttempts({
+        budgetMs: SIGNUP_DRAFT_BUDGET_MS,
+        callTimeoutMs: SIGNUP_DRAFT_CALL_TIMEOUT_MS,
+        retryPauseMs: SIGNUP_DRAFT_RETRY_PAUSE_MS,
+        attempt: async (timebox) => {
+          // Idempotente por `clientDraftId`: reintentar actualiza la MISMA fila.
+          await timebox(
+            convex.mutation(appApi.onboarding.saveDraft, {
+              clientDraftId: input.clientDraftId,
+              currentStep: input.currentStep,
+              identity: input.identity,
+              birthDate: input.birthDate,
+              birthTime: input.birthTime,
+              birthTimePrecision: input.birthTimePrecision,
+              birthPlaceLabel: input.birthPlaceLabel,
+              latitude: input.latitude,
+              longitude: input.longitude,
+              timezone: input.timezone
+            })
+          );
+          await timebox(
+            convex.mutation(appApi.onboarding.confirmSignupDraft, {
+              clientDraftId: input.clientDraftId
+            })
+          );
+          return true as const;
+        }
+      });
+      if (result.status === "error") throw new Error("ONBOARDING_SIGNUP_DRAFT_NOT_READY");
+    },
+    [convex]
+  );
+}
+
+/**
+ * Cierre del alta con la sesión YA activa: copiar atómicamente el borrador
+ * remoto confirmado a la cuenta. El cálculo de carta se intenta después, pero
+ * es un derivado y nunca participa del resultado del guardado.
+ *
+ * `completeSignupFromDraft` adjunta el borrador y crea `birthData` dentro de
+ * una sola mutation idempotente. Así la timezone resuelta por el servidor no
+ * puede perderse por una copia vieja en React o sessionStorage.
+ *
+ * NO decide el destino: quien autoriza entrar es `getCompletionStatus`.
+ */
+export type FinalizeOnboarding = (input: {
+  clientDraftId: string;
+}) => Promise<void>;
+
+export function useOnboardingFinalize(): FinalizeOnboarding | null {
+  if (!HAS_BACKEND) return null;
+  return useOnboardingFinalizeInner();
+}
+
+function useOnboardingFinalizeInner(): FinalizeOnboarding {
+  const convex = useConvex();
+  const auth = useOrbitaAuth();
+  const isSignedIn = auth.isSignedIn;
+
+  return useCallback(
+    async (input) => {
+      // Sin sesión no se escribe: sería el cierre navegando sobre nada.
+      if (!isSignedIn) throw new Error("ONBOARDING_SESSION_NOT_READY");
+      const result = await runSessionAttempts({
+        budgetMs: FINALIZE_BUDGET_MS,
+        callTimeoutMs: FINALIZE_CALL_TIMEOUT_MS,
+        retryPauseMs: FINALIZE_RETRY_PAUSE_MS,
+        attempt: async (timebox) => {
+          await timebox(convex.mutation(appApi.users.getOrCreateCurrentUser, {}));
+          // Una sola escritura autoritativa: adjunta el borrador confirmado y
+          // copia SUS datos, no una réplica enviada por el navegador.
+          await timebox(
+            convex.mutation(appApi.onboarding.completeSignupFromDraft, {
+              clientDraftId: input.clientDraftId
+            })
+          );
+          return true as const;
+        }
+      });
+      if (result.status === "error") throw new Error("ONBOARDING_FINALIZE_FAILED");
+      // Mejor esfuerzo: la action puede seguir viva después de navegar. Si el
+      // proveedor falla, Carta vuelve a dispararla al abrirse y ofrece reintento.
+      void convex.action(appApi.charts.calculateOrCreateNatalChart, {}).catch(() => undefined);
+    },
+    [convex, isSignedIn]
+  );
+}
+
+/**
+ * Estado autoritativo de readiness. `undefined` = todavía no resolvió (nunca se
+ * interpreta como "listo" ni como "incompleto").
+ */
+export function useOnboardingCompletion(clientDraftId?: string): OnboardingCompletion | undefined {
+  if (!HAS_BACKEND) return undefined;
+  return useOnboardingCompletionInner(clientDraftId);
+}
+
+function useOnboardingCompletionInner(clientDraftId?: string): OnboardingCompletion | undefined {
+  const auth = useOrbitaAuth();
+  return useQuery(
+    appApi.onboarding.getCompletionStatus,
+    auth.isAuthenticated ? { clientDraftId } : "skip"
+  ) as OnboardingCompletion | undefined;
+}
+
 /** Igual que la anterior pero contra el endpoint de PERFIL (edición). */
 function useProfilePersistInner(): PersistBirthData {
   const auth = useOrbitaAuth();
   const ensureUser = useMutation(appApi.users.getOrCreateCurrentUser);
   const upsertBirthData = useMutation(appApi.birthData.upsertForCurrentUser);
   const calculateChart = useAction(appApi.charts.calculateOrCreateNatalChart);
+  const resolveTimezone = useAction(appApi.placeTimezone.atCoordinates);
   const isSignedIn = auth.isSignedIn;
 
   return useCallback(
@@ -736,12 +901,20 @@ function useProfilePersistInner(): PersistBirthData {
       // Sesión no lista: rechazar, no resolver. Si resolviera, el editor
       // aplicaría el cambio local como si el backend lo hubiera guardado.
       if (!isSignedIn) throw new Error("PROFILE_SESSION_NOT_READY");
+      // Zona horaria del LUGAR, derivada de sus coordenadas en el backend. Va
+      // antes de validar y antes de escribir: Photon no trae timezone, así que
+      // sin esto una ciudad recién elegida (o un documento legado con coords y
+      // sin zona) moría en `zonaFaltante`. Si la resolución falla, el error se
+      // propaga y no se escribe nada — ni remoto ni local. Nunca se cae a la
+      // zona del dispositivo: para alguien nacido en otra zona es la equivocada.
+      const lookup = timezoneLookupFor(input);
+      const resolved = lookup ? withResolvedTimezone(input, (await resolveTimezone(lookup)).timezone) : input;
       // Validación en el BORDE de escritura. `birthSaveGate` espera el doc
       // remoto, pero no lo valida: con un documento legado incompleto (sin
       // coordenadas y con el lugar en "Sin especificar"), cambiar sólo la fecha
       // o la hora arrastraba ese lugar vacío y volvía a escribirlo, recalculando
       // la carta sobre datos que no son de nadie.
-      const payload = validateBirthPayload(input);
+      const payload = validateBirthPayload(resolved);
       await ensureUser({});
       await upsertBirthData({
         birthDate: payload.birthDate,
@@ -754,8 +927,10 @@ function useProfilePersistInner(): PersistBirthData {
         // Marca la intención: es una edición del perfil, no el alta.
         source: "profile"
       });
-      await calculateChart({});
+      // Guardar los datos es la operación obligatoria. La carta derivada no
+      // puede convertir un guardado confirmado en un falso error del editor.
+      void calculateChart({}).catch(() => undefined);
     },
-    [calculateChart, ensureUser, isSignedIn, upsertBirthData]
+    [calculateChart, ensureUser, isSignedIn, resolveTimezone, upsertBirthData]
   );
 }

@@ -7,14 +7,18 @@
   `app.json`; la descripción la inyecta desde `expo.web.description`. Por eso el
   idioma, el título y la descripción se editan en `app.json`, no acá.
 
-  OJO: Expo hace un `String.replace` por marcador, que reemplaza SÓLO la primera
-  aparición. Escribir el nombre de un marcador en este comentario se come la
-  sustitución y el documento sale con el literal en el `<html>` o el `<title>`.
+  OJO 1: Expo hace un `String.replace` por marcador, que reemplaza SÓLO la
+  primera aparición. Escribir el nombre de un marcador en este comentario se
+  come la sustitución y el documento sale con el literal en el `<html>` o el
+  `<title>`.
 
-  Lo único que este archivo agrega sobre la plantilla por defecto es la
-  `<link rel="canonical">`, que la configuración de Expo no sabe expresar. El
-  resto es la plantilla original, sin cambios: tocarla afecta a TODAS las rutas
-  de la web y a nada del build nativo (`public/` es sólo web).
+  OJO 2: por la misma razón, el cierre del `head` y el del `body` tienen que
+  aparecer UNA sola vez en todo el archivo. Expo inyecta ahí la descripción, el
+  `favicon.ico` que genera de `expo.web.favicon`, el CSS y los `<script>` del
+  bundle, siempre pisando la PRIMERA aparición del cierre.
+
+  Tocar este archivo afecta a TODAS las rutas de la web (la SPA sirve este mismo
+  documento en cada URL) y a nada del build nativo: `public/` es sólo web.
 -->
 <html lang="%LANG_ISO_CODE%">
   <head>
@@ -29,6 +33,83 @@
       contenido en los buscadores.
     -->
     <link rel="canonical" href="https://orbitaastrologia.xyz/" />
+
+    <!--
+      Ícono de marca EXPLÍCITO. No reemplaza al `favicon.ico` que genera Expo
+      desde `expo.web.favicon` (16/32/48, válido y ya publicado: sigue siendo el
+      de la pestaña, y lo inyecta Expo solo al final del head): lo refuerza. Esa
+      inyección va sin `sizes` ni `type`, así que acá se declara el MISMO
+      emblema a 192×192 —cuadrado y múltiplo de 48, como pide la guía de
+      favicons de Google— de forma explícita y autodescripta. Vive en `public/`,
+      o sea que se sirve siempre desde la MISMA URL (Metro no le pone hash), que
+      es lo que un buscador cachea durante semanas.
+    -->
+    <link rel="icon" type="image/png" sizes="192x192" href="/orbita-icon-192.png" />
+    <link rel="apple-touch-icon" sizes="192x192" href="/orbita-icon-192.png" />
+
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
+    <meta name="theme-color" content="#07080A" />
+
+    <!--
+      Open Graph / Twitter. El título y la descripción son LOS MISMOS de
+      `app.json` (`expo.web.name` / `expo.web.description`); hay una regresión
+      que falla si se desincronizan. No se declara `<meta name="description">`
+      acá: esa la inyecta Expo y quedaría duplicada.
+    -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Órbita" />
+    <meta property="og:locale" content="es_AR" />
+    <meta property="og:url" content="https://orbitaastrologia.xyz/" />
+    <meta property="og:title" content="Órbita — tu carta natal, leída todos los días" />
+    <meta
+      property="og:description"
+      content="Órbita calcula tu carta natal con tu fecha, hora y lugar de nacimiento, y la lee cada día junto a tus tránsitos y tu carta de Tarot. Entretenimiento, autoconocimiento y contexto diario."
+    />
+    <meta property="og:image" content="https://orbitaastrologia.xyz/orbita-og.jpg" />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Fondo orbital de Órbita: un planeta anillado y órbitas de cobre sobre negro." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Órbita — tu carta natal, leída todos los días" />
+    <meta
+      name="twitter:description"
+      content="Órbita calcula tu carta natal con tu fecha, hora y lugar de nacimiento, y la lee cada día junto a tus tránsitos y tu carta de Tarot. Entretenimiento, autoconocimiento y contexto diario."
+    />
+    <meta name="twitter:image" content="https://orbitaastrologia.xyz/orbita-og.jpg" />
+
+    <!--
+      Datos estructurados mínimos y verificables: quién publica el sitio y cómo
+      se llama. Nada de reseñas, precios ni ratings inventados.
+    -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "@id": "https://orbitaastrologia.xyz/#website",
+            "url": "https://orbitaastrologia.xyz/",
+            "name": "Órbita",
+            "inLanguage": "es",
+            "description": "Órbita calcula tu carta natal con tu fecha, hora y lugar de nacimiento, y la lee cada día junto a tus tránsitos y tu carta de Tarot. Entretenimiento, autoconocimiento y contexto diario.",
+            "publisher": { "@id": "https://orbitaastrologia.xyz/#organization" }
+          },
+          {
+            "@type": "Organization",
+            "@id": "https://orbitaastrologia.xyz/#organization",
+            "name": "Órbita",
+            "url": "https://orbitaastrologia.xyz/",
+            "logo": {
+              "@type": "ImageObject",
+              "url": "https://orbitaastrologia.xyz/orbita-icon-192.png",
+              "width": 192,
+              "height": 192
+            }
+          }
+        ]
+      }
+    </script>
     <!-- The `react-native-web` recommended style reset: https://necolas.github.io/react-native-web/docs/setup/#root-element -->
     <style id="expo-reset">
       /* These styles make the body full-height */
@@ -47,14 +128,261 @@
         flex: 1;
       }
     </style>
+    <!--
+      Estilos del contenido inicial (ver el bloque del `body`). Todo cuelga de
+      `#orbita-pre-js`: cuando React monta y vacía `#root`, no queda ninguna
+      regla suelta que pueda pisar a la app. Los colores y la escala tipográfica
+      son los de la landing real (`src/components/web/orbita-landing.tsx`), así
+      que lo primero que se pinta ya es oscuro y el reemplazo no da un salto de
+      blanco a negro.
+    -->
+    <style id="orbita-prejs-style">
+      #orbita-pre-js {
+        background-color: #07080a;
+        box-sizing: border-box;
+        color: #f4eee4;
+        flex: 1 1 auto;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+          sans-serif;
+        line-height: 1.5;
+        min-width: 0;
+        overflow-y: auto;
+        padding: 24px;
+      }
+      #orbita-pre-js .orbita-canvas {
+        margin: 0 auto;
+        max-width: 1180px;
+      }
+      #orbita-pre-js a {
+        color: inherit;
+      }
+      #orbita-pre-js .orbita-brand {
+        align-items: center;
+        border-bottom: 1px solid rgba(244, 238, 228, 0.12);
+        display: flex;
+        gap: 10px;
+        padding-bottom: 14px;
+      }
+      #orbita-pre-js .orbita-brand img {
+        border: 1px solid rgba(244, 238, 228, 0.18);
+        border-radius: 7px;
+        display: block;
+        height: 28px;
+        width: 28px;
+      }
+      #orbita-pre-js .orbita-brand span {
+        font-size: 16px;
+        font-weight: 700;
+      }
+      #orbita-pre-js .orbita-eyebrow {
+        color: #d69a6a;
+        font-size: 12px;
+        letter-spacing: 1px;
+        margin: 0 0 12px;
+        text-transform: uppercase;
+      }
+      #orbita-pre-js h1,
+      #orbita-pre-js h2,
+      #orbita-pre-js h3 {
+        font-family: Newsreader, Georgia, "Times New Roman", serif;
+        font-weight: 500;
+        margin: 0 0 16px;
+      }
+      #orbita-pre-js h1 {
+        font-size: clamp(34px, 5.4vw, 62px);
+        line-height: 1.1;
+        max-width: 640px;
+      }
+      #orbita-pre-js h2 {
+        font-size: clamp(28px, 3.6vw, 46px);
+        line-height: 1.15;
+        max-width: 720px;
+      }
+      #orbita-pre-js h3 {
+        font-size: 20px;
+        margin-bottom: 6px;
+      }
+      #orbita-pre-js p {
+        color: rgba(244, 238, 228, 0.72);
+        margin: 0 0 16px;
+        max-width: 620px;
+      }
+      #orbita-pre-js .orbita-lead {
+        font-size: 18px;
+      }
+      #orbita-pre-js .orbita-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin: 24px 0;
+      }
+      #orbita-pre-js .orbita-cta {
+        background-color: #c46a3a;
+        border-radius: 27px;
+        color: #0b0c0f;
+        font-weight: 700;
+        padding: 15px 28px;
+        text-decoration: none;
+      }
+      #orbita-pre-js .orbita-cta-ghost {
+        border: 1px solid rgba(244, 238, 228, 0.22);
+        border-radius: 27px;
+        color: #f4eee4;
+        font-weight: 700;
+        padding: 15px 24px;
+        text-decoration: none;
+      }
+      #orbita-pre-js section {
+        border-top: 1px solid rgba(244, 238, 228, 0.12);
+        margin-top: 48px;
+        padding-top: 40px;
+      }
+      #orbita-pre-js ol,
+      #orbita-pre-js ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      #orbita-pre-js li {
+        margin-bottom: 24px;
+        max-width: 620px;
+      }
+      #orbita-pre-js dl {
+        margin: 0;
+      }
+      #orbita-pre-js dt {
+        color: #d69a6a;
+        font-size: 11px;
+        letter-spacing: 1px;
+        margin-top: 20px;
+        text-transform: uppercase;
+      }
+      #orbita-pre-js dd {
+        color: rgba(244, 238, 228, 0.72);
+        margin: 6px 0 0;
+        max-width: 620px;
+      }
+      #orbita-pre-js footer {
+        border-top: 1px solid rgba(244, 238, 228, 0.12);
+        margin-top: 48px;
+        padding: 32px 0 48px;
+      }
+      #orbita-pre-js footer nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+      }
+      #orbita-pre-js noscript {
+        display: block;
+        margin-top: 16px;
+      }
+    </style>
   </head>
 
   <body>
-    <!-- Use static rendering with Expo Router to support running without JavaScript. -->
-    <noscript>
-      Necesitás habilitar JavaScript para usar Órbita.
-    </noscript>
-    <!-- The root element for your Expo app. -->
-    <div id="root"></div>
+    <!--
+      El contenido de abajo es la MISMA landing que ve una persona
+      (`src/components/web/orbita-landing.tsx`), en HTML plano y con su copy
+      textual: portada, cómo funciona, qué incluye y el pie. No hay texto oculto,
+      ni fuera de pantalla, ni distinto del visible; hay una regresión que
+      compara cada frase contra el componente real.
+
+      Existe porque la web es una SPA: sin esto el documento llegaba con `#root`
+      vacío y el buscador sólo tenía el aviso de JavaScript para armar el
+      extracto. Vive DENTRO de `#root` a propósito: React vacía el contenedor en
+      su primer commit (`createRoot`, no `hydrateRoot`), así que la app lo
+      reemplaza entero sin dejar restos ni duplicar contenido en el DOM.
+    -->
+    <div id="root">
+      <div id="orbita-pre-js">
+        <div class="orbita-canvas">
+          <header class="orbita-brand">
+            <img src="/orbita-icon-192.png" width="28" height="28" alt="Emblema de Órbita" />
+            <span>Órbita</span>
+          </header>
+
+          <main>
+            <p class="orbita-eyebrow">TU ASTRÓLOGA PERSONAL</p>
+            <h1>Una carta para hoy. Contexto para todos los días.</h1>
+            <p class="orbita-lead">
+              Sacá tu carta diaria y entendé qué significa para vos junto con tu carta natal y los
+              tránsitos del momento.
+            </p>
+            <div class="orbita-actions">
+              <a class="orbita-cta" href="/empezar">Empezar gratis</a>
+              <a class="orbita-cta-ghost" href="/iniciar-sesion">Ya tengo cuenta</a>
+            </div>
+            <p class="orbita-eyebrow">TU CARTA ASTRAL BASE, INCLUIDA AL EMPEZAR</p>
+            <p>
+              Sol, Luna y ascendente: el mapa personal que da contexto a tu tarot diario y a los
+              tránsitos.
+            </p>
+
+            <section>
+              <p class="orbita-eyebrow">CÓMO FUNCIONA</p>
+              <h2>Todo se lee sobre tu carta.</h2>
+              <ol>
+                <li>
+                  <h3>Tus datos de nacimiento</h3>
+                  <p>
+                    Fecha, lugar y hora. Con eso queda dibujada tu carta natal: Sol, Luna,
+                    ascendente y casas.
+                  </p>
+                </li>
+                <li>
+                  <h3>Tu carta, como base</h3>
+                  <p>
+                    Tu carta natal no cambia nunca: es el mapa sobre el que Órbita lee todo lo
+                    demás.
+                  </p>
+                </li>
+                <li>
+                  <h3>Contexto para tu día</h3>
+                  <p>
+                    Cada día sacás una carta y Órbita la lee junto con los tránsitos del momento:
+                    qué significa para vos, hoy.
+                  </p>
+                </li>
+              </ol>
+            </section>
+
+            <section>
+              <p class="orbita-eyebrow">QUÉ INCLUYE</p>
+              <h2>Tu cielo, todos los días.</h2>
+              <dl>
+                <dt>Carta natal</dt>
+                <dd>Sol, Luna, ascendente, casas y aspectos: tu mapa de base.</dd>
+                <dt>Tránsitos</dt>
+                <dd>
+                  El cielo del momento, cruzado con tu carta y por área: amor, trabajo, vínculos y
+                  energía.
+                </dd>
+                <dt>Carta del día</dt>
+                <dd>
+                  Una carta del mazo de 78 con su lectura entera: significado, tu día y un consejo.
+                </dd>
+                <dt>El Umbral</dt>
+                <dd>
+                  Cuando la carta te deja pensando, preguntale a Órbita: responde leyendo tu carta y
+                  el cielo del día.
+                </dd>
+                <dt>Diario</dt>
+                <dd>Tus cartas y tus lecturas quedan guardadas para volver cuando quieras.</dd>
+              </dl>
+            </section>
+          </main>
+
+          <footer>
+            <p>Entretenimiento, autoconocimiento y contexto diario.</p>
+            <nav>
+              <a href="/privacy">Privacidad</a>
+              <a href="/terminos">Términos</a>
+              <a href="/support">Soporte</a>
+            </nav>
+            <noscript>Necesitás habilitar JavaScript para usar Órbita.</noscript>
+          </footer>
+        </div>
+      </div>
+    </div>
   </body>
 </html>

@@ -43,3 +43,30 @@ export function cartaRevealView(s: { revealed: boolean; confirmed: boolean; pull
   const isRevealed = s.revealed || s.confirmed;
   return { isRevealed, showCta: !isRevealed && !s.pulling, showRitual: isRevealed };
 }
+
+// ---------------------------------------------------------------------------
+// Límite Free del Tarot
+// ---------------------------------------------------------------------------
+
+/** Marcador estable que tira `daily.revealCard` cuando una cuenta Free ya gastó
+ *  sus siete revelaciones. Lo publica `convex/lib/tarotAccess.ts`; acá se copia
+ *  el TEXTO a propósito: el cliente no importa módulos del backend. */
+export const FREE_TAROT_LIMIT_MARKER = "FREE_TAROT_REVEAL_LIMIT_REACHED";
+
+export type RevealFailureKind = "limite_free" | "desconocido";
+
+/**
+ * Clasifica el fallo de `daily.revealCard`.
+ *
+ * Convex envuelve el `Error` del backend dentro de un mensaje más largo
+ * (request id, "Uncaught Error", ubicación del handler), así que se busca el
+ * marcador DENTRO del mensaje en vez de comparar igualdad exacta — mismo
+ * criterio que `checkoutStartErrorKind`. Cualquier otra cosa —error de red,
+ * fallo desconocido, o un valor que ni siquiera es un `Error`— cae en
+ * `desconocido` y conserva el comportamiento de siempre: el flip se revierte y
+ * no se inventa una explicación de plan.
+ */
+export function revealFailureKind(error: unknown): RevealFailureKind {
+  if (!(error instanceof Error)) return "desconocido";
+  return error.message.includes(FREE_TAROT_LIMIT_MARKER) ? "limite_free" : "desconocido";
+}

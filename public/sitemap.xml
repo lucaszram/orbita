@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Órbita — mapa del sitio público.
+
+  Una sola URL a propósito. La web es una SPA: TODAS las rutas se sirven desde
+  el mismo documento y ese documento declara `<link rel="canonical">` al raíz.
+  Listar /empezar, /privacy, /terminos o /support acá contradiría esa canónica
+  (el buscador las crawlearía para después descartarlas), así que se las deja
+  descubrir por los enlaces reales de la página, que sí existen en el HTML
+  inicial.
+
+  Si algún día cada ruta emite su propio documento (renderizado estático) con su
+  propia canónica, ESE es el momento de sumarlas acá.
+
+  Sin `<lastmod>`: una fecha que no se actualiza con cada deploy es peor que no
+  declarar ninguna. `<changefreq>` y `<priority>` los ignora Google.
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://orbitaastrologia.xyz/</loc>
+  </url>
+</urlset>

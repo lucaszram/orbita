@@ -6,7 +6,7 @@ import { A } from "../assets";
 import { BirthTimePicker } from "../components/BirthPicker";
 import { CTA } from "../components/CTA";
 import { Header } from "../components/Header";
-import { Screen, useSplitSlot } from "../components/Screen";
+import { Screen } from "../components/Screen";
 import { Body, Caption, Title } from "../components/Type";
 import { font, GUTTER, orbita } from "../theme";
 
@@ -31,19 +31,16 @@ type Props = {
  * problema que este cambio arregla) y la rueda nativa se atenúa, como siempre.
  */
 export function BirthTimeScreen({ step, value, onChange, unknown, onToggleUnknown, onNext, onBack }: Props) {
-  // El control se monta UNA vez (ver `useSplitSlot`): en móvil entre el
-  // subtítulo y el interruptor de "No sé la hora", que es su orden original.
-  const { inline, aside } = useSplitSlot(
-    <BirthTimePicker value={value} onChange={onChange} unknown={unknown} />
-  );
   return (
-    <Screen bg={A.dailyTexture} wash={0.52} layout="split" aside={aside}>
+    <Screen bg={A.dailyTexture} wash={0.52}>
       <Header step={step} total={15} onBack={onBack} />
       <View style={styles.body}>
         <Title>¿A qué hora naciste?</Title>
         <Body style={styles.sub}>La hora afina tu ascendente y tus casas.</Body>
 
-        {inline}
+        {/* El control se monta UNA vez y en su lugar del flujo: entre el
+            subtítulo y el interruptor de "No sé la hora". */}
+        <BirthTimePicker value={value} onChange={onChange} unknown={unknown} />
 
         <Pressable
           onPress={onToggleUnknown}

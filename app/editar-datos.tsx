@@ -6,11 +6,16 @@ import {
   ScrollView,
   StyleSheet,
   TextInput,
+  type TextStyle,
   View
 } from "react-native";
 import { Redirect, useRouter } from "expo-router";
 
+import { AccountGate } from "@/components/orbita/AccountGate";
+import { WebLoading } from "@/components/web/require-session";
 import { Text } from "@/components/ui/text";
+import { HOME_ROUTE } from "@/domain/appRoutes";
+import { onboardingInputFromBirthData } from "@/domain/sessionStart";
 import {
   applyBirthEdits,
   birthSaveGate,
@@ -38,6 +43,7 @@ import { Body, Label, Title } from "@/onboarding/components/Type";
 import { font, GUTTER, orbita } from "@/onboarding/theme";
 import { BirthPayloadError, birthPayloadMessage } from "@/domain/birthPayload";
 import { useProfileBirthDataPersist } from "@/onboarding/useAccount";
+import { backendConfig } from "@/services/backendProviders";
 import { searchPlaces, type PlaceHit } from "@/services/geocoding";
 
 /**
@@ -60,9 +66,23 @@ const SYNC_REMOTE_TIMEOUT_MS = 10000;
 export default function EditarDatosRoute() {
   // Misma razón que en `/iniciar-sesion`: esta ruta monta el shell del alta
   // fuera de `OnboardingFlow` y necesita el modo responsive.
+  //
+  // El gate declara `edit-birth-data`: es el destino de recuperación de una
+  // cuenta que ya existía y quedó incompleta, y también la ruta normal de
+  // "Editar datos" desde Perfil con la cuenta completa. Las dos entran; una
+  // cuenta sin sesión no.
+  //
+  // Sin envs no hay cuenta que resolver (builds locales): el editor guarda sólo
+  // en el teléfono y no pasa por el gate.
   return (
     <WebLayoutProvider>
-      <EditarDatosSurface />
+      {backendConfig.isConfigured ? (
+        <AccountGate surface="edit-birth-data" loading={<WebLoading />}>
+          <EditarDatosSurface />
+        </AccountGate>
+      ) : (
+        <EditarDatosSurface />
+      )}
     </WebLayoutProvider>
   );
 }
@@ -70,7 +90,7 @@ export default function EditarDatosRoute() {
 function EditarDatosSurface() {
   const router = useRouter();
   const fontsLoaded = useOrbitaFonts();
-  const { isReady, profile, updateProfile } = useAppState();
+  const { isReady, profile, createProfile, updateProfile } = useAppState();
   const { isLive, isAuthLoading, auth, retryUser } = useLiveApp();
   const { birthData: remoteBirthData, birthDataResolved } = useLiveAppDocs(isLive);
   // Editar datos usa el endpoint de PERFIL: `completeBirthData` es create-only
@@ -170,8 +190,12 @@ function EditarDatosSurface() {
   const blockMessage = birthEditorBlockMessage(readiness);
 
   if (!fontsLoaded) return <View style={styles.fill} />;
-  if (isReady && !profile) return <Redirect href="/" />;
-  if (!profile) return <View style={styles.fill} />;
+  // Sin sesión, sin perfil local no hay nada que editar. CON sesión sí lo hay:
+  // una cuenta que quedó incompleta llega acá justamente para completarse, y en
+  // un navegador nuevo todavía no tiene perfil local. Rebotarla a "/" era un
+  // bucle — el gate la devolvía acá en el render siguiente.
+  if (isReady && !profile && !signedIn) return <Redirect href="/" />;
+  if (!isReady) return <View style={styles.fill} />;
 
   const patchDraft = (patch: Partial<BirthEditorDraft>) =>
     setDraft((current) => (current ? { ...current, ...patch } : current));
@@ -190,9 +214,26 @@ function EditarDatosSurface() {
         // queda el error con reintento y los datos siguen consistentes.
         await persistBackend(buildBackendBirthPayload(edits, remoteBirthData));
       }
-      // Invitado: guardado local solamente.
-      await updateProfile(applyBirthEdits(profile, edits));
-      router.back();
+      if (profile) {
+        // Invitado o cuenta con perfil local: se actualiza lo que ya existe.
+        await updateProfile(applyBirthEdits(profile, edits));
+      } else {
+        // Cuenta incompleta en un dispositivo/navegador sin perfil local: el
+        // remoto ya quedó escrito y acá se crea la copia local marcada con su
+        // dueño, en vez de dejar la cuenta sin nada que mostrar.
+        await createProfile(
+          onboardingInputFromBirthData({
+            birthDate: edits.birthDate,
+            birthTime: edits.birthTime ?? undefined,
+            birthPlaceLabel: edits.place.label
+          }),
+          auth?.userId ?? null
+        );
+      }
+      // Sin perfil local previo se llegó acá por una recuperación, no desde
+      // Perfil: no hay pantalla atrás a la cual volver.
+      if (profile) router.back();
+      else router.replace(HOME_ROUTE as never);
     } catch (e) {
       setSaveError(
         e instanceof BirthPayloadError
@@ -214,7 +255,7 @@ function EditarDatosSurface() {
           accessibilityRole="button"
           accessibilityLabel="Cancelar y volver al Perfil"
         >
-          <Text style={styles.chev}>‹</Text>
+          <Text style={TEXT.chev}>‹</Text>
         </Pressable>
       </View>
 
@@ -241,7 +282,7 @@ function EditarDatosSurface() {
         {draft === null ? (
           <View style={styles.loadingBlock}>
             {readiness === "retry-remote" ? (
-              <Body accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.saveError}>
+              <Body accessibilityRole="alert" accessibilityLiveRegion="polite" style={TEXT.saveError}>
                 {blockMessage}
               </Body>
             ) : (
@@ -270,7 +311,7 @@ function EditarDatosSurface() {
                 accessibilityLabel="No sé la hora"
               >
                 <View style={[styles.toggle, draft.timeUnknown && styles.toggleOn]}>
-                  <Text style={[styles.toggleText, draft.timeUnknown && styles.toggleTextOn]}>
+                  <Text style={[TEXT.toggle, draft.timeUnknown && TEXT.toggleOn]}>
                     {draft.timeUnknown ? "✓ No sé la hora" : "No sé la hora"}
                   </Text>
                 </View>
@@ -322,7 +363,7 @@ function EditarDatosSurface() {
                 style={styles.hit}
                 accessibilityRole="button"
               >
-                <Text style={styles.hitText}>{hit.label}</Text>
+                <Text style={TEXT.hit}>{hit.label}</Text>
               </Pressable>
             ))}
 
@@ -337,7 +378,7 @@ function EditarDatosSurface() {
           <Body
             accessibilityRole="alert"
             accessibilityLiveRegion="polite"
-            style={styles.saveError}
+            style={TEXT.saveError}
           >
             {saveError}
           </Body>
@@ -345,7 +386,7 @@ function EditarDatosSurface() {
         {/* Qué falta para poder guardar, dicho en el mismo lugar donde se
             resuelve. Sin esto, un Guardar deshabilitado no se explica. */}
         {draft !== null && blockMessage !== null ? (
-          <Body accessibilityLiveRegion="polite" style={styles.blockNote}>
+          <Body accessibilityLiveRegion="polite" style={TEXT.blockNote}>
             {blockMessage}
           </Body>
         ) : null}
@@ -370,7 +411,7 @@ function EditarDatosSurface() {
           style={styles.cancelRow}
           accessibilityRole="button"
         >
-          <Text style={styles.cancelText}>Cancelar</Text>
+          <Text style={TEXT.cancel}>Cancelar</Text>
         </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -378,20 +419,46 @@ function EditarDatosSurface() {
   );
 }
 
+/**
+ * Estilos de TEXTO en objetos LITERALES, no en `StyleSheet.create`.
+ *
+ * Es el mismo mecanismo ya documentado en `@/onboarding/theme` para
+ * `SIGN_IN_LINK_TEXT`: en react-native-web una hoja registrada se compila a una
+ * CLASE atómica, y el `Text` compartido (`components/ui/text`) ya trae las
+ * clases `text-foreground` y `text-base` de Tailwind, que fijan color, tamaño y
+ * altura de línea. Clase contra clase ganaba Tailwind, así que los resultados
+ * de ciudades, "No sé la hora" y "Cancelar" salían casi negros —y a 16px—
+ * sobre el fondo casi negro de la pantalla. Un literal viaja en el atributo
+ * `style` y le gana a cualquier clase.
+ *
+ * `saveError` tenía la misma falla por otro camino: `Body` aplica su propio
+ * color como literal (inline) y recibía el color del error como clase, así que
+ * el mensaje se pintaba del gris de cuerpo en vez del cobre de alerta. Dos
+ * literales sí compiten entre sí, y gana el último del array.
+ *
+ * Los colores son EXACTAMENTE los que ya tenía la pantalla: esto arregla la
+ * precedencia, no rediseña nada.
+ */
+const TEXT = {
+  cancel: { color: orbita.faint, fontFamily: font.sans, fontSize: 14, lineHeight: 20 },
+  chev: { color: orbita.bone, fontFamily: font.sans, fontSize: 26, lineHeight: 30 },
+  hit: { color: orbita.bone, fontFamily: font.sans, fontSize: 15, lineHeight: 21 },
+  toggle: { color: orbita.bone, fontFamily: font.sansMed, fontSize: 13, lineHeight: 18 },
+  toggleOn: { color: orbita.ink },
+  saveError: { color: "#D07A5A", marginBottom: 12 },
+  blockNote: { color: orbita.muted, marginBottom: 12 }
+} satisfies Record<string, TextStyle>;
+
 const styles = StyleSheet.create({
   // 44px reales: `hitSlop` no existe en web, así que el objetivo de "cancelar"
   // eran los 28×30 del chevron.
   backBtn: { alignItems: "flex-start", justifyContent: "center", minHeight: 44, minWidth: 44 },
-  blockNote: { color: orbita.muted, marginBottom: 12 },
   body: { flexGrow: 1, paddingBottom: 48, paddingHorizontal: GUTTER, paddingTop: 18 },
   cancelRow: { alignItems: "center", marginTop: 16, paddingBottom: 10 },
-  cancelText: { color: orbita.faint, fontFamily: font.sans, fontSize: 14 },
-  chev: { color: orbita.bone, fontFamily: font.sans, fontSize: 26, lineHeight: 30 },
   fieldLabel: { marginTop: 26 },
   fill: { backgroundColor: orbita.bg, flex: 1 },
   header: { paddingHorizontal: GUTTER, paddingTop: 6 },
   hit: { borderBottomColor: orbita.line, borderBottomWidth: 1, paddingVertical: 12 },
-  hitText: { color: orbita.bone, fontFamily: font.sans, fontSize: 15 },
   input: {
     color: orbita.bone,
     fontFamily: font.serifReg,
@@ -403,7 +470,6 @@ const styles = StyleSheet.create({
   loadingBlock: { paddingVertical: 40 },
   noTimeNote: { marginTop: 8 },
   placeCurrent: { marginTop: 6 },
-  saveError: { color: "#D07A5A", marginBottom: 12 },
   spacer: { height: 24 },
   sub: { marginTop: 10 },
   timeRow: {
@@ -419,7 +485,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 7
   },
-  toggleOn: { backgroundColor: orbita.copper, borderColor: orbita.copper },
-  toggleText: { color: orbita.bone, fontFamily: font.sansMed, fontSize: 13 },
-  toggleTextOn: { color: orbita.ink }
+  toggleOn: { backgroundColor: orbita.copper, borderColor: orbita.copper }
 });

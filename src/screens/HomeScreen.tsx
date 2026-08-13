@@ -27,6 +27,7 @@ import { GuestState } from "@/components/orbita/GuestState";
 import { useNotify } from "@/components/orbita/ConfirmHost";
 import { LoadingState } from "@/components/orbita/states";
 import { mapNatalChart } from "@/domain/natalChart";
+import { revealFailureKind } from "@/domain/ritual";
 import { lastNDaysFrom } from "@/domain/dateStrip";
 import { useCanonicalLocalDate } from "@/hooks/useDailyContext";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
@@ -134,6 +135,11 @@ export function HomeScreen() {
     }
   }
 
+  // La octava carta de una cuenta Free: el backend rechaza la revelación con un
+  // marcador estable. No es un error de red ni algo para reintentar, así que la
+  // Home lo nombra y ofrece la salida a Plus en vez de dejar la carta muda.
+  const [tarotLimite, setTarotLimite] = useState(false);
+
   async function pullCard(): Promise<boolean> {
     if (dailyState.status !== "ready" || !daily?.carta) {
       if (dailyState.status === "error") retryDaily();
@@ -147,9 +153,23 @@ export function HomeScreen() {
       marcarPrimerRitual();
       return true;
     } catch (e) {
+      // `false` en los dos casos: la carta vuelve al dorso y NADA se muestra
+      // como si el giro hubiera salido bien (el backend no persistió nada).
+      if (revealFailureKind(e) === "limite_free") {
+        setTarotLimite(true);
+        return false;
+      }
       console.warn("[orbita] daily.revealCard falló:", e instanceof Error ? e.message : e);
       return false;
     }
+  }
+
+  function handleCardPress(): boolean | Promise<boolean> {
+    if (tarotLimite) {
+      router.push("/paywall");
+      return false;
+    }
+    return pullCard();
   }
 
   // Estados de la tira para el reconocimiento del regreso (solo con archivo real).
@@ -163,7 +183,9 @@ export function HomeScreen() {
   // Día 2+: el eyebrow de la carta boca abajo reconoce el regreso (B3).
   let cartaCtaLabel: string | undefined;
   let cartaCtaSub: string | undefined;
-  if (prevRevealed > 0) {
+  if (tarotLimite) {
+    cartaCtaLabel = "DESBLOQUEAR TAROT DIARIO";
+  } else if (prevRevealed > 0) {
     cartaCtaLabel = "HAY UNA CARTA NUEVA";
     cartaCtaSub = huecoAyer
       ? "Las de ayer no se recuperan. La de hoy sí."
@@ -195,7 +217,8 @@ export function HomeScreen() {
   const chartReady = chart !== null;
   const heroTriad = chart ? triadFromChart(chart) : null;
 
-  // ¿Qué se puede mostrar? Con sesión: cuando la guía Y la carta natal llegaron.
+  // La guía diaria puede abrirse aunque la carta natal derivada siga pendiente.
+  // Sólo la composición que necesita tríada espera la carta.
   // booting/reconnecting/error de sesión: nunca contenido a medias.
   const sessionPending = isAuthLoading;
   const dayReady = dailyState.status === "ready" && chartReady;
@@ -266,9 +289,6 @@ export function HomeScreen() {
             El fondo (`HomeBackdrop`) queda full-bleed detrás. */}
         <ContentCanvas variant="wide">
         {showHeader ? <HomeHeader /> : null}
-        {/* La recepción de la carta natal ya no es un banner acá: es la ceremonia
-            full-screen (/recepcion) a la que el onboarding entra antes de la Home. */}
-
         {sessionPending ? (
           /* Sesión resolviéndose (arranque o reconexión): carga estable. NUNCA mocks —
              una sesión existente no ve datos demo ni siquiera un segundo. */
@@ -321,11 +341,26 @@ export function HomeScreen() {
         <CartaDelDia
           carta={carta}
           revealed={revealed}
-          onReveal={pullCard}
+          onReveal={handleCardPress}
           disabled={dailyState.status !== "ready"}
           ctaLabel={cartaCtaLabel}
           ctaSub={cartaCtaSub}
+          ctaMode={tarotLimite ? "unlock" : "reveal"}
         />
+
+        {/* Límite Free alcanzado: se explica qué pasó, pero no se agrega un
+            segundo botón. El dorso —ahora rotulado DESBLOQUEAR TAROT DIARIO—
+            es la única salida a Plus. */}
+        {tarotLimite ? (
+          <View style={styles.tarotLimite}>
+            <Text style={styles.introEyebrow}>TU TAROT DIARIO</Text>
+            <Text style={styles.ritualTitle}>Usaste tus siete cartas.</Text>
+            <Text style={styles.introBody}>
+              Órbita Free incluye siete cartas de Tarot. Con Órbita Plus seguís sacando una carta
+              cada día, y tu carta natal se abre entera.
+            </Text>
+          </View>
+        ) : null}
 
         {/* Nota de cadencia (B1): una vez en la vida, después del primer reveal. Ya no
             re-explica el método (la lectura de la carta ahora habla sola) — solo el ritmo. */}
@@ -345,19 +380,33 @@ export function HomeScreen() {
 
         {/* Guía del día en vuelo o caída: carga estable / error con reintento. Nunca el
             texto del engine local pisado después por el real ("flash de maqueta"). */}
-        {!dayReady || !heroTriad ? (
-          dailyState.status === "error" ? (
+        {!chartReady || !heroTriad ? (
+          <View style={styles.chartPending}>
+            <Text style={styles.chartPendingEyebrow}>TU CARTA NATAL</Text>
+            <Text style={styles.chartPendingTitle}>Tus datos ya están guardados.</Text>
+            <Text style={styles.chartPendingBody}>
+              Estamos preparando tu carta. Podés seguir en Órbita y volver a intentarlo cuando quieras verla.
+            </Text>
+            <Pressable
+              onPress={() => router.push("/(tabs)/carta")}
+              accessibilityRole="button"
+              accessibilityLabel="Abrir mi carta natal"
+              style={styles.retryBtn}
+            >
+              <Text style={styles.retryText}>VER MI CARTA</Text>
+            </Pressable>
+          </View>
+        ) : dailyState.status === "error" ? (
             <View style={styles.loadingBlock}>
               <Text style={styles.errorTitle}>{dailyState.message}</Text>
               <Pressable onPress={retryDaily} accessibilityRole="button" style={styles.retryBtn}>
                 <Text style={styles.retryText}>REINTENTAR</Text>
               </Pressable>
             </View>
-          ) : (
+        ) : dailyState.status !== "ready" ? (
             <View style={styles.loadingBlock}>
               <LoadingState />
             </View>
-          )
         ) : (
           <>
         {/* El velo: hasta que no sacás la carta, la lectura del día está atenuada. Eso es
@@ -440,6 +489,36 @@ const styles = StyleSheet.create({
   // alcanza para que se lea "hay algo, pero todavía no es tuyo".
   veiled: { opacity: 0.12 },
   loadingBlock: { paddingVertical: orbita.spacing.xxl },
+  chartPending: {
+    alignItems: "center",
+    borderTopColor: orbita.colors.line,
+    borderTopWidth: 1,
+    marginHorizontal: orbita.spacing.gutter,
+    paddingVertical: orbita.spacing.xxl
+  },
+  chartPendingEyebrow: {
+    color: orbita.colors.copper,
+    fontFamily: orbita.fonts.monoMedium,
+    fontSize: 11,
+    letterSpacing: 1.5
+  },
+  chartPendingTitle: {
+    color: orbita.colors.bone,
+    fontFamily: orbita.fonts.serif,
+    fontSize: 22,
+    lineHeight: 28,
+    marginTop: orbita.spacing.md,
+    textAlign: "center"
+  },
+  chartPendingBody: {
+    color: orbita.colors.muted,
+    fontFamily: orbita.fonts.body,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: orbita.spacing.md,
+    maxWidth: 460,
+    textAlign: "center"
+  },
 
   // Primera vez (Bloque B): intro del tarot (día 1), captions de la tira y EL RITUAL.
   introTarot: { paddingHorizontal: orbita.spacing.gutter, paddingTop: orbita.spacing.xl },
@@ -466,6 +545,13 @@ const styles = StyleSheet.create({
     marginTop: orbita.spacing.md,
     paddingHorizontal: orbita.spacing.gutter,
     textAlign: "center"
+  },
+  tarotLimite: {
+    borderTopColor: orbita.colors.line,
+    borderTopWidth: 1,
+    marginHorizontal: orbita.spacing.gutter,
+    marginTop: orbita.spacing.xl,
+    paddingTop: orbita.spacing.lg
   },
   ritualBlock: {
     borderTopColor: orbita.colors.line,

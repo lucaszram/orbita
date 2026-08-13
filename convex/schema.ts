@@ -37,6 +37,16 @@ const productEventName = v.union(
   v.literal("onboarding_step_viewed"),
   v.literal("account_created"),
   v.literal("onboarding_completed"),
+  // Legacy event already persisted in development before the analytics
+  // contract was narrowed. Keep it readable so schema deploys never require
+  // deleting historical telemetry; new writes use `onboarding_completed`.
+  v.literal("natal_chart_created"),
+  v.literal("natal_interpretation_created"),
+  v.literal("daily_guide_created"),
+  v.literal("transit_reading_created"),
+  v.literal("void_answer_created"),
+  v.literal("saved_reading_created"),
+  v.literal("journal_entry_created"),
   v.literal("natal_chart_viewed"),
   v.literal("daily_guide_viewed"),
   v.literal("daily_card_revealed"),
@@ -54,6 +64,8 @@ export default defineSchema({
     clerkUserId: v.string(),
     email: v.optional(v.string()),
     name: v.optional(v.string()),
+    firstName: v.optional(v.string()),
+    lastName: v.optional(v.string()),
     locale: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number()
@@ -98,7 +110,11 @@ export default defineSchema({
     appVersion: v.optional(v.string()),
     buildNumber: v.optional(v.string()),
     onboardingStep: v.optional(v.number()),
-    entryPoint: v.optional(v.string())
+    entryPoint: v.optional(v.string()),
+    // Read-only compatibility for telemetry backfilled before the current
+    // product analytics contract. Current writers do not emit these fields.
+    backfilled: v.optional(v.boolean()),
+    resourceId: v.optional(v.string())
   })
     .index("by_event_id", ["eventId"])
     .index("by_date_event", ["localDate", "eventName"])
@@ -129,6 +145,14 @@ export default defineSchema({
     latitude: v.optional(v.number()),
     longitude: v.optional(v.number()),
     timezone: v.optional(v.string()),
+    // Claim durable del enriquecimiento técnico. Evita que cada autoguardado
+    // programe otro worker para el mismo lugar; se libera al resolver, agotar
+    // los reintentos o cambiar la elección.
+    timezoneResolutionKey: v.optional(v.string()),
+    // Conserva el origen después de que Clerk adjunta la cuenta. Permite
+    // separar un alta nueva recuperable de una cuenta existente que debe
+    // completar sus datos desde /editar-datos.
+    flowOrigin: v.optional(v.union(v.literal("anonymous_signup"), v.literal("authenticated_recovery"))),
     accountState: v.union(v.literal("anonymous"), v.literal("created")),
     paymentState,
     createdAt: v.number(),

@@ -536,10 +536,22 @@ export const calculateOrCreateNatalChart = action({
     });
 
     if (state.existingChart) {
-      await ctx.scheduler.runAfter(0, internalApi.charts.generatePersonalityReadingForChart, {
-        natalChartId: state.existingChart._id
+      // Un cache existente evita por completo otra llamada al proveedor. La
+      // misma mutación canónica reafirma los metadatos de identidad y registra
+      // el completion idempotente antes de que readiness pueda dar ready.
+      const chart = await ctx.runMutation(internalApi.charts.persistCalculatedNatalChart, {
+        tokenIdentifier: identity.tokenIdentifier,
+        birthDataId: state.birthData._id,
+        birthDataHash: state.birthDataHash,
+        cacheKey: state.cacheKey,
+        providerVersion: state.existingChart.providerVersion ?? "astrologyapi",
+        calculationVersion: ASTROLOGY_API_CHART_CALCULATION_VERSION,
+        payload: state.existingChart.payload
       });
-      return state.existingChart;
+      await ctx.scheduler.runAfter(0, internalApi.charts.generatePersonalityReadingForChart, {
+        natalChartId: chart._id
+      });
+      return chart;
     }
 
     const birthData = state.birthData;

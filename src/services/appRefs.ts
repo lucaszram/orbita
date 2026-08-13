@@ -2,6 +2,7 @@ import { anyApi } from "convex/server";
 import type { FunctionReference } from "convex/server";
 import type { PublicDailyHome } from "./publicLabRefs";
 import type { CheckoutStatus, WebOffer } from "@/domain/paywall";
+import type { OnboardingCompletion } from "@/domain/onboardingReadiness";
 
 /**
  * Capa de datos del front para la Web B0 (usuario autenticado con Clerk).
@@ -353,6 +354,24 @@ export const appApi = {
       { deleted: true }
     >
   },
+  placeTimezone: {
+    /**
+     * Zona IANA del lugar de nacimiento, derivada de las coordenadas que ya
+     * eligió la persona (ver `convex/CHANGELOG.md`, 2026-08-12).
+     *
+     * Photon —el autocomplete— devuelve etiqueta y coordenadas, pero NO
+     * timezone, y `validateBirthPayload` la exige antes de escribir. El backend
+     * la resuelve con límites geográficos empaquetados: no hay provider pago ni
+     * llamada externa, y la zona del dispositivo no participa (para alguien
+     * nacido en otra zona, esa sería la zona equivocada).
+     */
+    atCoordinates: anyApi.placeTimezone.atCoordinates as FunctionReference<
+      "action",
+      "public",
+      { latitude: number; longitude: number },
+      { timezone: string }
+    >
+  },
   birthData: {
     getCurrent: anyApi.birthData.getCurrent as FunctionReference<"query", "public", Empty, BirthDataDoc | null>,
     // devuelve el Id del doc birthData (string), no el doc completo
@@ -365,6 +384,28 @@ export const appApi = {
   },
   onboarding: {
     saveDraft: anyApi.onboarding.saveDraft as FunctionReference<"mutation", "public", OnboardingDraftInput, string>,
+    /**
+     * Autoridad ÚNICA de acceso durante alta y recuperación. Reactiva y de sólo
+     * lectura: no llama al proveedor ni dispara cálculos, sólo confirma lo que
+     * quedó persistido. Ver `src/domain/onboardingReadiness.ts`.
+     */
+    getCompletionStatus: anyApi.onboarding.getCompletionStatus as FunctionReference<
+      "query",
+      "public",
+      { clientDraftId?: string },
+      OnboardingCompletion
+    >,
+    /**
+     * Confirmación ANÓNIMA e idempotente previa a montar Clerk: sólo devuelve
+     * `{ ready: true }` si el borrador remoto está completo y su origen es
+     * `anonymous_signup`. Si tira, no se crea la cuenta.
+     */
+    confirmSignupDraft: anyApi.onboarding.confirmSignupDraft as FunctionReference<
+      "mutation",
+      "public",
+      { clientDraftId: string },
+      { ready: true }
+    >,
     // devuelve el Id del birthData (string)
     completeBirthData: anyApi.onboarding.completeBirthData as FunctionReference<
       "mutation",
@@ -372,7 +413,27 @@ export const appApi = {
       CompleteBirthDataInput,
       string
     >,
-    markAccountCreated: anyApi.onboarding.markAccountCreated as FunctionReference<"mutation", "public", Empty, null>,
+    /**
+     * Alta nueva: copia atómicamente a la cuenta el borrador remoto que ya fue
+     * confirmado antes de Clerk. El cliente no vuelve a enviar datos natales.
+     */
+    completeSignupFromDraft: anyApi.onboarding.completeSignupFromDraft as FunctionReference<
+      "mutation",
+      "public",
+      { clientDraftId: string },
+      string
+    >,
+    /**
+     * Adjunta a la cuenta recién creada el borrador guardado anónimo. El
+     * `clientDraftId` es lo que conserva el origen del alta: sin él, el mismo
+     * usuario parecería una recuperación de una cuenta preexistente.
+     */
+    markAccountCreated: anyApi.onboarding.markAccountCreated as FunctionReference<
+      "mutation",
+      "public",
+      { clientDraftId?: string },
+      string
+    >,
     markPaymentState: anyApi.onboarding.markPaymentState as FunctionReference<
       "mutation",
       "public",

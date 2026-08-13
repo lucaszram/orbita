@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  STRIPE_CHECKOUT_BENEFITS,
   buildStripeCheckoutForm,
   buildStripeCustomerForm,
   buildStripePortalForm,
@@ -78,7 +79,12 @@ test("Stripe customer, checkout and portal forms preserve the existing contract"
   assert.equal(subscription["subscription_data[trial_period_days]"], 7);
   assert.equal(subscription["payment_intent_data[metadata][plan]"], undefined);
   assert.equal(subscription.success_url, "https://orbita.example/checkout/success?session_id={CHECKOUT_SESSION_ID}");
-  assert.equal(subscription.cancel_url, "https://orbita.example/paywall");
+  assert.equal(subscription.cancel_url, "https://orbita.example/home");
+  assert.equal(subscription["custom_text[submit][message]"], STRIPE_CHECKOUT_BENEFITS);
+  assert.match(STRIPE_CHECKOUT_BENEFITS, /carta natal completa/);
+  assert.match(STRIPE_CHECKOUT_BENEFITS, /Tarot diario sin tope/);
+  assert.match(STRIPE_CHECKOUT_BENEFITS, /cinco preguntas por día en El Umbral/);
+  assert.ok(STRIPE_CHECKOUT_BENEFITS.length <= 1200);
 
   const lifetime = buildStripeCheckoutForm({
     plan: "lifetime",
@@ -89,6 +95,7 @@ test("Stripe customer, checkout and portal forms preserve the existing contract"
   });
   assert.equal(lifetime.mode, "payment");
   assert.equal(lifetime["payment_intent_data[metadata][plan]"], "lifetime");
+  assert.equal(lifetime["custom_text[submit][message]"], undefined);
   assert.equal(lifetime["subscription_data[metadata][plan]"], undefined);
 
   assert.deepEqual(buildStripePortalForm({ customerId: "cus_123", webUrl: "https://orbita.example" }), {

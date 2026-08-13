@@ -1,5 +1,76 @@
 # Contrato — CHANGELOG
 
+## 2026-08-12 — Checkout directo sin pantalla comercial intermedia
+
+- **Checkout alojado:** la sesión mensual agrega
+  `custom_text[submit][message]` con el resumen de beneficios que antes vivía en
+  “Qué incluye”. Stripe lo muestra junto a la confirmación; el Price sigue
+  siendo la única autoridad de importe, moneda e intervalo.
+- **Cancelación:** `cancel_url` vuelve a `/home`, no a `/paywall`. Esa ruta pasa
+  a ser un lanzador automático y volver a ella crearía una segunda sesión.
+- **Sin cambio de seguridad:** Clerk, customer, Price, trial, metadata, webhook
+  y concesión autoritativa del entitlement quedan intactos.
+- **Rollout:** validar exclusivamente con Stripe test y Vercel Preview.
+  Producción permanece fuera de alcance.
+
+## 2026-08-12 — Timezone natal por coordenadas, sin API paga
+
+- **Contrato aditivo:** nueva action pública
+  `placeTimezone.atCoordinates({ latitude, longitude })` → `{ timezone }`.
+- **Autoridad:** usa los límites geográficos empaquetados de `geo-tz` y devuelve
+  una zona IANA desde las coordenadas elegidas en Photon. No llama a un provider,
+  no consume créditos y no usa la zona del dispositivo.
+- **Empaquetado:** `convex.json` instala `geo-tz` como dependencia externa del
+  runtime Node para no sumar su dataset geográfico al límite del bundle de
+  funciones. La versión sigue fijada por `package.json`/`pnpm-lock.yaml`.
+- **Motivo:** Photon entrega etiqueta y coordenadas pero no timezone. El editor
+  exigía timezone antes de persistir y convertía una selección válida en el
+  error repetitivo “No pudimos determinar la zona horaria”.
+- **Compatibilidad:** no cambia ninguna firma existente. El frontend del editor
+  llama la nueva action sólo cuando la persona selecciona un lugar nuevo.
+- **Rollout:** sincronizar únicamente Convex dev y validar el guardado en Vercel
+  Preview. Producción queda fuera de esta tarea.
+
+## 2026-08-12 — Límite durable de siete revelaciones Tarot para Free
+
+- **Qué cambia:** `daily.revealCard({ localDate })` conserva sus argumentos y su
+  retorno, pero una cuenta Free puede revelar como máximo siete cartas nuevas.
+  La octava y siguientes rechazan con el marcador estable
+  `FREE_TAROT_REVEAL_LIMIT_REACHED`; Plus mantiene acceso ilimitado.
+- **Idempotencia:** si la carta del día ya estaba revelada, la mutación devuelve
+  la marca original antes de evaluar el límite. Reabrir un ritual existente no
+  consume cupo ni exige pago.
+- **Autoridad:** el conteo y el entitlement se resuelven dentro de la misma
+  transacción Convex. El cliente sólo presenta la salida a la paywall y no puede
+  eludir la regla.
+- **Compatibilidad:** no cambia schema, firma pública, argumentos ni forma de
+  éxito. Los clientes anteriores reciben un error normal al superar el nuevo
+  límite.
+- **Rollout:** sincronizar primero Convex dev y validar el frontend en Preview.
+  Producción queda fuera de esta tarea.
+
+## 2026-08-11 — Readiness natal autoritativo para alta y recuperación
+
+- **Qué cambia:** `onboardingDrafts` suma el campo aditivo `flowOrigin?: "anonymous_signup" | "authenticated_recovery"`. Se incorpora `onboarding.confirmSignupDraft({ clientDraftId })`, confirmación anónima e idempotente que sólo devuelve `{ ready: true }` para un borrador remoto completo, y la consulta pública `onboarding.getCompletionStatus({ clientDraftId? })`, que devuelve un estado sin PII: `signed_out | onboarding_incomplete | profile_incomplete | chart_pending | chart_ready`, el destino de recuperación `onboarding | edit_birth_data | null` y los booleanos `profileReady`/`birthDataReady`/`chartReady`.
+- **Autoridad:** `chart_ready` exige identidad Clerk, fila `users`, datos natales completos y válidos, y una `natalChart` cuyo `birthDataId`, `birthDataHash`, `cacheKey` y versión correspondan exactamente a los datos natales vigentes. El nombre que Clerk pueda aportar se conserva, pero es opcional y nunca bloquea el alta. Un paso local, `isSignedIn` o el retorno de `completeBirthData` no habilitan Home.
+- **Recuperación:** un alta iniciada anónimamente conserva su origen al adjuntarse a Clerk y vuelve al onboarding si falla la finalización. Una cuenta existente incompleta vuelve a `/editar-datos`; nunca se borra ni se recrea.
+- **Rendimiento:** la consulta es reactiva y sólo confirma el resultado persistido; no llama al proveedor, no hace polling ni dispara cálculos. La única cadena de finalización reutiliza el cálculo idempotente por `cacheKey`.
+- **Rollout:** contrato compatible primero en Convex preview/dev. Producción requiere el mismo commit aprobado, desplegando primero Convex compatible y luego un build web con variables productivas.
+
+## 2026-08-11 — Alta durable: claim interno para resolver la zona horaria
+
+- **Contrato aditivo:** `onboardingDrafts` suma `timezoneResolutionKey?: string` para deduplicar el enriquecimiento interno del lugar natal.
+- **Compatibilidad:** no cambia ninguna firma pública ni se exige el campo a clientes existentes; el backend lo crea, rota y elimina de forma interna.
+- **Privacidad:** el claim identifica la combinación ya guardada de etiqueta y coordenadas, no se devuelve en respuestas de producto ni se usa como autoridad natal.
+- **Rollout:** desplegar primero este schema compatible y después el worker interno; rollback eliminando el worker y, en una entrega posterior, el campo opcional.
+
+## 2026-08-11 — Nombre y apellido opcionales cuando Clerk los provee
+
+- **Qué cambia:** `users` incorpora `firstName?` y `lastName?` de forma aditiva para conservarlos cuando Clerk los provee, además del `name` de presentación compatible con clientes anteriores. El onboarding no los solicita ni los exige.
+- **Por qué:** Clerk no garantiza que el flujo email/clave entregue esos atributos, mientras que Google puede aportarlos. Se conserva la diferencia real sin convertirla en un requisito de producto.
+- **Privacidad y acceso:** son datos de perfil de la propia cuenta; sólo la identidad autenticada puede escribirlos. No se incluyen en telemetría ni logs.
+- **Rollout:** coordinar con el `SignUp` oficial de Clerk y validar que `birthData` y `natalChart` existan antes de habilitar Home, tanto si Clerk aporta un nombre como si no. Sin despliegue de producción en esta tarea.
+
 ## 2026-08-08 — Hotfix definitivo: restaurar el contrato natal público
 
 - **Qué cambia:** `charts.current()` vuelve a entregar la carta sanitizada directamente en `payload` (`placements`, `houses`, `aspects`, `summary`, etc.) en vez de envolverla en `payload.chart.normalized`. El cliente acepta temporalmente ambas formas y rechaza payloads malformados o sin Sol/Luna/Ascendente, salvo el Ascendente legítimamente ausente con `noon_fallback`.

@@ -281,6 +281,8 @@ export function userFieldsFromIdentity(identity: AuthIdentityLike, now: number) 
     clerkUserId: identity.subject,
     email: identity.email,
     name: identity.name ?? identity.givenName ?? identity.nickname ?? identity.preferredUsername,
+    firstName: identity.givenName,
+    lastName: identity.familyName,
     updatedAt: now
   };
 }

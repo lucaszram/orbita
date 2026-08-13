@@ -10,7 +10,16 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { DEFAULT_LIMITS, KB, MB, classifyEntry, evaluateExport, formatBytes } from "../scripts/check-web-export.mjs";
+import {
+  DEFAULT_LIMITS,
+  KB,
+  MB,
+  REQUIRED_PUBLIC_FILES,
+  classifyEntry,
+  evaluateExport,
+  evaluatePublicSeo,
+  formatBytes
+} from "../scripts/check-web-export.mjs";
 
 const ok = { totalBytes: 10 * MB, images: [{ path: "assets/a.jpg", bytes: 200 * KB }], appJs: [{ path: "_expo/static/js/web/entry-abc.js", gzipBytes: MB }] };
 
@@ -129,4 +138,73 @@ test("formatBytes rinde legible en las tres escalas", () => {
   assert.equal(formatBytes(512), "512 B");
   assert.equal(formatBytes(500 * KB), "500.0 KB");
   assert.equal(formatBytes(50 * MB), "50.00 MB");
+});
+
+// --- ficha de búsqueda del export -------------------------------------------
+
+const HTML_OK = [
+  '<link rel="canonical" href="https://orbitaastrologia.xyz/" />',
+  '<link rel="icon" type="image/png" sizes="192x192" href="/orbita-icon-192.png" />',
+  '<script type="application/ld+json">{}</script>',
+  '<meta name="description" content="Órbita calcula tu carta natal…">',
+  '<div id="root"><div id="orbita-pre-js">Una carta para hoy.</div></div>'
+].join("\n");
+
+const seoOk = { paths: [...REQUIRED_PUBLIC_FILES, "_expo/static/js/web/entry-abc.js"], indexHtml: HTML_OK };
+
+test("la ficha de búsqueda exige los estáticos que se sirven por URL propia", () => {
+  // Los cinco de `public/` más el `.ico` que genera Expo. Ninguno lleva hash:
+  // el buscador cachea esas URLs.
+  assert.deepEqual(REQUIRED_PUBLIC_FILES, [
+    "favicon.ico",
+    "index.html",
+    "orbita-icon-192.png",
+    "orbita-og.jpg",
+    "robots.txt",
+    "sitemap.xml"
+  ]);
+  assert.equal(evaluatePublicSeo(seoOk).ok, true);
+});
+
+test("un export sin robots ni sitemap falla y los nombra", () => {
+  // El defecto real: `public/` no se copió y esas dos URLs caían en el rewrite
+  // de la SPA, que devolvía el `index.html`.
+  const verdict = evaluatePublicSeo({
+    ...seoOk,
+    paths: seoOk.paths.filter((p) => p !== "robots.txt" && p !== "sitemap.xml")
+  });
+  assert.equal(verdict.ok, false);
+  assert.equal(verdict.failures[0].check, "publicFiles");
+  assert.deepEqual(verdict.failures[0].offenders, ["robots.txt", "sitemap.xml"]);
+});
+
+test("un `index.html` sin ícono de marca o sin contenido inicial falla", () => {
+  const sinIcono = evaluatePublicSeo({ ...seoOk, indexHtml: HTML_OK.replace(/<link rel="icon"[^>]+>/, "") });
+  assert.equal(sinIcono.ok, false);
+  assert.deepEqual(sinIcono.failures[0].offenders, ["el ícono de marca de 192 px"]);
+
+  // El documento de antes de este arreglo: `#root` vacío y ningún metadato.
+  const sinContenido = evaluatePublicSeo({ ...seoOk, indexHtml: '<div id="root"></div>' });
+  assert.equal(sinContenido.ok, false);
+  assert.ok(
+    sinContenido.failures[0].offenders.includes("el contenido inicial de la landing"),
+    "el bloque que le da extracto al buscador es de los que se revisan"
+  );
+  assert.equal(sinContenido.failures[0].offenders.length, 5);
+});
+
+test("un `index.html` con marcadores sin sustituir falla", () => {
+  // Escribir un marcador dos veces en la plantilla deja el literal publicado y
+  // el build no se queja.
+  const verdict = evaluatePublicSeo({ ...seoOk, indexHtml: `${HTML_OK}\n<title>%WEB_TITLE%</title>` });
+  assert.equal(verdict.ok, false);
+  assert.equal(verdict.failures[0].check, "indexHtml");
+  assert.deepEqual(verdict.failures[0].offenders, ["%WEB_TITLE%"]);
+});
+
+test("sin `index.html` se reporta el archivo faltante una sola vez", () => {
+  const verdict = evaluatePublicSeo({ paths: seoOk.paths.filter((p) => p !== "index.html"), indexHtml: null });
+  assert.equal(verdict.ok, false);
+  assert.equal(verdict.failures.length, 1);
+  assert.deepEqual(verdict.failures[0].offenders, ["index.html"]);
 });
