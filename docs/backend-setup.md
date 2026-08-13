@@ -91,6 +91,27 @@ Variable de Convex dev:
 pnpm exec convex env set ORBITA_BACKOFFICE_ALLOWED_EMAILS lucaszramos11@gmail.com
 ```
 
+## Onboarding anónimo (tríada)
+
+`publicOnboarding.computeTriad` calcula Sol, Luna y Ascendente sin sesión durante el alta y **funciona en producción**: no depende del lab ni de `ORBITA_PUBLIC_LAB_ENABLED`. Solo necesita las credenciales de AstrologyAPI ya configuradas. La zona horaria la deriva de las coordenadas (`geo-tz`), nunca del dispositivo.
+
+Tres variables opcionales, con defaults razonables:
+
+```bash
+# Cupo de reintentos POR FLUJO (clientDraftId, que emite el cliente).
+pnpm exec convex env set ORBITA_ONBOARDING_TRIAD_MAX_PER_DRAFT_PER_MINUTE 12
+# Fusible GLOBAL de costo del deployment: protege la factura de AstrologyAPI
+# ante un bug o un script. Si corta, todas las altas ven "reintentá en un
+# momento" — subilo antes de bajarlo.
+pnpm exec convex env set ORBITA_ONBOARDING_TRIAD_GLOBAL_FUSE_PER_MINUTE 3000
+# Techo de la llamada natal, con AbortController. Máximo 15000: por encima se
+# recorta, porque el cliente corta a los 20s y su error ("sin respuesta") es
+# menos informativo que el real del proveedor.
+pnpm exec convex env set ORBITA_ONBOARDING_TRIAD_TIMEOUT_MS 12000
+```
+
+Honestidad sobre el cupo por borrador: el `clientDraftId` lo genera el cliente, así que **un caller malicioso puede rotarlo y estrenar cupo cada vez**. Ese límite existe para que un alta real —o un bug de reintento— no golpee el proveedor en loop. La protección de costo frente a abuso es el **fusible global**.
+
 ## Lab público-dev
 
 `/lab` usa acciones Convex públicas-dev sin sesión para cargar datos natales, previsualizar la Home diaria, generar copy con Vercel AI Gateway si está configurado, y ver timelines de tránsitos extendidos. Queda apagado por defecto.
@@ -104,6 +125,8 @@ pnpm exec convex env set ORBITA_PUBLIC_LAB_KEY "<codigo-opcional>"
 ```
 
 Si `ORBITA_PUBLIC_LAB_KEY` queda vacío, alcanza con `ORBITA_PUBLIC_LAB_ENABLED=true`. Si se define una key, la web debe enviar ese código desde el campo `Código lab`.
+
+En producción el lab se rechaza siempre, aunque quede `ORBITA_PUBLIC_LAB_ENABLED=true`. Basta con una de estas señales: `ORBITA_ENVIRONMENT=production`, `COMMERCE_MODE=live`, `CONVEX_DEPLOYMENT` con prefijo `prod:` o `ORBITA_ENV=production`. Ningún flujo de producto depende del lab: la tríada del alta usa `publicOnboarding.computeTriad`.
 
 El lab no guarda usuarios, sujetos, runs ni lecturas. Para guardar, revisar y aprobar contenido sigue existiendo `/backoffice`. El raw completo de proveedor tampoco vuelve por `/lab`; queda reservado para `/backoffice`.
 

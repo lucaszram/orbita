@@ -40,6 +40,7 @@ import { PersonalizingScreen } from "./screens/PersonalizingScreen";
 import { SplashScreen } from "./screens/SplashScreen";
 import { orbita } from "./theme";
 import {
+  describeTriadError,
   useAccountFlow,
   useOnboardingChart,
   useOnboardingCompletion,
@@ -47,7 +48,7 @@ import {
   useOnboardingFinalize,
   useOnboardingSignupDraft
 } from "./useAccount";
-import type { OnboardingChart } from "./useAccount";
+import type { OnboardingChart, TriadStatus } from "./useAccount";
 
 // El alta de cuenta vuelve a su lugar en la secuencia V4.4 (`14 / Create
 // Account`): la experiencia inmersiva engancha primero y la cuenta se pide
@@ -180,6 +181,11 @@ export function OnboardingFlow({
   const chartPreview = useOnboardingChart();
   const computeTriad = useOnboardingComputeTriad();
   const [computed, setComputed] = useState<OnboardingChart | undefined>();
+  // Estado del cálculo de la tríada. "unavailable" = sin backend o sin lugar:
+  // el alta sigue como siempre. "error" NO pasa en silencio: la pantalla de
+  // personalización muestra recuperación (reintentar / continuar sin ella).
+  const [triadStatus, setTriadStatus] = useState<TriadStatus>("idle");
+  const [triadError, setTriadError] = useState<string | null>(null);
   const [retryTick, setRetryTick] = useState(0);
   // Persistencia del cierre: sin esto un fallo navegaba a la recepción
   // como si el alta hubiera funcionado.
@@ -294,12 +300,21 @@ export function OnboardingFlow({
   const placeShort = birthPlace?.label.split(",")[0] ?? "";
 
   // Tríada real SIN login: al llegar a "Personalizing"(11) calculamos la carta con
-  // el endpoint público, para que el preview muestre Luna/Ascendente reales aunque
-  // el usuario no se haya logueado todavía. Requiere lugar (coords del geocoding).
+  // la acción pública `publicOnboarding.computeTriad`, para que el preview muestre
+  // Luna/Ascendente reales aunque el usuario no se haya logueado todavía. Requiere
+  // lugar (coords del geocoding; la zona la deriva el backend de esas coordenadas).
   useEffect(() => {
     // Inspección: no se le pega a la API de cálculo.
     if (inspeccion) return;
-    if (step < STEP_COMPUTE_TRIAD || !computeTriad || !birthPlace) return;
+    if (step < STEP_COMPUTE_TRIAD) return;
+    // El usuario ya decidió seguir sin la tríada: no se vuelve a intentar solo.
+    if (triadStatus === "skipped") return;
+    // Sin borrador no hay a qué cobrarle el cupo de reintentos: el endpoint lo
+    // exige. Sólo pasa en inspección, que ya salió arriba.
+    if (!computeTriad || !birthPlace || !clientDraftId) {
+      setTriadStatus("unavailable");
+      return;
+    }
     const birthTimeStr = timeUnknown ? undefined : to24hFromParts(birthTime);
     // Firma de los datos: si cambia (el usuario editó fecha/hora/lugar) recalcula;
     // si es la misma, no vuelve a pegarle a la API. Antes un ref "fired" dejaba
@@ -308,6 +323,9 @@ export function OnboardingFlow({
     if (computedSig.current === sig) return;
     computedSig.current = sig;
     let cancelled = false;
+    let settled = false;
+    setTriadStatus("loading");
+    setTriadError(null);
     computeTriad({
       birthDate: birthDateISO,
       birthTime: birthTimeStr,
@@ -315,13 +333,39 @@ export function OnboardingFlow({
       birthPlaceLabel: birthPlace.label,
       latitude: birthPlace.latitude,
       longitude: birthPlace.longitude,
-      timezone: birthPlace.timezone,
+      clientDraftId,
     })
-      .then((r) => { if (!cancelled) setComputed(r); })
-      .catch(() => { computedSig.current = null; });
-    return () => { cancelled = true; };
+      .then((r) => {
+        settled = true;
+        if (cancelled) return;
+        setComputed(r);
+        setTriadStatus("ready");
+      })
+      .catch((e) => {
+        settled = true;
+        if (cancelled) return;
+        // Se limpia la firma para que el reintento vuelva a disparar el cálculo.
+        computedSig.current = null;
+        setTriadError(describeTriadError(e));
+        setTriadStatus("error");
+      });
+    // Si el cálculo quedó a mitad de camino (el usuario volvió atrás), se olvida
+    // la firma: al volver al paso se dispara de nuevo en vez de quedar esperando
+    // para siempre una respuesta que ya se descartó.
+    return () => {
+      cancelled = true;
+      if (!settled) computedSig.current = null;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, computeTriad, birthPlace, birthDateISO, timeUnknown, birthTime.hour, birthTime.minute, retryTick, inspeccion]);
+  }, [step, computeTriad, birthPlace, birthDateISO, timeUnknown, birthTime.hour, birthTime.minute, retryTick, inspeccion, clientDraftId]);
+
+  const retryTriad = () => {
+    computedSig.current = null;
+    setComputed(undefined);
+    setTriadError(null);
+    setTriadStatus("loading");
+    setRetryTick((t) => t + 1);
+  };
 
   // ANTES de abrir Clerk: el borrador del alta tiene que estar guardado y
   // CONFIRMADO en el backend, con su `flowOrigin: "anonymous_signup"`. Crear
@@ -588,7 +632,17 @@ export function OnboardingFlow({
       );
       break;
     case 11:
-      screen = <PersonalizingScreen step={step} onDone={next} onBack={back} />;
+      screen = (
+        <PersonalizingScreen
+          step={step}
+          onDone={next}
+          onBack={back}
+          triadStatus={inspeccion ? "unavailable" : triadStatus}
+          triadError={triadError}
+          onRetryTriad={retryTriad}
+          onContinueWithoutTriad={() => setTriadStatus("skipped")}
+        />
+      );
       break;
     case 12:
       screen = <BeforeAfterScreen step={step} onNext={next} onBack={back} />;
@@ -623,11 +677,7 @@ export function OnboardingFlow({
           chart={computed ?? chartPreview}
           sunFallback={signLabel}
           timeKnown={!timeUnknown}
-          onRetry={() => {
-            computedSig.current = null;
-            setComputed(undefined);
-            setRetryTick((t) => t + 1);
-          }}
+          onRetry={retryTriad}
         />
       ) : (
         // Un solo estado de guardado. Un fallo real de persistencia conserva el

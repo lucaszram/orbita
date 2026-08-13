@@ -19,11 +19,11 @@ import {
 import { validateBirthPayload } from "@/domain/birthPayload";
 import { timezoneLookupFor, withResolvedTimezone } from "@/domain/placeTimezone";
 import type { OnboardingCompletion } from "@/domain/onboardingReadiness";
-import { deviceTimezone } from "@/hooks/useLiveApp";
+import { TRIAD_CLIENT_TIMEOUT_CODE, withTriadTimeout } from "@/domain/triadTimeout";
 import { useOrbitaAuth } from "@/hooks/useOrbitaAuth";
 import { appApi, type BirthDataDoc } from "@/services/appRefs";
 import { backendConfig } from "@/services/backendProviders";
-import { publicLabApi } from "@/services/publicLabRefs";
+import { publicOnboardingApi } from "@/services/publicOnboardingRefs";
 
 // Necesario para que el browser de OAuth devuelva el control a la app.
 WebBrowser.maybeCompleteAuthSession();
@@ -573,8 +573,11 @@ function useOnboardingChartInner(): OnboardingChart {
 }
 
 // ---------------------------------------------------------------------------
-// Tríada real SIN login: calcula la carta desde los datos cargados vía el
-// endpoint público del lab (previewDailyHome). Igual que en la web.
+// Tríada real SIN login: la calcula `publicOnboarding.computeTriad`, una acción
+// pública mínima (solo Sol/Luna/Ascendente). Antes se usaba el laboratorio
+// (`publicLab.previewDailyHome`), bloqueado en producción por diseño: el
+// cálculo fallaba siempre y el alta seguía de largo sin tríada. La zona horaria
+// la deriva el backend de las coordenadas; acá no se usa la del dispositivo.
 // ---------------------------------------------------------------------------
 
 const HAS_CONVEX = backendConfig.hasConvex;
@@ -585,15 +588,46 @@ const SIGN_ES: Record<string, string> = {
   sagitario: "Sagitario", capricornio: "Capricornio", acuario: "Acuario", piscis: "Piscis"
 };
 
-/** "Sol en geminis" / "Ascendente en libra" → "Géminis"/"Libra". */
-function parseSignFromText(v: unknown): string | null {
+/** "geminis" → "Géminis". `null` si el backend no pudo resolver el signo. */
+export function signLabelFromKey(v: unknown): string | null {
   if (typeof v !== "string") return null;
-  let s = v.trim();
-  const m = s.match(/\ben\s+(.+)$/i);
-  if (m) s = m[1].trim();
+  const s = v.trim();
   if (!s || /pendiente/i.test(s)) return null;
   const key = s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
   return SIGN_ES[key] ?? capitalizeSign(s);
+}
+
+/**
+ * Estado del cálculo real de la tríada sin sesión. "unavailable" = sin backend
+ * o sin lugar de nacimiento; "skipped" = el usuario eligió seguir sin ella.
+ */
+export type TriadStatus = "idle" | "unavailable" | "loading" | "ready" | "error" | "skipped";
+
+/** Motivo del fallo, ya en el idioma del usuario (el alta lo muestra). */
+export function describeTriadError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+
+  if (new RegExp(`${TRIAD_CLIENT_TIMEOUT_CODE}|ONBOARDING_TRIAD_PROVIDER_TIMEOUT`).test(message)) {
+    return "La conexión tardó demasiado y no pudimos calcular tu carta.";
+  }
+
+  if (/ONBOARDING_TRIAD_RATE_LIMITED/.test(message)) {
+    return "Estamos recibiendo muchas cartas al mismo tiempo. Probá de nuevo en un minuto.";
+  }
+
+  if (/ONBOARDING_TRIAD_INVALID_DRAFT_ID/.test(message)) {
+    return "Se perdió el hilo de tu alta. Reintentá para volver a calcular tu carta.";
+  }
+
+  if (/ONBOARDING_TRIAD_INVALID_(BIRTH_DATE|BIRTH_TIME|BIRTH_TIME_PRECISION)/.test(message)) {
+    return "Revisá tu fecha y tu hora de nacimiento: no pudimos usarlas para calcular la carta.";
+  }
+
+  if (/ONBOARDING_TRIAD_(INVALID_COORDINATES|INVALID_PLACE_LABEL|TIMEZONE_UNRESOLVED)/.test(message)) {
+    return "Revisá tu lugar de nacimiento: necesitamos elegirlo del buscador para ubicar tu cielo.";
+  }
+
+  return "No pudimos calcular tu carta ahora mismo.";
 }
 
 export type ComputeTriadInput = {
@@ -603,7 +637,8 @@ export type ComputeTriadInput = {
   birthPlaceLabel: string;
   latitude?: number;
   longitude?: number;
-  timezone?: string;
+  /** Borrador del alta: cupo de reintentos del endpoint público. Obligatorio. */
+  clientDraftId?: string;
 };
 
 /** Devuelve una función que calcula la tríada real sin login. `null` sin Convex. */
@@ -613,29 +648,42 @@ export function useOnboardingComputeTriad(): ((input: ComputeTriadInput) => Prom
 }
 
 function useOnboardingComputeTriadInner() {
-  const previewDaily = useAction(publicLabApi.previewDailyHome);
+  const computeTriad = useAction(publicOnboardingApi.computeTriad);
   return useCallback(
     async (input: ComputeTriadInput): Promise<OnboardingChart> => {
-      const localDate = new Date().toISOString().slice(0, 10);
-      const res = (await previewDaily({
-        birthDate: input.birthDate,
-        birthTime: input.birthTime,
-        birthTimePrecision: input.birthTimePrecision,
-        birthPlaceLabel: input.birthPlaceLabel,
-        latitude: input.latitude,
-        longitude: input.longitude,
-        timezone: input.timezone ?? deviceTimezone(),
-        localDate
-      })) as { natalBase?: { sun?: unknown; moon?: unknown; ascendant?: unknown } };
-      const nb = res?.natalBase ?? {};
+      // Sin coordenadas no hay cielo que ubicar ni zona que derivar: se corta
+      // acá con el mismo código que usa el backend. Nunca se cae a la zona del
+      // dispositivo — para alguien nacido en otra zona es la equivocada.
+      if (typeof input.latitude !== "number" || typeof input.longitude !== "number") {
+        throw new Error("ONBOARDING_TRIAD_INVALID_COORDINATES: falta el lugar de nacimiento.");
+      }
+
+      if (!input.clientDraftId) {
+        throw new Error("ONBOARDING_TRIAD_INVALID_DRAFT_ID: falta el borrador del alta.");
+      }
+
+      // Sin conexión, `useAction` encola y la promesa nunca se asienta: el
+      // techo del cliente convierte esa espera en un error con recuperación.
+      const res = await withTriadTimeout(
+        computeTriad({
+          birthDate: input.birthDate,
+          birthTime: input.birthTime,
+          birthTimePrecision: input.birthTimePrecision,
+          birthPlaceLabel: input.birthPlaceLabel,
+          latitude: input.latitude,
+          longitude: input.longitude,
+          clientDraftId: input.clientDraftId
+        })
+      );
+
       return {
         resolved: true,
-        sun: parseSignFromText(nb.sun),
-        moon: parseSignFromText(nb.moon),
-        ascendant: parseSignFromText(nb.ascendant)
+        sun: signLabelFromKey(res?.sun),
+        moon: signLabelFromKey(res?.moon),
+        ascendant: signLabelFromKey(res?.ascendant)
       };
     },
-    [previewDaily]
+    [computeTriad]
   );
 }
 

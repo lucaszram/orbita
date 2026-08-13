@@ -12,6 +12,7 @@ import {
   mergeDailyHomeWithLlm,
   type LlmDailyHomeResult
 } from "./lib/aiGateway";
+import { isProductionEnvironment } from "./lib/environment";
 import {
   buildAstrologicalLabRunPayload,
   buildChartWheelData,
@@ -49,12 +50,13 @@ function configuredAccessKey() {
   return process.env.ORBITA_PUBLIC_LAB_KEY?.trim();
 }
 
+/**
+ * El lab es superficie de laboratorio: nunca se sirve en producción. El
+ * onboarding anónimo NO pasa por acá — usa `publicOnboarding.computeTriad`, que
+ * sí funciona en producción.
+ */
 export function assertPublicLabAccess(accessKey?: string) {
-  if (
-    process.env.ORBITA_ENVIRONMENT === "production" ||
-    process.env.COMMERCE_MODE === "live" ||
-    process.env.CONVEX_DEPLOYMENT?.startsWith("prod:") === true
-  ) {
+  if (isProductionEnvironment()) {
     throw new Error("Public lab is not available in production.");
   }
   if (process.env.ORBITA_PUBLIC_LAB_ENABLED !== "true") {

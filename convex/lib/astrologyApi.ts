@@ -513,6 +513,8 @@ export async function runAstrologyApiProvider(args: {
 export async function runAstrologyApiNatalChart(args: {
   input: BirthChartInput;
   localDate: string;
+  /** Corta la llamada natal desde afuera (deadline del onboarding anónimo). */
+  signal?: AbortSignal;
 }): Promise<NatalChartProviderResult> {
   const config = getAstrologyApiConfig();
   const prepared = buildBirthRequest(args.input, config.houseSystem);
@@ -549,14 +551,19 @@ export async function runAstrologyApiNatalChart(args: {
     const preferredEndpoint = process.env.ASTROLOGY_API_NATAL_CHART_ENDPOINT ?? "western_horoscope";
 
     try {
-      const westernHoroscope = await postAstrologyApi(config, preferredEndpoint, prepared.request);
+      const westernHoroscope = await postAstrologyApi(config, preferredEndpoint, prepared.request, {
+        signal: args.signal
+      });
       natalChartInterpretation = westernHoroscope;
       westernChartData = westernHoroscope;
-    } catch {
+    } catch (error) {
+      // Si el deadline ya cortó, el fallback legacy también nacería abortado:
+      // reintentarlo solo agrega dos llamadas muertas.
+      if (args.signal?.aborted) throw error;
       warnings.push("western_horoscope_unavailable_used_legacy_natal_endpoints");
       [natalChartInterpretation, westernChartData] = await Promise.all([
-        postAstrologyApi(config, "natal_chart_interpretation", prepared.request),
-        postAstrologyApi(config, "western_chart_data", prepared.request)
+        postAstrologyApi(config, "natal_chart_interpretation", prepared.request, { signal: args.signal }),
+        postAstrologyApi(config, "western_chart_data", prepared.request, { signal: args.signal })
       ]);
     }
 

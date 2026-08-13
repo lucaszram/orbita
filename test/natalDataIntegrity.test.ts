@@ -107,9 +107,15 @@ test("nada sale del dispositivo antes de que haya una cuenta activa", () => {
 });
 
 test("en inspección no se calcula carta ni se pisa el borrador", () => {
-  const triada = bloqueDesde(FLOW, "if (step < STEP_COMPUTE_TRIAD || !computeTriad || !birthPlace) return;");
+  const triada = bloqueDesde(FLOW, "if (step < STEP_COMPUTE_TRIAD) return;");
   assert.ok(/inspeccion/.test(FLOW.slice(FLOW.indexOf("Inspección: no se le pega a la API"), FLOW.indexOf("if (step < STEP_COMPUTE_TRIAD"))));
   assert.ok(triada.length > 0);
+  // Sin backend, sin lugar o sin borrador tampoco se calcula: el estado queda
+  // "unavailable" y el alta avanza igual que siempre.
+  assert.match(
+    FLOW_CODE,
+    /if \(!computeTriad \|\| !birthPlace \|\| !clientDraftId\) \{\s*setTriadStatus\("unavailable"\);\s*return;/
+  );
 
   // El borrador local pasó a multilínea al sumarle el `clientDraftId`.
   const borrador = bloqueDesde(FLOW, "writeDraft({");
