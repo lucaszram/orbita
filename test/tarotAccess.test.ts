@@ -26,6 +26,9 @@ test("Plus no tiene límite de revelaciones", () => {
 
 test("el backend publica un marcador estable para que el cliente abra la paywall", () => {
   assert.equal(FREE_TAROT_REVEAL_LIMIT_REACHED, "FREE_TAROT_REVEAL_LIMIT_REACHED");
+  const daily = readFileSync(join(process.cwd(), "convex/daily.ts"), "utf8");
+  assert.match(daily, /new ConvexError\(\{ code: FREE_TAROT_REVEAL_LIMIT_REACHED \}\)/);
+  assert.doesNotMatch(daily, /new Error\(FREE_TAROT_REVEAL_LIMIT_REACHED\)/);
 });
 
 test("reabrir la carta ya revelada gana antes de contar el límite Free", () => {
