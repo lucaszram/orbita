@@ -510,7 +510,21 @@ export default defineSchema({
     // Generar la guía no revela la carta. La primera interacción guarda esta
     // marca y el reveal queda irreversible para ese día.
     revealedAt: v.optional(v.number())
-  }).index("by_user_date", ["userId", "localDate"])
+  }).index("by_user_date", ["userId", "localDate"]),
+
+  // Rate limit de las acciones públicas SIN sesión (hoy: la tríada del
+  // onboarding anónimo). Un documento por ventana fija y por sujeto —el
+  // borrador del alta, o "all" para el fusible global—. No guarda datos
+  // natales: el sujeto es un hash corto. `by_expiresAt` limpia las vencidas.
+  publicRateLimits: defineTable({
+    bucketKey: v.string(),
+    scope: v.string(),
+    count: v.number(),
+    windowStartedAt: v.number(),
+    expiresAt: v.number()
+  })
+    .index("by_bucketKey", ["bucketKey"])
+    .index("by_expiresAt", ["expiresAt"])
 });
 
 // ---------------------------------------------------------------------------
