@@ -56,17 +56,39 @@ export const FREE_TAROT_LIMIT_MARKER = "FREE_TAROT_REVEAL_LIMIT_REACHED";
 export type RevealFailureKind = "limite_free" | "desconocido";
 
 /**
+ * Código de aplicación de un `ConvexError`.
+ *
+ * `new ConvexError({ code })` viaja al cliente en `error.data`; el `message`
+ * queda en "Server Error" y NO trae el marcador. Se exige que `data` sea un
+ * objeto con `code` string: así un valor cualquiera con forma parecida no puede
+ * colar un límite falso.
+ */
+function convexErrorCode(error: Error): string | null {
+  const data = (error as { data?: unknown }).data;
+  if (typeof data !== "object" || data === null) return null;
+  const code = (data as { code?: unknown }).code;
+  return typeof code === "string" ? code : null;
+}
+
+/**
  * Clasifica el fallo de `daily.revealCard`.
  *
- * Convex envuelve el `Error` del backend dentro de un mensaje más largo
- * (request id, "Uncaught Error", ubicación del handler), así que se busca el
- * marcador DENTRO del mensaje en vez de comparar igualdad exacta — mismo
- * criterio que `checkoutStartErrorKind`. Cualquier otra cosa —error de red,
- * fallo desconocido, o un valor que ni siquiera es un `Error`— cae en
- * `desconocido` y conserva el comportamiento de siempre: el flip se revierte y
- * no se inventa una explicación de plan.
+ * Dos formas, ambas reales:
+ *
+ * 1. `ConvexError({ code })` — lo que tira producción hoy. El marcador llega en
+ *    `error.data.code` y se compara por igualdad exacta. Mirar sólo el mensaje
+ *    era justo el bug: devolvía `desconocido`, la carta volvía al dorso y nunca
+ *    aparecía `DESBLOQUEAR TAROT DIARIO`.
+ * 2. `Error` común — Convex lo envuelve en un mensaje más largo (request id,
+ *    "Uncaught Error", ubicación del handler), así que ahí se busca el marcador
+ *    DENTRO del mensaje, mismo criterio que `checkoutStartErrorKind`.
+ *
+ * Cualquier otra cosa —error de red, fallo desconocido, o un valor que ni
+ * siquiera es un `Error`— cae en `desconocido` y conserva el comportamiento de
+ * siempre: el flip se revierte y no se inventa una explicación de plan.
  */
 export function revealFailureKind(error: unknown): RevealFailureKind {
   if (!(error instanceof Error)) return "desconocido";
+  if (convexErrorCode(error) === FREE_TAROT_LIMIT_MARKER) return "limite_free";
   return error.message.includes(FREE_TAROT_LIMIT_MARKER) ? "limite_free" : "desconocido";
 }

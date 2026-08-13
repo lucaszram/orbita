@@ -224,12 +224,40 @@ test("el marcador se reconoce envuelto en el mensaje de error de Convex", () => 
   assert.equal(revealFailureKind(new Error(FREE_TAROT_REVEAL_LIMIT_REACHED)), "limite_free");
 });
 
+// El incidente real: producción tira `new ConvexError({ code })`. El marcador
+// viaja en `error.data.code` y el mensaje queda en "Server Error", así que
+// mirar sólo el mensaje devolvía `desconocido`: la carta volvía al dorso y
+// nunca aparecía `DESBLOQUEAR TAROT DIARIO`.
+test("el error real de producción (ConvexError con data.code) es el límite Free", () => {
+  const produccion = Object.assign(new Error("Server Error"), {
+    data: { code: FREE_TAROT_LIMIT_MARKER }
+  });
+  assert.equal(revealFailureKind(produccion), "limite_free");
+
+  // Con request id adelante, como lo muestra el navegador.
+  const conRequestId = Object.assign(new Error("[Request ID: abc123] Server Error"), {
+    data: { code: FREE_TAROT_REVEAL_LIMIT_REACHED }
+  });
+  assert.equal(revealFailureKind(conRequestId), "limite_free");
+});
+
 test("cualquier otro fallo conserva el comportamiento de siempre", () => {
   assert.equal(revealFailureKind(new Error("Network request failed")), "desconocido");
   assert.equal(revealFailureKind(new Error("Sólo se puede revelar la carta del día actual")), "desconocido");
+  // Otro ConvexError con datos propios no se confunde con el límite.
+  assert.equal(
+    revealFailureKind(Object.assign(new Error("Server Error"), { data: { code: "OTRA_COSA" } })),
+    "desconocido"
+  );
+  assert.equal(
+    revealFailureKind(Object.assign(new Error("Server Error"), { data: { code: 42 } })),
+    "desconocido"
+  );
+  assert.equal(revealFailureKind(Object.assign(new Error("Server Error"), { data: null })), "desconocido");
   // Un valor que ni siquiera es un Error no puede colar un límite falso.
   assert.equal(revealFailureKind("FREE_TAROT_REVEAL_LIMIT_REACHED"), "desconocido");
   assert.equal(revealFailureKind({ message: "FREE_TAROT_REVEAL_LIMIT_REACHED" }), "desconocido");
+  assert.equal(revealFailureKind({ data: { code: FREE_TAROT_LIMIT_MARKER } }), "desconocido");
   assert.equal(revealFailureKind(undefined), "desconocido");
 });
 
