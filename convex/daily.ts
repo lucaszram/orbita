@@ -6,7 +6,7 @@ import {
   mutationGeneric as mutation,
   queryGeneric as query
 } from "convex/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import { editorialRitualFor } from "./content/tarotEditorial";
 import { runAstrologyApiDailyTransits } from "./lib/astrologyApi";
@@ -1519,7 +1519,10 @@ export const revealCard = mutation({
         0
       );
       if (!canRevealNewTarotCard({ isPro: false, revealedCount })) {
-        throw new Error(FREE_TAROT_REVEAL_LIMIT_REACHED);
+        // Los `Error` comunes se redactan para el cliente en producción. Este
+        // límite es una decisión de producto recuperable, así que viaja como
+        // ConvexError estructurado para que la Home pueda ofrecer Plus.
+        throw new ConvexError({ code: FREE_TAROT_REVEAL_LIMIT_REACHED });
       }
     }
 

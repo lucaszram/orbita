@@ -1,5 +1,12 @@
 # Contrato — CHANGELOG
 
+## 2026-08-13 — Hotfix: límite Free del Tarot visible en producción
+
+- **Qué cambia:** `daily.revealCard({ localDate })` conserva argumentos y retorno de éxito, pero el límite esperado de siete cartas ahora se comunica como `ConvexError({ code: "FREE_TAROT_REVEAL_LIMIT_REACHED" })` en lugar de un `Error` interno.
+- **Por qué:** Convex redacta los errores internos comunes en producción. El servidor aplicaba correctamente el límite, pero el navegador recibía sólo `Server Error`; por eso la Home revertía el giro y nunca activaba `DESBLOQUEAR TAROT DIARIO`.
+- **Compatibilidad:** no cambia schema ni el camino exitoso. Los clientes deben leer `error.data.code`; durante la transición pueden conservar el reconocimiento del marcador dentro de `Error.message` usado en desarrollo.
+- **Rollout:** desplegar primero Convex compatible y luego el frontend que reconoce el payload estructurado. Rollback por redeploy del bundle anterior, sabiendo que restaura el fallo visual en producción.
+
 ## 2026-08-13 — Tríada del onboarding anónimo fuera del laboratorio
 
 - **Qué cambia:** nueva acción pública `publicOnboarding.computeTriad({ birthDate, birthTime?, birthTimePrecision, birthPlaceLabel?, latitude, longitude, clientDraftId })` que devuelve **únicamente** `{ sun, moon, ascendant }` (signos canónicos en minúscula sin tildes, o `null`), garantizado por un `returns` validator. Usa el proveedor natal canónico (`runAstrologyApiNatalChart`). Sin sesión y sin persistir datos de nacimiento.
