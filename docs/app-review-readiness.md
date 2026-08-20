@@ -1,5 +1,11 @@
 # App Review — fuente de verdad
 
+> **Alcance histórico del build 17 gratuito (2026-07-18).** Desde el
+> 2026-08-18, las frases de este documento que excluyen Plus, RevenueCat o IAP no
+> describen el candidato comercial nuevo. Para comercio nativo manda
+> `docs/native-commerce-release-checklist.md`; el resto de este archivo conserva
+> la evidencia del build 17 y sigue siendo útil como antecedente de review.
+
 Estado: 2026-07-18. Este documento reemplaza las suposiciones operativas viejas de
 `app-store-launch-pack.md` y `app-store-metadata-draft.md` cuando haya conflicto.
 

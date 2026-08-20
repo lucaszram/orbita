@@ -32,6 +32,7 @@ import {
   type BirthEditorDraft,
   type BirthEditorSeed
 } from "@/domain/birthEditorSeed";
+import { createExclusiveGate, runExclusive } from "@/domain/exclusive";
 import { useAppState } from "@/hooks/useAppState";
 import { useLiveApp, useLiveAppDocs } from "@/hooks/useLiveApp";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
@@ -110,6 +111,10 @@ function EditarDatosSurface() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [syncTimedOut, setSyncTimedOut] = useState(false);
   const [syncTick, setSyncTick] = useState(0);
+  // El candado REAL del guardado. `saving` sirve para pintar el botón, pero se
+  // aplica recién en el render siguiente: dos toques del mismo render lo leen
+  // los dos en `false` y los dos entran. Ver `@/domain/exclusive`.
+  const guardando = useRef(createExclusiveGate()).current;
 
   // Con sesión, Guardar espera a que resuelva el birthData remoto: si el lugar
   // no cambió y el doc no llegó, se mandaría timezone undefined y el backend
@@ -205,44 +210,49 @@ function EditarDatosSurface() {
     // Último borde: si al borrador le falta algo, no se completa nada por él.
     const edits = draftToEdits(draft);
     if (!edits) return;
-    setSaving(true);
-    setSaveError(null);
-    try {
-      if (signedIn && persistBackend) {
-        // Con sesión: esperar la confirmación del backend (recalcula carta y
-        // lectura) ANTES de aplicar nada. Si falla, no se guarda ni local:
-        // queda el error con reintento y los datos siguen consistentes.
-        await persistBackend(buildBackendBirthPayload(edits, remoteBirthData));
-      }
-      if (profile) {
-        // Invitado o cuenta con perfil local: se actualiza lo que ya existe.
-        await updateProfile(applyBirthEdits(profile, edits));
-      } else {
-        // Cuenta incompleta en un dispositivo/navegador sin perfil local: el
-        // remoto ya quedó escrito y acá se crea la copia local marcada con su
-        // dueño, en vez de dejar la cuenta sin nada que mostrar.
-        await createProfile(
-          onboardingInputFromBirthData({
-            birthDate: edits.birthDate,
-            birthTime: edits.birthTime ?? undefined,
-            birthPlaceLabel: edits.place.label
-          }),
-          auth?.userId ?? null
+    // El candado se toma ACÁ, antes del primer `await`: es lo único que ven
+    // igual los dos toques de un mismo render, y se libera en el `finally` de
+    // `runExclusive` aunque el guardado falle.
+    await runExclusive(guardando, async () => {
+      setSaving(true);
+      setSaveError(null);
+      try {
+        if (signedIn && persistBackend) {
+          // Con sesión: esperar la confirmación del backend (recalcula carta y
+          // lectura) ANTES de aplicar nada. Si falla, no se guarda ni local:
+          // queda el error con reintento y los datos siguen consistentes.
+          await persistBackend(buildBackendBirthPayload(edits, remoteBirthData));
+        }
+        if (profile) {
+          // Invitado o cuenta con perfil local: se actualiza lo que ya existe.
+          await updateProfile(applyBirthEdits(profile, edits));
+        } else {
+          // Cuenta incompleta en un dispositivo/navegador sin perfil local: el
+          // remoto ya quedó escrito y acá se crea la copia local marcada con su
+          // dueño, en vez de dejar la cuenta sin nada que mostrar.
+          await createProfile(
+            onboardingInputFromBirthData({
+              birthDate: edits.birthDate,
+              birthTime: edits.birthTime ?? undefined,
+              birthPlaceLabel: edits.place.label
+            }),
+            auth?.userId ?? null
+          );
+        }
+        // Sin perfil local previo se llegó acá por una recuperación, no desde
+        // Perfil: no hay pantalla atrás a la cual volver.
+        if (profile) router.back();
+        else router.replace(HOME_ROUTE as never);
+      } catch (e) {
+        setSaveError(
+          e instanceof BirthPayloadError
+            ? birthPayloadMessage(e.problem)
+            : "No pudimos guardar en tu cuenta. No cambiamos nada; revisá tu conexión y volvé a intentar."
         );
+      } finally {
+        setSaving(false);
       }
-      // Sin perfil local previo se llegó acá por una recuperación, no desde
-      // Perfil: no hay pantalla atrás a la cual volver.
-      if (profile) router.back();
-      else router.replace(HOME_ROUTE as never);
-    } catch (e) {
-      setSaveError(
-        e instanceof BirthPayloadError
-          ? birthPayloadMessage(e.problem)
-          : "No pudimos guardar en tu cuenta. No cambiamos nada; revisá tu conexión y volvé a intentar."
-      );
-    } finally {
-      setSaving(false);
-    }
+    });
   };
 
   return (

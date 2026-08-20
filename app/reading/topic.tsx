@@ -1,34 +1,10 @@
-import { View } from "react-native";
-import { useLocalSearchParams } from "expo-router";
-import { DetailScreen } from "@/components/home/DetailScreen";
-import { Eyebrow, LabeledBlock, MutedBody, SerifTitle } from "@/components/home/sections";
-import { useAppState } from "@/hooks/useAppState";
-import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
-import { orbita } from "@/theme/orbita";
-
-/** Detalle de un topic (Amor/Trabajo/Familia/Vínculos) de la Home. */
-export default function TopicDetailScreen() {
-  const { topic } = useLocalSearchParams<{ topic?: string }>();
-  const { homeReading } = useAppState();
-  const fontsLoaded = useOrbitaFonts();
-
-  if (!fontsLoaded) {
-    return <View style={{ flex: 1, backgroundColor: orbita.colors.background }} />;
-  }
-
-  const item = homeReading.topics.find((t) => t.topic === topic) ?? homeReading.topics[0];
-
-  return (
-    <DetailScreen eyebrow={item.label}>
-      <SerifTitle>{item.title}</SerifTitle>
-      <MutedBody>{item.detail}</MutedBody>
-
-      <LabeledBlock label="HACÉ" copy={item.hace} />
-      <LabeledBlock label="EVITÁ" copy={item.evita} />
-
-      <View style={{ height: orbita.spacing.xxl }} />
-      <Eyebrow>PREGUNTA</Eyebrow>
-      <SerifTitle>{item.question}</SerifTitle>
-    </DetailScreen>
-  );
-}
+/**
+ * Wrapper de ruta. La implementación vive FUERA de `app/`, en
+ * `src/routes/v492/reading-topic` (`.tsx` nativo → redirección a `/hoy`,
+ * `.web.tsx` web → la lectura de siempre).
+ *
+ * Expo Router incluye en el grafo TODOS los archivos de `app/`, también las
+ * variantes `.web.tsx`: con la implementación afuera, la que elige es la
+ * resolución por plataforma de Metro y cada bundle ve sólo la suya.
+ */
+export { default } from "@/routes/v492/reading-topic";

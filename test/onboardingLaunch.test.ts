@@ -17,8 +17,8 @@ import {
   partsToTimeValue,
   timeValueToParts
 } from "../src/domain/birthInput";
+import { ROOT, resolveEntryForPlatform } from "./moduleGraph";
 
-const ROOT = join(import.meta.dirname, "..");
 const leer = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
 const sinComentarios = (x: string) => x.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 
@@ -464,7 +464,7 @@ test("los pasos densos scrollean y los que ya scrollean no anidan otro scroll", 
 });
 
 test("la vista combinada es interna y de sólo lectura", () => {
-  const preview = sinComentarios(leer("app/preview-alta.tsx"));
+  const preview = sinComentarios(readFileSync(resolveEntryForPlatform("app/preview-alta.tsx", "web"), "utf8"));
   // Cerrada en producción, como /studio, /lab y /backoffice.
   assert.match(preview, /if \(!INTERNAL_TOOLS_ENABLED\) return <Redirect href="\/" \/>;/);
   // Monta el alta REAL, no una copia que pueda divergir.

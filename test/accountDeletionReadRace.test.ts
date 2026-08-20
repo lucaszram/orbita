@@ -96,6 +96,17 @@ describe("account deletion read race", () => {
     assert.match(readings, /const user = await findCurrentUser\(ctx\);\n    if \(!user\) return \[\];/);
     assert.match(charts, /if \(!user\) return null;/);
     assert.match(birthData, /if \(!user\) return null;/);
-    assert.match(subscriptions, /if \(!user\) return resolveEntitlement\(\[\], Date\.now\(\)\);/);
+    // La forma "gratuita" de `subscriptions.getCurrent` sigue saliendo de
+    // `resolveRowsForUser([])` —los mismos campos de siempre— y ahora lleva
+    // además el dueño correlacionado, que sin fila es `null`. El campo es
+    // aditivo: no reemplaza nada.
+    assert.match(
+      subscriptions,
+      /if \(!user\) return \{ \.\.\.resolveRowsForUser\(\[\], Date\.now\(\)\), clerkUserId: null \};/
+    );
+    assert.match(
+      subscriptions,
+      /return \{ \.\.\.resolveRowsForUser\(rows, Date\.now\(\)\), clerkUserId: user\.clerkUserId \?\? null \};/
+    );
   });
 });

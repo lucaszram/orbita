@@ -48,7 +48,18 @@ export const upsertForCurrentUser = mutation({
     });
 
     if (existing) {
-      await ctx.db.patch(existing._id, payload);
+      // `omitUndefined` saca las claves sin valor para no pisar campos que el
+      // llamador no toca, pero eso deja la hora VIEJA cuando alguien pasa a
+      // "No sé la hora": el patch no la borra. El cálculo respeta
+      // `birthTimePrecision` y sale bien, pero el documento sigue publicando
+      // una hora que la cuenta ya no usa, y el editor —que se siembra del
+      // documento— reabría con esa hora y el interruptor apagado, sin poder
+      // guardar ("todavía no cambiaste nada"). Medido en el simulador el
+      // 2026-08-17: dejaba la hora imposible de restaurar por la UI.
+      // Sin hora, la hora se borra explícitamente (`undefined` en un patch de
+      // Convex quita el campo).
+      const sinHora = normalizeBirthTime(args.birthTime) === undefined;
+      await ctx.db.patch(existing._id, sinHora ? { ...payload, birthTime: undefined } : payload);
       return existing._id;
     }
 

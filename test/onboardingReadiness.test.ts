@@ -141,15 +141,32 @@ test("el borrador remoto se persiste y se CONFIRMA antes de abrir Clerk", () => 
     hook.indexOf("export type FinalizeOnboarding")
   );
   assert.ok(gate.length > 0);
-  // Anónimo, con clientDraftId, y confirmado DESPUÉS de guardar.
+  // ANÓNIMO de verdad: por el canal dedicado sin autenticar, nunca por el
+  // cliente compartido que Clerk autentica cuando se le da la gana.
+  assert.doesNotMatch(gate, /useConvex\(\)/, "el borrador anónimo no usa el cliente de la app");
+  assert.match(gate, /anonymousSignupDraftTransport\(\)/);
+  assert.match(gate, /persistSignupDraft\(transport, input\)/);
+
+  // Con clientDraftId, y confirmado DESPUÉS de guardar. Las dos llamadas al
+  // contrato viven en el transporte dedicado.
+  const transporte = sinComentarios(leer("src/services/anonymousOnboardingTransport.ts"));
   assert.ok(
-    gate.indexOf("appApi.onboarding.saveDraft") < gate.indexOf("appApi.onboarding.confirmSignupDraft"),
+    transporte.indexOf("appApi.onboarding.saveDraft") <
+      transporte.indexOf("appApi.onboarding.confirmSignupDraft"),
     "primero se guarda, después se confirma"
   );
+  assert.match(transporte, /clientDraftId: args\.clientDraftId/);
+  assert.doesNotMatch(transporte, /setAuth/, "el canal no puede recibir un token");
+
   // Reintentable: la zona horaria la resuelve el backend en segundo plano y un
   // enriquecimiento en vuelo no puede leerse como un error de la persona.
-  assert.match(gate, /runSessionAttempts\(\{/);
-  assert.match(gate, /ONBOARDING_SIGNUP_DRAFT_NOT_READY/);
+  const cadena = sinComentarios(leer("src/domain/anonymousSignupDraft.ts"));
+  assert.ok(
+    cadena.indexOf("transport.saveDraft(") < cadena.indexOf("transport.confirmSignupDraft("),
+    "primero se guarda, después se confirma"
+  );
+  assert.match(cadena, /runSessionAttempts\(\{/);
+  assert.match(cadena, /ONBOARDING_SIGNUP_DRAFT_NOT_READY/);
 });
 
 test("el cierre copia el borrador atómicamente y calcula sólo como mejor esfuerzo", () => {

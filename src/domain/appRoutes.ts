@@ -19,10 +19,14 @@ export const HOME_ROUTE = IS_WEB ? "/home" : "/(tabs)";
 /**
  * Ceremonia de recepción del día 1: la primera entrega después del alta.
  *
- * Es una ruta propia (`app/recepcion.tsx`), igual en las dos plataformas — no
- * vive dentro de `(tabs)`, así que no tiene el problema de `/(tabs)` en web.
- * Sólo la abre la salida del alta; desde ahí se sigue a la carta, a la paywall
- * o a `HOME_ROUTE`.
+ * Es una ruta propia (`app/recepcion.tsx`), con la MISMA URL en las dos
+ * plataformas — no vive dentro de `(tabs)`, así que no tiene el problema de
+ * `/(tabs)` en web. Sólo la abre la salida del alta.
+ *
+ * Lo que hay del otro lado sí depende de la plataforma, y lo resuelve Metro
+ * (`src/routes/v492/recepcion`): en web es la ceremonia completa, con su salida
+ * a la carta o al pago; en nativo se marca la primera vez y se entra derecho a
+ * la Carta del Perfil, que es donde vive ese activo.
  */
 export const RECEPTION_ROUTE = "/recepcion";
 

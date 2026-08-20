@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { bootGateSurface } from "../src/domain/accountDeletion";
+import { resolveEntryForPlatform, type ModulePlatform } from "./moduleGraph";
 
 const ROOT = join(import.meta.dirname, "..");
 
@@ -16,6 +18,8 @@ function walk(dir: string, out: string[] = []): string[] {
 
 const APP_FILES = walk(join(ROOT, "app"));
 const SRC_FILES = walk(join(ROOT, "src"));
+const fuenteDeEntrada = (ruta: string, plataforma: ModulePlatform) =>
+  readFileSync(resolveEntryForPlatform(ruta, plataforma), "utf8");
 
 // --- La dependencia no puede volver a invertirse -----------------------------
 // `mapNatalChart` y `Radar` vivían dentro de `src/components/web/`, así que seis
@@ -36,19 +40,29 @@ test("ninguna ruta importa una pantalla web duplicada", () => {
   assert.deepEqual(culpables, [], `estas rutas duplican una pantalla: ${culpables.join(", ")}`);
 });
 
-test("web y nativo montan el MISMO onboarding canónico", () => {
+test("web y nativo llegan al MISMO onboarding canónico por sus entradas resueltas", () => {
   const canonico = readFileSync(join(ROOT, "src/onboarding/OnboardingFlow.tsx"), "utf8");
   // 15 pasos: la secuencia V4.4 completa, con la cuenta en su lugar original
   // (`14 / Create Account`) y el cierre al final.
   assert.match(canonico, /const TOTAL = 15;/, "el flujo canónico debe tener 15 pasos");
-  // Las dos rutas llegan al flujo canónico A TRAVÉS del gate compartido, que es
-  // el que impide que una cuenta con datos natales vuelva al alta.
+  // La ruta web monta el gate compartido; la entrada nativa histórica
+  // `/empezar` es sólo un alias limpio hacia `/onboarding`, que monta ese mismo
+  // gate. Así la web conserva su aviso de backend sin meterlo en el bundle iOS.
   const gate = readFileSync(join(ROOT, "src/onboarding/OnboardingGate.tsx"), "utf8");
   assert.ok(/@\/onboarding\/OnboardingFlow/.test(gate), "el gate debe montar el flujo canónico");
-  for (const ruta of ["app/empezar.tsx", "app/onboarding.tsx"]) {
-    const s = readFileSync(join(ROOT, ruta), "utf8");
-    assert.ok(/OnboardingGate/.test(s), `${ruta} no pasa por el gate compartido`);
-  }
+  const empezarWeb = fuenteDeEntrada("app/empezar.tsx", "web");
+  assert.match(empezarWeb, /OnboardingGate/, "la entrada web debe montar el gate compartido");
+
+  const empezarNative = fuenteDeEntrada("app/empezar.tsx", "native");
+  assert.match(empezarNative, /<Redirect href="\/onboarding"\s*\/>/, "el alias nativo entra al onboarding");
+  assert.doesNotMatch(
+    empezarNative,
+    /OnboardingGate|WebNotice|backendConfig/,
+    "el alias nativo debe ser una redirección limpia"
+  );
+
+  const onboarding = fuenteDeEntrada("app/onboarding.tsx", "native");
+  assert.match(onboarding, /OnboardingGate/, "la ruta nativa canónica debe montar el gate compartido");
   assert.throws(
     () => readFileSync(join(ROOT, "src/components/web/orbita-onboarding.tsx"), "utf8"),
     "volvió a aparecer un onboarding web aparte"
@@ -86,8 +100,9 @@ test("react-native-web sigue sin implementar Alert (la razón de ConfirmHost)", 
 
 test("ninguna pantalla compartida confirma ni avisa con Alert directo", () => {
   const compartidas = [
-    join(ROOT, "app/(tabs)/perfil.tsx"),
-    join(ROOT, "app/(tabs)/index.tsx")
+    join(ROOT, "src/screens/PerfilScreen.tsx"),
+    join(ROOT, "src/screens/HomeScreen.tsx"),
+    resolveEntryForPlatform("app/(tabs)/index.tsx", "native")
   ];
   for (const f of compartidas) {
     const s = readFileSync(f, "utf8");
@@ -136,21 +151,32 @@ test("no vuelve a existir un gate de mocks ni `?live=1`", () => {
 const CANONICAS = [
   ["src/screens/HomeScreen.tsx", "HomeScreen", ["app/home.tsx", "app/(tabs)/index.tsx"]],
   ["src/screens/CartaScreen.tsx", "CartaScreen", ["app/(tabs)/carta.tsx"]],
-  ["src/screens/TransitosScreen.tsx", "TransitosScreen", ["app/transito.tsx", "app/(tabs)/transitos.tsx"]],
+  ["src/screens/TransitosScreen.tsx", "TransitosScreen", ["app/transito.tsx", "app/(tabs)/transitos/index.tsx"]],
   ["src/screens/DiarioScreen.tsx", "DiarioScreen", ["app/diario.tsx", "app/reading/diario.tsx"]]
 ] as const;
 
-test("web y nativo resuelven a la MISMA pantalla canónica", () => {
+test("las rutas web conservan sus pantallas canónicas aunque nativo agregue V4.9.2", () => {
   for (const [modulo, nombre, rutas] of CANONICAS) {
     const canon = readFileSync(join(ROOT, modulo), "utf8");
     assert.ok(new RegExp(`export function ${nombre}`).test(canon), `${modulo} no exporta ${nombre}`);
     for (const ruta of rutas) {
-      const s = readFileSync(join(ROOT, ruta), "utf8");
+      const s = fuenteDeEntrada(ruta, "web");
       assert.ok(
         s.includes(`@/screens/${nombre}`),
-        `${ruta} no renderiza la pantalla canónica ${nombre}`
+        `${ruta} no resuelve a la pantalla web canónica ${nombre}`
       );
     }
+  }
+
+  // Las dos entradas históricas de Home mantienen el ritual canónico en web,
+  // pero en iOS redirigen a Hoy sin importar Home, Diario ni tarot.
+  for (const ruta of ["app/home.tsx", "app/(tabs)/index.tsx"]) {
+    assert.match(fuenteDeEntrada(ruta, "web"), /@\/screens\/HomeScreen/, `${ruta} conserva Home en web`);
+    assert.doesNotMatch(
+      fuenteDeEntrada(ruta, "native"),
+      /@\/screens\/HomeScreen/,
+      `${ruta} no puede importar HomeScreen en nativo`
+    );
   }
 });
 
@@ -167,19 +193,77 @@ test("las pantallas web duplicadas ya no existen", () => {
   }
 });
 
-test("la navegación web tiene la misma arquitectura que las pestañas nativas", () => {
+test("web permanece sin cambios y nativo expone las cinco pestañas V4.9.2", () => {
   const nav = readFileSync(join(ROOT, "src/components/web/web-nav.tsx"), "utf8");
   const seccionesWeb = [...nav.matchAll(/\{ key: "(\w+)", label: "([^"]+)", href/g)].map((m) => m[2]);
-  const tabs = readFileSync(join(ROOT, "app/(tabs)/_layout.tsx"), "utf8");
-  const seccionesNativas = [...tabs.matchAll(/<Tabs\.Screen name="\w+" options=\{\{ title: "([^"]+)" \}\} \/>/g)].map((m) => m[1]);
-  assert.deepEqual(seccionesWeb, seccionesNativas, "web y nativo deben ofrecer las mismas secciones, en el mismo orden");
+  const wrapper = readFileSync(join(ROOT, "app/(tabs)/_layout.tsx"), "utf8");
+  assert.match(wrapper, /export \{ default \} from "@\/routes\/v492\/tabs-layout"/);
+
+  const nativePath = resolveEntryForPlatform("app/(tabs)/_layout.tsx", "native");
+  const webPath = resolveEntryForPlatform("app/(tabs)/_layout.tsx", "web");
+  assert.equal(nativePath, join(ROOT, "src/routes/v492/tabs-layout.tsx"));
+  assert.equal(webPath, join(ROOT, "src/routes/v492/tabs-layout.web.tsx"));
+
+  const tabsNativas = readFileSync(nativePath, "utf8");
+  const tabsWeb = readFileSync(webPath, "utf8");
+  const seccionesNativas = [
+    ...tabsNativas.matchAll(/<Tabs\.Screen name="(\w+)" options=\{\{ title: "([^"]+)" \}\} \/>/g)
+  ].map((m) => ({ name: m[1], title: m[2] }));
+  assert.deepEqual(seccionesWeb, ["Inicio", "Tránsitos", "Umbral", "Perfil"], "la navegación web no cambia");
+  assert.deepEqual(
+    seccionesNativas,
+    [
+      { name: "hoy", title: "Hoy" },
+      { name: "transitos", title: "Tránsitos" },
+      { name: "vinculos", title: "Vínculos" },
+      { name: "umbral", title: "Umbral" },
+      // 2026-08-19: la 5ª pestaña muestra el hub de la carta directamente y se
+      // llama por lo que es. El name sigue siendo `perfil` (URL web, redirects).
+      { name: "perfil", title: "Carta" }
+    ],
+    "la app nativa tiene exactamente las cinco pestañas V4.9.2"
+  );
+  assert.doesNotMatch(tabsNativas, /title: "(?:Diario|Tarot)"/, "Diario y Tarot no vuelven a la barra nativa");
+  assert.match(tabsWeb, /<WebAppShell active=\{navKeyForPath\(pathname\)\}>[\s\S]*<Slot \/>/);
 });
 
 test("el Umbral es una sección de la web, no una ruta olvidada", () => {
-  const umbral = readFileSync(join(ROOT, "app/umbral.tsx"), "utf8");
-  assert.ok(/VoidExperience/.test(umbral), "/umbral debe montar la experiencia canónica");
+  assert.throws(
+    () => readFileSync(join(ROOT, "app/umbral.tsx"), "utf8"),
+    "la raíz no puede volver a disputar /umbral con el grupo de pestañas"
+  );
+  const umbral = readFileSync(join(ROOT, "app/(tabs)/umbral/index.tsx"), "utf8");
+  assert.ok(/VoidExperience/.test(umbral), "/umbral debe montar la experiencia canónica dentro de su tab");
   const nav = readFileSync(join(ROOT, "src/components/web/web-nav.tsx"), "utf8");
   assert.ok(/href: "\/umbral"/.test(nav));
+});
+
+test("las cinco pestañas son stacks propios y conservan la barra al abrir detalles", () => {
+  for (const tab of ["hoy", "transitos", "vinculos", "umbral", "perfil"]) {
+    const layout = readFileSync(join(ROOT, `app/(tabs)/${tab}/_layout.tsx`), "utf8");
+    assert.match(layout, /(?:import \{[^}]*\bStack\b[^}]*\} from "expo-router"|<Stack\b)/, `${tab} debe tener un stack`);
+    assert.match(layout, /<Stack\b/, `${tab} debe montar su stack dentro de la pestaña`);
+    readFileSync(join(ROOT, `app/(tabs)/${tab}/index.tsx`), "utf8");
+  }
+});
+
+test("las rutas nuevas de Tránsitos son wrappers resueltos por plataforma fuera de app", () => {
+  const casos = [
+    ["app/(tabs)/transitos/momento.tsx", "transitos-momento"],
+    ["app/(tabs)/transitos/arco/[arcId].tsx", "transitos-arco"]
+  ] as const;
+
+  for (const [ruta, modulo] of casos) {
+    const wrapper = readFileSync(join(ROOT, ruta), "utf8");
+    assert.match(wrapper, new RegExp(`export \\{ default \\} from "@/routes/v492/${modulo}"`));
+
+    const nativePath = resolveEntryForPlatform(ruta, "native");
+    const webPath = resolveEntryForPlatform(ruta, "web");
+    assert.equal(nativePath, join(ROOT, `src/routes/v492/${modulo}.tsx`));
+    assert.equal(webPath, join(ROOT, `src/routes/v492/${modulo}.web.tsx`));
+    assert.ok(!nativePath.startsWith(join(ROOT, "app/")), `${ruta} no puede implementar nativo dentro de app`);
+    assert.ok(!webPath.startsWith(join(ROOT, "app/")), `${ruta} no puede implementar web dentro de app`);
+  }
 });
 
 // --- La fecha del historial no puede volver al reloj del navegador -----------
@@ -283,15 +367,35 @@ test("después de entrar se va a la Home autenticada, no a /(tabs) en web", () =
 });
 
 test("la landing sólo se renderiza sin sesión, y lo decide el resolver único", () => {
-  const index = readFileSync(join(ROOT, "app/index.tsx"), "utf8")
+  const wrapper = readFileSync(join(ROOT, "app/index.tsx"), "utf8");
+  assert.match(wrapper, /export \{ default \} from "@\/routes\/v492\/index"/);
+  const resolved = resolveEntryForPlatform("app/index.tsx", "web");
+  assert.equal(resolved, join(ROOT, "src/routes/v492/index.web.tsx"));
+  const index = readFileSync(resolved, "utf8")
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/\/\/.*$/gm, "");
-  const web = index.slice(index.indexOf("if (IS_WEB)"));
-  const hastaLanding = web.slice(0, web.indexOf("<OrbitaLanding />"));
+
+  // El orden lo decide `bootGateSurface`, no un `if (IS_WEB)` suelto: el
+  // bloqueo por eliminación pendiente gana, y la landing es la superficie
+  // siguiente. Antes el `return` de la landing estaba ANTES del bloqueo, así que
+  // con una eliminación a medias en disco la web dejaba entrar igual.
+  assert.match(index, /bootGateSurface\(\{ pendingDeletion: pendingDeletionBlocking, isWeb: IS_WEB \}\)/);
+  const bloqueo = index.indexOf('if (surface === "pending-deletion")');
+  const landing = index.indexOf('if (surface === "landing")');
+  assert.ok(bloqueo > 0 && landing > 0, "faltan las dos superficies");
+  assert.ok(bloqueo < landing, "el bloqueo por eliminación pendiente va primero");
+
+  // Y la landing sigue envuelta por el gate de cuenta compartido.
+  const hastaLanding = index.slice(landing, index.indexOf("<OrbitaLanding />"));
   assert.ok(
     /AccountGate surface="landing"/.test(hastaLanding),
     "la landing debe pasar por el gate compartido, no por un guard propio"
   );
+
+  // La decisión pura, con las dos plataformas.
+  assert.equal(bootGateSurface({ pendingDeletion: true, isWeb: true }), "pending-deletion");
+  assert.equal(bootGateSurface({ pendingDeletion: false, isWeb: true }), "landing");
+  assert.equal(bootGateSurface({ pendingDeletion: false, isWeb: false }), "app");
 });
 
 // --- Patrones que desbordan en web ------------------------------------------
@@ -347,11 +451,24 @@ test("el campo del Umbral puede encoger en pantallas angostas", () => {
 // --- Un solo chrome de navegación en web ------------------------------------
 
 test("las tabs no montan la barra de React Navigation en web", () => {
-  const layout = readFileSync(join(ROOT, "app/(tabs)/_layout.tsx"), "utf8");
-  assert.ok(/if \(IS_WEB\)/.test(layout), "en web debe salir por WebAppShell");
-  assert.ok(/WebAppShell/.test(layout) && /<Slot \/>/.test(layout));
-  // El nativo no se toca.
-  assert.ok(/<Tabs/.test(layout) && /OrbitaTabBar/.test(layout), "la barra nativa debe seguir igual");
+  const web = fuenteDeEntrada("app/(tabs)/_layout.tsx", "web");
+  const native = fuenteDeEntrada("app/(tabs)/_layout.tsx", "native");
+  const nativeCode = native.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+
+  const webBranch = web.indexOf("if (IS_WEB)");
+  const webShell = web.indexOf("<WebAppShell", webBranch);
+  const nativeTabsFallback = web.indexOf("<Tabs", webShell);
+  assert.ok(webBranch >= 0, "la implementación web debe decidir su chrome explícitamente");
+  assert.ok(webShell > webBranch, "en web debe salir por WebAppShell");
+  assert.ok(/<Slot \/>/.test(web.slice(webShell, nativeTabsFallback)), "el shell web monta la ruta hija con Slot");
+  assert.ok(
+    nativeTabsFallback > webShell,
+    "la rama WebAppShell debe cortar antes del fallback de React Navigation"
+  );
+
+  // La implementación nativa conserva el único chrome de cinco pestañas.
+  assert.doesNotMatch(nativeCode, /WebAppShell|<Slot \/>/, "el bundle nativo no importa el shell web");
+  assert.ok(/<Tabs/.test(nativeCode) && /OrbitaTabBar/.test(nativeCode), "la barra nativa debe seguir igual");
 });
 
 test("no existe app/perfil.tsx: /perfil sigue viniendo de (tabs)", () => {

@@ -5,11 +5,11 @@ import {
 import { v } from "convex/values";
 import {
   PRO_ENTITLEMENT,
-  resolveEntitlement,
   type SubscriptionPlan,
   type SubscriptionRow,
   type SubscriptionStatus
 } from "../lib/entitlements";
+import { resolveRowsForUser } from "../lib/subscriptionAccess";
 import { recordBackendProductEvent } from "../lib/productAnalytics";
 import { stripeSubscriptionLifecycle } from "../lib/stripeSubscription";
 import { omitUndefined } from "../lib/users";
@@ -71,8 +71,8 @@ export const getStripeBinding = internalQuery({
     return {
       userId: user._id,
       stripeCustomerId,
-      isPro: resolveEntitlement(rows, Date.now()).isPro,
-      stripeIsPro: resolveEntitlement(stripeRows, Date.now()).isPro
+      isPro: resolveRowsForUser(rows, Date.now()).isPro,
+      stripeIsPro: resolveRowsForUser(stripeRows, Date.now()).isPro
     };
   }
 });

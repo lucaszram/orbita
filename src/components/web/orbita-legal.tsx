@@ -3,7 +3,8 @@
 // entretenimiento + autoconocimiento, sin claims de destino/salud/dinero/legal.
 // NOTA: la política de privacidad nombra a los proveedores reales que hoy tocan
 // datos (Clerk + Google para autenticación, Convex para backend, Stripe para el
-// pago web, Apple para la distribución de la app). Revisar con criterio legal
+// pago web, RevenueCat para el estado de compras y Apple para distribución/IAP).
+// Revisar con criterio legal
 // antes del release público y actualizar si se agregan analytics/crash reporting.
 import { Inter_400Regular, Inter_500Medium, Inter_700Bold } from "@expo-google-fonts/inter";
 import { Newsreader_500Medium } from "@expo-google-fonts/newsreader";
@@ -16,7 +17,7 @@ import { WebNav } from "@/components/web/web-nav";
 import { SUPPORT_EMAIL, SUPPORT_MAILTO } from "@/domain/support";
 
 const LEGAL_NAME = "Lucas Ramos";
-const UPDATED = "31 de julio de 2026";
+const UPDATED = "18 de agosto de 2026";
 
 const colors = {
   black: "#07080A",
@@ -194,7 +195,8 @@ export function OrbitaPrivacy() {
           Token de notificaciones push, solo si activás las notificaciones, para poder enviártelas.
         </Bullet>
         <Bullet>
-          Información de compra o suscripción, si en el futuro activás una suscripción dentro de la app.
+          Información de compra o suscripción: producto, tienda, estado, fechas e identificadores
+          necesarios para activar, renovar, restaurar o gestionar Órbita Plus.
         </Bullet>
       </Section>
 
@@ -203,6 +205,7 @@ export function OrbitaPrivacy() {
         <Bullet>Personalizar tu contenido a partir de tus datos de nacimiento.</Bullet>
         <Bullet>Guardar tu historial y lecturas si tenés cuenta.</Bullet>
         <Bullet>Enviarte notificaciones, solo si las activás.</Bullet>
+        <Bullet>Confirmar tu suscripción y darte o retirarte acceso a Órbita Plus cuando corresponda.</Bullet>
         <P>No vendemos tus datos ni los usamos para publicidad de terceros.</P>
       </Section>
 
@@ -228,8 +231,14 @@ export function OrbitaPrivacy() {
           Los datos de tu tarjeta los procesa Stripe; Órbita no los ve ni los guarda.
         </Bullet>
         <Bullet>
-          <Text style={styles.provider}>Apple</Text> — distribución de la app y, si corresponde, las
-          compras hechas dentro de la app.
+          <Text style={styles.provider}>RevenueCat</Text> — gestión del estado de compras y
+          suscripciones dentro de la app, incluida la activación y restauración de Órbita Plus. Recibe
+          un identificador de tu cuenta y la información de suscripción necesaria; no recibe los datos
+          completos de tu tarjeta.
+        </Bullet>
+        <Bullet>
+          <Text style={styles.provider}>Apple</Text> — distribución de la app y procesamiento de las
+          compras y suscripciones que hacés dentro de la app en iOS.
         </Bullet>
         <P>
           Cada uno trata los datos según sus propias políticas y puede procesarlos fuera de tu país.
@@ -309,7 +318,8 @@ export function OrbitaTerms() {
         </P>
         <Bullet>
           La suscripción mensual incluye <Text style={styles.provider}>siete días de prueba</Text>{" "}
-          gratis con todo Órbita Plus, incluida tu carta natal completa y el Tarot diario.
+          gratis con todo Órbita Plus, incluida tu carta natal completa y el Tarot diario, si cumplís
+          las condiciones de elegibilidad que muestre el canal de compra.
         </Bullet>
         <Bullet>
           Al terminar la prueba, y luego al final de cada mes, la suscripción se{" "}
@@ -317,15 +327,18 @@ export function OrbitaTerms() {
           compra, hasta que la canceles. Si cancelás antes de que termine la prueba, no se cobra nada.
         </Bullet>
         <P>
-          En la web el pago lo procesa Stripe. Si contratás desde la app, el cobro y la renovación los
-          gestiona la tienda correspondiente según sus propias reglas.
+          En la web el pago lo procesa Stripe. En la app de iOS, Apple procesa el cobro y la renovación;
+          RevenueCat sincroniza el estado de esa compra para habilitar Órbita Plus. El precio, la moneda,
+          la elegibilidad para la prueba y la fecha de renovación que se muestran antes de confirmar son
+          los que rigen.
         </P>
       </Section>
 
       <Section heading="Cancelación">
         <P>
           Podés cancelar cuando quieras <Text style={styles.provider}>desde tu perfil</Text>, en
-          “Gestionar suscripción”. No hace falta escribirnos ni dar explicaciones.
+          “Gestionar suscripción”. Desde ahí accedés a la gestión del canal donde compraste —Apple en
+          iOS o Stripe en la web—. No hace falta escribirnos ni dar explicaciones.
         </P>
         <P>
           Al cancelar, la renovación se detiene y{" "}

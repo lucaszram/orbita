@@ -1,59 +1,19 @@
-export const zodiacSigns = [
-  "aries",
-  "tauro",
-  "geminis",
-  "cancer",
-  "leo",
-  "virgo",
-  "libra",
-  "escorpio",
-  "sagitario",
-  "capricornio",
-  "acuario",
-  "piscis"
-] as const;
-
-export type ZodiacSign = (typeof zodiacSigns)[number];
-
-export const topics = [
-  "amor",
-  "trabajo",
-  "dinero",
-  "energia",
-  "familia",
-  "vinculos",
-  "decisiones",
-  "claridad",
-  "proteccion",
-  "luna"
-] as const;
+/**
+ * Vocabulario de LECTURAS del ritual legado (web): la lectura del día, el
+ * tarot, las semanales, el vínculo y las piezas para compartir.
+ *
+ * Las formas base del alta y del perfil —signos, intereses, `UserProfile`,
+ * la tríada— se mudaron a `./profileTypes` y se reexportan acá: importarlas
+ * desde este archivo arrastraba todo el vocabulario del ritual al bundle
+ * nativo, que no muestra ninguna de esas pantallas. Quien sólo necesita el
+ * perfil debe importar de `./profileTypes`; este reexport existe para que la
+ * web y las pruebas que ya apuntaban acá no cambien.
+ */
+export * from "./profileTypes";
+import type { Topic, Triad, ZodiacSign } from "./profileTypes";
 
 /** Topics que muestra la Home V4.5 en sus tabs, en orden. */
 export const homeTopicOrder = ["amor", "trabajo", "familia", "vinculos"] as const;
-
-export type Topic = (typeof topics)[number];
-
-export type GuidanceTone = "suave" | "directa" | "protectora" | "intensa";
-
-export type RelationshipTarget = {
-  name: string;
-  birthDate?: string;
-  zodiacSign?: ZodiacSign;
-};
-
-export type UserProfile = {
-  id: string;
-  name: string;
-  birthDate: string;
-  birthTime?: string;
-  birthPlace?: string;
-  zodiacSign: ZodiacSign;
-  interests: Topic[];
-  guidanceTone: GuidanceTone;
-  relationshipTarget?: RelationshipTarget;
-  notificationTime: string;
-  createdAt: string;
-};
 
 export type Recommendation = {
   id: string;
@@ -203,24 +163,6 @@ export type PickCardOption = {
 
 // --- Home V4.5 (App Core) ---
 
-export type PlacementBody = "sol" | "luna" | "ascendente";
-
-export type Placement = {
-  body: PlacementBody;
-  sign: ZodiacSign;
-  label: string;
-};
-
-export type Triad = {
-  sun: Placement;
-  moon: Placement;
-  ascendant: Placement;
-  /** `calculated` requiere hora y lugar; si faltan, es `approximate`. */
-  accuracy: "calculated" | "approximate";
-  /** Copy visible cuando la tríada es aproximada (o null si es exacta). */
-  accuracyNote: string | null;
-};
-
 export type HomeTopic = {
   topic: Topic;
   label: string;
@@ -271,15 +213,4 @@ export type HomeReading = {
   question: string;
   // Extras (legacy reestilizado)
   extras: HomeExtras;
-};
-
-export type OnboardingProfile = {
-  name: string;
-  birthDate: string;
-  birthTime?: string;
-  birthPlace?: string;
-  interests: Topic[];
-  guidanceTone: GuidanceTone;
-  relationshipTarget?: RelationshipTarget;
-  notificationTime: string;
 };

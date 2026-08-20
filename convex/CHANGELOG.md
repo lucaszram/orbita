@@ -1,5 +1,633 @@
 # Contrato — CHANGELOG
 
+## 2026-08-20 — ranking temporal y detalle canónico de tránsitos
+
+**Aditivo, con invalidación por versión de método.** `ORB-TRN-002` pasa a
+`transit-ranking-v2`: primero ordena los contactos exactos del día, luego los
+próximos dentro de 72 horas, después los ocurridos en las últimas 72 horas y al
+final el resto de los tránsitos activos. Dentro de cada grupo conserva los
+desempates determinísticos de relevancia, orbe e identidad estable.
+
+- Cada fila publica `previousExactAt`, `nextExactAt`, `rankingWindow` y
+  `rankingReason`, para que Hoy y Tránsitos expliquen el mismo orden.
+- `ORB-TRN-001` publica esos mismos campos, más `natalHouse`, calculados desde el
+  arco pedido. El detalle ya no toma prestada la casa de otra capa.
+- Cada cálculo nuevo de ranking v2 emite los campos. En el validator de
+  persistencia siguen siendo opcionales porque Convex valida también las filas
+  históricas al publicar el schema: invalidar el hash impide leerlas como dato
+  vigente, pero no las borra de la tabla. El arco aplica la misma compatibilidad
+  para sus sobres anteriores.
+- La fecha civil y la ventana de 72 horas usan explícitamente la fecha y zona
+  horaria solicitadas. No cambia la matemática de aspectos ni el orbe activo de
+  3°.
+
+## 2026-08-19 (P1) — fence de supresión: la cuenta borrada no resucita
+
+**Tabla nueva `accountDeletionFences`**, aditiva y fuera de la barrida.
+
+- **Defecto:** `deleteAccountV2` borraba la cuenta, pero el JWT de Clerk seguía
+  siendo válido —la identidad se borra después, desde el cliente—. En esa
+  ventana cualquier llamada autenticada volvía a entrar por `getOrCreateUser` y
+  **recreaba** `users` + `account_created`. Lo disparaba otro dispositivo, otra
+  pestaña, o el retry tardío de `ensureUser` que ya estaba en vuelo.
+- **Ahora:** `deleteAccountV2` escribe el fence **antes de barrer y en la misma
+  mutation** (una transacción: o commitean los dos o ninguno).
+  `assertIdentityNotDeletionFenced` corre antes de cualquier `insert`/`patch` en
+  `getOrCreateUser` y `requireExistingUser`, y tira `ACCOUNT_DELETION_IN_PROGRESS`.
+  Las lecturas no pasan por el fence: con la fila borrada ya degradan a vacío.
+- **La fila no guarda identificadores en crudo:** sólo `identityKey`,
+  `keyVersion` y `createdAt`. `identityKey` es una **clave seudónima de
+  supresión** —`SHA-256(dominio versionado | subject)` con WebCrypto, sin
+  secreto—, no una anonimización: con un subject candidato se puede comprobar la
+  pertenencia. Los Clerk IDs tienen alta entropía, así que no es enumerable.
+  `keyVersion` queda para migrar a HMAC con secreto más adelante.
+- **No expira.** Expirar reabriría la ventana del token viejo. Un alta nueva en
+  Clerk obtiene otro `subject` y no queda bloqueada.
+
+## 2026-08-19 — `subscriptions.getCurrent` publica su dueño
+
+**Aditivo, no breaking.** `getCurrent` devuelve además
+`clerkUserId: string | null`: el Clerk id para el que se calculó ESE resultado.
+
+- **Defecto:** la query de Convex conserva su último valor mientras la nueva
+  suscripción resuelve. En un cambio de cuenta A → B eso deja el entitlement de
+  A publicado bajo la sesión de B durante uno o varios renders, y con él el
+  efecto que levanta el marcador de compra: se desbloqueaba una recompra de B
+  con una confirmación que era de A.
+- **Ahora:** el cliente correlaciona (`entitlementBelongsTo`) y sólo actúa si el
+  dueño coincide. Falla cerrado: sin el campo (backend anterior) no autoriza.
+
+## 2026-08-19 (P0 A→B) — `users.deleteAccountV2` exige el dueño esperado
+
+**Endpoint nuevo.** Se agrega
+`users.deleteAccountV2({ expectedClerkUserId: string })`; `users.deleteAccount`
+(sin argumentos) queda **deprecado, desplegado y fallando cerrado**: no borra
+nada y tira `ACCOUNT_DELETE_UPDATE_REQUIRED`. Un build viejo pierde el borrado
+in-app —recuperable actualizando o por soporte— en vez de arriesgar borrar la
+cuenta equivocada.
+
+- **Defecto:** el handler borraba el grafo de "quien esté autenticado al
+  ejecutar". Entre las dos confirmaciones destructivas del cliente hay awaits
+  largos; si Clerk entregaba otra sesión en el medio (logout+login, refresh de
+  token, otra pestaña), un flujo empezado por **A** borraba los datos de **B**.
+- **Ahora:** el argumento es una **exigencia**, nunca un selector de objetivo. El
+  handler hace `trim`, rechaza vacío (`ACCOUNT_DELETE_OWNER_REQUIRED`) y compara
+  contra `identity.subject` **antes** de `deleteAccountData`; si no coincide tira
+  `ACCOUNT_DELETE_OWNER_MISMATCH` y no lee ni borra nada. El objetivo sigue
+  siendo exclusivamente la identidad autenticada.
+- **Cliente:** la llama el **boundary global** de eliminación pendiente —no el
+  Perfil— con el dueño del marcador, y sólo con la sesión de ese dueño viva. El
+  Perfil ya no llama a Convex: persiste `deletion_requested` y se aparta. Ningún
+  cliente de este repo llama a la ruta legada (hay un test que lo exige).
+- **Rollout del legado:** `deleteAccount` sigue desplegado —fallando cerrado—
+  mientras haya builds instalados sin V2 (revisión de App Store + la cola de
+  quienes no actualizaron). Cuando el build mínimo soportado incluya V2, se borra
+  la función.
+
+## 2026-08-18 (tercera corrección integral) — identidad exacta, catálogo mensual, durabilidad con lease
+
+> **Esta entrada manda sobre todas las anteriores del comercio nativo.** Las de
+> abajo quedan como historia: donde digan otra cosa, están superadas.
+
+### Decisiones de producto que fijan todo lo demás
+
+- **El catálogo de lanzamiento (V1) es MENSUAL.** No se vende lifetime.
+  `REVENUECAT_LIFETIME_PRODUCT_IDS` queda **vacío**. Las filas lifetime legadas
+  se preservan, pero no se inventa soporte REST que la API no documenta.
+- **El cliente es custom-ID-only:** RevenueCat se configura con el Clerk userId
+  ya conocido y nunca usa `logOut` ni el modo anónimo. Por lo tanto un
+  `original_app_user_id` anónimo **no es autoridad para ninguna cuenta**.
+- **Fail closed por deployment:** development acepta sólo Sandbox; production
+  acepta Production y Sandbox sólo para un reviewer allowlisted; un deployment
+  sin entorno declarado (`unknown`) no acepta **ninguna** fila.
+- **La fila es agregada y no puede representar dos compras distintas.** Ante
+  ambigüedad multi-producto o multi-entorno no se destruye ni se concede: se
+  preserva lo más fuerte y se reconcilia.
+
+### `entitlements` — el corte de entorno tenía una sola puerta
+
+- **Defecto:** `EntitlementContext` sólo traía `sandboxAllowed`. `production`
+  no se autorizaba nunca, así que `resolveEntitlement(rows, now)` —el default
+  directo— concedía Órbita Plus desde una fila productiva en un deployment de
+  development o sin entorno declarado.
+- **Ahora:** `productionAllowed` es obligatorio para las filas de RevenueCat y
+  su default es `false`. `entitlementContextFor` lo calcula con la misma función
+  que usa el webhook. Stripe no cambia.
+- **`SubscriptionRow` suma `productId`** (P1 12): estaba en la tabla y en las
+  comparaciones de precedencia, pero invisible para el compilador.
+
+### `lib/revenueCatRest` — sólo el id exacto es autoridad
+
+- Se **eliminó la excepción del id anónimo**. `checkRevenueCatSubscriberIdentity`
+  devuelve `anonymous_subscriber_identity` (no reintentable) y el proyector
+  exige `subscriberId === clerkUserId` sin excepciones. El mismo id anónimo
+  puede estar aliased a dos cuentas de Clerk.
+
+### `lib/revenueCatRest` — se eliminó la inferencia de reembolso inventada
+
+- **Defecto:** se construía "evidencia de reembolso" leyendo `refunded_at` /
+  `refunded_at_ms` de `non_subscriptions`. **La v1 no documenta ese campo ahí**
+  —vive en `subscriptions`—, así que la evidencia salía de campos fabricados.
+- **Ahora** `refundedPurchases` **no existe**. La REST **nunca** retira un
+  acceso permanente: `revocationPatchFor` devuelve `null` para toda fila
+  `isLifetime: true`. Una ausencia en una lectura no es un reembolso.
+- El reembolso de un permanente sólo puede llegar por **webhook del mismo
+  producto**. Para V1 hay que **auditar cero lifetime de RevenueCat antes de
+  lanzar** — ver `docs/native-commerce-release-checklist.md`.
+
+### `lib/revenueCatRest` — permanente sólo con producto declarado
+
+- Conceder un permanente exige las tres cosas: `productId` **explícitamente
+  allowlisted**, `expires_date`/`_ms` presentes y exactamente `null`, y
+  **exactamente una** transacción estricta (`id`, `is_sandbox`, `purchase_date`,
+  `store`) en un **único** entorno. Dos entornos, mezcla, contradicción o
+  producto no declarado ⇒ `unavailable`, cero grant y cero revoke.
+- **Motivos nuevos:** `lifetime_product_not_allowlisted`,
+  `active_without_environment`, `anonymous_subscriber_identity`.
+
+### `lib/revenueCatRest` — fechas coherentes o nada
+
+- **Defecto:** se prefería `_ms` y se caía al ISO. `expires_date: null` +
+  `expires_date_ms: "corrupt"` se leía como "sin vencimiento" y concedía
+  permanente.
+- **Ahora** `coherentFieldDate` exige que **todas** las variantes declaradas
+  sean legibles y describan el mismo instante (tolerancia de 1 s por la
+  precisión del ISO). Contradicción o malformación ⇒ `invalid_expiration`.
+
+### `lib/revenueCatRest` — un `orbita_pro` VIGENTE sin recibo no resuelve
+
+- **Defecto:** sin `subscriptions[productId].is_sandbox` la lectura devolvía
+  `resolved` sin `environment`. El proyector no concedía, pero el trabajo se
+  liquidaba: la reparación quedaba cerrada sin haber reparado nada.
+- **Ahora:** `active_without_environment` (reintentable) y cero mutaciones. El
+  caso vencido conserva `expired_without_environment`.
+
+### `lib/revenueCatEvents` — nunca autoridad lifetime por substring
+
+- `planFromRevenueCatProductId` **ya no devuelve `"lifetime"`**. Mientras lo
+  hizo, un `INITIAL_PURCHASE` de `orbita_lifetime_trial` con vencimiento finito
+  producía `plan: "lifetime"` y `guardLifetimePrecedence` lo leía como autoridad
+  sobre un lifetime real y lo destruía.
+- **Nuevo campo de la decisión:** `lifetimeAuthority`, que sólo marcan los
+  eventos de un producto **declarado**. `guardLifetimePrecedence` acepta autoridad
+  únicamente con esa marca **y** el mismo `productId`, o con un reembolso que
+  demuestre ese mismo producto.
+
+### Webhook — `TRANSFER` nunca degrada el destino
+
+- **Nuevo:** `transferOverwritesTarget(source, target)`. Una transferencia se
+  aplica sólo si no degrada: una fuente Free/vencida no apaga un destino activo,
+  un mensual más corto no acorta uno más largo, un mensual no pisa un
+  permanente, y el lifetime A no reemplaza al lifetime B ni le roba su
+  `productId`. La fuente se apaga igual y las dos cuentas se reconcilian.
+- **Outcome renombrado:** `applied_transfer_lifetime_preserved` →
+  `applied_transfer_target_preserved`.
+
+### Superficie pública — de action a MUTATION
+
+- **`reconcileMyStoreEntitlement` (action) fue reemplazada por
+  `requestStoreReconcile` (mutation pública).** Una action es at-most-once y
+  podía morir antes de crear el trabajo: el toque de la persona se perdía sin
+  dejar rastro. La mutation consume el cupo y deja el trabajo escrito en **una**
+  transacción, y devuelve `{ status: "queued" | "cooldown" | "unauthenticated" }`.
+- El cliente (`appRefs`, `PlusPaywallScreen`, `ManageSubscription`) pasa a
+  `useMutation`. El acceso reparado llega por la query reactiva
+  `subscriptions.getCurrent`, no por el retorno.
+- **`reconcileStoreEntitlement` exige `jobId` y `lease`**: no queda ningún
+  camino at-most-once sin estado persistido.
+
+### Durabilidad — señales, generaciones y lease
+
+- `reconcileJobs` suma `generation`, `requestedSeq`, `startedSeq` y `leaseToken`.
+- **Lost wakeup:** cada pedido incrementa `requestedSeq` aunque el trabajo ya
+  esté `pending`. Antes, un webhook que llegaba durante una corrida no dejaba
+  rastro y esa corrida —con un snapshot anterior— liquidaba el trabajo.
+- **Stale settle:** cada corrida lleva un `leaseToken` determinista
+  (`generación:señal:intento`). Un resultado tardío con lease viejo no liquida
+  nada y **no cancela el watchdog** de la corrida nueva.
+- **Señal nueva sobre un trabajo agotado** reinicia la generación y los intentos.
+- **Auth (P1 10):** el lease se revalida **antes de la red** y **antes de
+  proyectar**, y verifica que `jobId` y `clerkUserId` correspondan y que la
+  cuenta exista. Tras un borrado, una action ya agendada sale con **cero fetch**.
+
+### Eliminación de cuenta y PII
+
+- `deleteAccountData` borra `reconcileJobs` de la cuenta (cancelando su watchdog
+  cuando el contexto lo permite) y los contadores de `publicRateLimits` del
+  scope de reconciliación.
+- **`buildRateLimitBucketKey` hashea el sujeto** (`rateLimitSubjectHash`): la
+  tabla ya no guarda el Clerk id en claro. `publicRateLimits` suma
+  `subjectHash` y el índice `by_scope_subjectHash`, que es lo que permite
+  encontrar esas filas sin guardar el id.
+- Hay **exactamente una fila `reconcileJobs` por cuenta**, reutilizada entre
+  generaciones: el trabajo no se acumula.
+
+### Auditoría
+
+- Un `unavailable` —incluido `subscriber_identity_mismatch`— deja fila de
+  auditoría sanitizada (sin payload crudo, sin aliases, sin el id del
+  suscriptor), no muta acceso y no reintenta.
+
+---
+
+## 2026-08-18 (auditoría del backend corregido, P1 1–8 nuevos) — identidad del snapshot, entorno en cada decisión y durabilidad real
+
+> **Superada.** Ver la entrada de arriba: `refundedPurchases` se eliminó entero,
+> el id anónimo dejó de ser autoridad, el permanente pasó a exigir allowlist, y
+> la superficie pública dejó de ser una action.
+
+> Esta entrada **corrige** varias afirmaciones de la entrada inmediatamente
+> siguiente (“tercera auditoría, backend P1 1–8”). Donde las dos digan cosas
+> distintas, manda ésta.
+
+### `lib/revenueCatRest` — un snapshot vale para UNA cuenta
+
+- **Defecto (cross-account):** `GET /v1/subscribers/{B}` no devuelve “lo de B”: devuelve el `CustomerInfo` del **alias chain**. Con A y B aliased, la respuesta de B trae `subscriber.original_app_user_id: A` y describe la compra de A. Ese campo se ignoraba, así que el mismo pago se proyectaba a las dos cuentas.
+- **Ahora** `interpretRevenueCatSubscriber(status, body, { expectedAppUserId })` valida la identidad **antes** de interpretar ninguna regla de acceso:
+  - `original_app_user_id` ausente/vacío/no-string → `invalid_subscriber_identity` (`unavailable`);
+  - id **custom** distinto del consultado → `subscriber_identity_mismatch` (cuarentena: ni concede ni revoca, y **no se reintenta**);
+  - id **anónimo** (`$RCAnonymousID:…`) → se acepta. Única excepción y segura por construcción: un id anónimo del SDK no puede ser otra cuenta de Clerk, así que describe la compra que empezó anónima y terminó identificada en la cuenta consultada;
+  - sin `expectedAppUserId` → `unverified_subscriber_identity`. Interpretar sin decir contra qué cuenta es un error, no un permiso.
+- El resultado lleva `subscriberId`, y `projectRevenueCatSubscriber` lo vuelve a comprobar: un snapshot con id custom ajeno no muta nada aunque llegue por otra vía.
+- **Breaking (interno):** el tercer parámetro dejó de ser `now` (que no se usaba) y pasó a ser el objeto de opciones.
+
+### `lib/revenueCatRest` — la evidencia de reembolso lleva su entorno
+
+- **Defecto:** `refundedLifetimeProductIds: string[]` nombraba sólo el producto. Una cuenta de review con el MISMO producto permanente en `sandbox` y en `production` perdía las dos filas cuando sólo se reembolsaba la copia sandbox.
+- **Ahora:** `refundedPurchases: Array<{ productId, environment }>`, agrupada por entorno. Un par entra sólo si **todas** las transacciones de ese entorno se entienden y **todas** están reembolsadas; una sola transacción ilegible del producto lo deja afuera entero. El proyector exige coincidencia de producto **y** entorno.
+- Ya no se filtra por el nombre del producto para juntar evidencia: la coincidencia con la fila es por `productId` exacto, así que un id legado también puede demostrar su propio reembolso. Esta evidencia sólo puede RETIRAR acceso.
+
+### `lib/revenueCatRest` — una expiración sólo apaga el entorno que demuestra
+
+- **Defecto:** un `orbita_pro` vencido cuyo `subscriptions[productId]` no existía —o no traía `is_sandbox`— producía un Free de alcance **global** y apagaba todas las filas del usuario.
+- **Ahora** ese caso es `expired_without_environment` (`unavailable`, cero mutaciones). Con `orbita_pro` presente, la revocación **nunca** es global: como mucho toca el entorno demostrado.
+- El alcance `global` queda reservado para lo único que lo justifica: la **ausencia total** del entitlement canónico en un cuerpo completo.
+
+### `lib/revenueCatRest` — permanente por evidencia, no por substring
+
+- **Defecto:** el camino permanente se elegía con `planFromProductId(productId) === "lifetime"`, así que `orbita_lifetime_trial` con `expires_date` finito y **vencido** salía permanente.
+- **Ahora** el nombre no participa. Hacen falta las tres cosas: entitlement canónico verificado, su declaración **inequívoca** de no vencimiento (`expires_date` o `expires_date_ms` presentes y exactamente `null`), y una transacción de **ese mismo** `product_identifier` con forma estricta y sin reembolso. Un `expires_date` finito entra siempre por el camino de suscripción.
+
+### `lib/revenueCatEvents` — catálogo permanente por configuración
+
+- **Defecto:** `NON_RENEWING_PURCHASE` (y el `REFUND_REVERSED` permanente) concedían acceso de por vida porque el product id contenía `lifetime`. Eso es conceder desde una convención de nombres que este código no controla.
+- **Nuevo secreto de backend:** `REVENUECAT_LIFETIME_PRODUCT_IDS` (lista separada por comas). **Default vacío = cerrado**: sin declaración, ningún evento escribe un acceso permanente y el trabajo cae en la lectura autoritativa, que sí puede demostrarlo. El catálogo comercial V1 es exclusivamente mensual.
+- **No rompe lo legado:** una fila `isLifetime: true` ya escrita sigue concediendo acceso y sigue protegida por `guardLifetimePrecedence`. Lo que se cierra es la puerta para escribir una nueva sin prueba.
+
+### `lib/revenueCatEvents` — un reembolso tiene que demostrar su producto
+
+- **Defecto:** un `CANCELLATION` con `cancel_reason: "CUSTOMER_SUPPORT"` **sin** `product_id`, o con el de otro producto, escribía `entitlement: "free"` sobre la fila agregada igual.
+- **Ahora:** sin `product_id` → `ignore` / `refund_without_product`; con un producto que no es el de la fila (o con una fila sin `productId`) → `ignore` / `refund_product_mismatch`. En los dos casos no se revoca nada y se dispara la reconciliación.
+- **Nuevos outcomes auditados:** `ignored_refund_without_product`, `ignored_refund_product_mismatch`.
+
+### Webhook — `TRANSFER` con el mismo corte de entorno que el resto
+
+- **Defecto:** el camino ordinario aplicaba `isRevenueCatEnvironmentAllowed` por identidad; el `TRANSFER` no. En un deployment `production` con la allowlist vacía —y también en `unknown`— un `TRANSFER` `SANDBOX` movía Órbita Plus de A a B y apagaba la fila de A.
+- **Ahora** el corte se exige sobre **las dos puntas**, después de resolverlas: apagar acceso pago desde un recibo que este deployment no consume es tan grave como concederlo. Un mismatch no muta ninguna fila (`ignored_environment_mismatch`).
+
+### Webhook — `TRANSFER` no degrada el destino
+
+- **Defecto:** la fila de origen se copiaba **entera** sobre el destino. Transferir un mensual encima de un lifetime ya demostrado le escribía `isLifetime: false` y le borraba el `productId`: el acceso permanente desaparecía sin reembolso.
+- **Ahora**, si el destino es permanente y lo transferido no lo es, la fila del destino no se toca. La fuente se apaga igual y en la misma transacción, y las dos cuentas se reconcilian contra la tienda.
+- **Nuevo outcome auditado:** `applied_transfer_lifetime_preserved`.
+
+### Durabilidad — watchdog sobre estado persistido, no preagendado desde la action
+
+- **Defecto del arreglo anterior:** hacer que la action preagendara su propia sucesora no cierra la ventana. Si la action **nunca llega a su primera línea**, o si ese `runAfter` **rechaza**, la action muere sin sucesora y la reparación se pierde igual. Una action at-most-once no puede sostener su propia durabilidad.
+- **Nueva tabla `reconcileJobs`** (una fila por trabajo: `clerkUserId`, `trigger`, `attempt`, `status`, `outcome`, `watchdogId`, `nextCheckAt`). Índices `by_clerkUserId`, `by_status`, `by_status_user`.
+- **Nuevas funciones internas** en `payments/revenuecatRest`: `enqueueStoreReconcile` (mutation), `runReconcileJob` (mutation — el watchdog), `settleReconcileJob` (mutation).
+- El modelo es el que documenta Convex para error handling de scheduled functions: las **mutations** se reintentan ante fallos transitorios y su `scheduler.runAfter` es parte de su transacción. `runReconcileJob` lanza la action y agenda su propia próxima vigilancia **atómicamente**; si algo rechaza, no queda un intento consumido sin sucesor. El watchdog no pregunta si la action corrió: mira el estado y, si sigue `pending`, la relanza.
+- La action sólo puede **liquidar** (`settled`) o **pedir reintento** del trabajo. Sin `jobId` —la llamada directa del cliente— un fallo transitorio **encola** trabajo durable antes de contestar.
+- Techo (`RECONCILE_MAX_ATTEMPTS = 4`) aplicado por el watchdog; liquidar dos veces es idempotente; timeout de lectura y cupo por cuenta sin cambios.
+- **`RECONCILE_STORE_ENTITLEMENT_REF` se renombró a `ENQUEUE_STORE_RECONCILE_REF`** y ahora apunta a la mutation de encolado: lo que el webhook tiene que dejar escrito en su transacción es el trabajo durable, no una action suelta.
+
+### Reintento — reclasificación
+
+- Se **reintentan** además: `expired_without_environment`, `invalid_subscriber_identity`.
+- **Nunca** se reintentan: `subscriber_identity_mismatch`, `unverified_subscriber_identity`, `not_configured`, `http_400/401/403/404` y cualquier motivo desconocido.
+
+---
+
+## 2026-08-18 (tercera auditoría, backend P1 1–8) — alcance de revocación, evidencia de reembolso y retry durable
+
+> **Parcialmente superada.** Ver la entrada de arriba: `refundedLifetimeProductIds`
+> pasó a ser `refundedPurchases` (con entorno), la expiración dejó de poder
+> revocar en global, el lifetime dejó de decidirse por substring, y el
+> “preagendado desde la action” fue reemplazado por el watchdog durable.
+
+> Esta entrada **reemplaza** las afirmaciones equivalentes de la entrada
+> anterior (“comercio nativo, cierre P1”) sobre revocación REST, identidad
+> ambigua y reintento. Donde las dos digan cosas distintas, manda ésta.
+
+### `payments/revenuecatRest` — la revocación declara su alcance
+
+- **Defecto:** `interpretRevenueCatSubscriber` devolvía Free **sin entorno** cuando faltaba `orbita_pro`, y `projectRevenueCatSubscriber` buscaba la fila con `row.environment === undefined`. Una fila `production` con acceso vigente nunca se apagaba: la reconciliación no revocaba nada real.
+- **Ahora:** el resultado `resolved` viaja con `revocation`:
+  - `{ kind: "none" }` — no se demostró qué apagar; no se toca nada.
+  - `{ kind: "environment", environment }` — sólo la fila de ese entorno.
+  - `{ kind: "global" }` — un cuerpo **completo** (200/201, shape profunda, `request_date_ms` válido) sin el entitlement canónico demuestra ausencia en todos los entornos: se apagan todas las filas de RevenueCat del usuario. **Nunca toca Stripe**, que no participa de esta lectura.
+- Un cuerpo ambiguo o incompleto sigue siendo `unavailable`: no concede ni revoca. Un **404 sigue siendo `unavailable`** y nunca revoca (el endpoint es GET-or-create; un 404 es un problema de ruta/proyecto/credencial, no una cuenta sin compras).
+- **Compatibilidad:** `revocation` es opcional en el validador. Un resultado que no lo declare **no revoca nada** — la ausencia falla hacia el lado seguro.
+
+### `payments/revenuecatRest` — un lifetime sólo se retira con reembolso demostrado
+
+- **Nuevo campo:** `refundedLifetimeProductIds: string[]`, calculado sobre el cuerpo completo. Un producto entra sólo si **todas** sus transacciones se entienden (forma estricta) y **todas** están reembolsadas con un marcador válido.
+- El proyector retira un `isLifetime: true` únicamente si el `productId` de la fila está en esa lista. Una ausencia —por completa que sea la lectura— jamás lo borra; un marcador de reembolso malformado tampoco.
+- Simétrico del lado de la concesión: una lectura que sólo ve el mensual **no** escribe `isLifetime: false`, `plan` ni `productId` encima de una fila permanente. Antes, la precedencia lifetime vivía en el intérprete (escaneando nombres de producto) y por eso concedía de más; ahora vive en la fila, que es donde está la evidencia.
+
+### `lib/revenueCatRest` — conceder exige entitlement canónico, no un nombre
+
+- **Defecto:** se recorría `non_subscriptions` buscando cualquier product id que contuviera `lifetime` **antes** de mirar `entitlements.orbita_pro`, y se aceptaban transacciones parciales o con `refunded_at_ms` malformado. `entitlements: {}` + `unrelated_lifetime_pack` concedía acceso permanente.
+- **Ahora**, para conceder un permanente hacen falta las tres cosas: `entitlements.orbita_pro` presente y legible; su `product_identifier` nombrando un producto permanente; y una transacción de **ese** producto con forma estricta (fecha de compra demostrable, `is_sandbox` booleano) y sin reembolso.
+- El catálogo V1 vigente es **mensual**. La compatibilidad legacy con lifetime no abre ninguna puerta de concesión nueva.
+- **Motivos nuevos de `unavailable`:** `invalid_entitlement_product`.
+
+### `lib/revenueCatEvents` — un reembolso sólo retira el producto que demuestra
+
+- **Defecto:** `overridesLifetime` marcaba autoridad sobre el acceso permanente sin decir de qué producto era el reembolso. Un `CANCELLATION` con `cancel_reason: "CUSTOMER_SUPPORT"` de `orbita_monthly` borraba un lifetime que nadie devolvió.
+- **Nuevos campos de la decisión:** `refundedProductId` (lo escribe el derivador) y `preservedLifetime` (lo escribe `guardLifetimePrecedence`).
+- Mientras la fila siga siendo agregada, un evento de otro producto tampoco pisa `plan` ni `productId` de un lifetime: sin ellos, el reembolso real de mañana no tendría contra qué compararse.
+- **Nuevo outcome auditado:** `applied_lifetime_preserved`.
+
+### Webhook de RevenueCat — identidad resuelta antes de agendar
+
+- **Corrección de la entrada anterior.** Donde decía «se audita y **se reconcilian ambos**», ahora: una identidad ambigua queda en **cuarentena** y **no se reconcilia a ninguno**. Reconciliar a los dos les daba Pro a los dos, porque los aliases devuelven el mismo `CustomerInfo`.
+- La rama sin `environment` ya no agenda los candidatos crudos del evento: resuelve identidades contra las filas locales primero. Cero matches sigue siendo recuperable (no se registra `paymentEvents`); uno reconcilia sólo a ese usuario; más de uno queda en cuarentena. Un `TRANSFER` resuelve cada punta por separado, porque nombra dos cuentas legítimamente distintas.
+- Sin scheduler, esa rama **lanza** en vez de auditar: la reparación agendada es lo único durable que deja, y marcarla como procesada sin haberla dejado agendada la daba por resuelta para siempre.
+- **Nuevo outcome auditado:** `ignored_without_resolvable_user` también en la rama sin entorno. **Retirado:** `ignored_transfer_environment_mismatch` (ya no puede ocurrir).
+
+### Webhook de RevenueCat — `TRANSFER` elige por entorno
+
+- **Defecto:** origen y destino se leían con `first()` sobre `by_user_provider`. Desde que production y sandbox conviven, el orden del índice decidía qué fila se movía —o descartaba el evento entero—.
+- **Ahora** las filas se colectan y se elige la del entorno del evento, igual que el camino ordinario. Sin fila de ese entorno, el evento es **recuperable** (lanza, no se audita).
+
+### `reconcileStoreEntitlement` — reintento durable y acotado
+
+- **Defecto:** el reintento se agendaba **después** de proyectar. Un 200 resuelto seguido de un `runMutation` que tira mataba la action antes del `runAfter` y la reparación se perdía para siempre.
+- **Ahora** el próximo intento queda **preagendado antes** del tramo frágil y se liquida (`scheduler.cancel`) sólo cuando: el motivo es permanente, o la lectura resolvió **y la proyección terminó bien**. La única garantía usada es la que Convex da: `runAfter` persiste el job al agendarlo y una action que muere después no lo cancela.
+- **Reclasificación de motivos:** los cuerpos ilegibles (`invalid_shape`, `invalid_request_date`, `invalid_entitlement`, `invalid_entitlement_product`, `invalid_expiration`, `lifetime_without_purchase_evidence`) ahora **sí** se reintentan: la ilegibilidad puede ser una ventana transitoria y ninguno muta acceso mientras tanto. `401`/`403`/`404`/`400` y la falta de credencial **no** se reintentan. Un motivo desconocido tampoco.
+- Techo (`RECONCILE_MAX_ATTEMPTS = 4`), timeout de lectura y cupo por cuenta se conservan sin cambios.
+- Un contexto cuyo scheduler no sabe cancelar cae al reintento posterior de siempre, en vez de dejar un job imposible de liquidar.
+
+### `projectRevenueCatSubscriber` — validador cerrado y patch mudo
+
+- **Defecto:** `patch.entitlement !== "free"` era verdadero también cuando el campo **no vino**, así que un patch sin entitlement entraba por el camino de concesión.
+- **Ahora** sólo `entitlement === "orbita_pro"` concede y sólo `entitlement === "free"` revoca. Un patch mudo no hace ninguna de las dos cosas y queda auditado.
+- El validador enumera además `revocation` y `refundedLifetimeProductIds`. Toda lectura `resolved` que llega a un usuario existente deja su fila de auditoría, incluida la que no cambió nada.
+
+### `subscriptions` — identidad de fila documentada (sin migración)
+
+- La identidad real de una fila es **(userId, provider, environment)**. La schema lo dice explícitamente; el índice sigue siendo `by_user_provider` porque son una o dos filas por proveedor y los escritores eligen por entorno en memoria. **No se agregó ningún índice y no hace falta migrar datos.**
+
+---
+
+## 2026-08-18 (comercio nativo, cierre P1) — reconciliación REST y gestión de doble proveedor
+
+> **Parcialmente superada.** Ver la entrada de la tercera auditoría, arriba:
+> corrige el alcance de la revocación REST y el tratamiento de la identidad
+> ambigua (que aquí decía «se reconcilian ambos»).
+
+### `subscriptions.getCurrent()` — dos campos aditivos
+
+- **Nuevos:** `canManageInRevenueCat: boolean` y `activeProviders: ("revenuecat" | "stripe" | "stub")[]`.
+- **Por qué:** `provider` nombra al ganador por rango (lifetime primero, después mayor `currentPeriodEnd`). Una persona que compró en la web y después en la app tiene DOS cobros vivos; con un solo `provider` la pantalla ofrecía cancelar uno y el otro seguía corriendo sin salida visible.
+- **Compatibilidad:** aditivo. `entitlement`, `isPro`, `provider`, `plan`, `isLifetime`, `currentPeriodEnd`, `willRenew` y `canManageInStripePortal` conservan su semántica; un cliente anterior los sigue leyendo igual.
+
+### `isRowActive` — sólo lifetime puede omitir la fecha de fin
+
+- **Defecto:** una fila `active`/`trialing` sin `currentPeriodEnd` concedía acceso indefinido. `checkout.session.completed` de Stripe escribe exactamente esa forma y la fecha llega recién con `customer.subscription.updated`: si ese webhook no llegaba, el acceso no vencía nunca.
+- **Ahora:** sin fecha demostrable no hay acceso, salvo `isLifetime: true`.
+
+### `payments/revenuecatRest` — módulo nuevo
+
+- `reconcileMyStoreEntitlement` (action pública, **sin argumentos**): deriva el Clerk id de `ctx.auth` y pide la lectura autoritativa. No acepta `userId`, `CustomerInfo`, entitlement ni recibos del cliente.
+- `reconcileStoreEntitlement` (internal action) y `projectRevenueCatSubscriber` (internal mutation).
+- Lee `GET /v1/subscribers/{app_user_id}` con `REVENUECAT_SECRET_API_KEY` (secreto de backend, sin prefijo `EXPO_PUBLIC_`). Un 5xx/429/401/shape inválida **no concede ni revoca**; un 200 completo sin el entitlement sí retira el acceso. ~~o un 404~~ **SUPERADO / ERROR DE REDACCIÓN:** el código nunca revocó por 404 y no debe hacerlo — el endpoint es GET-or-create y un 404 es `unavailable`.
+- Se dispara después de compra/restauración, desde la comprobación demorada del paywall y detrás de cada webhook aplicado o diferido.
+- **Sin cambio de schema.** La auditoría usa `paymentEvents` con `eventType: "RECONCILE"` y un resumen sin payload crudo ni PII.
+
+### Webhook de RevenueCat — corte de entorno e identidad
+
+- El entorno del deployment ahora se resuelve explícito (`production` / `development` / `unknown`); `unknown` no consume ningún recibo.
+- Producción acepta Sandbox **sólo** para los Clerk id de `REVENUECAT_SANDBOX_REVIEW_USER_IDS` (TestFlight y App Review compran en Sandbox con el binario productivo). Las filas conservan su `environment` y no se pisan entre sí.
+- Un evento sin `environment` (`TRANSFER`, `TEMPORARY_ENTITLEMENT_GRANT`) ya no se descarta: se difiere a la reconciliación. `undefined` nunca se lee como `production`.
+- ~~Si `app_user_id`/`original_app_user_id`/aliases resuelven a **dos** usuarios locales, no se elige el primero ni se muta acceso: se audita y se reconcilian ambos.~~ **SUPERADO:** reconciliar ambos les daba Pro a los dos. Hoy la identidad ambigua queda en cuarentena y no se reconcilia a ninguno.
+- Un evento del mensual no puede borrar un lifetime legado que vive en la misma fila.
+
+
+## 2026-08-18 (pasada 14) — Invalidación editorial y degradación honesta de 08/09 (sin cambio de firma pública)
+
+### `layers.getNatalBase()` / `layers.refreshForDate()` — mapa elemental vigente
+
+- **Defecto reproducido en Development:** una cuenta con un snapshot previo de `ORB-NAT-001` seguía viendo “El tierra…” después de publicar el copy corregido. El `methodVersion` técnico y el hash no habían cambiado, por lo que tanto la lectura como el refresh elegían el snapshot anterior.
+- **Segundo defecto reproducido al recapturar:** el artículo ya era correcto, pero la rama singular decía “con uno planeta”; los empates parciales podían decir “uno planetas cada uno”. Además, una carta parcial de una sola posición decía “uno de los uno planetas disponibles”. Helpers acotados corrigen `un planeta` / `N planetas` y `el único planeta disponible` sin tocar el cálculo.
+- **Arreglo mínimo:** sólo el hash de `ORB-NAT-001` incorpora `ASTROLOGY_EDITORIAL_COPY_VERSION`, que sube a `orbita-v492-copy-clarity-v2` para retirar también el snapshot v1 con la concordancia rota. El tipo lunar (`ORB-LUN-001`) y el patrón vincular natal (`ORB-REL-001`) conservan su identidad de caché.
+- **Datos:** no hay migración ni borrado. La fila anterior queda fuera de la identidad vigente y el resultado corregido se calcula por el flujo normal.
+
+### Vínculos — voz editorial vigente
+
+- **Defecto reproducido en Development:** una comparación `ready` anterior seguía mostrando nombres propios en cada contacto porque su caché no vence y la identidad de comparación continuaba en v1.
+- **Invalidación quirúrgica:** se separa `RELATIONSHIP_COMPARISON_VERSION = orbita-relationship-comparison-v2`, usada por el resultado de comparación y por `buildRelationshipComparisonInputHash`. `RELATIONSHIP_LAYERS_VERSION` permanece en v1 para `ORB-REL-001`; su mismo `inputHash` ya no puede representar dos versiones internas distintas.
+- **Degradación honesta:** si fecha —o fecha, hora y lugar— ya están cargados pero el proveedor no entrega las posiciones, el fallback emite `comparison_ephemeris`. No vuelve a afirmar `other_sun_sign` ni a ofrecer “completar datos” que ya están completos. Si existe una comparación vigente, se conserva como `stale` igual que antes.
+
+### Compatibilidad y rollout
+
+- Sin cambios de schema, argumentos, retornos ni bindings generados. Se conserva `AnalysisResult<T>` y la compatibilidad con clientes anteriores.
+- Los hallazgos se reprodujeron con pruebas rojas y cerraron con focales **91/91**, suite **1537/1537** y el tercer deploy correctivo autorizado, exclusivamente a Convex Development (2026-08-18 15:11 ART). Producción continúa fuera de alcance.
+
+## 2026-08-18 (undécimo pase) — El claim de la lectura natal se cierra por VERSIÓN antes de tocar la fila (sin cambio de firma pública)
+
+### `charts.claimNatalReadingGeneration()` — barrera de `cacheVersion` (interna)
+
+- **Hecho:** el CAS de `persistNatalReading` ya comparaba la versión configurada con la del texto, pero llega tarde. El claim se toma ANTES, y medía la fila contra la versión que traía el claimant: un claimant de **v1** cuya action arrancó antes del bump aterrizaba con la configuración ya en **v2**, veía la fila v2 como "de otra versión", la tomaba, incrementaba `claimSeq` y la dejaba `pending` v1 con `payload: null`.
+- **Los dos desenlaces reproducidos:** (a) con una generación v2 **en vuelo**, el claimant viejo le sacaba el claim; v2 terminaba en `claim_lost` y v1 en `cache_version_changed`, y la fila quedaba `pending` v1 sin nadie generando; (b) con una lectura v2 **`ready`**, el claim destruía el payload publicado y la escritura final del claimant se rechazaba igual: la lectura válida ya se había perdido.
+- **Qué cambia:** `applyNatalReadingClaim` compara `args.cacheVersion` con `getAiGatewayNatalCacheVersion()` **antes de consultar o mutar `natalInterpretations`**. Si no coinciden, no toma claim, no incrementa `claimSeq`, no cambia `status`, `payload`, `cacheVersion` ni `updatedAt`, y no programa ninguna generación.
+- **Decisión nueva, interna y cerrada:** `stale_cache_version`, cuarta variante de `NatalReadingClaimRejection` (`"ready" | "pending" | "stale_chart" | "stale_cache_version"`), tipada explícitamente. El caller (`generateAndPersistNatalReading`) la trata como no-op/superseded: la registra en `[natal.prewarm]` con `cacheHit:false` y sale sin tocar nada. **No es un error visible**: la pantalla de Carta sólo trata como fallo el *reject* de la action.
+- **Qué NO cambia:** el claimant de la versión vigente conserva el flujo entero (toma, reutiliza `ready`, espera un `pending` con lease vivo, rechaza `stale_chart`). El CAS final sigue exigiendo revisión + `claimSeq` + versión; no se debilitó ninguna de las tres.
+- **Compatibilidad:** sin cambios de schema, sin cambios de firma pública, sin filas nuevas. `claimNatalReadingGeneration` es una `internalMutation` sin `returns` validator: ningún cliente ve esta unión.
+
+### Rollout
+
+- **Sin deploy y sin codegen.** No se agregan módulos ni funciones, así que `convex/_generated/` no cambia (gate 7/7 en verde). No se corrió `convex dev`, `convex codegen`, `finishPush` ni ningún deploy.
+
+## 2026-08-18 — Carreras natales cerradas de punta a punta, versión de caché que invalida, y el artifact generado auditado y regenerado (sin cambio de firma pública)
+
+### `charts.recheckNatalStateForRun()` — **NUEVA**, interna
+
+- **Firma:** `internalQuery`. `args: { tokenIdentifier, birthDataId, cacheKey, birthDataHash }` (cerrado). Devuelve `{ status: "birth_data_changed" } | { status: "same", chart, sufficient }`.
+- **Por qué:** una corrida que arranca **sin carta** y cuyo proveedor falla no tiene candidato, así que nunca llega a `persistCalculatedNatalChart` —que es donde vive la decisión con el estado vigente— y decidía sola con el snapshot previo. Si otra corrida publicaba una carta durante la espera, la primera igual informaba `provider_failed`, `sufficient:false` y `chart:null`: `recoverNatalChart` daba un fallo falso y `calculateOrCreateNatalChart` podía lanzar con una carta válida en la base.
+- **Qué hace:** relee el estado natal vigente para la MISMA identidad original y mide suficiencia con la precisión natal de ahora, la misma regla del read-model. No escribe nada.
+- **Es interna:** ningún cliente la ve.
+
+### `charts.calculateOrCreateNatalChart()` y `charts.recoverNatalChart()` — contratos INTACTOS
+
+- **Ninguna firma cambia.** Lo que cambia es el camino sin candidato: ahora relee y aplica la misma medida final (`resolveFinalNatalOutcome`). Otra corrida ganadora con carta suficiente ⇒ `cache_sufficient` (`recovered`/`stored`); una carta parcial ⇒ sigue siendo `provider_failed`/`sufficient:false`, pero **se devuelve la carta real** en vez de `null`; sin ninguna carta, el comportamiento anterior queda igual.
+- **Rechazo estable, ya existente:** si los datos natales cambiaron durante la espera, ese camino también rechaza con `NATAL_BIRTH_DATA_CHANGED_DURING_CALCULATION`. Una carta calculada para otros datos nunca se convierte en el éxito de esta corrida.
+
+### `charts.persistCalculatedNatalChart()` — reafirma la IDENTIDAD vigente (interna)
+
+- **Qué cambia:** gane la fila existente o el candidato, la mutación reafirma en `natalCharts` `userId`, `birthDataId`, `birthDataHash`, `cacheKey` y `updatedAt`; y en `profileAstrologyCaches`, `userId`, `birthDataId`, `natalChartId`, `cacheKey`, `cacheVersion`, el payload elegido y `updatedAt`. No se abre ninguna fila nueva.
+- **Por qué:** el hash y el `cacheKey` describen los CAMPOS natales, no la fila que los guarda. Una fila natal más nueva y semánticamente idéntica —volver a cargar los mismos datos, reescribir el alta— produce el mismo `cacheKey`: la carta existente gana y se quedaba apuntando al `birthDataId` histórico. `chartMatchesCompletionBirthData` exige la fila vigente exacta, así que el onboarding quedaba en `chart_pending` **para siempre** con el payload correcto delante.
+- **Qué NO cambia:** si gana la fila existente, su `payload`, su `providerVersion` y su `calculationVersion` quedan byte por byte. Reafirmar identidad no es relabelar una carta con la procedencia de otra.
+
+### `natalInterpretations` — la `cacheVersion` por fin invalida (sin cambio de schema)
+
+- **Qué cambia:** toda decisión de cache hit, estado público y claim exige ahora **la misma `chartRevision` Y la misma `cacheVersion` esperada** (`ORBITA_LLM_NATAL_CACHE_VERSION`). Una fila de una versión anterior queda no verificable: estado público `pending` —no `error`—, no se publica, no frena una generación nueva y se toma un claim nuevo sobre la misma fila.
+- **Por qué:** la versión se persistía en cada fila y no la miraba nadie: lectura pública, estado y claim validaban sólo `chartRevision`. Un bump v1 → v2 con el mismo prompt dejaba la fila v1 `ready` para siempre, así que la única palanca para retirar texto generado no retiraba nada.
+- **CAS final:** además de revisión y `claimSeq`, exige que la versión configurada AHORA sea la de este texto. Una generación que arrancó en v1 y vuelve después del bump no publica v1: la fila queda `pending` para que la regenere un claim de v2. Motivo nuevo `cache_version_changed` en el resultado **interno** de `persistNatalReading`.
+- **Compatibilidad:** sin cambios de schema, sin cambios de firma pública. Las filas legadas se conservan y se regeneran en vez de publicarse.
+
+### `convex/_generated/api.d.ts` — estaba INCOMPLETO; el gate lo dijo y el codegen lo cerró
+
+- **Hecho (antes):** el árbol tenía `convex/lib/natalGeometry.ts` y `convex/lib/natalRevision.ts`, y el artifact —generado antes de que esos módulos existieran— no los enumeraba. `ApiFromModules` **no** los agrega solo: deriva las funciones de los módulos que `fullApi` ya lista, y `fullApi` lo escribe el codegen archivo por archivo.
+- **Gate:** `test/convexGeneratedApiGate.test.ts` compara, sin red, todos los módulos elegibles de `convex/**` —con las reglas reales de `entryPoints()` de Convex 1.42.1, no con una lista de nombres— contra los imports y las entradas del artifact. Falló a propósito mientras el artifact estuvo desincronizado, nombrando esos dos módulos.
+- **Durante:** Claude escribió el gate y dejó el árbol rojo a propósito; **no** ejecutó el codegen ni editó `convex/_generated/**` a mano, porque el workflow del repo le reserva `pnpm convex:codegen` al backend.
+- **Cerrado (2026-08-18):** **Codex** corrió `pnpm convex:codegen --typecheck disable` (exit 0) fuera de esa sesión y agregó al artifact los **dos** módulos que el gate nombraba, `lib/natalGeometry` y `lib/natalRevision`, con su `import type * as …` y su entrada en `fullApi`. `convex/_generated/**` no se editó a mano. El gate quedó **7/7 en verde** y la suite completa en **1493/1493**, sin ningún fallo deliberado.
+- **Alcance del diff del artifact:** contra `52836ad`, `api.d.ts` suma **+26 líneas** y pasa de **58 a 71** entradas en `fullApi`. Esos 13 módulos son ACUMULADOS de este trabajo sin commitear: 11 (`layers`, `content/astrologySources`, `lib/civilTime`, `lib/layerAssembly`, `lib/layerContract`, `lib/layersMath`, `lib/natalChartBaseContract`, `lib/relationshipLayers`, `lib/stableHash`, `lib/transitLayers`, `lib/transitTimeline`) ya estaban en el árbol antes de esta corrida —el gate no los reportaba— y **2** los agregó el codegen del 2026-08-18.
+- **Documentación corregida:** las dos entradas anteriores que afirmaban "no hace falta regenerar nada" quedan anotadas más abajo con la distinción real (función nueva vs. módulo nuevo).
+
+### Rollout
+
+- **Sin deploy.** El único comando de Convex que se corrió es `pnpm convex:codegen --typecheck disable`, ejecutado por **Codex**: regenera el artifact de tipos en el árbol y no publica funciones. **No** se corrió `convex dev`, ni `finishPush`, ni ningún deploy; ningún deployment cambió.
+- **Compatibilidad hacia atrás:** ninguna firma pública cambia, no hay cambios de schema y los clientes instalados no se enteran.
+
+## 2026-08-17 — Persistencia natal monotónica, revisión de la lectura LLM y bindings generados (sin cambio de firma pública)
+
+### `charts.persistCalculatedNatalChart()` — la decisión final es MONOTÓNICA y vive dentro de la transacción (interna)
+
+- **Qué cambia:** la mutación dejaba de parchear a ciegas con el payload que le llegaba. Ahora relee la fila por `cacheKey` **dentro de la transacción**, mide suficiencia con `storedNatalChartIsSufficient` y la precisión natal VIGENTE, y decide: sin fila ⇒ inserta el candidato (aunque sea parcial); fila **suficiente** ⇒ la conserva intacta, pase lo que pase; fila insuficiente + candidato suficiente ⇒ escribe el candidato; fila insuficiente + candidato insuficiente ⇒ conserva la fila. La regla vive en `resolveNatalPersistDecision`, exportada y probada como tabla.
+- **Por qué:** el snapshot con el que la action decidía se toma ANTES de llamar al proveedor, y el proveedor tarda. Dos corridas sobre la misma carta A incompleta terminan en cualquier orden: la atrasada traía A vieja —o una respuesta C que tampoco alcanzaba— y la escribía encima de la B completa que la otra ya había publicado. **La Carta empeoraba por una corrida atrasada.**
+- **`profileAstrologyCaches`:** copia y referencia el payload REALMENTE elegido por la mutación —nunca el candidato descartado—, con su `providerVersion` y su `calculationVersion`. Antes se actualizaba con `args.payload` y podía divergir de `natalCharts` o degradarse con ella.
+- **Revalidación de identidad:** la mutación comprueba que `birthDataId`, `birthDataHash` y `cacheKey` sigan correspondiendo a los datos natales vigentes. Si cambiaron durante la llamada al proveedor, rechaza con `NATAL_BIRTH_DATA_CHANGED_DURING_CALCULATION` en vez de publicar una carta calculada para los datos anteriores.
+- **Retorno (interno):** `{ chart, stored: "existing" | "candidate", outcome, sufficient }` en lugar del documento a secas. Es una mutación **interna**: ningún cliente la ve.
+
+### `charts.calculateOrCreateNatalChart()` y `charts.recoverNatalChart()` — contratos INTACTOS
+
+- **Ninguna firma cambia.** `calculateOrCreateNatalChart` sigue devolviendo la carta vigente o rechazando; `recoverNatalChart` conserva `args: {}` y su `returns` cerrado y discriminado, con los mismos cuatro desenlaces.
+- **Qué cambia por dentro:** al volver de la mutación se vuelve a medir la carta FINAL (`resolveFinalNatalOutcome`). Si otra corrida ganó con una carta que alcanza, el desenlace es éxito **almacenado** (`cache_sufficient` ⇒ `recovered`/`stored`) y no un fallo falso; y una corrida que traía una carta completa pero no llegó a escribir reporta `stored`, no `provider`.
+- **Rechazo nuevo, compatible:** las dos actions pueden rechazar con `NATAL_BIRTH_DATA_CHANGED_DURING_CALCULATION` cuando los datos natales cambiaron durante el cálculo. Las dos ya podían rechazar; el `returns` de `recoverNatalChart` no crece. La salida es reintentar, ahora con los datos nuevos.
+
+### `natalInterpretations` — revisión del payload natal y CAS (schema **aditivo**)
+
+- **Campos nuevos, los dos `v.optional()`:** `chartRevision` (hash estable del payload natal con el que se generó la lectura, `natalPayloadRevision`) y `claimSeq` (número monótono del claim vigente por fila).
+- **Por qué:** una mejora de la carta reescribe el payload **sobre el mismo `natalChartId`**, y la lectura se identificaba sólo por carta + feature + `promptVersion`. Una lectura `ready` escrita sobre la carta parcial seguía pasando como cache hit sobre la carta completa, y una generación que arrancó con el payload parcial podía terminar después de la mejora y persistir texto viejo encima del estado nuevo.
+- **Qué cambia:** el claim, la lectura pública y la persistencia se resuelven contra la revisión vigente. Una fila `ready` sólo es cache hit si su revisión coincide. La escritura final es un **CAS** (`resolveNatalReadingWrite`): la carta tiene que seguir en la revisión esperada **y** la generación tiene que seguir siendo dueña del `claimSeq`. Una generación vieja no escribe después de una mejora ni después de que otro claim la reemplazó, ni siquiera para marcar `error`.
+- **Filas legadas sin revisión:** no pueden demostrar sobre qué carta se generaron, así que se tratan como **no verificadas** y se regeneran. Nunca se publican como `ready` de una carta que no pueden demostrar.
+- **Estado público:** `charts.personalityReadingState` declara `pending` —no `error`— cuando la única fila guardada es de otra revisión: lo que corresponde es regenerarla. `charts.personalityReading` no la devuelve. Las dos firmas quedan igual.
+- **Borrado de cuenta:** sin cambios. `natalInterpretations` ya se borra por `by_user`.
+
+### Binding del front: `charts.recoverNatalChart` se consume por la referencia GENERADA
+
+- **Qué cambia:** sale de la sección manual de `src/services/appRefs.ts` —donde estaba enlazada por `anyApi` con su firma escrita a mano— y pasa a `src/services/chartsApi.ts`, que reexporta `api.charts.recoverNatalChart` de `convex/_generated/api`, con el mismo criterio que `layersApi.ts` y `relationshipsApi.ts`.
+- **Por qué:** una firma escrita a mano no es un contrato, es una copia: un cambio del `returns` del backend seguiría compilando y el error aparecería recién en runtime. Con la referencia generada, un cambio de contrato **rompe el typecheck** del consumidor.
+- **Alcance:** sólo esta action. Las superficies legacy de `appRefs` no se migran en esta tanda.
+
+### Rollout
+
+- **Sin deploy en esta tarea.** No se corrió `convex dev` ni `convex codegen`. **Corrección (2026-08-18):** esta línea decía que `api.d.ts` "deriva de los módulos (`ApiFromModules`)" y por eso no hacía falta regenerar nada. Eso vale para una FUNCIÓN nueva dentro de un módulo que el artifact ya enumera —el caso de esta entrada—, pero **no** para un módulo nuevo: `fullApi` es una tabla que escribe el codegen archivo por archivo. `convex/lib/natalRevision.ts` es un módulo nuevo y quedó **fuera** del artifact. Ver la entrada del 2026-08-18.
+- **Compatibilidad hacia atrás:** los dos campos nuevos son opcionales, ninguna firma pública cambia y los clientes instalados no se enteran. Una app anterior que lea una lectura legada verá `pending` y la regeneración la completará.
+
+## 2026-08-17 — Recuperación natal honesta (`charts.recoverNatalChart`, aditiva) y caché negativa del arco
+
+### `charts.recoverNatalChart()` — **NUEVA**, aditiva
+
+- **Firma:** `action`, pública. `args: {}` (cerrado, sin argumentos). `returns` cerrado y discriminado:
+  `{ status: "recovered", source: "stored" | "provider" } | { status: "failed", reason: "provider_failed" | "still_incomplete" }`.
+- **Qué hace:** exactamente el mismo trabajo que `charts.calculateOrCreateNatalChart` —mide la suficiencia del cache, vuelve al proveedor si no alcanza, persiste y agenda la lectura larga— y además **dice cómo terminó**. `recovered` significa una sola cosa: el read-model puede publicar la geometría que estos datos natales permiten, medida con `storedNatalChartIsSufficient`, la misma regla que usa `layers.getNatalChartBase`.
+- **Por qué:** `calculateOrCreateNatalChart` resuelve con la carta guardada cuando el proveedor falla. Eso es lo correcto para el alta —nadie se queda sin carta por una caída— y es justamente lo que no sirve para el botón "COMPROBAR DE NUEVO": recibir de vuelta la misma carta incompleta y llamarlo éxito dejaba a la pantalla anunciando un final que no ocurrió. Con `success` del proveedor y un payload que seguía sin casas ni ejes pasaba lo mismo, y encima ese payload se persistía **encima** del anterior sin comprobar nada.
+- **Quién la usa:** el controlador de recuperación de la Carta (`src/hooks/useNatalChartRecovery.ts`). Con `failed` la pantalla muestra *"No pudimos completar el cálculo ahora."* y `REINTENTAR`, y la carta parcial sigue visible.
+- **Binding:** tipado en `src/services/appRefs.ts` con `args`/`returns` cerrados. La action nueva vive en `convex/charts.ts`, un módulo que `convex/_generated/api.d.ts` **ya enumera**, así que `ApiFromModules` deriva su firma sin regenerar nada; **no se corrió `convex dev` ni `convex codegen`**. **Corrección (2026-08-18):** esa derivación vale por FUNCIÓN dentro de un módulo ya enumerado, no por módulo nuevo. Ver la entrada del 2026-08-18.
+
+### `charts.calculateOrCreateNatalChart()` — una carta guardada nunca empeora (sin cambio de firma)
+
+- **Qué cambia:** cuando la carta guardada no alcanza y el proveedor responde `success` con un payload que **tampoco** alcanza, ese payload ya **no se persiste encima** de la anterior. Se conserva la que estaba. Sin carta guardada, en cambio, se persiste igual: algo es mejor que nada y la Carta ya sabe declararlo `partial` con su reintento.
+- **Por qué:** no hay forma de ordenar dos cálculos incompletos, y el que ya está publicado es el que la Carta está mostrando. Un intento de recuperación no puede empeorar lo que había.
+- **Qué NO cambia:** su firma, su comportamiento visible para el alta, el editor de perfil y la Carta web. Sigue devolviendo la carta vigente —la nueva, o la anterior cuando el proveedor no pudo mejorarla— y sólo rechaza cuando no queda ninguna. Ningún argumento nuevo, ningún `force`.
+- **Dónde vive la decisión:** `runNatalChartCalculation` + `resolveNatalCalculationDecision` en `convex/charts.ts`, exportadas y probadas como tabla (`test/natalRecoveryBackendV492.test.ts`), con el proveedor inyectado.
+
+### `ORB-TRN-001` — la caché negativa vieja no sobrevive al ranking de hoy
+
+- **Qué cambia:** la coherencia del par `(ranking, arco)` mira el ranking **siempre**, también cuando el arco no trae dato. Antes devolvía "coherente" apenas veía `data === null`, así que un sobre negativo cacheado con `missingInputs: ["matching_transit_arc"]` convivía con un `items: []` nuevo: el copy prometía calcular el arco del tránsito que hoy encabeza la lista cuando la propia lista decía que no encabeza ninguno. Ese copy falso duraba hasta `validUntil`, o indefinidamente si era `null`.
+- **La regla, entera:** ranking **sin `data`** → el arco se conserva tal cual, traiga dato o no. Ranking con **`items: []`** → sobre sin dato con `active_transit_arc`, y el código contrario se descarta. Ranking con **primer ítem** y arco ausente o de otro contacto → `matching_transit_arc`.
+- **Qué se conserva:** los demás faltantes del sobre sin dato (`current_ephemeris`, `natal_chart`, …) se suman al hecho de coherencia en vez de perderse. Y un sobre sin dato que **ya declara exactamente ese hecho** —y no el contrario— no se reescribe: su limitación explica mejor por qué hoy no hay arco.
+- **Copy:** la limitación decía *"el que estaba guardado es de otro día"*. Puede ser de otra hora del MISMO día: ahora dice *"ya no corresponde a la lista actual"*, y sólo cuando de verdad había un arco con dato que retirar.
+- **Qué NO cambia:** `methodVersion`, `inputHash`, alcance, `status`, `stale` y `validUntil` siguen resolviéndose igual, y nunca se relabela el arco de otro contacto.
+- **Schema y firmas:** sin cambios.
+- **Rollout:** sin deploy en esta tarea.
+
+## 2026-08-17 — Cache natal suficiente y motivo honesto del ranking vacío (sin cambio de firma)
+
+### `charts.calculateOrCreateNatalChart()` — el cache se mide por lo que publicó, no sólo por la clave
+
+- **Qué cambia:** la action deja de reutilizar la carta guardada por el solo hecho de existir. Con hora exacta (`birthTimePrecision === "known"`) se exige que el payload traiga la geometría completa —Ascendente, Medio Cielo y las doce cúspides verificadas—; si no la trae, se vuelve al proveedor y se persiste el resultado nuevo bajo el mismo `cacheKey`. Sin hora exacta no hay geometría que exigir y el cache se reutiliza exactamente como antes.
+- **Por qué:** el `cacheKey` se arma con los DATOS natales, así que dice "esta carta se calculó con estos datos"; no dice que el cálculo haya llegado hasta donde estos datos permiten. Una corrida en la que el proveedor devolvió posiciones pero no `houses` deja una fila sin casas y sin Ascendente. `layers.getNatalChartBase` la declara `partial` con `verified_ascendant_mc_geometry` / `verified_twelve_house_geometry`, la Carta ofrece volver a pedir el cálculo… y la action encontraba esa misma fila por `cacheKey` y la volvía a persistir igual. El botón prometía un cambio imposible.
+- **Una sola regla:** la suficiencia se mide con `convex/lib/natalGeometry.ts`, que es el mismo módulo del que `layers.getNatalChartBase` deriva los ejes y las casas publicables. Las dos preguntas no pueden discrepar.
+- **Qué NO cambia:** ninguna firma, ningún argumento, ninguna tabla. **No se agrega ningún `force` público:** la decisión es interna y no se puede pedir desde afuera. Si el proveedor no puede mejorar la carta ahora —credenciales ausentes, caída, respuesta parcial— se conserva la que ya había y se agenda la lectura larga igual que antes: reintentar puede no mejorar nada, pero nunca deja la cuenta sin carta.
+- **Costo:** una cuenta con carta incompleta y hora exacta vuelve a pegarle al proveedor en cada invocación hasta que la carta se complete. Es acotado (lo dispara una persona) y es el objetivo del arreglo.
+
+### `ORB-TRN-001` — el ranking con la lista VACÍA declara `active_transit_arc`
+
+- **Qué cambia:** cuando el arco guardado se descarta porque el ranking publicó `items: []`, el faltante pasa a ser `active_transit_arc` —el código canónico de "hoy no hay ningún tránsito mayor activo para formar un arco", el mismo que usa `layerAssembly`— en vez de `matching_transit_arc`. La limitación acompaña: *"Hoy no hay ningún tránsito encabezando tu lista, así que no hay arco que mostrar: el que estaba guardado es de otro día."*
+- **Por qué:** `matching_transit_arc` significa "falta calcular el arco del tránsito que hoy encabeza tu lista". Con la lista vacía, la propia lista ya afirmó que **no hay** tal tránsito: el sobre prometía el cálculo de algo que no existe.
+- **Qué NO cambia:** un ranking con un primer ítem y un arco de OTRO contacto conserva `matching_transit_arc` —ahí sí falta un cálculo—. Un ranking **sin dato** (`unavailable`, `error`) sigue sin contradecir a nadie y conserva el arco guardado. Estados, `stale`, `validUntil` y `current_ephemeris` quedan igual.
+- **Clientes:** los dos códigos ya tienen traducción visible en `src/domain/layers.ts`; `active_transit_arc` estaba desde el principio. Ningún cliente necesita conocer nada nuevo.
+- **Schema y firmas:** sin cambios.
+- **Rollout:** sin deploy en esta tarea.
+
+## 2026-08-17 — Coherencia del par ranking/arco al leer del cache (sin cambio de firma)
+
+- **Qué cambia:** todo camino que compone el bundle publica `today.transitArc` y `today.transitRanking` correspondiéndose. Cuando el arco trae dato, se exige contra el primer ítem del ranking el `arcId` **y** la tupla semántica completa —`transitPlanet`, `natalPoint`, `aspect`—. Si no corresponden, el arco se descarta y en su lugar va un `ORB-TRN-001` sin dato con el faltante nuevo `matching_transit_arc`. Nunca se relabela `ORB-TRN-002` como arco ni se mezcla el arco de otro contacto.
+- **Por qué:** el arreglo de identidad anterior sólo cubre el CÁLCULO. `layers.getForDate` (lectura pura) y `layers.refreshForDate` sin efeméride rescataban los dos sobres del cache por separado, así que una fila escrita antes de aquel arreglo —o por otra ventana lógica del día— podía combinar un ranking cuyo `items[0]` es A con un arco que describe B. En modo caché u offline ese par podía durar indefinidamente.
+- **Dónde aplica:** `getForDate`, las dos ramas de `refreshForDate` (con efeméride y sin ella) y, por lo tanto, lo que `persistRefresh` guarda. En `refreshForDate` el sobre honesto REEMPLAZA la fila incoherente, así que el defecto no sobrevive a un refresh.
+- **Qué NO cambia:** un ranking **sin dato** —`unavailable`, `error`— no afirma nada sobre hoy y no descarta ningún arco: ahí se conserva el último dato personal disponible. Un ranking **con la lista vacía** sí afirma que hoy no encabeza ningún contacto, y contra eso ningún arco con dato se publica. El arco por `arcId` (`getTransitArc` / `refreshTransitArc`) conserva su guard propio y su alcance.
+- **Estados honestos:** el reemplazo nunca es `stale` —no existe fila correspondiente que mostrar—. Con efeméride es `unavailable`; sin efeméride, `error` con su fecha de reintento y `current_ephemeris` además del faltante nuevo.
+- **Schema y firmas:** sin cambios. `layers.getForDate`, `layers.refreshForDate`, `layers.getTransitArc` y `layers.refreshTransitArc` conservan args y returns; `missingInputs` ya era `array(string)`.
+- **Clientes:** `matching_transit_arc` tiene traducción visible en el front (`src/domain/layers.ts`). Un cliente anterior que no lo conozca cae en la limitación del sobre, que también está escrita para leer.
+- **Rollout:** sin deploy en esta tarea.
+
+## 2026-08-17 — Identidad estable del arco de tránsito (sin cambio de firma)
+
+- **Qué cambia:** el `arcId` V1 se deriva de carta + planeta en tránsito + aspecto + punto natal + **ventana lógica**, y ya no de cómo se midió esa ventana. `TransitContactInput.arcWindowKey` pasa a ser la ventana lógica: las marcas de procedencia (`verified:`, `estimated:`, `provisional:`) se descartan al calcular la identidad, y el seguimiento verificado propaga la ventana lógica que el contacto ya traía en vez de sembrar una nueva con sus propios bordes.
+- **Por qué:** el ranking (`ORB-TRN-002`) extrapola la ventana con la velocidad del día y el arco (`ORB-TRN-001`) la verifica contra efemérides reales. Sembrar la identidad con la ventana verificada —y encima etiquetada— hacía que el MISMO Saturno–Marte saliera como `arc_v1_0pa9p2w` en la lista y como `arc_v1_19nh0r0` en su propio arco: abrir el detalle del tránsito principal desde la lista no encontraba su arco. Ahora `today.transitArc.data.arcId === today.transitRanking.data.items[0].arcId` para la misma tupla semántica.
+- **Qué NO cambia:** las FECHAS. Verificar sigue corriendo los bordes de la ventana y publicando las pasadas reales; lo que se conserva es el identificador. Un `arcId` declarado por el caller sigue mandando sobre el derivado, y los arcos no principales conservan el soporte del cambio anterior.
+- **Cache:** el arco principal se sirve desde `analysisSnapshotsV492` sólo si la fila guardada declara el `arcId` vigente además del mismo contacto (planeta, punto natal y aspecto). Una fila escrita con otra identidad —por ejemplo, la de la versión anterior del motor— se recalcula en vez de publicarse; la invalidación es explícita y por identidad, no por versión de tabla.
+- **Schema y firmas:** sin cambios. `layers.getForDate`, `layers.refreshForDate`, `layers.getTransitArc` y `layers.refreshTransitArc` conservan args y returns.
+- **Rollout:** sin deploy en esta tarea.
+
+## 2026-08-17 — Detalle de UN arco de tránsito (aditivo)
+
+- **Qué cambia:** dos funciones nuevas y tipadas, `layers.getTransitArc({ localDate, timezone, arcId })` (query reactiva y pura) y `layers.refreshTransitArc({ localDate, timezone, arcId })` (action que calcula y persiste). Las dos devuelven el sobre cerrado `AnalysisResult<TransitArcData>` de `ORB-TRN-001`, con su método, su precisión, su hash, sus limitaciones y sus `sourceRefs`. La query devuelve `null` sólo cuando no hay cuenta con datos, igual que `getForDate`.
+- **Por qué:** `layers.getForDate` publica `ORB-TRN-001` únicamente del arco PRINCIPAL del día. El detalle de cualquier otro tránsito de la lista no tenía de dónde salir, y el cliente lo armaba con el ítem del ranking (`ORB-TRN-002`): fechas extrapoladas presentadas como cronología del arco y trazabilidad de otro análisis. Ahora cada arco pedido tiene su propio cálculo.
+- **Alcance y cache:** el resultado se guarda en `analysisSnapshotsV492` con el hash de `{ localDate, timezone, arcId }`. El arco principal conserva su alcance `{ localDate, timezone }`, así que dos arcos del mismo día —y el principal— son tres filas con tres `cacheKey` distintos y ninguno se lee en lugar de otro. Un `stale` sólo se reutiliza si el dato guardado declara el mismo `arcId`.
+- **Cómo se calcula:** se reutiliza el estado de `layers.getRefreshState`, la efeméride global vigente —o la anterior declarada `stale`—, la carta natal canónica y el motor real. Se reconstruyen los contactos, se selecciona el activo cuyo `arcId` coincide exactamente con el pedido, se corre el seguimiento verificado de `planets/tropical` para ESE contacto y se arma `buildTransitArcLayerData({ contacts, observedAt, arcId })`. La efeméride natal no se recalcula por este camino: sigue siendo del ciclo del día.
+- **Estados honestos:** si el arco salió de la lista, `unavailable` con `requested_transit_arc`; si nunca se calculó, la query lo declara con `requested_transit_arc_calculation`; si falla el proveedor o el seguimiento, `stale`, `partial` o `error` con su motivo. Nunca se rescata el arco de otro contacto ni se reconstruye con metadatos del ranking.
+- **Motor de arcos (aditivo):** `TransitContactInput` acepta `arcId?`. Verificar las pasadas corre los bordes de la ventana y con ellos el identificador derivado, así que sin esto el mismo tránsito cambiaría de `arcId` al verificarse y dejaría de corresponder al que publicó el ranking. Los contactos que declaran el mismo `arcId` se agrupan como pasadas del mismo arco. Sin el campo, el comportamiento es idéntico al anterior.
+- **Schema:** sin cambios. No hay tablas ni campos nuevos; el borrado de cuenta ya cubre `analysisSnapshotsV492`.
+- **Compatibilidad:** `layers.getForDate`, `layers.refreshForDate`, el arco principal, el ranking y los clientes instalados quedan intactos. Cambio puramente aditivo.
+- **Rollout:** sin deploy en esta tarea. Las funciones nuevas no están disponibles en Development hasta que se despliegue el contrato.
+
+## 2026-08-15 — Capas astrológicas nativas V4.9.2
+
+- **Creación idempotente de personas:** `relationships.savePerson(...)` acepta
+  `idempotencyKey` como parte de su contrato nuevo. En una creación, la clave
+  queda acotada al usuario e identifica un único intento: los reintentos concurrentes o tardíos
+  devuelven el mismo `profileId`; reutilizarla con otros datos falla cerrado.
+  Dos altas intencionales, incluso con datos idénticos, siguen siendo posibles
+  usando claves distintas. `relationshipProfiles` suma el campo privado
+  `creationRequestKey?` y el índice `by_user_creation_request_key`; la clave no
+  forma parte del retorno público, la telemetría ni las comparaciones.
+- **Qué cambia:** se agregan las funciones tipadas `layers.getNatalBase()`, `layers.getForDate({ localDate, timezone })`, `layers.refreshForDate({ localDate, timezone })`, `relationships.list()`, `relationships.savePerson(...)`, `relationships.removePerson({ profileId })`, `relationships.getComparison({ profileId })` y `relationships.refreshComparison({ profileId })`. Todos los resultados personales usan el sobre cerrado `AnalysisResult<T>` con estado, precisión, vigencia, versión de método, hash opaco, limitaciones y `sourceRefs` bibliográficas.
+- **Schema aditivo:** nuevas tablas tipadas `analysisSnapshotsV492`, `natalEphemerisCachesV492`, `globalSkySnapshotsV492` y `relationshipComparisonCachesV492`. `natalEphemerisCachesV492` conserva únicamente las diez posiciones normalizadas de `planets/tropical` —una muestra exacta con hora conocida o tres muestras del día civil sin hora—, se invalida por datos natales y versión del método, y nunca persiste el payload crudo. `relationshipProfiles` suma precisión de hora, coordenadas, timezone e identidad opcional del lugar; las filas anteriores siguen siendo válidas y se muestran como la primera persona guardada.
+- **Privacidad:** las nuevas tablas no persisten respuestas crudas del proveedor. El hash público no contiene fecha, hora, lugar ni coordenadas en claro. Telemetría no recibe datos natales ni contenido interpretativo.
+- **Compatibilidad:** no se retiran ni cambian funciones o tablas legacy; los clientes instalados conservan sus contratos. Los caches nuevos se borran con la cuenta y el cielo global compartido se preserva.
+- **Precisión:** sin hora exacta no se publican casas, Ascendente, profección ni capas sensibles. Un valor estable durante todo el intervalo civil puede mostrarse como estimado; si cruza un límite se devuelve rango o se retira esa parte.
+- **Carta natal canónica:** se agrega `layers.getNatalChartBase()` con contrato cerrado y `methodVersion=canonical-natal-chart-base-v1`. Sol–Plutón provienen exclusivamente del cache `planets/tropical`; Ascendente, Medio Cielo y las doce casas reutilizan geometría legacy sólo con hora `known`. Una hora `approximate` se trata como desconocida. Sin hora, cada posición declara `exact | estimated | range | omitted`, nunca publica el grado del mediodía, y los aspectos mayores sólo aparecen si conservan el mismo tipo dentro de la cota conservadora del día completo. La versión fija aspectos 0°/60°/90°/120°/180° con orbes 6°/4°/5°/5°/6°; no reutiliza `mainAspects` legacy.
+- **Estación vital sin hora:** `ORB-CYC-002` usa ahora `secondary-progressed-lunation-full-civil-day-v2`. Una hora desconocida —o aproximada sin margen declarado— se evalúa en `00:00 / 12:00 / 23:59` de la zona natal mediante `planets/tropical`. Solo se publica la fase cuando un margen conservador descarta un cruce durante todo el día. Las fechas de inicio y cambio incluyen rangos derivados del intervalo completo; si la fase cruza un límite, la capa queda `partial/range` sin elegir una hora. Los saltos y repeticiones del reloj se resuelven de forma cerrada y nunca seleccionan una ocurrencia implícita.
+- **Cumpleluna:** el dato devuelve las dos raíces consecutivas `previousExactAt` y `nextExactAt`. Así el cliente puede reconocer todo el día civil en que ocurrió la repetición del ángulo natal, incluso después de la hora exacta, sin confundirla con el ciclo del mes siguiente.
+- **Mandala temporal v2:** el tercer anillo deja de usar la lunación colectiva del día y pasa a representar `Tu ritmo lunar`, entre dos Cumplelunas personales consecutivas. `ORB-CYC-007` incorpora el anillo `cumpleluna` con avance, día del ciclo, días restantes y ambas fechas exactas; el validator conserva `current_lunation` únicamente para poder leer snapshots v1. El hash y la vigencia del Mandala dependen de sus cuatro capas fuente, y estado, precisión, faltantes y `stale` se propagan desde Cumpleluna en lugar de `Luna en tu carta`.
+- **Arcos de tránsito v2:** `ORB-TRN-001` usa `transit-arc-planets-tropical-roots-v2`. Para el contacto principal busca raíces reales y acotadas alrededor de la ventana activa mediante el adaptador canónico `planets/tropical`, detecta la dirección en cada pasada y agrupa el arco con un `arcId` estable. El radio se amplía según la velocidad de los planetas exteriores, con tope explícito de fechas y de 96 consultas. El snapshot horario y una deduplicación corta en vuelo evitan recalcular la misma búsqueda; un fallback `stale` sólo se acepta si planeta, punto natal y aspecto siguen siendo los del arco principal actual. Si una sola muestra falla o la ventana no puede cerrarse, conserva ese resultado compatible como `stale` o declara la estimación como `partial`; nunca presenta la extrapolación como una cronología verificada.
+- **Rollout:** contrato e implementación se integran con las diez capas terminadas. No hay deploy, TestFlight ni publicación en esta tarea sin autorización explícita de Lucas.
+
 ## 2026-08-13 — Hotfix: límite Free del Tarot visible en producción
 
 - **Qué cambia:** `daily.revealCard({ localDate })` conserva argumentos y retorno de éxito, pero el límite esperado de siete cartas ahora se comunica como `ConvexError({ code: "FREE_TAROT_REVEAL_LIMIT_REACHED" })` en lugar de un `Error` interno.

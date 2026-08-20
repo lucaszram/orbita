@@ -2,15 +2,22 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
+import { resolveEntryForPlatform } from "./moduleGraph";
 
 // Verificación ESTRUCTURAL de los requisitos de App Review en Perfil: no se
 // puede renderizar RN en node; se valida la estructura del fuente (mismo patrón
 // que accountScreenLayout.test.ts).
-const PERFIL = readFileSync(path.join(process.cwd(), "app/(tabs)/perfil.tsx"), "utf8");
+const PERFIL = readFileSync(path.join(process.cwd(), "src/screens/PerfilScreen.tsx"), "utf8");
 const PLUS = readFileSync(path.join(process.cwd(), "app/reading/plus.tsx"), "utf8");
 const VOID_SRC = readFileSync(path.join(process.cwd(), "src/components/void/VoidExperience.tsx"), "utf8");
 const APP_STATE = readFileSync(path.join(process.cwd(), "src/hooks/useAppState.tsx"), "utf8");
-const INDEX = readFileSync(path.join(process.cwd(), "app/index.tsx"), "utf8");
+const INDEX_WRAPPER = readFileSync(path.join(process.cwd(), "app/index.tsx"), "utf8");
+const INDEX_NATIVE_PATH = resolveEntryForPlatform("app/index.tsx", "native");
+const INDEX_WEB_PATH = resolveEntryForPlatform("app/index.tsx", "web");
+const INDEXES = [
+  ["native", readFileSync(INDEX_NATIVE_PATH, "utf8")],
+  ["web", readFileSync(INDEX_WEB_PATH, "utf8")]
+] as const;
 
 describe("Perfil — eliminar cuenta (App Review)", () => {
   it("ofrece 'Eliminar mi cuenta' con el flujo de doble confirmación del dominio", () => {
@@ -21,29 +28,33 @@ describe("Perfil — eliminar cuenta (App Review)", () => {
     assert.match(PERFIL, /destructive:\s*true/);
   });
 
-  it("cablea los pasos reales en orden: Convex deleteAccount → Clerk deleteUser → limpieza → entrada", () => {
-    const convex = PERFIL.indexOf("appApi.users.deleteAccount");
-    const clerk = PERFIL.indexOf("auth.deleteUser");
-    const clear = PERFIL.indexOf("clearLocalData:");
-    const entry = PERFIL.indexOf("goToEntry:");
-    assert.ok(convex >= 0, "falta la mutación Convex users.deleteAccount");
-    assert.ok(clerk >= 0, "falta el borrado de identidad Clerk");
-    assert.ok(clear >= 0 && entry >= 0, "faltan limpieza local / vuelta a la entrada");
-    // La limpieza borra también el snapshot por cuenta (no hay nada que restaurar).
-    assert.match(PERFIL, /clearAccountSnapshot/);
-    // La vuelta a la entrada es la ruta estable de arranque.
-    assert.match(PERFIL, /goToEntry:\s*\(\)\s*=>\s*router\.replace\("\/onboarding"\)/);
+  it("la pantalla sólo deja la INTENCIÓN escrita y entrega el control", () => {
+    const marcador = PERFIL.indexOf('storePendingAccountDeletion(userId, "deletion_requested")');
+    const entrega = PERFIL.indexOf("publishPendingDeletion(result.marker)");
+    assert.ok(marcador > 0, "falta la fase previa `deletion_requested`");
+    assert.ok(entrega > marcador, "el control se entrega DESPUÉS de persistir la intención");
+    // TODO lo destructivo —incluida la mutación de Convex— vive en el boundary
+    // global: mientras estuvo acá, el camino feliz era una carrera A → B y la
+    // app quedaba navegable con un marcador ajeno en disco.
+    for (const retirado of [
+      "appApi.users.deleteAccount",
+      "auth.deleteUser",
+      'storePendingAccountDeletion(userId, "backend_deleted")',
+      'storePendingAccountDeletion(userId, "identity_deleted")',
+      "clearLocalData:",
+      "clearAccountSnapshot",
+      "clearPendingCleanup",
+      "goToEntry"
+    ]) {
+      assert.equal(PERFIL.includes(retirado), false, `el Perfil no puede cablear ${retirado}`);
+    }
   });
 
-  it("escribe el marcador por FASES: backend_deleted antes de Clerk, identity_deleted después", () => {
-    const backend = PERFIL.indexOf('storePendingAccountDeletion(userId, "backend_deleted")');
-    const identity = PERFIL.indexOf('storePendingAccountDeletion(userId, "identity_deleted")');
-    assert.ok(backend >= 0, "falta la fase backend_deleted antes de borrar Clerk");
-    assert.ok(identity >= 0 && backend < identity, "falta la promoción a identity_deleted tras Clerk");
-    assert.match(PERFIL, /clearPendingCleanup:\s*\(\)\s*=>\s*clearPendingAccountDeletion\(\)/);
+  it("el dueño capturado viaja en el marcador", () => {
+    assert.match(PERFIL, /ownerUserId: userId \?\? ""/);
   });
 
-  it("falla cerrado sin userId: no se crea un marcador sin dueño ni se borra Clerk", () => {
+  it("falla cerrado sin userId: no se crea un marcador sin dueño", () => {
     assert.match(PERFIL, /if \(!userId\) throw new Error/);
   });
 
@@ -62,45 +73,121 @@ describe("Perfil — eliminar cuenta (App Review)", () => {
 
   it("muestra error con reintento sin fingir éxito", () => {
     assert.match(PERFIL, /Reintentar eliminación/);
-    assert.match(PERFIL, /No pudimos eliminar tu cuenta/);
+    // El copy dice lo que de verdad pasó: el único corte posible en esta
+    // pantalla es no poder dejar la marca, y ahí NADA se borró todavía. Decir
+    // "no pudimos eliminar tu cuenta" sugería que algo se había intentado.
+    assert.match(PERFIL, /No pudimos empezar a eliminar tu cuenta/);
   });
 });
 
-describe("Arranque — la purga pendiente corre antes de publicar estado local", () => {
-  it("useAppState consulta el marcador al hidratar y arranca vacío si hay eliminación pendiente", () => {
-    const purge = APP_STATE.indexOf("completePendingAccountDeletion({");
-    const ready = APP_STATE.indexOf("setIsReady(true)");
-    assert.ok(purge >= 0, "falta completePendingAccountDeletion en la hidratación");
-    assert.ok(ready >= 0 && purge < ready, "la purga debe decidirse ANTES de publicar isReady");
-    // Con marcador (cualquier fase) el estado local se publica vacío: nunca el
-    // perfil de una cuenta eliminada, nunca login a esa cuenta.
-    assert.match(APP_STATE, /if \(pendingDeletion\.status !== "none"\)/);
-    // TODO estado con marcador vivo (awaiting-identity Y pending) queda
-    // expuesto al gate: solo "completed" libera el arranque normal.
-    assert.match(APP_STATE, /pendingDeletion\.status === "completed" \? null : pendingDeletion\.marker/);
+describe("Arranque — la eliminación pendiente se resuelve ANTES de montar el producto", () => {
+  it("el boundary envuelve sesión, bootstrap, AppState y Stack", () => {
+    const layout = readFileSync(path.join(process.cwd(), "app/_layout.tsx"), "utf8");
+    const boundary = layout.indexOf("<PendingDeletionBoundary>");
+    assert.ok(boundary > 0, "falta el boundary global");
+    for (const dentro of [
+      "<OrbitaSessionProvider>",
+      "<AppStateProvider>",
+      "<AccountBootstrapProvider>",
+      "<Stack"
+    ]) {
+      const posicion = layout.indexOf(dentro);
+      assert.ok(posicion > boundary, `${dentro} tiene que montarse DENTRO del boundary`);
+    }
+    // Y el boundary vive dentro de BackendProviders: necesita Clerk para saber
+    // quién está logueado antes de decidir nada.
+    assert.ok(layout.indexOf("<BackendProviders>") < boundary);
   });
 
-  it("el gate de index bloquea el arranque con backend_deleted y decide con Clerk cargado", () => {
-    assert.match(INDEX, /resolvePendingDeletionBoot\(/);
-    // La pantalla de bloqueo se renderiza ANTES del switch de decisión normal.
-    const gate = INDEX.indexOf("if (pendingAccountDeletion)");
-    const decisionSwitch = INDEX.indexOf("switch (decision)");
-    assert.ok(gate >= 0 && decisionSwitch >= 0 && gate < decisionSwitch, "el gate debe cortar antes de resolveStart");
-    // El intento corre por el coordinador del dominio (resultado SIEMPRE
-    // publicable) y publica el fallo salvo unmount REAL — nunca lo silencia
-    // un cambio de decisión durante los await.
-    assert.match(INDEX, /attemptPendingDeletionFinalize\(\{/);
-    assert.match(INDEX, /decision: pendingDeletionDecision/);
-    assert.match(INDEX, /auth\?\.deleteUser\(\)/);
-    assert.match(INDEX, /purge: completePendingDeletionPurge/);
-    assert.match(INDEX, /result === "error" && mountedRef\.current/);
-    // El efecto del gate no usa cleanup de cancelación que trague el error.
-    const effectStart = INDEX.indexOf("attemptPendingDeletionFinalize({");
-    const effectSlice = INDEX.slice(effectStart - 800, effectStart + 800);
-    assert.equal(/let cancelled/.test(effectSlice), false, "el gate no debe cancelar por re-run de decisión");
-    // Estado bloqueante visible + reintento.
-    assert.match(INDEX, /Finalizando la eliminación/);
-    assert.match(INDEX, /REINTENTAR/);
+  it("el AppState ya no mira el marcador: un solo dueño de esa decisión", () => {
+    for (const retirado of [
+      "inspectPendingAccountDeletion",
+      "pendingAccountDeletion",
+      "completePendingDeletionPurge",
+      "publishPendingDeletion"
+    ]) {
+      assert.equal(APP_STATE.includes(retirado), false, `useAppState no puede tener ${retirado}`);
+    }
+  });
+
+  it("el boundary decide con Clerk cargado y dueño verificado, y es el único que borra", () => {
+    const boundary = readFileSync(
+      path.join(process.cwd(), "src/components/PendingDeletionBoundary.tsx"),
+      "utf8"
+    );
+    assert.match(boundary, /resolvePendingDeletionBoot\(/);
+    assert.match(boundary, /currentUserId: auth\?\.userId \?\? null/);
+    assert.match(boundary, /attemptPendingDeletionFinalize\(\{/);
+    assert.match(boundary, /deleteUser\(marker\.userId\)/);
+    assert.match(boundary, /runGuardedPendingDeletionPurge\(/);
+    // Estado bloqueante visible + reintento que RELEE el disco.
+    assert.match(boundary, /Finalizando la eliminación/);
+    assert.match(boundary, /REINTENTAR/);
+    assert.match(boundary, /setTick\(\(t\) => t \+ 1\)/);
+
+    // Y las rutas ya no corren nada destructivo.
+    for (const [plataforma, index] of INDEXES) {
+      assert.match(index, /usePendingDeletionGate\(\)/, plataforma);
+      assert.doesNotMatch(index, /attemptPendingDeletionFinalize/, plataforma);
+      assert.doesNotMatch(index, /deleteUser\(/, plataforma);
+    }
+    assert.match(INDEX_WRAPPER, /export \{ default \} from "@\/routes\/v492\/index"/);
+    assert.equal(INDEX_NATIVE_PATH, path.join(process.cwd(), "src/routes/v492/index.tsx"));
+    assert.equal(INDEX_WEB_PATH, path.join(process.cwd(), "src/routes/v492/index.web.tsx"));
+  });
+
+  it("en web el bloqueo se dibuja ANTES de la landing y su AccountGate", () => {
+    const web = INDEXES[1][1];
+    const bloqueo = web.indexOf('if (surface === "pending-deletion")');
+    const landing = web.indexOf("<AccountGate");
+    assert.ok(bloqueo > 0 && landing > 0, "faltan el bloqueo o la landing");
+    assert.ok(bloqueo < landing, "REPRO: el AccountGate no puede adelantarse al bloqueo");
+  });
+
+  it("signed-out ofrece un LOGIN real, sin crear otra cuenta y sin OAuth", () => {
+    const boundary = readFileSync(
+      path.join(process.cwd(), "src/components/PendingDeletionBoundary.tsx"),
+      "utf8"
+    );
+    // El flujo canónico de email + código, reutilizado tal cual.
+    assert.match(boundary, /import \{ SignInScreen \} from "@\/onboarding\/screens\/SignInScreen"/);
+    assert.match(boundary, /useSignInFlow\(\)/);
+    assert.match(boundary, /allowSignup=\{false\}/);
+    // Ni SSO: puede terminar creando una cuenta nueva o entrando con otra, y eso
+    // es exactamente lo que no puede pasar con un marcador ajeno vivo.
+    assert.match(boundary, /allowOAuth=\{false\}/);
+    assert.match(boundary, /recovery === "sign-in-owner"/);
+
+    // Y el `SignInScreen` respeta los dos flags: no dibuja Y no ejecuta.
+    const signIn = readFileSync(
+      path.join(process.cwd(), "src/onboarding/screens/SignInScreen.tsx"),
+      "utf8"
+    );
+    assert.match(signIn, /allowSignup && shouldOfferSignup/);
+    assert.match(signIn, /allowOAuth && GOOGLE_AUTH_ENABLED/);
+    assert.match(signIn, /if \(!allowOAuth \|\| busy \|\| flow\.oauthBusy\) return;/);
+  });
+
+  it("WEB: el boundary no purga datos locales, ni siquiera con `identity_deleted`", () => {
+    // `localStorage` es GLOBAL del origen y `clearLocalData` borra por clave sin
+    // dueño: entre revalidar y borrar, otra pestaña con la sesión de B puede
+    // escribir su perfil. Es un TOCTOU real y ningún "claim" escrito en el mismo
+    // storage lo cierra. Fail-closed: producto bloqueado y soporte.
+    const boundary = readFileSync(
+      path.join(process.cwd(), "src/components/PendingDeletionBoundary.tsx"),
+      "utf8"
+    );
+    const purga = boundary.indexOf("purge: async () => {");
+    const cuerpo = boundary.slice(purga, boundary.indexOf("}).then((resultado)", purga));
+    const corte = cuerpo.indexOf('if (IS_WEB) {');
+    const borrado = cuerpo.indexOf("runGuardedPendingDeletionPurge(");
+    assert.ok(corte > 0, "falta el corte por plataforma");
+    assert.ok(borrado > corte, "el corte va ANTES de cualquier borrado");
+    assert.match(cuerpo, /setPurgeBlocked\("web-unsupported"\)/);
+    // Y el producto sigue bloqueado: `web-unsupported` no libera nada.
+    assert.match(boundary, /purgeBlocked === "web-unsupported"/);
+    // El claim best-effort ya no existe: no se documenta como exclusión fuerte.
+    assert.equal(/claimPendingDeletionPurge/.test(boundary), false);
   });
 });
 
@@ -124,7 +211,14 @@ describe("Perfil — el plan se ofrece por el bloque autoritativo, sin precios",
     assert.equal(PERFIL.includes("reading/plus"), false);
     assert.equal(PERFIL.includes("ANUAL"), false);
     assert.equal(PERFIL.includes("SEMANAL"), false);
-    assert.equal(PERFIL.includes("$"), false);
+    // Lo que no puede haber es un IMPORTE. Buscar un `$` suelto también
+    // prohibía cualquier interpolación de template literal, que no tiene nada
+    // que ver con escribir un precio.
+    assert.equal(
+      /[$€]\s?\d|\d+[.,]\d{2}\s*(USD|ARS|€)?/.test(PERFIL),
+      false,
+      "el Perfil no puede escribir un importe: los precios los da la tienda"
+    );
     assert.equal(/createCheckoutSession|getWebOffer/.test(PERFIL), false);
   });
 

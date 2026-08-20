@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import test from "node:test";
 
 import { FREE_TAROT_REVEAL_LIMIT, FREE_TAROT_REVEAL_LIMIT_REACHED } from "../convex/lib/tarotAccess";
 import { recepcionCta } from "../src/domain/entitlement";
 import { plusActivation } from "../src/domain/paywall";
 import { FREE_TAROT_LIMIT_MARKER, revealFailureKind } from "../src/domain/ritual";
+import { resolveEntryForPlatform, resolveModule, type ModulePlatform } from "./moduleGraph";
 
 /**
  * El cierre del alta: recepción → carta o paywall, el CTA de la carta parcial,
@@ -21,12 +22,29 @@ const leer = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
 /** Un comentario no es conducta: las afirmaciones no pueden pasar por citarlo. */
 const sinComentarios = (src: string) =>
   src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+const fuenteDeEntrada = (ruta: string, plataforma: ModulePlatform) =>
+  sinComentarios(readFileSync(resolveEntryForPlatform(ruta, plataforma), "utf8"));
+const moduloDesde = (desde: string, spec: string, plataforma: ModulePlatform) => {
+  const resuelto = resolveModule(join(ROOT, desde), spec, plataforma);
+  assert.ok(resuelto, `no se pudo resolver ${spec} desde ${desde} para ${plataforma}`);
+  return sinComentarios(readFileSync(resuelto, "utf8"));
+};
 
 const FLOW = sinComentarios(leer("src/onboarding/OnboardingFlow.tsx"));
-const RECEPCION = sinComentarios(leer("app/recepcion.tsx"));
+const RECEPCION_WEB = fuenteDeEntrada("app/recepcion.tsx", "web");
+const RECEPCION_NATIVE = fuenteDeEntrada("app/recepcion.tsx", "native");
 const CARTA = sinComentarios(leer("src/screens/CartaScreen.tsx"));
 const PAYWALL = sinComentarios(leer("src/components/web/orbita-paywall.tsx"));
-const PLAN_BLOCK = sinComentarios(leer("src/components/orbita/ManageSubscription.tsx"));
+const PLAN_BLOCK_WEB = moduloDesde(
+  "src/screens/PerfilScreen.tsx",
+  "@/components/orbita/ManageSubscription",
+  "web"
+);
+const PLAN_BLOCK_NATIVE = moduloDesde(
+  "src/screens/PerfilScreen.tsx",
+  "@/components/orbita/ManageSubscription",
+  "native"
+);
 const HOME = sinComentarios(leer("src/screens/HomeScreen.tsx"));
 
 // --- 1. El alta termina en la recepción -------------------------------------
@@ -71,33 +89,97 @@ test("mientras el plan no resolvió no se afirma que la cuenta es Free", () => {
 
 test("un entitlement ilegible falla cerrado y una app sin backend conserva su salida", () => {
   assert.equal(recepcionCta({ entitlement: null, live: true }), "desbloquear");
+  // Sin sesión y sin backend: la salida histórica intacta.
+  assert.equal(recepcionCta({ entitlement: undefined, live: false }), "entrar");
+  assert.equal(recepcionCta({ entitlement: undefined, live: false, signedIn: false }), "entrar");
+});
+
+test("sesión firmada pero todavía no live: se espera, no se deja entrar a ciegas", () => {
+  // La fila `users` puede seguir creándose, o el entitlement puede no estar
+  // correlacionado con esta cuenta. En esa ventana el plan NO se sabe.
+  assert.equal(recepcionCta({ entitlement: undefined, live: false, signedIn: true }), "cargando");
+  assert.equal(
+    recepcionCta({ entitlement: { isPro: true }, live: false, signedIn: true }),
+    "cargando",
+    "ni siquiera un entitlement viejo decide mientras la sesión no está live"
+  );
+});
+
+test("REPRO primer render: con Clerk cargando, `isSignedIn` es false por no saber", () => {
+  // `useOrbitaAuth` normaliza `isSignedIn` a `false` mientras Clerk carga, así
+  // que el primer render de alguien CON sesión es idéntico al de alguien sin
+  // ninguna. Sin una señal propia, ese render caía en la salida histórica y
+  // abría la carta de alguien que quizás es Free.
+  assert.equal(
+    recepcionCta({ entitlement: undefined, live: false, signedIn: false, authLoading: true }),
+    "cargando"
+  );
+  // Y manda sobre todo lo demás: no hay nada que afirmar todavía.
+  assert.equal(
+    recepcionCta({ entitlement: { isPro: false }, live: true, signedIn: true, authLoading: true }),
+    "cargando"
+  );
+});
+
+test("offline real: sin backend y con la sesión ya resuelta, la salida histórica intacta", () => {
+  // Éste es el caso que NO puede volverse un spinner eterno: un build sin
+  // Convex/Clerk nunca va a estar `live` ni firmado, y Clerk ya resolvió.
+  assert.equal(
+    recepcionCta({ entitlement: undefined, live: false, signedIn: false, authLoading: false }),
+    "entrar"
+  );
   assert.equal(recepcionCta({ entitlement: undefined, live: false }), "entrar");
 });
 
-test("la recepción consulta el entitlement real y cablea los tres estados", () => {
-  assert.match(RECEPCION, /useQuery\(appApi\.subscriptions\.getCurrent, isLive \? \{\} : "skip"\)/);
-  assert.match(RECEPCION, /recepcionCta\(\{ entitlement, live: isLive \}\)/);
-  assert.match(RECEPCION, /cta === "desbloquear" \? "\/paywall" : "\/\(tabs\)\/carta"/);
-  assert.match(RECEPCION, /DESBLOQUEAR MI CARTA NATAL/);
-  assert.match(RECEPCION, /ENTRAR A MI CARTA/);
+test("la recepción web consulta el entitlement real y cablea los tres estados históricos", () => {
+  assert.equal(
+    relative(ROOT, resolveEntryForPlatform("app/recepcion.tsx", "web")),
+    "src/routes/v492/recepcion.web.tsx"
+  );
+  assert.match(RECEPCION_WEB, /useQuery\(appApi\.subscriptions\.getCurrent, isLive \? \{\} : "skip"\)/);
+  // El entitlement va CORRELACIONADO con el dueño, y la sesión firmada entra en
+  // la decisión: sin eso, la ventana "firmado pero no live" dejaba pasar.
+  assert.match(RECEPCION_WEB, /safeEntitlement\(rawEntitlement, auth\?\.isSignedIn/);
+  // Las tres señales: plan correlacionado, sesión firmada y auth cargando.
+  assert.match(RECEPCION_WEB, /live: isLive,/);
+  assert.match(RECEPCION_WEB, /signedIn: !!auth\?\.isSignedIn,/);
+  assert.match(RECEPCION_WEB, /authLoading: isAuthLoading/);
+  assert.match(RECEPCION_WEB, /const \{ isLive, auth, isAuthLoading \} = useLiveApp\(\)/);
+  assert.match(RECEPCION_WEB, /cta === "desbloquear" \? "\/paywall" : "\/\(tabs\)\/carta"/);
+  assert.match(RECEPCION_WEB, /DESBLOQUEAR MI CARTA NATAL/);
+  assert.match(RECEPCION_WEB, /ENTRAR A MI CARTA/);
   // Cargando: el botón no navega ni promete un plan.
-  assert.match(RECEPCION, /if \(cta === "cargando"\) return;/);
-  assert.match(RECEPCION, /disabled=\{cta === "cargando"\}/);
-  assert.match(RECEPCION, /cta === "cargando"\s*\?\s*"UN MOMENTO…"/);
+  assert.match(RECEPCION_WEB, /if \(cta === "cargando"\) return;/);
+  assert.match(RECEPCION_WEB, /disabled=\{cta === "cargando"\}/);
+  assert.match(RECEPCION_WEB, /cta === "cargando"\s*\?\s*"UN MOMENTO…"/);
 });
 
-test("VER DESPUÉS sigue llevando a la Home autenticada de cada plataforma", () => {
-  assert.match(RECEPCION, /VER DESPUÉS/);
-  assert.match(RECEPCION, /router\.replace\(HOME_ROUTE as never\)/);
+test("VER DESPUÉS conserva la Home autenticada en la recepción web", () => {
+  assert.match(RECEPCION_WEB, /VER DESPUÉS/);
+  assert.match(RECEPCION_WEB, /router\.replace\(HOME_ROUTE as never\)/);
   // `/(tabs)` en web resuelve a la landing pública: por eso el destino es HOME_ROUTE.
-  assert.doesNotMatch(RECEPCION, /router\.replace\("\/\(tabs\)"\)/);
+  assert.doesNotMatch(RECEPCION_WEB, /router\.replace\("\/\(tabs\)"\)/);
 });
 
-test("la ceremonia conserva rueda real, tríada y la marca de primera vez", () => {
-  assert.match(RECEPCION, /personalChartGate\(\{ birth: remoteBirth, chart: chartDoc \}\)/);
-  assert.match(RECEPCION, /<NatalWheel payload=\{payload\} size=\{size\} \/>/);
-  assert.match(RECEPCION, /<TriadLine/);
-  assert.match(RECEPCION, /markFirstRun\(\{ recepcionVista: true \}\)/);
+test("la ceremonia web conserva rueda real, tríada y la marca de primera vez", () => {
+  assert.match(RECEPCION_WEB, /personalChartGate\(\{ birth: remoteBirth, chart: chartDoc \}\)/);
+  assert.match(RECEPCION_WEB, /<NatalWheel payload=\{payload\} size=\{size\} \/>/);
+  assert.match(RECEPCION_WEB, /<TriadLine/);
+  assert.match(RECEPCION_WEB, /markFirstRun\(\{ recepcionVista: true \}\)/);
+});
+
+test("la recepción nativa marca la primera vista y redirige limpia a la Carta del Perfil", () => {
+  assert.equal(
+    relative(ROOT, resolveEntryForPlatform("app/recepcion.tsx", "native")),
+    "src/routes/v492/recepcion.tsx"
+  );
+  assert.match(RECEPCION_NATIVE, /markFirstRun\(\{ recepcionVista: true \}\)/);
+  assert.match(RECEPCION_NATIVE, /<Redirect href="\/perfil\/carta"\s*\/>/);
+  assert.doesNotMatch(
+    RECEPCION_NATIVE,
+    /useQuery|subscriptions\.getCurrent|recepcionCta|\/paywall|NatalWheel|TriadLine|HOME_ROUTE/,
+    "la redirección nativa no puede arrastrar la ceremonia comercial web"
+  );
 });
 
 // --- 3. El CTA de la carta bloqueada ---------------------------------------
@@ -128,7 +210,7 @@ test("la carta conserva rueda, tríada y posiciones", () => {
 // que además es donde el bloqueo se está viviendo—, no después del CTA.
 
 test("la carta natal completa se nombra donde se ofrece Plus: rueda, casas, aspectos y capítulos", () => {
-  const oferta = PLAN_BLOCK.slice(PLAN_BLOCK.indexOf('if (activacion === "activar")'));
+  const oferta = PLAN_BLOCK_WEB.slice(PLAN_BLOCK_WEB.indexOf('if (activacion === "activar")'));
   for (const palabra of ["rueda", "casas", "aspectos", "capítulos"]) {
     assert.ok(oferta.includes(palabra), `Perfil no nombra "${palabra}" al ofrecer Plus`);
   }
@@ -143,11 +225,17 @@ test("el límite del Tarot se explica en la Home, no después del CTA", () => {
 });
 
 test("ninguna de esas superficies escribe precios: el importe es el de Stripe", () => {
-  for (const [nombre, src] of [["Perfil", PLAN_BLOCK], ["Carta", CARTA], ["Home", HOME]] as const) {
+  for (const [nombre, src] of [
+    ["Perfil web", PLAN_BLOCK_WEB],
+    ["Perfil nativo", PLAN_BLOCK_NATIVE],
+    ["Carta", CARTA],
+    ["Home", HOME]
+  ] as const) {
     assert.doesNotMatch(src, /\$\s?\d|USD\s?\d/, `${nombre} escribe un importe a mano`);
   }
   // El único camino a checkout sigue siendo `/paywall`.
-  assert.doesNotMatch(PLAN_BLOCK, /createCheckoutSession/);
+  assert.doesNotMatch(PLAN_BLOCK_WEB, /createCheckoutSession/);
+  assert.doesNotMatch(PLAN_BLOCK_NATIVE, /createCheckoutSession/);
   assert.doesNotMatch(CARTA, /createCheckoutSession/);
   assert.doesNotMatch(HOME, /createCheckoutSession/);
 });
@@ -187,26 +275,70 @@ test("sin entitlement resuelto no se afirma Free, y uno ilegible falla cerrado",
   assert.equal(plusActivation({ entitlement: null }), "oculto");
 });
 
-test("Perfil ofrece ACTIVAR ÓRBITA PLUS hacia /paywall con la autoridad del backend", () => {
-  assert.match(PLAN_BLOCK, /useQuery\(appApi\.subscriptions\.getCurrent, \{\}\)/);
-  assert.match(PLAN_BLOCK, /plusActivation\(\{ entitlement \}\)/);
-  assert.match(PLAN_BLOCK, /if \(activacion === "activar"\)/);
-  assert.match(PLAN_BLOCK, /<Pill label="ACTIVAR ÓRBITA PLUS" onPress=\{\(\) => router\.push\("\/paywall"\)\} \/>/);
+test("Perfil web ofrece ACTIVAR ÓRBITA PLUS hacia /paywall con la autoridad del backend", () => {
+  assert.match(PLAN_BLOCK_WEB, /useQuery\(appApi\.subscriptions\.getCurrent, isLive \? \{\} : "skip"\)/);
+  assert.match(PLAN_BLOCK_WEB, /plusActivation\(\{ entitlement \}\)/);
+  assert.match(PLAN_BLOCK_WEB, /if \(activacion === "activar"\)/);
+  assert.match(PLAN_BLOCK_WEB, /<Pill label="ACTIVAR ÓRBITA PLUS" onPress=\{\(\) => router\.push\("\/paywall"\)\} \/>/);
   // El bloque no escribe precios: los pide `/paywall` a Stripe.
-  assert.doesNotMatch(PLAN_BLOCK, /\$\s?\d/);
+  assert.doesNotMatch(PLAN_BLOCK_WEB, /\$\s?\d/);
 });
 
-test("una cuenta Plus conserva la gestión de suscripción y el camino de soporte", () => {
-  assert.match(PLAN_BLOCK, /manageSubscription\(\{ entitlement, commerceEnabled \}\)/);
-  assert.match(PLAN_BLOCK, /createPortal\(\{\}\)/);
-  assert.match(PLAN_BLOCK, /GESTIONAR SUSCRIPCIÓN/);
-  assert.match(PLAN_BLOCK, /decision === "soporte"/);
-  assert.match(PLAN_BLOCK, /SUPPORT_URL/);
+test("una cuenta Plus conserva la gestión de suscripción y el camino de soporte en ambas plataformas", () => {
+  // La autoridad y las salidas son las mismas en las dos plataformas; el
+  // PROVEEDOR que se gestiona no: web abre el portal de Stripe y nativo abre
+  // el Customer Center de la tienda. Por eso la garantía compartida se afirma
+  // sobre lo que de verdad comparten.
+  for (const [plataforma, bloque] of [
+    ["web", PLAN_BLOCK_WEB],
+    ["nativo", PLAN_BLOCK_NATIVE]
+  ] as const) {
+    assert.match(bloque, /useQuery\(appApi\.subscriptions\.getCurrent, isLive \? \{\} : "skip"\)/, plataforma);
+    assert.match(bloque, /GESTIONAR SUSCRIPCIÓN/, plataforma);
+    assert.match(bloque, /SUPPORT_URL/, plataforma);
+  }
+  // Web: el portal de Stripe sigue siendo la gestión, y el modo comercio
+  // apagado degrada a soporte en vez de abrir un portal que tiraría.
+  assert.match(PLAN_BLOCK_WEB, /manageSubscription\(\{ entitlement, commerceEnabled \}\)/);
+  assert.match(PLAN_BLOCK_WEB, /createPortal\(\{\}\)/);
+  assert.match(PLAN_BLOCK_WEB, /decision === "soporte"/);
   // La activación se decide ANTES de ocultar por "no hay nada que gestionar",
   // que es exactamente el caso Free.
   assert.ok(
-    PLAN_BLOCK.indexOf('if (activacion === "activar")') < PLAN_BLOCK.indexOf('if (decision === "oculto") return null;')
+    PLAN_BLOCK_WEB.indexOf('if (activacion === "activar")') <
+      PLAN_BLOCK_WEB.indexOf('if (decision === "oculto") return null;')
   );
+  // Nativo: cada proveedor por su canal. Una suscripción de Stripe vista desde
+  // el teléfono se sigue gestionando en su portal, no en la tienda. La salida ya
+  // no se elige por el ganador de rango (`view`) sino por el FLAG de cada
+  // proveedor: con dos cobros vivos se muestran las dos.
+  assert.match(PLAN_BLOCK_NATIVE, /management\.showStoreCenter/);
+  assert.match(PLAN_BLOCK_NATIVE, /presentCustomerCenter\(\)/);
+  assert.match(PLAN_BLOCK_NATIVE, /management\.showStripePortal/);
+  assert.match(PLAN_BLOCK_NATIVE, /createPortal\(\{\}\)/);
+});
+
+test("Perfil nativo ofrece la compra de la tienda y nunca el checkout web", () => {
+  // Cambio intencional del comercio nativo (2026-08-18): antes el Perfil de la
+  // app no tenía ningún camino a Plus, porque el único checkout era web y
+  // llevar a alguien ahí desde la app es lo que Apple rechaza. Ahora `/paywall`
+  // se resuelve por plataforma y en nativo ES la compra con RevenueCat, así
+  // que ofrecerla desde el Perfil es el camino correcto —y el único—.
+  assert.match(PLAN_BLOCK_NATIVE, /useQuery\(appApi\.subscriptions\.getCurrent, isLive \? \{\} : "skip"\)/);
+  assert.match(PLAN_BLOCK_NATIVE, /<Pill label="ACTIVAR ÓRBITA PLUS" onPress=\{\(\) => router\.push\("\/paywall"\)\} \/>/);
+  assert.equal(
+    resolveEntryForPlatform("app/paywall.tsx", "native"),
+    join(process.cwd(), "src/routes/v492/paywall.tsx"),
+    "en nativo /paywall tiene que resolver a la compra de la tienda"
+  );
+  // El embudo web no se recupera por ninguna vía desde el bloque nativo.
+  assert.doesNotMatch(
+    PLAN_BLOCK_NATIVE,
+    /plusActivation|createCheckoutSession|orbita-paywall/,
+    "la app nativa no puede recuperar el embudo comercial web"
+  );
+  // Y el bloque nativo no escribe precios: los pide la tienda.
+  assert.doesNotMatch(PLAN_BLOCK_NATIVE, /\$\s?\d/);
 });
 
 // --- 6. El límite Free del Tarot en la Home --------------------------------

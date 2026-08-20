@@ -8,6 +8,18 @@ node_modules/
 dist/
 web-build/
 
+# Exports temporales de las auditorías nativas: se generan para auditar el
+# bundle y se retiran en la misma corrida. `dist/` ya está arriba y es la salida
+# canónica del export web.
+dist-ios/
+dist-android/
+
+# Evidencia local de auditoría (capturas, logs, comparaciones, herramientas de
+# la corrida). Son cientos de megas que existen sólo en esta máquina y no forman
+# parte del producto: nada de `.local/` tiene seguimiento hoy, y no debe entrar
+# por un `git add -A` distraído. NO se borra: vive fuera de git a propósito.
+.local/
+
 # Native build output
 android/
 ios/

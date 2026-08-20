@@ -1,9 +1,14 @@
 import { Platform } from "react-native";
 import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAction, useConvex, useMutation, useQuery } from "convex/react";
 
+import {
+  persistSignupDraft,
+  SIGNUP_DRAFT_NOT_READY,
+  type SignupDraftInput
+} from "@/domain/anonymousSignupDraft";
 import {
   mapSignInStartError,
   resolveFirstFactor,
@@ -21,6 +26,7 @@ import { timezoneLookupFor, withResolvedTimezone } from "@/domain/placeTimezone"
 import type { OnboardingCompletion } from "@/domain/onboardingReadiness";
 import { TRIAD_CLIENT_TIMEOUT_CODE, withTriadTimeout } from "@/domain/triadTimeout";
 import { useOrbitaAuth } from "@/hooks/useOrbitaAuth";
+import { anonymousSignupDraftTransport } from "@/services/anonymousOnboardingTransport";
 import { appApi, type BirthDataDoc } from "@/services/appRefs";
 import { backendConfig } from "@/services/backendProviders";
 import { publicOnboardingApi } from "@/services/publicOnboardingRefs";
@@ -782,26 +788,12 @@ function useBackendPersistInner(): PersistBirthData {
 // `clientDraftId` se conserva para adjuntarlo a la cuenta recién creada.
 // ---------------------------------------------------------------------------
 
-/** Presupuestos de las cadenas idempotentes (ver `runSessionAttempts`). */
-const SIGNUP_DRAFT_BUDGET_MS = 20000;
-const SIGNUP_DRAFT_CALL_TIMEOUT_MS = 6000;
-const SIGNUP_DRAFT_RETRY_PAUSE_MS = 800;
+/** Presupuestos de la cadena idempotente del cierre (ver `runSessionAttempts`). */
 const FINALIZE_BUDGET_MS = 60000;
 const FINALIZE_CALL_TIMEOUT_MS = 25000;
 const FINALIZE_RETRY_PAUSE_MS = 900;
 
-export type SignupDraftInput = {
-  clientDraftId: string;
-  currentStep: number;
-  identity?: "ella" | "el" | "prefiero_no_decirlo";
-  birthDate: string;
-  birthTime?: string;
-  birthTimePrecision: "known" | "approximate" | "unknown";
-  birthPlaceLabel?: string;
-  latitude?: number;
-  longitude?: number;
-  timezone?: string;
-};
+export type { SignupDraftInput };
 
 /**
  * Persiste el borrador remoto del alta y espera su confirmación.
@@ -816,6 +808,12 @@ export type SignupDraftInput = {
  * Rechaza si al agotar el presupuesto sigue incompleto: en ese caso NO se abre
  * Clerk. Crear la identidad primero es exactamente lo que produce cuentas
  * huérfanas.
+ *
+ * **Las dos llamadas viajan por un canal sin autenticar** — nunca por
+ * `useConvex()`. El cliente compartido lo autentica Clerk cuando Clerk resuelve,
+ * y eso puede caer con esta cadena en vuelo: un `saveDraft` con identidad marca
+ * el borrador `accountState: "created"` y `confirmSignupDraft` deja de devolver
+ * `ready` para siempre. Ver `src/services/anonymousOnboardingTransport.ts`.
  */
 export function useOnboardingSignupDraft(): ((input: SignupDraftInput) => Promise<void>) | null {
   if (!HAS_BACKEND) return null;
@@ -823,44 +821,20 @@ export function useOnboardingSignupDraft(): ((input: SignupDraftInput) => Promis
 }
 
 function useOnboardingSignupDraftInner(): (input: SignupDraftInput) => Promise<void> {
-  const convex = useConvex();
+  // Transporte DEDICADO y explícitamente anónimo. `useConvex()` no se usa acá a
+  // propósito: es el cliente atado a Clerk y su token aparece cuando Clerk
+  // quiere, no cuando el alta puede.
+  const transport = useMemo(() => anonymousSignupDraftTransport(), []);
   return useCallback(
     async (input: SignupDraftInput) => {
-      // Acá NO se valida contra `validateBirthPayload`: la zona horaria es un
-      // enriquecimiento que el backend resuelve solo DESPUÉS de guardar el
-      // borrador. Exigirla antes de escribir impediría justamente el guardado
-      // que dispara esa resolución. El juez es `confirmSignupDraft`.
-      const result = await runSessionAttempts({
-        budgetMs: SIGNUP_DRAFT_BUDGET_MS,
-        callTimeoutMs: SIGNUP_DRAFT_CALL_TIMEOUT_MS,
-        retryPauseMs: SIGNUP_DRAFT_RETRY_PAUSE_MS,
-        attempt: async (timebox) => {
-          // Idempotente por `clientDraftId`: reintentar actualiza la MISMA fila.
-          await timebox(
-            convex.mutation(appApi.onboarding.saveDraft, {
-              clientDraftId: input.clientDraftId,
-              currentStep: input.currentStep,
-              identity: input.identity,
-              birthDate: input.birthDate,
-              birthTime: input.birthTime,
-              birthTimePrecision: input.birthTimePrecision,
-              birthPlaceLabel: input.birthPlaceLabel,
-              latitude: input.latitude,
-              longitude: input.longitude,
-              timezone: input.timezone
-            })
-          );
-          await timebox(
-            convex.mutation(appApi.onboarding.confirmSignupDraft, {
-              clientDraftId: input.clientDraftId
-            })
-          );
-          return true as const;
-        }
-      });
-      if (result.status === "error") throw new Error("ONBOARDING_SIGNUP_DRAFT_NOT_READY");
+      // `HAS_BACKEND` ya exige Convex; si aun así no hay canal, el borrador no
+      // quedó listo y no se abre Clerk (nunca se resuelve como éxito).
+      if (!transport) throw new Error(SIGNUP_DRAFT_NOT_READY);
+      // La cadena vive en `src/domain/anonymousSignupDraft.ts`: guarda, después
+      // confirma, reintenta mientras dure el presupuesto y rechaza si no llegó.
+      await persistSignupDraft(transport, input);
     },
-    [convex]
+    [transport]
   );
 }
 

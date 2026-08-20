@@ -37,7 +37,7 @@ const sinComentarios = (x: string) =>
 
 const CAMPO_NATIVO = readFileSync(join(ROOT, "src/onboarding/components/BirthDateTimeField.tsx"), "utf8");
 const EDITOR = readFileSync(join(ROOT, "app/editar-datos.tsx"), "utf8");
-const PERFIL = readFileSync(join(ROOT, "app/(tabs)/perfil.tsx"), "utf8");
+const PERFIL = readFileSync(join(ROOT, "src/screens/PerfilScreen.tsx"), "utf8");
 const CARTA_CARD = readFileSync(join(ROOT, "src/components/home/CartaCard.tsx"), "utf8");
 
 const COMPLETO = {
@@ -296,12 +296,15 @@ test("`No sé la hora` activo guarda la hora en null, no un mediodía", () => {
 test("un lugar remoto incompleto exige una elección real del autocompletado", () => {
   const seed = semilla(conSesion({ ...COMPLETO, latitude: undefined, longitude: undefined }));
   const draft = draftFromSeed(seed);
-  // Aunque haya fecha y hora, el lugar bloquea.
-  assert.equal(birthEditorReadiness({ sync: "ready", seed, draft }), "missing-place");
+  // Aunque haya fecha y hora, el lugar bloquea. Y bloquea como
+  // `place-needs-refresh`, no como `missing-place`: hay una ciudad guardada y a
+  // la vista, lo que falta es la ubicación exacta detrás de ella. Confundir los
+  // dos casos deja a alguien buscando una ciudad que ya cargó.
+  assert.equal(birthEditorReadiness({ sync: "ready", seed, draft }), "place-needs-refresh");
 
   // Tipear texto libre no alcanza: `changed` sigue en false.
   const tipeado: BirthEditorDraft = { ...draft, place: { label: "Rosar", changed: false } };
-  assert.equal(birthEditorReadiness({ sync: "ready", seed, draft: tipeado }), "missing-place");
+  assert.equal(birthEditorReadiness({ sync: "ready", seed, draft: tipeado }), "place-needs-refresh");
 
   // Elegir de la lista trae etiqueta + coordenadas + zona.
   const elegido: BirthEditorDraft = {
@@ -447,10 +450,30 @@ test("el control web devuelve ausencia cuando lo vacían, no un relleno", async 
 });
 
 test("nativo y web comparten interfaz; el nativo conserva su rueda", () => {
-  assert.ok(/DateTimePicker/.test(CAMPO_NATIVO), "el nativo conserva su picker");
-  assert.ok(/display="spinner"/.test(CAMPO_NATIVO), "la rueda sigue siendo la rueda");
-  assert.ok(/maximumDate/.test(CAMPO_NATIVO));
-  assert.ok(/if \(disabled\) return null;/.test(CAMPO_NATIVO), "`No sé la hora` oculta el control");
+  // El nativo conserva la RUEDA, pero ya no la del sistema: `DateTimePicker` con
+  // `display="spinner"` venía en inglés, exponía sus columnas sin etiqueta y —lo
+  // grave— capturaba cualquier arrastre de la página, así que scrollear hasta
+  // Guardar cambiaba la fecha (D2/D3/D6). Ahora usa la misma `Wheel` del alta,
+  // en español y 24 h, dentro de una hoja modal: fuera del scroll no hay gesto
+  // que disputar.
+  // Se mira el CÓDIGO, no los comentarios: el archivo documenta por qué se fue
+  // la rueda del sistema, y ese texto haría pasar —o fallar— el gate solo.
+  const campoNativo = sinComentarios(CAMPO_NATIVO);
+  assert.ok(/\bWheel\b/.test(campoNativo), "el nativo conserva su rueda");
+  assert.ok(/<Modal\b/.test(campoNativo), "la rueda vive fuera del scroll de la página");
+  assert.ok(
+    !/display="spinner"/.test(campoNativo),
+    "la rueda del sistema volvía a traer el inglés y la captura de arrastre"
+  );
+  assert.ok(
+    /isFutureDateParts/.test(campoNativo),
+    "una fecha de nacimiento futura no se puede confirmar"
+  );
+  assert.ok(
+    /label:\s*"Día"[\s\S]*label:\s*"Mes"[\s\S]*label:\s*"Año"/.test(campoNativo),
+    "cada columna se nombra para VoiceOver"
+  );
+  assert.ok(/if \(disabled\) return null;/.test(campoNativo), "`No sé la hora` oculta el control");
   const editor = sinComentarios(EDITOR);
   assert.ok(!/DateTimePicker/.test(editor), "el editor no conoce la implementación");
   assert.ok(!/Platform\.OS === "web"/.test(editor), "la plataforma la resuelve Metro, no un if");
@@ -532,4 +555,73 @@ test("se conservan birthSaveGate y el arrastre del documento remoto", () => {
   assert.ok(/birthSaveGate\(/.test(EDITOR), "sigue esperando el documento remoto");
   const dominio = readFileSync(join(ROOT, "src/domain/birthEdits.ts"), "utf8");
   assert.ok(/keepRemotePlace/.test(dominio), "el arrastre sigue siendo útil");
+});
+
+test("con precisión «unknown» la hora guardada no cuenta: se puede volver a poner", () => {
+  // Defecto medido en el simulador el 2026-08-17 sobre la cuenta QA. Al pasar a
+  // "No sé la hora", el patch del backend OMITE `birthTime` en vez de borrarla,
+  // así que el documento sigue trayendo `12:00`. El editor se sembraba de ese
+  // valor y abría con la hora vieja y el interruptor APAGADO —mostrando algo
+  // que el cálculo no usa—; como el borrador coincidía con la semilla,
+  // `Guardar` quedaba bloqueado con "todavía no cambiaste nada" y la hora era
+  // imposible de restaurar por la UI.
+  const conHoraVieja = {
+    birthDate: "1996-08-16",
+    birthTime: "12:00",
+    birthTimePrecision: "unknown" as const,
+    birthPlaceLabel: "Buenos Aires, Argentina",
+    latitude: -34.6,
+    longitude: -58.4,
+    timezone: "America/Argentina/Buenos_Aires"
+  };
+  const seed = semilla(conSesion(conHoraVieja));
+  assert.equal(seed.birthTime, null, "la precisión manda sobre el valor guardado");
+
+  const draft = draftFromSeed(seed);
+  assert.equal(draft.timeUnknown, true, "el interruptor abre reflejando la cuenta");
+
+  // Y desde ahí SÍ se puede volver a poner la hora: elegirla es un cambio real.
+  const conHora = { ...draft, timeUnknown: false, birthTime: "12:00" };
+  assert.equal(isDraftDirty(seed, conHora), true, "volver a poner la hora es un cambio");
+  assert.equal(
+    birthEditorReadiness({ sync: "ready", seed, draft: conHora }),
+    "ready",
+    "con la hora elegida, Guardar se habilita"
+  );
+
+  // Apagar el interruptor sin elegir hora no alcanza: no hay dato que guardar.
+  const sinElegir = { ...draft, timeUnknown: false, birthTime: null };
+  assert.equal(
+    birthEditorReadiness({ sync: "ready", seed, draft: sinElegir }),
+    "missing-time"
+  );
+});
+
+test("con precisión conocida la hora guardada sigue siendo la semilla", () => {
+  const seed = semilla(
+    conSesion({
+      birthDate: "1996-08-16",
+      birthTime: "12:00",
+      birthTimePrecision: "known" as const,
+      birthPlaceLabel: "Buenos Aires, Argentina",
+      latitude: -34.6,
+      longitude: -58.4,
+      timezone: "America/Argentina/Buenos_Aires"
+    })
+  );
+  assert.equal(seed.birthTime, "12:00");
+  assert.equal(draftFromSeed(seed).timeUnknown, false);
+  assert.equal(isDraftDirty(seed, draftFromSeed(seed)), false, "abrir y no tocar nada no es un cambio");
+});
+
+test("el backend BORRA la hora cuando se guarda sin hora, no la omite", () => {
+  // La causa raíz del caso de arriba. `omitUndefined` saca las claves sin valor
+  // para no pisar campos que el llamador no toca; en un `patch` eso deja la
+  // hora vieja viva. Sin hora hay que mandar `birthTime: undefined` explícito,
+  // que en Convex QUITA el campo.
+  const fuente = readFileSync(join(ROOT, "convex/birthData.ts"), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+  assert.match(fuente, /normalizeBirthTime\(args\.birthTime\) === undefined/);
+  assert.match(fuente, /sinHora \? \{ \.\.\.payload, birthTime: undefined \} : payload/);
 });

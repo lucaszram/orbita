@@ -1,5 +1,3242 @@
 # Current Task
 
+## Cierre de frescura, ruta del arco, pestaña Tránsitos y contrato `ORB-TRN` (2026-08-20) · VIGENTE
+
+**Éste es el único bloque vigente del archivo.** El de abajo —*Frescura, Hoy sin
+arco y detalles editoriales*— es de dónde viene este trabajo y quedó superado por
+éste; la ficha del **RC 1.0.0 (21)** y todo lo que sigue describen el BINARIO y
+el release, no el código local.
+
+**Alcance autorizado:** implementación integral del plan en este worktree,
+incluido el contrato de capas y el ranking temporal. La implementación se cerró
+sin tocar producción; después Lucas autorizó puntualmente **el deploy compatible
+de Convex**, ya ejecutado. Siguen fuera: commit, push, EAS, build de distribución
+y App Review.
+El índice heredado se preserva (`D app/(tabs)/transitos.tsx` · `R100
+app/(tabs)/perfil.tsx → src/screens/PerfilScreen.tsx`).
+
+**Qué entra (cuatro cierres):**
+
+1. **El fallo que llega como éxito.** `layers.refreshForDate` podía terminar BIEN
+   y devolver igual un sobre `stale` porque el proveedor de efemérides no
+   contestó. Sin rechazo no había clasificación, así que el reintento automático
+   no se enteraba: la pantalla se quedaba con el cálculo de antes hasta que la
+   persona tocara el botón. Ahora hay un **detector puro**
+   (`isStaleEphemerisResult`, en `src/domain/layerRetry.ts`) que reconoce ese caso
+   —y **sólo** ése: `status === "stale"` **y** un faltante `current_ephemeris` /
+   `fresh_ephemeris`—; un `stale` por cualquier otro motivo, y cualquier
+   `unavailable`, siguen contando como corrida terminada porque repetirlos
+   devolvería lo mismo. Se aplica **después del await**, en los dos lugares: en
+   `refreshQueue` (la corrida de `refreshForDate` que enchufa `useLayers`) y en
+   `useTransitArc` (`refreshTransitArc`). El resultado se reencauza como
+   `LAYER_STALE_EPHEMERIS`, que es transitorio, así que recorre la política de
+   siempre: **1500 / 4500 / 9000 ms** y **tope de 20 s** por corrida, sin
+   inventar esperas nuevas.
+   **El copy del caso, exacto.** Mientras la política reintenta, un dato de HOY
+   dice `Actualizado HH:MM · intentando actualizar` y no ofrece control —no hay
+   nada que decidir hasta que ese intento termine—; agotados los tres, dice
+   `Actualizado HH:MM · no se pudo actualizar` y recién ahí aparece `REINTENTAR`.
+   Siempre la línea discreta: **ni tarjeta grande ni estado indefinido**. El
+   bloque grande queda donde estaba, para cuando NO hay dato que leer.
+2. **`/hoy/arco` queda sólo como compatibilidad.** Ya no monta
+   `ArcoDetailScreen` por segunda vez: **redirige** al canónico
+   `/transitos/arco/[arcId]` con el `arcId` del tránsito principal del sobre del
+   día, y sin `arcId` a `/transitos`. Mientras el sobre viaja no resuelve el
+   destino —mandar a la lista ahí sería contestarle "no está" a alguien que pidió
+   un detalle concreto—. El detalle vuelve a tener un solo dueño.
+3. **La pestaña Tránsitos abre en `Ahora`.** `Ahora` y `Tu momento` son dos
+   vistas de la misma sección y el selector cambia de ruta con `replace`, así que
+   tocar `Tránsitos` en la barra devolvía a `Tu momento` y no había forma de
+   llegar a `Ahora` desde la barra. Ahora el destino es explícito. La decisión
+   vive en `src/domain/tabPress.ts` —pura, sin React— y por eso se prueba
+   corriendo: re-tocar la activa no navega, un `tabPress` vetado gana, `Tránsitos`
+   se abre siempre en su raíz y **las demás pestañas vuelven donde estaban**. El
+   tipo del navegador declara el segundo argumento (`params?: { screen: string }`),
+   así que el destino no viaja sin tipo.
+4. **El contrato `ORB-TRN` publica los cinco campos y el ranking temporal es
+   canónico.** `ORB-TRN-001` trae
+   `natalHouse`, `previousExactAt`, `nextExactAt`, `rankingWindow
+   {startsAt,endsAt}` y `rankingReason`; `ORB-TRN-002` los trae por fila. Se
+   actualizaron los comentarios que decían que "todavía no existen" y **se
+   conserva la lectura defensiva**: lo que la pantalla dibuja es un sobre
+   PERSISTIDO, y uno guardado antes del cambio sigue siendo válido para leer sin
+   traerlos. La fila del ranking usa `rankingReason` cuando viene y **no dibuja
+   además su etiqueta derivada** (`PICO 16 AGO` al lado de `Exacto hoy` eran dos
+   frases del mismo dato que podían contradecirse); la derivada queda como
+   respaldo de los sobres viejos. `ORB-TRN-002` pasó a
+   `transit-ranking-v2`: exactos hoy → próximos 72 h → ocurridos en las últimas
+   72 h → resto activo; después desempata por tiempo, orbe, relevancia natal e
+   identidad estable. Con el reloj congelado el 20 de agosto, Marte con pico el
+   21 queda delante de Saturno con pico el 9. El **detalle sigue leyendo sólo
+   `ORB-TRN-001`**: no toma prestada la casa ni las razones del ranking. Los
+   campos nuevos del arco son opcionales sólo al validar cachés anteriores; cada
+   cálculo nuevo los publica.
+
+### Estado medido (local, este worktree, 2026-08-20)
+
+| Qué | Valor medido |
+|---|---|
+| `pnpm typecheck` | **LIMPIO** |
+| Suite | **2347/2347** · 220 suites · **0 fallos** (eran 2327; entran los focales de frescura, ruta, copy, prioridad temporal, compatibilidad de caché y QA visual/VoiceOver) |
+| Piso del gate | **subido 2327 → 2347**, el conteo REAL de la corrida (el propio gate está cubierto por la suite) |
+| `git diff --check` | **limpio** |
+| Export web | **PASS** — `pnpm build:web` + `pnpm check:web-export`: 32,15 MB de 50, imagen más pesada 479,3 KB de 500, JS de app 1022,1 KB gzip de 1,25 MB, ficha de búsqueda completa |
+| Export iOS | **PASS** — `pnpm exec expo export --platform ios`: bundle `entry-*.hbc` de 8,77 MB en un directorio temporal fuera del repo |
+| Árbol e índice heredados | **PRESERVADOS**: índice con sus 2 entradas (`D app/(tabs)/transitos.tsx` · `R100 app/(tabs)/perfil.tsx → src/screens/PerfilScreen.tsx`) |
+| `convex/**` | **DESPLEGADO A PRODUCCIÓN** — ranking v2 y contrato de persistencia compatible; sin tabla, índice ni API nueva |
+| Convex producción | **PASS** — `exciting-bat-311`, 142 funciones antes y después, catálogo idéntico, cero índices eliminados y schema validado |
+| Commit · push · build · EAS · App Store | **NO** — nada de eso se hizo ni se autorizó |
+| QA visual | **SIMULADOR REVISADO** con bundle recargado: frescura discreta, Luna y Cumpleluna; se corrigieron orden y duplicados de VoiceOver. **Dispositivo físico pendiente**: no se instaló ningún binario nuevo |
+
+**Archivos principales de esta pasada.** Dominio: `tabPress.ts` (nuevo), `layerRetry.ts`
+(detector + código transitorio), `refreshQueue.ts`, `layerFreshness.ts`,
+`transitDetail.ts` (comentarios). Hooks: `useTransitArc.ts`. Componentes:
+`v492/Status.tsx`, `v492/TransitCard.tsx`, `orbita/TabBar.tsx`. Pantallas:
+`v492/ArcoDetailScreen.tsx` (comentarios). Rutas: `app/(tabs)/hoy/arco.tsx`.
+Pruebas: `tabPressV492` (nueva) y anclajes/casos nuevos en
+`layerRetryPolicyV492`, `layerFreshnessV492`, `hoySinArcoV492`,
+`transitDetailV492`, `v492CopyA11y`, `nativeDefectsV492` y `testCountGate`. Más
+`scripts/check-test-count.mjs` y esta ficha. Backend: `convex/lib/transitLayers.ts`,
+`convex/lib/layerAssembly.ts`, `convex/lib/layerContract.ts`, `convex/layers.ts`,
+`convex/content/astrologySources.ts` y `convex/CHANGELOG.md`; regresiones en
+`transitLayers`, `layerContract` y `layerOrderingAndRanges`.
+
+**Lo que NO se tocó, a propósito.** `TabBar.web.tsx` queda igual: en web el
+chrome es `WebAppShell` y la sección Tránsitos se sirve con `Slot`, así que no
+hay stack anidado que reencauzar. `useLayers.tsx` tampoco: el `await` de
+`refreshForDate` vive en `refreshQueue`, que es donde entra el detector, y el
+hook sólo le enchufa la acción.
+
+**Backend (Codex).** Cerrado y desplegado a producción: los cinco campos de
+`ORB-TRN-001` y `ORB-TRN-002` están en el contrato, el ranking v2 usa la fecha
+civil y zona horaria pedidas, y la pantalla muestra el motivo que publica el
+cálculo. El primer push se detuvo antes de publicar al encontrar una fila
+histórica v1: el hash nuevo invalida su lectura, pero Convex igualmente valida
+la fila al publicar el schema. El validator de persistencia quedó compatible
+con esos snapshots; cada cálculo v2 sigue emitiendo todos los campos. Tras
+29/29 focales, 2347/2347 y typecheck limpio, el segundo push completó schema y
+deploy. Rollback exacto: RC20 `b2531a19`; function specs anterior y posterior
+guardados en el snapshot temporal del deploy.
+
+## Frescura, Hoy sin arco y detalles editoriales (2026-08-20) · SUPERADO POR EL BLOQUE DE ARRIBA
+
+**Éste era el bloque vigente hasta la ficha de arriba**, que lo continúa: la
+frescura, `/hoy/arco`, la pestaña Tránsitos y los campos de `ORB-TRN-001` se
+cerraron ahí. Lo que sigue describiendo bien es de dónde salió cada pieza. Todo
+lo de más abajo —incluida la ficha del **RC 1.0.0 (21)**— describe el estado del
+BINARIO y del release, no el árbol de este worktree.
+
+**Alcance autorizado:** `CURRENT_TASK.md`, `app/**`, `src/**`, `test/**` y
+`scripts/check-test-count.mjs` dentro de este worktree. **Nada de `convex/**`,
+nada de configuración de producción, sin commit, push, deploy, EAS ni build.**
+El índice heredado se preserva (`D app/(tabs)/transitos.tsx` · `R100
+app/(tabs)/perfil.tsx → src/screens/PerfilScreen.tsx`).
+
+**Qué entra (seis bloques):**
+
+1. **Frescura del sobre.** `src/domain/layerFreshness.ts`: modelo puro
+   `fresh · cachedToday · stale · unavailable`. Un dato de HOY que no se pudo
+   rehacer es una línea discreta; uno de un día anterior, un aviso compacto; el
+   bloque de error grande queda reservado para cuando NO hay dato. El reintento
+   automático sigue siendo tres veces (1500/4500/9000 ms) y ahora la acción tiene
+   **tope de 20 s**: ninguna promesa queda pendiente para siempre. No se
+   reintentan los errores de autenticación, validación ni datos natales, y el log
+   dice sólo el código clasificado —nunca el mensaje crudo, que puede traer PII—.
+2. **Hoy sin `ARCO DEL TRÁNSITO`.** El bloque del arco sale de Hoy. El Cumpleluna
+   sigue siendo lo principal cuando ocurre hoy y, si no, lo es el primero del
+   ranking. "Ver todos" y la pestaña llegan a `/transitos` (`Ahora`); el selector
+   `Tu momento` no se toca; el detalle se abre por `arcId`. `/hoy/arco` queda
+   viva por compatibilidad de deep links.
+3. **Detalle del tránsito.** Se llama `DETALLE DEL TRÁNSITO`; significado y
+   acción van antes de `DURACIÓN Y MOMENTOS CLAVE`; la tabla que repetía la línea
+   de tiempo se retira. Los campos que el backend todavía no publica
+   —`previousExactAt`, `nextExactAt`, `rankingWindow`, `rankingReason`,
+   `natalHouse`— se leen como OPCIONALES del MISMO sobre `ORB-TRN-001`, sin
+   mezclar sobres. La línea de tiempo: inicio y cierre en gris hueco, contacto en
+   hueso, hoy en cobre, `HOY · EXACTO` cuando coinciden, año cuando la ventana lo
+   cruza y **un solo anuncio** para VoiceOver.
+4. **Luna en columna abierta**, sin `Card`: encabezado, `TU GUÍA PARA HOY`
+   (Priorizá / Probá / Observá), el área dicha una sola vez, `POR QUÉ SE MUESTRA`
+   y el método al final. Sin hora exacta no se inventa casa.
+5. **Ciclo lunar abierto:** `INICIO · DESARROLLO · REVISIÓN · CIERRE` con
+   fronteras 0/25/50/75/100, cada tramo con foco, acción y pregunta. La fecha de
+   transición al tramo siguiente sólo se afirma con raíz exacta. El método
+   técnico queda al final.
+6. **Modelos determinísticos y pruebas.** Todo lo editorial y lo de frescura vive
+   en el dominio, sin reloj ni azar adentro, y se prueba entero. Los anclajes de
+   las pruebas viejas se actualizan sin bajar ninguna garantía, y el piso del
+   gate se sube al conteo real final.
+
+### Estado medido (local, este worktree, 2026-08-20)
+
+| Qué | Valor medido |
+|---|---|
+| `pnpm typecheck` | **LIMPIO** |
+| Suite | **2327/2327** · 220 suites · **0 fallos** |
+| Piso del gate | **subido 2200 → 2327**, el conteo REAL de la corrida (`pnpm check:test-count` en verde) |
+| `git diff --check` | **limpio** |
+| Export web | **PASS** — `pnpm build:web` + `pnpm check:web-export`: 32,16 MB de 50, imagen más pesada 479,3 KB de 500, JS de app 1,00 MB gzip de 1,25, ficha de búsqueda completa |
+| Export iOS | **PASS** — `npx expo export --platform ios`: bundle `entry-*.hbc` de 8,77 MB |
+| Árbol e índice heredados | **PRESERVADOS**: índice con sus 2 entradas (`D app/(tabs)/transitos.tsx` · `R100 app/(tabs)/perfil.tsx → src/screens/PerfilScreen.tsx`) |
+| `convex/**` | **SIN TOCAR** en esta pasada (lo modificado ahí es del árbol sucio heredado) |
+| Commit · push · build · EAS · deploy | **NO** — nada de eso se hizo ni se autorizó |
+| QA en dispositivo | **PENDIENTE**: no se instaló ningún binario nuevo |
+
+**Archivos de esta pasada (20).** Dominio: `layerFreshness.ts` (nuevo),
+`transitDetail.ts` (nuevo), `layerRetry.ts`, `refreshQueue.ts`,
+`layerMeaning.ts`. Componentes: `v492/Status.tsx` (`FreshnessNotice`),
+`v492/Layout.tsx` (`ArcTimeline`). Hooks: `useLayers.tsx`, `useTransitArc.ts`.
+Pantallas: `HoyScreen`, `ArcoDetailScreen`, `LunaDetailScreen`,
+`CumplelunaDetailScreen`, `TransitosLayersScreen`. Pruebas nuevas:
+`layerFreshnessV492`, `layerRetryPolicyV492`, `transitDetailV492`,
+`hoySinArcoV492`; anclajes actualizados en `layerMeaningV492`,
+`v492PrecisionUi`, `arcoDetailNativeV492`, `v492CopyA11y` y `testCountGate`.
+Más `scripts/check-test-count.mjs` y esta ficha.
+
+**Dependencias de backend (Codex).** Nada bloquea lo entregado, pero cinco
+campos de `ORB-TRN-001` ya tienen su lector y su lugar en pantalla y hoy vienen
+en `null`: `natalHouse` (la casa que el contacto activa: hoy el significado del
+detalle se arma sin ella), `previousExactAt` y `nextExactAt` (las dos
+repeticiones exactas alrededor de hoy, que la línea de tiempo marcaría y el
+texto fecharía), `rankingWindow` y `rankingReason` (la ventana y el criterio con
+los que la lista considera activo el contacto, que habilitan el bloque `POR QUÉ
+SE MUESTRA` del detalle). El front los lee del MISMO sobre y nunca del ranking;
+el día que el contrato los publique, aparecen sin tocar una línea de pantalla.
+
+## RC productivo Órbita 1.0.0 (21) — estado medido (2026-08-20) · SUPERADO POR EL BLOQUE DE ARRIBA
+
+**Éste era el único bloque vigente hasta la ficha de arriba.** Cualquier sección
+de más abajo que diga "vigente", "estado actual" o "fuente de verdad" describe el
+momento en que se escribió, no hoy. En particular, la ficha del **RC 1.0.0 (20)**
+quedó **superada** por ésta.
+
+**Veredicto:** el RC **1.0.0 (21) existe, está commiteado, construido, subido y
+Apple terminó de procesarlo el 2026-08-20**. Figura **Lista para enviar**,
+**caduca en 90 días** y está **en TestFlight interno, grupo Own, con 3 testers**,
+con las instrucciones **Qué se debe probar** ya guardadas. **NO está en App
+Review y NO está publicado:** el build 21 **no se seleccionó**, **no se hizo *Add
+for Review*** y **no se publicó**. **No se desplegó backend en esta pasada.** La
+**QA física del build 21 está pendiente entera**: Lucas **todavía no lo
+instaló** —el binario que sigue en su iPhone es el **20**—.
+
+El **build 20 queda superado como candidato visual** (no trae el refinamiento de
+glifos) y el **build 19 nunca se promueve**.
+
+### Actualización 2026-08-20 (cierre local) · Carta natal + bloque editorial
+
+**Qué cambió respecto de la ficha de arriba:** el árbol de este worktree ya no es
+el del binario. Sobre el RC21 se completaron —**sin commitear, sin push y sin
+build**— dos bloques:
+
+1. **Carta natal.** Estado visual **cerrado**: la carta completa con sus **siete
+   capítulos** y los **CTAs de Plus**. No se regresa.
+2. **Bloque editorial** (punto 22 de la *Corrección editorial pre-RC*).
+   `src/domain/layerMeaning.ts`: una capa **pura y determinística** de
+   *significado + acción*, **sin LLM y sin backend**, que traduce lo que el sobre
+   ya calcula —Luna del día, tránsitos, estación vital, tema del año y
+   cumpleluna—. Además: el **Ascendente** muestra `INICIO CASA 1` en el hub (es
+   la cúspide que inicia la casa 1, **no** una ubicación dentro de ella), el
+   **detalle de la Luna** deja de decir la casa tres veces, el **detalle del
+   tránsito** explica antes de fechar y reúne el resumen técnico bajo `DATOS DEL
+   CONTACTO`, el **mandala** queda en **cuatro líneas** —una por ritmo— sin
+   repetir `ring.detail` en los ritmos que sí se calculan y **sin nada entre esas
+   líneas y su acordeón**, y el **detalle de Cumpleluna** abre con el estado
+   actual: el párrafo que explicaba el ángulo Sol–Luna arriba de todo se eliminó
+   y esa metodología queda sólo en `TraceAccordion`.
+
+**Estado medido (local, este worktree, 2026-08-20):**
+
+| Qué | Valor medido |
+|---|---|
+| `pnpm typecheck` | **LIMPIO** |
+| Suite | **220 suites · 2274/2274** · piso del gate **2200** (eran 2257 antes de este bloque; entra `test/layerMeaningV492.test.ts` con 17) |
+| `git diff --check` | **limpio** |
+| Árbol e índice heredados | **PRESERVADOS**: árbol sucio intacto e **índice con sus 2 entradas** (`D app/(tabs)/transitos.tsx` · `R100 app/(tabs)/perfil.tsx → src/screens/PerfilScreen.tsx`) |
+| **Build 21** | **SUPERADO como candidato visual**: el binario **no** contiene ni la Carta natal cerrada ni el bloque editorial |
+| **Build 22** | **NO EXISTE.** No se construyó, no se subió y no hay autorización para hacerlo |
+| **QA visual local** | **PASS en Simulator**: Carta/Ascendente, Luna, detalle de tránsito, estación vital, tema del año, mandala y Cumpleluna revisados sobre el bundle actual |
+| **QA física** | **PENDIENTE ENTERA.** No se instaló ningún binario nuevo; lo que corre en el iPhone de Lucas sigue siendo el **20** |
+| Backend, contrato y comercio | **SIN TOCAR** — `convex/**`, `convex/schema.ts`, las firmas públicas, el **precio** y el **entitlement** quedaron intactos |
+
+> **Lectura honesta del estado:** lo que está terminado está terminado **en
+> local**. La jerarquía y la accesibilidad se revisaron también en Simulator,
+> pero nada de esto se probó en un dispositivo real todavía. Hasta que exista
+> un build 22 y su QA física, no cuenta como verificado en iPhone.
+
+### Estado medido
+
+| Qué | Valor medido |
+|---|---|
+| **Commit del RC** | `84e93cd3e34fa3e30ad54b06b41654047dc0a5df` — *release: Órbita 1.0.0 (21)* · tree `b1d730eab32a44025469929a3975f706f04b25d0` |
+| **Worktree del RC** | `/Users/lucas/Documents/Core/worktrees/orbita/release-1.0.0-build21` · rama **local** `release/1.0.0-build21` · **limpio** |
+| Worktree de trabajo (éste) | `/Users/lucas/Documents/Core/worktrees/orbita/native-v492` · `feature/native-v492-implementation` · HEAD `52836ad` · árbol sucio **preservado** · **índice intacto con 2 entradas** heredadas (`D app/(tabs)/transitos.tsx` · `R100 app/(tabs)/perfil.tsx → src/screens/PerfilScreen.tsx`) |
+| **IPA** | `/private/tmp/Orbita-1.0.0-21.ipa` · SHA-256 `5ab2468174a4d6d1950f7f8baecefc0e34ac32307850b412a83130f63d675a54` · **49146946 bytes** |
+| **Delivery UUID** | `b4570ad5-8fd4-4ade-99cc-c44b48e5115d` |
+| **Runtime fingerprint** | `52b060ff571a7ed502c7b11ae1976f4e1a7dcdc5` |
+| **Procesamiento de Apple** | **TERMINADO el 2026-08-20** · **Lista para enviar** · **caduca en 90 días** |
+| **TestFlight** | **interno, grupo Own** · **3 testers** · instrucciones **Qué se debe probar** guardadas |
+| **Instalación del build 21** | **PENDIENTE.** Lucas **todavía no lo instaló**. El binario instalado en su iPhone sigue siendo el **20** |
+| `pnpm typecheck` | **LIMPIO** |
+| Suite | **218 suites · 2236/2236** — es la medición del **RC21** (el mismo número que ya daba el árbol local con el refinamiento de `TransitCard.tsx`, que ahora **viaja dentro del binario**) · piso del gate subido **745 → 2200** |
+| Export web · Export iOS | **PASS** · **PASS** |
+| Inspección del IPA productiva | **PASS** |
+| **Backend** | **NO se desplegó en esta pasada.** `exciting-bat-311` sigue como quedó: **desplegado y verificado, 142 funciones**. El RC21 no cambia contrato, schema ni firmas públicas |
+| Webhook RevenueCat productivo | **probado: HTTP 200** (medición previa, sin cambios) |
+| App Store Connect | **app `6788918249`** · **suscripción `6803253452`** / producto `orbita_plus_monthly` · **USD 9.99 mensual con 7 días gratis** |
+| App Privacy | **Purchases** e **Identifiers** publicados |
+| Notas de review | **corregidas** |
+| Liberación | **manual** |
+| **App Review** | **build 21 NO seleccionado · NO se hizo *Add for Review* · NO publicado** |
+| **Build 20** | **SUPERADO como candidato visual.** Commit `b2531a19` · IPA SHA-256 `cf3ad601d8f00cbf504b61b669a342b807eeb67e5b0bc71045f3f3039429fca8` · procesado en TestFlight interno · sigue instalado hasta que Lucas instale el 21 |
+| **Build 19** | **NUNCA se promueve** — apunta a Development |
+| **Apple Developer Program License Agreement actualizado** | **ACEPTADO personalmente por Lucas.** Ya **no** es bloqueo |
+| Snapshot de seguridad | `~/Backups/orbita-native-v492/2026-08-19/` (restauración ensayada, 978/978 sha256) |
+| Punto de rollback pre-RC | worktree `rollback/prod-pre-rc20-0823332`, en `0823332` |
+
+> **Los dos números de Apple no son intercambiables.** `6788918249` es la **app**
+> (el de las URLs de App Store Connect); `6803253452` es el **recurso de la
+> suscripción** dentro del grupo `Órbita Plus` (`22320917`), no la app. El
+> producto es `orbita_plus_monthly`.
+
+### El build 19 NO se promueve
+
+El archive Release 19 que quedó en `~/Library/Developer/Xcode/Archives/2026-08-20/`
+**apunta a Development**, deliberadamente, para probar la compra Sandbox en el
+iPhone de Lucas. Un binario que habla con el deployment de dev tiene cuentas,
+compras y cartas de dev: **no es candidato de release** por más que TestFlight lo
+acepte.
+
+### Qué trae el build 21 que el 20 no tenía
+
+**`src/components/v492/TransitCard.tsx`** — el refinamiento que hasta ayer era un
+cambio local post-RC20 **ahora viaja dentro de un binario**. Qué hace la cabecera
+de la fila de tránsito:
+
+- **Los dos cuerpos se dibujan con los glifos vectoriales propios de Órbita**
+  (`domain/astroGlyphs` → `AstroGlyph`, el catálogo monocromo que ya usa el resto
+  de la app; nada de caracteres Unicode, que en web y Android caen al font de
+  emoji).
+- **Cuerpo en tránsito en cobre**, **aspecto vectorial al centro** con el color
+  del sistema, **punto natal en marfil**. La jerarquía de color es la que dice
+  cuál es cuál: cobre = lo que se mueve, marfil = tu carta.
+- **Los nombres completos se conservan en el resumen y en la etiqueta de
+  VoiceOver.** La fila entera es un solo botón, así que su etiqueta accesible
+  sigue diciendo todo lo que se ve —posición, titular **con los nombres**,
+  aspecto, etapa, orbe, cambio respecto de ayer, casa, frase del cálculo y fecha
+  del punto más exacto—. Los símbolos comprimen la cabecera; no borran el dato.
+- **Fallback textual:** un nombre que no resuelva a un glifo del catálogo se
+  imprime como **nombre**, en el mismo color. Antes una fila menos compacta que
+  un hueco mudo donde va el dato.
+
+Más `ios.buildNumber` **20 → 21**, sobre el snapshot productivo anterior (RC20,
+commit `b2531a19`). **Nada más entró.** `version` (**1.0.0**),
+`bundleIdentifier` (`com.lucasssram.orbita`) y la app `6788918249` quedaron
+intactos.
+
+> ⚠️ **Por eso la QA física va sobre el 21, no sobre el 20.** El build 20 muestra
+> la cabecera **anterior**: no es un defecto, es que ese binario es previo al
+> refinamiento. Y como Lucas **todavía no instaló el 21**, lo que hoy corre en su
+> iPhone sigue siendo el 20.
+
+### Pendiente inmediato, en orden
+
+1. **Lucas instala el build 21 desde TestFlight y ejecuta la QA física** en el
+   iPhone real. Es el paso que desbloquea todo lo demás. Foco explícito:
+   - **glifos vectoriales en los encabezados de tránsitos** (lo que agrega el 21);
+   - **alta limpia**, sin errores residuales de `onboarding:confirmSignupDraft`
+     ni de `layers:refreshForDate` (los dos diagnósticos abiertos de la noche del
+     19/8; el fix de la reafirmación natal debería haber matado los segundos —
+     hay que **confirmarlo contra el build 21**, no asumirlo);
+   - **navegación**;
+   - **matriz Free/Plus completa**: Free y Plus · trial elegible y trial NO
+     elegible · compra Sandbox · restore · cancelación / expiración ·
+     reinstalación · cambio de cuenta · borrado · **VoiceOver** (el pendiente que
+     el simulador nunca pudo cubrir).
+2. **Capturar el paywall real** y los screenshots del build 21.
+3. **Completar metadata y Review Information** de la suscripción en App Store
+   Connect, incluido el **screenshot de Review Information**. Recordatorio de
+   Apple: *"Your first subscription group must be submitted with a new app
+   version"* — la suscripción viaja con el binario.
+4. **Recién tras todos los gates anteriores**, seleccionar el **build 21** y la
+   **suscripción**, **siempre con aprobación separada**: una para **Add for
+   Review** y otra distinta para la **publicación**. Ninguna de las dos existe
+   hoy.
+
+> **Corrección sobre esa lista, 2026-08-20 (cierre local):** el candidato de esa
+> fila ya no puede ser el **21**. La Carta natal cerrada y el bloque editorial
+> viven **sólo en el árbol local** y no viajan en ese binario, así que la QA
+> física sobre el 21 no cubre lo que hoy se ve en la app. El orden real pasa a
+> ser: **build 22 → instalar → QA física → capturas → metadata → Add for Review →
+> publicación**. El **build 22 no existe** y **nadie lo autorizó**: construirlo es
+> una orden puntual de Lucas, como lo fueron el 20 y el 21.
+
+Fuera de esa fila, siguen abiertos: los **PRs** (el árbol de este worktree no
+existe en git; los cortes A/B/C históricos están desactualizados), la **decisión
+de precio de Plus** (USD 9.99 sobre un Free que ya entrega las capas completas) y
+la evidencia de certificación —estado **06 casi resuelto** (captura de Carta con
+Plus del 19/8 21:49) y **recaptura del 02**—.
+
+### Reglas de esta sesión
+
+- **Modelo de trabajo (vigente y acordado):** **Codex organiza y orquesta el
+  plan, revisa y valida**; **Claude Code es el ejecutor principal**; **Lucas
+  decide y autoriza** lo externo y lo legal (App Store Connect, App Review,
+  publicación, acuerdos de Apple, deploys). Cualquier reparto distinto de roles
+  que aparezca más abajo en este archivo es **historia**, no la regla de hoy.
+- **Preservar el árbol sin commitear de este worktree y no tocar su índice.**
+- **No** commitear, pushear, mergear, ni hacer `reset` / `clean` / checkout
+  destructivo. **No** borrar nada de `.local/`.
+- **No hay ninguna autorización abierta.** El deploy de producción, la subida del
+  build 20 y la preparación, build y subida del **build 21** fueron **órdenes
+  puntuales y ya se consumieron**: que hayan ocurrido **no** las deja vigentes.
+  Hoy **no** se despliega backend, **no** se construye ni se sube otro build, y
+  **no** se toca nada externo por cuenta propia.
+- **No** seleccionar el build para App Review, **no** tocar *Add for Review*,
+  **no** publicar. Siguen siendo **dos aprobaciones separadas** de Lucas, después
+  de los gates.
+- La trampa del directorio sigue viva: **todo comando de Convex con el `cd` al
+  worktree correcto en la misma línea**, y verificar en la salida que el
+  deployment sea el esperado antes de dar nada por bueno.
+
+---
+
+## Finalizador durable de identidad en Clerk (2026-08-19) · CERRADO
+
+> **CERRADO y verificado en runtime** (ver "Verificación en runtime" y "Segunda
+> corrida", más abajo). El estado vigente del proyecto es el bloque
+> `## RC productivo Órbita 1.0.0 (21) … · VIGENTE` de arriba. Esta ficha se
+> conserva por su diseño y su evidencia; el rótulo `EN CURSO` original quedó
+> **superado**, igual que la frase "el repositorio sigue en PASS técnico local y
+> NO listo para lanzamiento": desde entonces hubo commit, deploy a producción y
+> TestFlight interno.
+
+**Owner de esa ficha (HISTÓRICO, 2026-08-19):** Claude Code (ejecutor); Lucas
+autorizaba lo externo. **Roles de esa etapa (HISTÓRICO):** Claude Code llevó
+además el rol que tenía Codex. **Eso ya no rige**: el modelo vigente está en
+`### Reglas de esta sesión` del bloque VIGENTE —Codex organiza, orquesta, revisa
+y valida; Claude Code ejecuta; Lucas decide y autoriza lo externo y lo legal—.
+`convex/**` se tocó dentro de esta tarea de forma explícita, no por accidente de
+territorio.
+
+### Objetivo
+
+Que el borrado de la identidad en Clerk sea una **operación durable del
+servidor**, y no un paso del cliente, para que el hecho "la identidad ya no
+existe" no pueda perderse con el proceso.
+
+### El defecto que cierra
+
+`src/components/PendingDeletionBoundary.tsx:147` guarda ese hecho en
+`useState(identityConfirmedFor)`. Si `user.delete()` responde ok y el proceso
+muere antes de persistir `identity_deleted`, la memoria se va: el marcador queda
+en `backend_deleted`, la sesión en signed-out, y `resolvePendingDeletionBoot`
+devuelve `needs-owner` — que pide volver a entrar con una cuenta **que ya no
+existe**. Callejón sin salida; la única salida es soporte.
+
+### Diseño
+
+1. **Tombstone sobre el fence que ya existe.** `accountDeletionFences` gana
+   `identityDeletedAt?: v.number()`. La fila ya se escribe por `subject` con
+   clave seudónima (`SHA-256(dominio|subject)`); promoverla en el lugar es el
+   tombstone, sin tabla nueva ni identificadores en crudo permanentes.
+2. **Trabajo durable**, copiando el patrón ya probado de `reconcileJobs`
+   (generación, señal, lease, watchdog, backoff). Guarda el `clerkUserId` **en
+   crudo y de forma transitoria** —no se puede borrar una identidad sin
+   nombrarla— y la fila **se borra al terminar**. Lo único permanente es la
+   clave seudónima del fence.
+3. **`deleteAccountV2` crea el trabajo en su misma transacción**, junto al fence
+   y la barrida: o commitean los tres o ninguno.
+4. **Runner server-side:** `DELETE /v1/users/{id}` de la Clerk Backend API con
+   `CLERK_SECRET_KEY`, con reintentos y watchdog.
+5. **El cliente sigue borrando Clerk como camino rápido; el servidor es la
+   autoridad y la red.** Corregido el 2026-08-19 tras medir el costo: sacarle el
+   paso al cliente obligaba a reescribir la coreografía que codifican las 88
+   pruebas de `accountDeletionFlow.test.ts`, y ahí es donde se cuela el riesgo de
+   debilitar una prueba sin querer. Lo que se arregla es lo que estaba mal: que
+   `useState(identityConfirmedFor)` fuera la **única** prueba. Ahora el boundary
+   consulta el tombstone durable, y el borrado sigue siendo inmediato en el caso
+   normal en vez de esperar a un trabajo agendado. Los dos caminos son
+   idempotentes: el que llegue segundo recibe 404, lo verifica y confirma igual.
+6. **Consulta del tombstone sin sesión:** mutation pública acotada, con la
+   derivación seudónima hecha en el servidor y cupo por sujeto. Honestidad sobre
+   su límite: el cupo frena el martilleo sobre UN id, no una enumeración amplia —
+   para eso haría falta limitar por origen, que Convex no expone. El atacante
+   necesita conocer de antemano el `subject` de Clerk de la víctima, que es el
+   mismo modelo de amenaza que el fence ya aceptó y documentó.
+
+### Semántica de la respuesta de Clerk — fail closed
+
+| Respuesta | Decisión |
+|---|---|
+| `200` | Identidad borrada. Promueve `identityDeletedAt`. Cierra el trabajo. |
+| `404` | Sólo cuenta como prueba si la credencial ya se demostró válida en esa misma corrida. Un 404 por ruta/proyecto mal configurado **no prueba nada**. |
+| `401` / `403` | Credencial inválida. No prueba nada, no promueve, reintenta. |
+| `5xx` / `429` | Transitorio. Reintenta con backoff. |
+| Sin `CLERK_SECRET_KEY` | `not_configured`: el trabajo queda pendiente, no se promueve nada. Inerte pero seguro. |
+
+Regla que no se negocia, heredada del incidente del 404 de RevenueCat: **nunca
+promover el checkpoint antes de que Clerk confirme, y nunca inferir el borrado a
+partir de un `signed-out`.**
+
+### Criterios de aceptación
+
+- [ ] Matar el proceso entre el borrado en Clerk y la escritura del checkpoint ya
+      **no** deja la cuenta trabada: el servidor lo termina solo.
+- [ ] Sin `CLERK_SECRET_KEY`, nada se promueve y el comportamiento actual no
+      empeora (falla cerrado, no abierto).
+- [ ] Ningún camino promueve el checkpoint sin confirmación de Clerk.
+- [ ] El fence sigue sin guardar identificadores en crudo de forma permanente.
+- [ ] `pnpm typecheck` verde y suite **≥ 2145** (bajar significa prueba borrada
+      o debilitada).
+- [ ] Cada arreglo verificado en las dos direcciones (revertir → falla → restaurar
+      byte a byte → pasa).
+
+### Restricción de territorio
+
+**Prohibido crear archivos nuevos en `convex/`.** El gate
+`test/convexGeneratedApiGate.test.ts` exige que todo módulo esté en
+`convex/_generated/api.d.ts`, que sólo se regenera con `convex codegen` — y este
+worktree no lo corre. Todo va en módulos existentes (`convex/users.ts`,
+`convex/lib/accountDeletion.ts`). Tablas nuevas en `convex/schema.ts` sí: el
+schema queda fuera del gate.
+
+### Pruebas
+
+TDD. Prueba roja de conducta que reproduzca el callejón sin salida **antes** del
+arreglo. Focales: `accountDeletionFlow`, `accountDeletionFence`,
+`accountDeletion`, `accountDeletionReadRace`, `convexGeneratedApiGate`.
+
+### Riesgo
+
+Alto por ubicación, no por tamaño: toca el camino de borrado recién certificado
+y `test/accountDeletionFlow.test.ts` tiene 2145 líneas sobre este flujo. Mitigación:
+TDD estricto, verificación en las dos direcciones y suite completa en cada corte.
+
+### Rollout
+
+Nada se despliega en esta etapa. El orden externo, cuando Lucas lo autorice:
+secreto en Convex → deploy a **Development** (que además arrastra la migración
+de schema pendiente: `revenuecatRest`, `deleteAccountV2`, `accountDeletionFences`)
+→ verificación → recién ahí producción.
+
+### Rollback
+
+Todo sin commitear. Snapshot verificado del árbol certificado en
+`~/Backups/orbita-native-v492/2026-08-19/` (978 archivos, restauración ensayada,
+978/978 byte a byte).
+
+### Verificación en runtime (2026-08-19, Development)
+
+**Desplegado a Development `dutiful-viper-815`** con autorización puntual de
+Lucas. Catálogo live: 127 → **140 funciones**. Migración aditiva; ningún índice
+borrado. `convex/_generated/` quedó **sin cambios** (no se agregaron módulos).
+
+**Verificado sin la app, contra el deployment real:**
+
+| Check | Resultado |
+|---|---|
+| Identidad desconocida | `unknown` — falla cerrado |
+| Cupo de la consulta pública | 10 pasan, la 11ª corta con `retryAfterMs` |
+| Borrado sin sesión | rechazado con `Authentication required` |
+| Runner con id malformado | **defecto encontrado y corregido** (ver abajo) |
+
+**Verificado con la app** (dev build + Metro, simulador `Orbita-Claude`, cuenta
+descartable en la instancia de Clerk **de development** `golden-urchin-96`):
+
+```
+17:07:29.743  toque en la 2ª confirmación
+17:07:30.340  +597ms   barrida en Convex + fence escrito
+17:07:30.940  +1197ms  TOMBSTONE PROMOVIDO — Clerk confirmó el borrado
+17:07:31.425  +1682ms  proceso matado
+```
+
+El finalizador **llamó a la Clerk Backend API con el secreto real, Clerk borró la
+identidad, el tombstone se promovió y el trabajo se retiró de la cola en 600 ms,
+sin intervención**. `users` sin la cuenta, `accountDeletionFences` con una fila y
+su `identityDeletedAt`, `identityDeletionJobs` **vacía** — el Clerk id en crudo
+desapareció con el trabajo, como está diseñado. La app quedó limpia: purga local
+completa y marcador retirado.
+
+En esa primera corrida el servidor terminó 485 ms **antes** del kill, así que el
+callejón sin salida no llegó a existir. Se repitió con la ventana ajustada.
+
+### Segunda corrida — el callejón sin salida, reproducido y resuelto
+
+Cuenta descartable `+test21`, kill a **+1029 ms** en vez de +1682:
+
+```
+17:23:16.288  confirmo el borrado
+17:23:16.964  +676ms    Convex barre + fence escrito
+17:23:17.317  +1029ms   ← PROCESO MATADO
+17:23:17.581  +1293ms   el SERVIDOR promueve el tombstone
+```
+
+**El kill cayó dentro de la ventana.** Estado congelado en disco, medido
+directamente en el AsyncStorage del simulador:
+
+```json
+orbita:pending-account-deletion =
+  {"userId":"user_3I9JYjODgTDxQeKfasdxLe93qbN","phase":"backend_deleted"}
+```
+
+Marcador en `backend_deleted`, sin checkpoint, y la memoria del proceso perdida.
+**Ése es exactamente el estado que dejaba a la persona en soporte.** El servidor
+completó el borrado en Clerk **264 ms después de que el cliente ya estaba
+muerto**: no hay forma de atribuírselo a la app.
+
+Al reabrir, el arranque —que antes habría dicho `needs-owner`, o sea "volvé a
+entrar" con una cuenta que ya no existe— **consultó el tombstone, lo encontró
+confirmado y purgó solo**. Medido después del arranque:
+
+| Clave | Estado |
+|---|---|
+| `orbita:pending-account-deletion` | **retirada** |
+| `orbita:profile` | **purgado** |
+| `orbita:profile-owner` | **purgado** |
+| `orbita_install_pinged_v1`, `orbita:first-run` | conservadas (no son de la cuenta) |
+
+Sin bloqueo, sin pantalla de soporte, sin intervención. **El P0 queda cerrado en
+código y verificado en runtime.**
+
+**Lo que esto NO cambia:** el veredicto general del repositorio. Siguen abiertos
+los pendientes externos de comercio (catálogo Apple/RevenueCat, build nativo con
+los módulos, Sandbox, TestFlight, App Review) y la evidencia visual pendiente
+(estado 06, VoiceOver, recaptura del 02).
+
+### Defecto encontrado en runtime y corregido
+
+`ctx.db.get()` con un id malformado **tira**, no devuelve `null`. El runner
+usaba `ctx.db.get(args.jobId as any)` sin validar, así que reventaba
+(`Invalid ID length 29`) en vez de ser el no-op seguro que su documentación
+prometía. Corregido con `ctx.db.normalizeId()` en las dos entradas (claim y
+settle), verificado en las dos direcciones **contra el deployment real**: antes
+reventaba, después es un no-op silencioso y no promueve nada.
+
+No lo agarró la suite de 2183 pruebas ni el typecheck: lo agarró llamar a la
+función. La base en memoria devuelve `null` para cualquier id; la real tira.
+
+### Hallazgos abiertos, NO investigados — para Codex
+
+0. **BLOQUEANTE en iPhone físico: el campo del código de verificación NO acepta
+   entrada del teclado.** En dispositivo real (iPhone 13 Pro Max, iOS 26.6), en
+   el login (SignInScreen): los recuadros del código **nunca toman foco** — no se
+   puede escribir a mano, no se puede borrar, no se puede tocar ningún recuadro.
+   Lo ÚNICO que logró escribir fue el autofill de QuickType (el código leído del
+   mail), que entró mal (`730879`, "Incorrect code") y quedó clavado sin forma de
+   corregirlo. Sin autofill, el login es directamente imposible en dispositivo
+   físico. **No reproducible en simulador**, donde el flujo de foco se comporta
+   distinto y no existe QuickType — por eso 15 pasadas de certificación no lo
+   vieron. Los archivos de la pantalla están byte a byte idénticos al árbol
+   certificado (verificado contra el snapshot): defecto preexistente de V4.9.2,
+   no de esta sesión. **Bloquea cualquier prueba en dispositivo y bloquea App
+   Review** — el revisor usa un iPhone real.
+
+Aparecieron durante la corrida de runtime y **no son de este paquete**. No se
+tocó nada de esto; queda anotado para que no se pierda:
+
+0b. **UX en iPhone físico (feedback de Lucas): la Carta no tiene vuelta atrás.**
+   Entrando a Perfil → carta, la pantalla `CARTA · TU BASE` no muestra flecha de
+   volver; la única salida es la tab bar. En pantallas empujadas dentro de una
+   sección tiene que haber un back visible. Revisar el resto de los detalles
+   (arco, luna, cumpleluna, etc.) por el mismo patrón.
+
+### Verificado en iPhone físico (2026-08-19, 20:51)
+
+**El paywall renderiza el contrato completo en dispositivo real:**
+`Mensual · 7 DÍAS GRATIS · $9.99 por mes`, beneficios reales, Términos y
+Privacidad, salida a Free. Eso confirma lo único que faltaba: `P1M` (el cliente
+descarta el Offering si el período no es exactamente un mes), el precio llega de
+StoreKit y la elegibilidad del trial la confirmó Apple. RevenueCat quedó
+identificado con el Clerk ID real (`user_3G2rn…`), no un `$RCAnonymousID` —
+verificado en los logs del SDK. **La compra en Sandbox sigue pendiente.**
+
+### Defecto BLOQUEANTE de dispositivo, encontrado y corregido en esta sesión
+
+`CodeInput` (el código de verificación del login) dependía de que un TextInput
+con `opacity: 0` recibiera los toques. Con New Architecture en iPhone físico esa
+vista queda fuera del hit-testing: **el login era imposible en dispositivo** —
+sin foco, sin teclado, sin poder borrar; sólo escribía el autofill de QuickType
+y sin forma de corregirlo. En simulador el `autoFocus` inicial lo disimulaba.
+Arreglo: un `Pressable` real captura el tap y enfoca por ref; el input oculto
+lleva `pointerEvents="none"`. Regresión en `test/codeInputDeviceFocus.test.ts`
+(4 pruebas), verificado en las dos direcciones y **probado en el iPhone**: el
+login completo funcionó después del arreglo.
+
+1. **`[CONVEX M(onboarding:confirmSignupDraft…)]`** — error visible en la app
+   **antes** del alta, en la pantalla de Clerk. No lo causó el borrado ni el
+   finalizador: ya estaba al llegar ahí. No bloqueó el flujo.
+2. **`[CONVEX A(layers:refreshForDate)]`** — dos ocurrencias al entrar a Hoy con
+   una cuenta recién creada. La pantalla igual renderizó con datos reales
+   (4 capas, ranking, Urano trígono Marte).
+
+Ninguno de los dos frenó el alta ni el borrado. No se diagnosticaron.
+
+### Trampa operativa descubierta — dejar por escrito
+
+El worktree `native-v492` y el checkout `projects/orbita` comparten el **mismo**
+`CONVEX_DEPLOYMENT` de dev, pero tienen backends con **tres semanas de
+diferencia**. Un comando de Convex corrido desde el directorio equivocado apunta
+al deployment correcto con el código incorrecto, y **no avisa**.
+
+Ya pasó en esta corrida: un `npx convex dev --once` desde `projects/orbita` casi
+pisa Development con el backend viejo —habría borrado `payments/revenuecatRest`,
+`deleteAccountV2` y `accountDeletionFences`—. Lo salvó la validación de schema de
+Convex, que se negó porque los datos de dev ya tenían campos que el schema viejo
+no declara. Con la base más vacía habría entrado sin quejarse.
+
+**Siempre el `cd` en la misma línea del comando.**
+
+### Herramienta instalada
+
+`idb` (cliente Python de `idb-companion`, que ya estaba por brew) quedó en un
+venv aislado: `~/.venvs/idb/bin/idb`. Se instaló con el Python **3.9 del
+sistema**: `fb-idb 1.1.7` no es compatible con Python 3.14 (`asyncio.get_event_loop()`).
+No se tocó el Python del proyecto ni el del sistema.
+
+### Fuera de alcance
+
+Deploy, configuración del secreto, dashboards, comercio nativo, Android, web,
+recaptura de evidencia visual.
+
+---
+
+
+## Reestructura de producto probada en iPhone (2026-08-19, noche) · VIGENTE
+
+Ronda de cambios de producto decididos por Lucas probando el dev build en su
+iPhone 13 Pro Max. Todo con TDD, suite completa en verde tras cada corte.
+**Suite: 2212/2212 · 213 suites. Piso del gate subido: 745 → 2200.**
+
+### 1. La pestaña 5 es "Carta" y muestra el hub directamente
+
+Plan aprobado y ejecutado (5 cortes; detalle en
+`~/.claude/plans/bien-no-pero-ac-eventual-biscuit.md` y en `test/perfilTuCarta.test.ts`):
+
+- `LayerScreen` ganó un slot `action` en el header (44×44, prioridad sobre `meta`).
+- `/perfil` nativo monta `CartaHubScreen`; web sigue mostrando el `PerfilScreen`
+  administrativo **sin ningún cambio** (wrappers `perfil-index.tsx`/`.web.tsx`;
+  garantía fijada por test de grafo + export web verificado: `CARTA · TU BASE`
+  con 0 ocurrencias en el bundle web, límites intactos).
+- Lo administrativo vive en `/perfil/ajustes` (nativo): `DetailLayerScreen` con
+  `←` + `PerfilAjustesBody`, exportado desde el MISMO `PerfilScreen.tsx` para no
+  mover el texto que ~12 tests fijan. El engranaje ⚙︎ (32pt, línea 40 — la
+  heredada del Mono lo recortaba) reemplaza a la fecha en el header del hub y
+  está en las 4 fases, invitado incluido.
+- Deep links: `/carta` y `/perfil/carta` nativos redirigen a `/perfil` en un
+  salto; web intacta. Fallbacks de los 3 detalles → `/perfil`.
+- Título de pestaña: "Perfil" → "Tu carta" → **"Carta"** (iteración de Lucas).
+  El name de ruta sigue siendo `perfil`. Test nuevo de coherencia
+  LABELS (TabBar) ↔ Tabs.Screen (tabs-layout), dualidad que nadie fijaba.
+- **El hallazgo "entro a mi carta y no puedo volver" queda resuelto por
+  estructura**: el hub ya no es un detalle sin back, es la raíz de la pestaña.
+
+### 2. Vínculos: las personas arriba, el patrón abajo
+
+El hub invierte el orden: `Personas guardadas` + AGREGAR UNA PERSONA primero
+(la acción), `Tu patrón relacional` después (contexto natal que no cambia).
+Test que fija el orden en `vinculosNativeV492.test.ts`.
+
+### 3. Agregar persona es un flujo de 3 pasos
+
+`VinculosConnectScreen`: PASO 1 NOMBRE → PASO 2 QUÉ COMPARAR → PASO 3 SUS
+DATOS. El motor de la pantalla (draft, validación, idempotencia, búsqueda de
+ciudad) no se tocó: la máquina de pasos sólo gatea qué se muestra.
+- El borrador sobrevive al ir y volver entre pasos; **se pierde al salir de la
+  pantalla — decisión consciente de Lucas** (nada se persiste a medias).
+- **Editar una persona existente NO pasa por el wizard**: entra directo con
+  todos los bloques visibles.
+
+---
+
+## ORDEN DE ESTA NOCHE — deploy a PRODUCCIÓN + TestFlight (2026-08-19) · EJECUTADA — SUPERADA
+
+> **EJECUTADA Y SUPERADA (2026-08-20).** Esta orden ya se cumplió: producción
+> `exciting-bat-311` está **desplegada y verificada con 142 funciones**, el
+> webhook productivo de RevenueCat dio **200**, y el build **1.0.0 (20)** está
+> **subido y procesado en TestFlight interno (grupo Own)** desde el commit
+> `b2531a19` en el worktree `release-1.0.0-build20`. **Nada de acá se vuelve a
+> ejecutar sin una orden nueva.** El estado vigente está en el bloque
+> `## RC productivo Órbita 1.0.0 (21) … · VIGENTE`. Se conserva por los pasos y
+> las advertencias, que siguen siendo la referencia operativa.
+
+**Lucas autorizó lanzar esa noche**: backend a producción y build a TestFlight
+interno. Codex ejecutó el deploy; Lucas cargó los secretos; Claude preparó el
+paquete y armó el archive.
+
+### Para Codex: el deploy a producción, paso a paso
+
+1. **SIEMPRE desde el worktree** — la trampa del directorio ya casi pisa
+   Development una vez (ver más abajo). El comando completo, en UNA línea:
+   ```
+   cd /Users/lucas/Documents/Core/worktrees/orbita/native-v492 && npx convex deploy
+   ```
+   (`convex deploy` apunta a prod usando la config del proyecto; verificar en la
+   salida que diga `exciting-bat-311` ANTES de confirmar. Si dice otra cosa,
+   abortar.)
+2. **Prerrequisito**: Lucas ya cargó en el env de producción de Convex:
+   `CLERK_SECRET_KEY` (live), `ORBITA_ENVIRONMENT=production`,
+   `REVENUECAT_SECRET_API_KEY`, `REVENUECAT_WEBHOOK_AUTH` (header NUEVO, distinto
+   al de dev), `REVENUECAT_SANDBOX_REVIEW_USER_IDS` (el Clerk ID **de
+   producción** de Lucas — se obtiene tras el primer login del build). Sin la
+   allowlist, las compras de TestFlight (sandbox contra prod) se descartan.
+3. **Verificación post-deploy** (read-only):
+   - `npx convex function-spec` → ~140 funciones, presentes
+     `users:deleteAccountV2`, `users:checkIdentityDeletionStatus`,
+     `payments/revenuecatRest:requestStoreReconcile`, `layers.*`,
+     `relationships.*`. → **RESULTADO: 142 funciones, verificado.**
+   - La web viva (orbitaastrologia.xyz) sigue funcionando: smoke anónimo de
+     `/`, `/home`, `/carta`. El schema es aditivo (verificado en dev: sólo
+     índices nuevos) y ninguna firma pública se retira, pero ES la primera vez
+     que V4.9.2 toca prod.
+   - Webhook de RevenueCat #2 (prod): mandar Test Event → 200, y fila TEST en
+     `paymentEvents` con environment correcto. → **RESULTADO: HTTP 200.**
+4. **Advertencia de proceso, explícita**: ~~este deploy corre código que NO está
+   en ningún commit (398 entradas sin commitear)~~ → **RESUELTO**: el RC se
+   commiteó como **`b2531a19`** (*release: Órbita 1.0.0 (20)*) en el worktree
+   limpio `release-1.0.0-build20`. **Este** worktree sigue con su árbol sucio
+   preservado y su snapshot en `~/Backups/orbita-native-v492/2026-08-19/`, y los
+   PRs siguen siendo la deuda número uno.
+
+### Estado del build para TestFlight · **SUPERADO — el build 20 ya existe**
+
+> El build **1.0.0 (20)** se archivó, se firmó y se subió: **IPA SHA-256
+> `cf3ad601d8f00cbf504b61b669a342b807eeb67e5b0bc71045f3f3039429fca8`**, build
+> local reproducible, **procesado en TestFlight interno, grupo Own**. Lo que
+> sigue vale sólo como registro de cómo se preparó.
+
+- ~~`buildNumber` **20** … **todavía no existe: hay que archivarlo**~~ →
+  **HECHO.** `buildNumber` **20**, versión 1.0.0, bundle `com.lucasssram.orbita`.
+- **El build 19 no se promueve** — sigue vigente. El archive Release que quedó en
+  `~/Library/Developer/Xcode/Archives/2026-08-20/` apunta a **Development**
+  (deliberado, para probar la compra Sandbox en el iPhone de Lucas). Un binario
+  que habla con el deployment de dev no puede subirse como candidato de
+  producción por más que TestFlight lo acepte: las compras, las cuentas y las
+  cartas serían las de dev. Sirve como prueba interna y nada más; el RC sale de
+  un archive NUEVO, el 20, con las EXPO_PUBLIC_* de PRODUCCIÓN.
+- ~~Falta el **archive Release del build 20**~~ → **HECHO**, con las
+  EXPO_PUBLIC_* de PRODUCCIÓN (Convex prod + `pk_live_` de Clerk + la misma key
+  de RevenueCat). La advertencia sigue valiendo para cualquier archive futuro:
+  `.env.local` del worktree apunta a DEV — el archive corre con el env de prod
+  **exportado en el proceso**, nunca editando ese archivo.
+- ~~Credenciales de firma: falta el certificado de DISTRIBUCIÓN~~ → **resuelto**:
+  el IPA se firmó, se subió y **App Store Connect lo procesó**.
+
+---
+
+## Ronda nocturna de QA en iPhone — 5 defectos más (2026-08-19, 22:00–23:00) · VIGENTE
+
+Lucas probando en su iPhone 13 Pro Max; cada arreglo con TDD y suite completa.
+**Suite final: 2219/2219 · 215 suites.**
+
+1. **Spinner clavado al cambiar de pestaña** — `refreshing` (flag COMPARTIDO del
+   ciclo de capas) iba directo al RefreshControl: cualquier pestaña montada
+   durante un refresh de fondo aparecía con el control expandido y el contenido
+   empujado hasta que el recálculo (proveedor mediante) terminara. Arreglo: el
+   spinner refleja el GESTO local (`pulled` + `sawBusy` en LayerScreen); el
+   refresh de fondo es invisible. `test/layerRefreshSpinner.test.ts`.
+
+2. **La comparación de Vínculos no persistía NUNCA para una persona nueva**
+   (`RELATIONSHIP_INPUT_CHANGED_DURING_REFRESH` en loop). Causa raíz: la
+   reafirmación de identidad natal (`applyCalculatedNatalChart`, rama reuse)
+   patcheaba `updatedAt: now` en CADA refresh de capas aunque nada cambiara, y
+   el `inputHash` de la comparación incluye ese timestamp; con la comparación
+   tardando segundos (proveedor), la ventana estaba casi siempre abierta.
+   Arreglo: la reafirmación sólo escribe si la identidad REALMENTE difiere
+   (guard `identidadYaVigente`). `test/natalReaffirmNoOp.test.ts`.
+   **⚠️ PENDIENTE DE DEPLOY a Development** — hasta el próximo
+   `npx convex dev --once` el teléfono sigue viendo el bug.
+   Probable causa también de los errores `layers:refreshForDate` anotados antes.
+
+3. **La tarjeta de precisión no mostraba los datos guardados** — "HORA GUARDADA:
+   Hora exacta" era un rótulo que prometía un dato y entregaba una categoría, y
+   tras editar con un error en el medio no había forma de verificar qué usó la
+   carta. Ahora: fila `DATOS` (fecha · hora · lugar reales, vía
+   `birthData.getCurrent` — gate de cartaV492 ajustado con intención, sólo para
+   esta pantalla y sólo para mostrar), `PRECISIÓN`, y `SE CALCULÓ CON` sólo
+   cuando informa algo (sin hora exacta). Verificado además contra la base: la
+   edición de Lucas SÍ había guardado (11 Nov 1996 · 10:32 · CABA) y el
+   Ascendente nuevo es correcto — el error que vio fue ruido del refresh.
+
+4. **Colores de las barras de Vínculos invertidos** (decisión de Lucas): lo
+   fluido en COBRE (la marca, cálido, es lo que más se llena) y la tensión en
+   azul acero. La semántica no cambia — el color dice balance, nunca cantidad;
+   un color por cantidad convertiría la barra en el puntaje que el canon
+   prohíbe (se le explicó y aceptó el trade-off).
+
+5. **"EN RESUMEN" antes de POR DIMENSIÓN** — lectura general PUNTUAL del
+   vínculo: abre nombrando los contactos que más pesan ("su Venus con tu Sol,
+   en Deseo"), extraídos de la frase canónica de los drivers
+   (`relationshipDriverShortName`; el contrato los publica como prosa, no como
+   estructura); si una frase no matchea cae a la versión contable, nunca
+   inventa. Factual, sin nota: `relationshipComparisonSummary` +
+   `relationshipSummaryLine` en `src/domain/relationships.ts`.
+
+Aclaración registrada para QA: **"se me fue el Plus" NO fue un bug** — el reloj
+de Sandbox comprime el mes a 5 minutos, renueva 6 veces y expira; la app volvió
+a Free honestamente (caso de la matriz de aceptación, cumplido).
+
+---
+
+## Comercio nativo — configuración externa hecha (2026-08-19) · VIGENTE
+
+Sesión de configuración con Lucas en los dashboards. **Autorizada por él paso a
+paso.** Development recibió dos deploys puntuales autorizados.
+
+### App Store Connect — HECHO
+
+| Qué | Valor |
+|---|---|
+| App | `Órbita: Astrología` · bundle `com.lucasssram.orbita` · **Apple ID `6788918249`** |
+| Subscription Group | `Órbita Plus` · **Group ID `22320917`** |
+| Producto | `orbita_plus_monthly` · `Órbita Plus Mensual` · **1 month** · resource ID `6803253452` |
+| Precio | **USD 9.99**, propagado a los 175 países (Argentina también en USD, decisión de Lucas) |
+| Introductory Offer | **Free for the first week** · 175 países · sin fecha de fin |
+| Localización | Spanish (Mexico) · `Órbita Plus` / `Más profundidad sobre tu carta natal` |
+| Estado | `Prepare for Submission` |
+
+> **Los dos números no son intercambiables.** `6788918249` es la **app** — el
+> que va en las URLs de App Store Connect (`/apps/6788918249/testflight/ios`,
+> como ya figura en `docs/app-store-launch-pack.md`). `6803253452` es el id del
+> **recurso de la suscripción** dentro del grupo, no el de la app. Esta ficha
+> los tenía cruzados y anotaba el de la suscripción como "Apple ID" de la app.
+
+**Se creó y se borró una suscripción anual** (`orbita_plus_anual`). No va: el
+paywall no tiene selector de plan —`nativeCommerce.ts:153` toma siempre
+`plans[0]`— y los Términos describen un solo mensual. Agregarla es una tarea
+aparte con su UI, su copy legal y sus pruebas.
+
+**Pendiente en Apple:** el **screenshot de Review Information**. Se deja para
+después del build, porque hoy el paywall no puede mostrar un plan y una captura
+de un paywall vacío es peor que ninguna. Aviso de Apple a tener presente: *"Your
+first subscription group must be submitted with a new app version"* — la
+suscripción viaja con el binario, no se aprueba sola.
+
+### RevenueCat — HECHO
+
+| Qué | Valor |
+|---|---|
+| App | Apple, bundle `com.lucasssram.orbita` |
+| Credenciales | In-App Purchase Key `.p8` + Issuer ID cargados |
+| Producto | `orbita_plus_monthly` (creado a mano, no importado) |
+| Entitlement | **`orbita_pro`** con el producto adjunto |
+| Offering | **`orbita_plus`**, Default, **una** package `$rc_monthly` |
+| Secret API key | **v1** (el backend pega contra `/v1/subscribers`; una V2 daría 401) |
+| Webhook | `https://dutiful-viper-815.convex.site/webhooks/revenuecat` · Sandbox only · header aleatorio de 64 chars · HMAC signing off (el backend autentica por header) |
+
+**Se borró el Offering `default`** que RevenueCat crea solo, con sus packages
+Weekly/Yearly/**Lifetime**. Con él como Default el paywall quedaba vacío
+(`availablePackages.length !== 1`) y encima exponía un `lifetime`, que el backend
+tiene prohibido conceder. Queda un entitlement viejo `Orbita Pro` con 3 productos
+placeholder: inofensivo —el código sólo mira `orbita_pro`— pero conviene limpiarlo.
+
+### Verificado contra el sistema real
+
+**Offerings, con la key pública, como los pediría el SDK:**
+
+```
+current_offering_id: orbita_plus
+  orbita_plus  ← CURRENT
+    $rc_monthly  ->  orbita_plus_monthly
+```
+
+Cumple `availablePackages.length === 1` y `packageType === "MONTHLY"`.
+**`subscriptionPeriod === "P1M"` NO se puede verificar desde acá** —lo aporta
+StoreKit en el dispositivo— y queda para el Sandbox.
+
+**Webhook:** evento de prueba **200**, procesado y auditado en `paymentEvents`
+(`eventType: TEST`, `environment: SANDBOX`). El `rawPayload` guardado contiene
+sólo campos de lifecycle: sin aliases ni atributos del suscriptor.
+
+**Env de Convex Development:** `CLERK_SECRET_KEY`, `ORBITA_ENVIRONMENT`,
+`REVENUECAT_SECRET_API_KEY`, `REVENUECAT_WEBHOOK_AUTH`.
+`REVENUECAT_LIFETIME_PRODUCT_IDS` ausente = vacía, que es lo correcto.
+
+**Cliente:** `EXPO_PUBLIC_REVENUECAT_IOS_API_KEY` agregada a
+`projects/orbita/.env.local` (10 públicas). Falta cargarla en las variables de
+EAS cuando se arme el build: el build no lee el `.env.local` local.
+
+### DEFECTO ENCONTRADO Y CORREGIDO — el webhook perdía compras
+
+`revenuecatWebhook` pasaba el evento **crudo** como argumento de la mutation.
+Convex valida los argumentos ANTES de entrar al handler y rechaza los nombres de
+campo que empiezan con `$`. RevenueCat manda `subscriber_attributes` con
+`$displayName`, `$email` e `$idfa`, y los completa solo:
+
+```
+500 — Field name $displayName starts with a '$', which is reserved.
+  at validateObjectField (convex/values/value.ts:163:11)
+```
+
+**No era un artefacto del evento de prueba: pasa con eventos reales.** Cada
+webhook devolvía 500, RevenueCat reintenta una cantidad acotada y abandona. Un
+`INITIAL_PURCHASE` perdido = Apple cobró y Convex se quedó en Free.
+
+`sanitizeRevenueCatEvent` ya existía pero corre **dentro** de la mutation, o sea
+después de la validación que explotaba. El arreglo es `stripConvexReservedKeys`
+en `convex/lib/revenueCatEvents.ts`, aplicado en el httpAction antes de cruzar la
+frontera: saca en profundidad las claves `$` y `_` y **conserva todo lo demás**,
+porque la mutation necesita el evento completo para identidad, transfers y
+entitlements.
+
+Regresión en `test/revenueCatReservedKeys.test.ts` (8 pruebas). Verificado en las
+dos direcciones **contra el deployment**: antes 500, después **200**.
+
+### Lo que sigue, en orden
+
+1. **Build nativo nuevo** con los módulos de RevenueCat. El binario actual
+   (build 18, 16/08) no los tiene — verificado en `ios/Podfile.lock`. Ninguna
+   actualización OTA los agrega. Cargar las `EXPO_PUBLIC_*` en EAS.
+2. **Compra en Sandbox**: verificar `P1M`, la elegibilidad de los 7 días, compra,
+   restauración, cancelación y Customer Center.
+3. **Screenshot del paywall real** → Review Information en ASC.
+4. **Recaptura del estado 06** (Carta), que necesita el entitlement Plus real.
+5. Recién ahí, TestFlight y App Review.
+
+### Sigue sin resolverse
+
+El **precio**: USD 9.99/mes por un Plus que agrega casas, aspectos y dos
+preguntas, sobre un Free que ya entrega las capas de tiempo completas. No frena
+nada técnico, pero es una decisión de producto pendiente: o Plus abre más, o el
+precio baja, o Free da menos.
+
+---
+
+## Identidad, borrado y comercio — cierre técnico local (2026-08-19) · VIGENTE
+
+**Veredicto único: PASS técnico local del código auditado y de la suite. NO
+LISTO PARA LANZAMIENTO NI PUBLICACIÓN.** Todo lo de abajo es local y sin
+commitear. De este delta **no** hubo deploy, build nativo nuevo, compra sandbox,
+dashboard de Apple/RevenueCat, TestFlight, App Review ni producción. Commit,
+push y deploy siguen **prohibidos** hasta autorización explícita de Lucas.
+
+### Estado medido (verificado por Codex el 2026-08-19)
+
+| Qué | Valor |
+|---|---|
+| Rama | `feature/native-v492-implementation` |
+| HEAD | `52836ad5f4ad6d6c72f389069ff73f008d45be28` |
+| Working tree sin commit | **381 entradas** con `-uall` = 129 tracked + 252 untracked |
+| Índice | **2 entradas heredadas**: `D app/(tabs)/transitos.tsx` · `R100 app/(tabs)/perfil.tsx → src/screens/PerfilScreen.tsx` |
+| `pnpm typecheck` | **PASS** |
+| Suite completa | **2145/2145**, 196 suites, 0 fail — `node --import tsx --test test/*.test.ts`; `test-output.log` actualizado |
+| `pnpm check:test-count test-output.log` | **PASS** (mínimo 745) |
+| `git diff --check` y `--cached --check` | **PASS** |
+| Focal final identidad/borrado/comercio/bindings | **PASS**; bindings gate PASS **sin codegen**; staging intacto |
+
+### Qué quedó cerrado en el código (local)
+
+1. **Reautenticación real de Convex ante A → B.** `ConvexProviderWithAuth` con
+   hook propio: la identidad de `fetchAccessToken` cambia con el `userId`. El
+   adapter anterior memoizaba sólo por org/rol y dejaba a Convex hablando como la
+   cuenta anterior. `ensureUser` publica `ready` **sólo** si el `clerkUserId` de
+   la fila devuelta coincide con el dueño capturado.
+2. **Entitlement correlacionado de punta a punta.** `subscriptions.getCurrent`
+   devuelve `clerkUserId` y **todas** las superficies de comercio derivan de
+   `safeEntitlement`. Sin correlación el estado es neutral: cero Comprar,
+   Restaurar, gestión, portal, oferta e impresión. La oferta y la impresión
+   exigen entitlement correlacionado + foco real + `activation === "idle"`.
+3. **Comercio nativo endurecido.** Paywall, Perfil, owner gates por dueño,
+   restore/portal/Customer Center y el marcador de compra en disco y memoria. El
+   backend de RevenueCat ya tiene la pasada local de hardening y reconciliación
+   descrita en las secciones de abajo. **No se probó ningún cobro real.**
+4. **Borrado con autoridad única.** `deletion_requested` se persiste **antes** de
+   tocar nada; `PendingDeletionBoundary` es el único dueño de la mutación de
+   Convex, del borrado de Clerk, del checkpoint y de la purga; el endpoint legado
+   `deleteAccount({})` falla cerrado; en web no se purga el storage global
+   (`localStorage` es del origen y compartido entre pestañas); la recuperación
+   ofrece email + código y **no** OAuth ni alta de cuenta nueva.
+5. **Fence de supresión.** `accountDeletionFences` se escribe en la **misma
+   mutation** que la barrida —una transacción— con una clave versionada
+   `SHA-256(dominio | subject)`, **seudónima**, sin identificadores en crudo y sin
+   expiración. Impide que un token de Clerk todavía válido recree la cuenta desde
+   otro dispositivo, otra pestaña o un retry tardío. **No es anonimización ni es
+   irreversible**: con un subject candidato se puede comprobar la pertenencia.
+
+### Contratos de comercio VIGENTES (los que mandan si un doc viejo dice otra cosa)
+
+| Contrato | Regla vigente |
+|---|---|
+| Superficie de reconciliación | **Mutation** `payments/revenuecatRest:requestStoreReconcile`, `args: {}`, deriva la cuenta de `ctx.auth` y devuelve `{ status: "queued" \| "cooldown" \| "unauthenticated" }`. La action `reconcileMyStoreEntitlement` **ya no existe**: era at-most-once y podía morir antes de crear el trabajo. |
+| Lectura REST y 404 | **Un 404 NO revoca.** `/v1/subscribers/{id}` es GET-or-create: un 404 significa ruta, proyecto o credencial mal configurados, y leerlo como "no compró nada" le sacaría el acceso a alguien que pagó. Sólo un **200/201 con la forma completa y sin el entitlement** retira. 5xx, 429, 401/403 y shape inválida no conceden ni revocan. |
+| Identidad ambigua | **Cuarentena: no se reconcilia ninguna cuenta.** Se audita `ignored_ambiguous_identity` y se resuelve a mano. Cero matches es distinto: no se marca procesado y el retry de RevenueCat lo vuelve a traer. |
+| Cambio de cuenta | **`logIn(B)` directo, sin logout intermedio.** Convex re-autentica con el cambio de `userId`; el estado de tienda se publica atado a su dueño y se descarta si la identidad cambió durante el `await`. |
+
+Las pasadas 16 y 17, más abajo, describen los contratos **anteriores** a estos.
+Están rotuladas HISTÓRICO — SUPERADO y no se usan como referencia.
+
+### Limitación abierta, release-blocking
+
+Si `deleteUser` de Clerk **termina** y el proceso cae **antes** de persistir
+`identity_deleted`, ese checkpoint sólo existía en memoria. Al reiniciar, el
+arranque queda **fail-closed** y la salida es soporte: **no hay recuperación
+self-service**.
+
+Cerrarlo bien exige una integración server-side durable con la **Clerk Backend
+API** y `CLERK_SECRET_KEY` —un job/tombstone/retry capaz de probar de forma
+idempotente que la identidad ya no existe—. **No se implementó ni se configuró**;
+requiere autorización y configuración externa. Las dos reglas que no se negocian
+mientras tanto: no promover el checkpoint antes de que Clerk confirme, y no
+inferir el borrado a partir de un `signed-out`.
+
+### Pendientes externos, en orden
+
+1. Diseñar y autorizar el finalizador server-side de Clerk; configurar el secreto
+   en Convex sin exponerlo.
+2. Auditar y configurar el catálogo de Apple + RevenueCat (bundle real
+   `com.lucasssram.orbita`; entitlement, oferta, producto mensual y trial según la
+   decisión legal); contratos, banking y tax si faltan.
+3. Desplegar backend/schema/fence/RevenueCat en **Development primero** y
+   verificar funciones y bindings. **Backend antes que cliente.**
+4. Crear dev build/TestFlight compatible con los módulos de RevenueCat y el
+   runtime fingerprint; compra, restore y Customer Center en Sandbox con una
+   cuenta legítima; verificar webhook, reconcile y allowlist de App Review.
+5. Recapturar Plus 06, VoiceOver en iPhone físico y el checklist legal/App
+   Review. **Recién ahí** pedir autorización para producción y publicación.
+
+---
+
+# ▲ FRONTERA DE ARCHIVO — todo lo que sigue es HISTÓRICO / SUPERADO ▲
+
+**El único bloque vigente de este archivo es el de arriba: `## Identidad,
+borrado y comercio — cierre técnico local (2026-08-19) · VIGENTE`.**
+
+Desde esta línea hacia abajo, todo se conserva **sólo como trazabilidad**: qué
+se encontró, qué se arregló y por qué. Nada de lo que sigue describe el estado
+actual del repositorio.
+
+Regla de lectura, sin excepciones: **ningún encabezado posterior a esta frontera
+reemplaza el bloque del 2026-08-19**, aunque diga "vigente", "cerrado",
+"objetivo", "estado actual", "fuente de verdad" o cualquier fórmula parecida.
+Esas palabras describen el momento en que se escribió esa sección, no hoy. Lo
+mismo vale para sus métricas y sus contratos: **todo conteo de pruebas,
+inventario de árbol, veredicto y contrato de API que aparezca más abajo está
+superado** por el bloque vigente.
+
+El estado actual, y el único que se cita hacia afuera:
+
+- **PASS técnico local; NO listo para lanzamiento ni publicación.**
+- **2145/2145** pruebas en **196 suites**; inventario de **381 entradas**;
+  índice con **2 entradas** heredadas.
+- El finalizador **server-side de Clerk no está implementado ni configurado**, y
+  es **release-blocking**.
+
+---
+
+## Comercio nativo — cierre del paquete de auditoría A/B/C (2026-08-18, pasada 18) · HISTÓRICO
+
+> **HISTÓRICO.** Los conteos y el veredicto de esta sección quedaron superados
+> por el cierre del 2026-08-19 de arriba. Se conservan como evidencia de la
+> pasada, no como estado vigente.
+
+**Veredicto: repositorio validado; comercio NO certificado.** Typecheck, focales
+y suite completa en verde, con una prueba roja reproduciendo cada defecto antes
+del arreglo. Eso no certifica nada comercial: siguen faltando configuración
+externa, un build nativo nuevo y dispositivo/TestFlight/App Review. **Android
+queda fuera del alcance de esta corrida y sin verificar.**
+
+### A · Backend, entorno e identidad
+
+1. **Bypass de allowlist (P1).** El corte de entorno se aplicaba con
+   `allCandidates.some(...)` sobre los strings crudos del evento: un alias
+   allowlisted (`user_review`) habilitaba el recibo Sandbox de OTRA cuenta
+   (`user_common`) en producción. Ahora la autorización corre **después** de
+   resolver la única identidad local canónica, contra esa cuenta y ninguna otra.
+2. **Aislamiento sandbox/production.** `isRowActive` corta por entorno: una fila
+   de RevenueCat sin `environment` falla cerrado y una `sandbox` sólo concede si
+   esa cuenta está allowlisted — vaciar el secreto apaga el acceso. Las filas
+   dejaron de buscarse con `first()` ambiguo: se colectan por (usuario,
+   proveedor) y se eligen por entorno, así que sandbox y production **conviven**
+   sin pisarse. Se actualizaron **todos** los consumidores vía
+   `resolveRowsForUser`: `subscriptions.getCurrent`, `isUserPro` (layers, daily,
+   transits, charts, journal), `void` y `stripeInternal`. Stripe no se ve
+   afectado. Las filas legadas sin entorno quedan documentadas para
+   auditoría/migración y se reparan con la lectura REST.
+3. **Cuarentena de identidad ambigua.** Antes reconciliaba A y B; como los
+   aliases devuelven el mismo `CustomerInfo`, eso dejaba Pro a los dos. Ahora se
+   audita y **no se reconcilia ninguno**.
+4. **Contrato REST v1 real.** 200 y 201 se validan igual (el endpoint es
+   GET-or-create); **404 dejó de ser éxito** y no revoca; shape profunda y
+   `request_date_ms` válido obligatorios; `orbita_pro: null` es inválido, no
+   Free; un `expires` ausente o ilegible ya no se convierte en lifetime.
+5. **Reembolsos.** `CANCELLATION` + `cancel_reason: CUSTOMER_SUPPORT` es un
+   reembolso y retira el acceso **en el acto**, también un lifetime sin
+   vencimiento. Las demás cancelaciones conservan hasta fin de período y
+   `REFUND_REVERSED` sigue restaurando. Todo evento canónico con un único
+   usuario dispara reconciliación aunque la decisión local quede ignorada.
+6. **Lifetime.** La precedencia es explícita en los dos caminos: el guard del
+   webhook usa un discriminador `overridesLifetime` (sin él, una `EXPIRATION`
+   tenía la misma forma que un reembolso y borraba el lifetime), y la
+   proyección REST no degrada ni pierde un lifetime vigente. La lectura toma el
+   lifetime de `non_subscriptions` no reembolsado, con precedencia sobre el
+   mensual.
+7. **Operación.** Cooldown por cuenta sobre `publicRateLimits`; verificación de
+   sesión y fila local **antes** de tocar la red; timeout con `AbortController`;
+   **retry durable y acotado** que se reprograma solo (las scheduled actions de
+   Convex son at-most-once) y sólo para lo transitorio; auditoría idempotente
+   por observación; y el `v.any()` del outcome reemplazado por un validador
+   cerrado campo por campo.
+
+### B · App nativa
+
+8. **Identidad del SDK.** A → B es `logIn(B)` **directo**: se eliminó el
+   `logOut` intermedio, que no cierra sesión sino que crea un anónimo capaz de
+   recibir una compra huérfana. El logout de la app ya no toca el SDK. Una
+   **única cola serial** cubre identidad, compra, restore, refresh y Customer
+   Center, y cada acción revalida la identidad dentro de la cola: una transición
+   no puede colarse en medio de una compra. Se corrigieron los tests que
+   canonizaban el logout.
+9. **Carrera del Offering.** `runGuardedOfferingLoad` captura
+   `(generación, usuario)` antes de pedir y descarta **el éxito y el error**
+   obsoletos. Probado con promesas diferidas.
+10. **Marcador de compra.** Lectura con tres estados: `empty`, `held` y
+    `unreadable` — un JSON roto o un fallo de IO **bloquean** (llevan a
+    Restaurar), nunca habilitan Comprar. El estado de compra pasó a ser una
+    sesión **con dueño**: `guardLoaded`, `lastOutcome` y `purchaseReceived` se
+    reinician al cambiar de cuenta y una continuación async de A no publica —ni
+    limpia— el estado de B. Sólo levantan el marcador una cancelación
+    demostrada, un Restaurar vacío autoritativo o una confirmación **de
+    RevenueCat**: un `isPro` de Stripe ya no lo limpia.
+11. **Perfil.** Restaurar usa el mismo circuito que el paywall (reconcilia
+    siempre; vacío limpia; activo conserva hasta confirmación). Las dos salidas
+    de gestión se muestran sin importar quién gana el rango, incluido Stripe
+    ganador con RevenueCat activo. Con el portal web apagado el botón queda
+    deshabilitado.
+12. **Eliminación de cuenta.** Se limpia el marcador de compra en el borrado
+    inmediato y en la reanudación pendiente, y **no** en un logout normal. La
+    primera confirmación avisa que la suscripción sigue cobrando y pide
+    cancelarla antes. **No se implementó** borrado remoto en RevenueCat/Stripe:
+    quedó como decisión/gate explícito en el checklist.
+
+### C · Configuración y documentación
+
+13. `.env.example` sin duplicados (había cinco) y sin ningún valor cargado.
+14. `eas.json` ya no versiona `ascApiKeyPath` (una ruta absoluta a `~/Downloads`),
+    `ascApiKeyId` ni `ascApiKeyIssuerId`. Queda `ascAppId`, que es público; las
+    credenciales van al almacenamiento seguro de EAS. **No se leyó, movió ni
+    modificó el `.p8` externo.**
+15. Checklist con el veredicto único, el gate de retención/borrado externo y
+    Android declarado deshabilitado. *(Corregido después: Android no está
+    deshabilitado por código — queda **fuera del alcance comercial** y sin
+    verificar. El checklist ya dice eso.)*
+
+### Archivos
+
+**Backend nuevo (2):** `convex/lib/revenueCatRetry.ts`, y de la pasada previa
+`convex/lib/revenueCatRest.ts` + `convex/payments/revenuecatRest.ts` (ambos
+reescritos acá).
+**Backend modificado (7):** `convex/lib/{entitlements,revenueCatEvents,subscriptionAccess}.ts`,
+`convex/payments/{revenuecat,revenuecatRest,stripeInternal}.ts`,
+`convex/subscriptions.ts`, `convex/void.ts`.
+**Cliente nuevo (1):** `src/domain/offeringRetry.ts`.
+**Cliente modificado (8):** `src/domain/{nativeCommerce,purchaseGuard,accountDeletion,accountDeletionCopy,accountDeletionCopy.web}.ts`,
+`src/services/{purchaseGuard,purchaseGuard.web}.ts`,
+`src/services/revenuecat/{client.ts,RevenueCatProvider.tsx}`,
+`src/screens/{PerfilScreen,v492/PlusPaywallScreen}.tsx`,
+`src/components/orbita/ManageSubscription.tsx`, `src/hooks/useAppState.tsx`.
+**Config/contrato:** `.env.example`, `eas.json`, `convex/_generated/api.d.ts`
+(regenerado con `convex codegen`).
+**Pruebas nuevas (6):** `revenueCatIdentityAndEnvironment`,
+`revenueCatRestContract`, `revenueCatRefundAndLifetime`, `reconcileOperations`,
+`nativeIdentityAndGuard`, `accountDeletionCommerce`.
+**Pruebas actualizadas (9):** `revenueCatEvents`, `revenueCatLifecycle`,
+`revenueCatReconciliation`, `revenueCatWebhookHardening`, `entitlements`,
+`entitlementPrecedence`, `nativeCommerceOffer`, `nativeCommerceSurface`,
+`dualProviderManagement`, `perfilAppReview`, `accountDeletionReadRace` — todas
+por cambio de diseño documentado en el propio test.
+
+### Resultados exactos (HISTÓRICOS — superados por el cierre del 2026-08-19)
+
+- `convex codegen` local: **sin cambios** en `api.d.ts` (el catálogo ya incluía
+  `lib/revenueCatRest`, `lib/revenueCatRetry` y `payments/revenuecatRest`).
+- `pnpm typecheck` — **exit 0**.
+- Focales (24 archivos) — **429/429**, 67 suites.
+- `pnpm test` — **1842/1842** en 155 suites, 0 fallas.
+- `pnpm check:test-count` — **exit 0** (piso 745).
+- `pnpm build:web` + `pnpm check:web-export` — **exit 0** (32,12 MB;
+  1012,2 KB gzip / 1,25 MB).
+- Bundle web: `react-native-purchases`, `RCAnonymousID`, `purchasePackage`,
+  `restorePurchases`, `checkTrialOrIntroductoryPriceEligibility`,
+  `api.revenuecat.com`, `orbita:purchase-guard`, `REVENUECAT_SECRET_API_KEY`,
+  `REVENUECAT_WEBHOOK_AUTH`, `REVENUECAT_SANDBOX_REVIEW_USER_IDS`, `AuthKey_` y
+  `\.p8` → **0 ocurrencias**. `presentCustomerCenter` → 1, el stub inerte.
+  `createCheckoutSession` → 2, Stripe intacto.
+- `git diff --check` y `--cached --check` — exit 0.
+- Índice: las dos entradas heredadas, sin reordenar.
+- Inventario: **361** = 347 de la pasada previa + 8 archivos nuevos + 6 tracked
+  que pasaron a modificados.
+
+### Bloqueos abiertos (no cerrados por esta pasada)
+
+1. **Configuración externa**: producto mensual e introductory offer en App Store
+   Connect, `orbita_pro` y Default Offering en RevenueCat, webhook con su
+   Authorization, `REVENUECAT_SECRET_API_KEY` y la allowlist de review.
+2. **Build nativo nuevo**: los módulos de RevenueCat no están en el binario
+   actual y ninguna OTA los agrega.
+3. **Dispositivo real → Sandbox → TestFlight → App Review.**
+4. **Decisión de retención/borrado externo** (RevenueCat/Stripe) pendiente de
+   producto y legal; el gate está escrito en el checklist.
+5. **Android**: fuera del alcance de esta corrida. Sin catálogo en Play, sin app
+   de RevenueCat y con `android.package` distinto del bundle iOS.
+6. **Credenciales de EAS Submit**: hay que cargarlas en el almacenamiento seguro
+   de EAS ahora que salieron del repo.
+
+> A esta lista se le sumó, el 2026-08-19, el **finalizador server-side de Clerk**
+> (`CLERK_SECRET_KEY` + job durable). Ver la sección vigente al inicio.
+
+**No se ejecutó:** commit, push, `convex dev`/deploy, EAS build, TestFlight,
+App Store, dashboards de RevenueCat/Apple ni producción.
+
+## Comercio nativo — cierre de los 7 hallazgos P1 (2026-08-18, pasada 17) · HISTÓRICO — SUPERADO
+
+> **TODA ESTA PASADA ES HISTÓRICA Y ESTÁ SUPERADA. No uses sus contratos.**
+> Se conserva por trazabilidad —qué defecto se encontró y por qué se arregló—,
+> pero describe una API y unas reglas que ya **no** son las del código. Cuatro de
+> sus afirmaciones son hoy **falsas**:
+>
+> | Lo que dice esta pasada (FALSO hoy) | Contrato VIGENTE |
+> |---|---|
+> | Action pública `reconcileMyStoreEntitlement` | **Mutation** `payments/revenuecatRest:requestStoreReconcile`, con `args: {}` y retorno `{ status: "queued" \| "cooldown" \| "unauthenticated" }`. La action era at-most-once y podía morir antes de crear el trabajo. |
+> | "un 200 sin el entitlement, **o un 404**, sí retiran" | **Un 404 NO revoca.** `/v1/subscribers/{id}` es GET-or-create y nunca contesta 404 para una cuenta legítima: un 404 significa ruta, proyecto o credencial mal configurados. Sólo un **200/201 con la forma completa y sin el entitlement** retira el acceso. |
+> | Identidad ambigua: "se fuerza la reconciliación de **ambas**" | **CUARENTENA: no se reconcilia ninguna.** Se audita `ignored_ambiguous_identity` y se resuelve a mano. Los aliases devuelven el MISMO `CustomerInfo`, así que reconciliar las dos dejaría Pro a ambas cuentas por una sola compra. |
+> | Cambio de cuenta `A → logout → B` | **`logIn(B)` directo, sin logout intermedio.** Convex re-autentica al cambiar la cuenta de Clerk y el estado de tienda se publica atado a su dueño. |
+>
+> El estado y los contratos vigentes están en la sección inicial de este
+> documento y en `docs/native-commerce-release-checklist.md`. Sus conteos
+> (**1743/1743**, 130 suites, focales 112/112, inventario 347) también quedaron
+> superados: hoy son **2145/2145 en 196 suites** con **381 entradas**.
+
+**Owner:** Claude Code ejecuta, Codex revisa. Cada hallazgo se cerró con
+**prueba roja primero** y arreglo mínimo de producción. Base `52836ad`, rama
+`feature/native-v492-implementation`, las dos entradas staged intactas.
+
+### 1 · No existía reconciliación server-side
+
+**Causa:** el webhook es best-effort. RevenueCat reintenta una cantidad acotada
+y abandona; si el `INITIAL_PURCHASE` se pierde, Apple ya cobró y Convex queda en
+Free **sin ningún evento posterior que lo repare**.
+
+**Arreglo:** `convex/lib/revenueCatRest.ts` (parser puro) +
+`convex/payments/revenuecatRest.ts` (adapter y proyección). Lee
+`GET /v1/subscribers/{app_user_id}` con `REVENUECAT_SECRET_API_KEY`, secreto de
+backend. La acción pública `reconcileMyStoreEntitlement` **no declara
+argumentos**: deriva el Clerk id de `ctx.auth`. 5xx/429/401/shape inválida no
+conceden ni revocan; un 200 sin el entitlement, o un 404, sí retiran. La
+proyección es idempotente y no pisa un webhook más nuevo (`lastEventAt`). Se
+dispara tras compra, restauración, comprobación demorada y cada webhook.
+
+> **SUPERADO en los dos puntos marcados.** Hoy la superficie pública es la
+> **mutation** `requestStoreReconcile` (`args: {}`), y **un 404 NO retira el
+> acceso**: se trata como `unavailable`, igual que un 5xx. Ver la advertencia
+> del encabezado de la pasada.
+
+**Borde que encontré en mi propia solución:** la proyección no aplicaba el corte
+de entorno, así que producción podía conceder desde un recibo sandbox por la
+puerta de atrás. Cerrado: para **conceder** exige entorno demostrable y
+permitido; para **retirar** no, porque "esta cuenta no tiene el entitlement" es
+cierto venga de donde venga. Además, `is_sandbox` ahora se lee también de
+`non_subscriptions`, donde viven los lifetime.
+
+### 2 · Entorno que no fallaba cerrado
+
+`resolveDeploymentEnvironment` distingue `production` / `development` /
+**`unknown`**; antes "no es producción" significaba development y un deployment
+sin configurar consumía Sandbox. `unknown` no consume nada.
+
+Producción acepta Sandbox **sólo** para los Clerk id de
+`REVENUECAT_SANDBOX_REVIEW_USER_IDS` — TestFlight y App Review compran en
+Sandbox con el binario productivo, y sin esa puerta quien revisa la app no ve
+Plus. Las filas conservan su `environment` y una sandbox no pisa una productiva.
+Un evento **sin** `environment` (`TRANSFER`, `TEMPORARY_ENTITLEMENT_GRANT`) ya no
+se descarta: se difiere a la reconciliación. `undefined` nunca se lee como
+production.
+
+### 3 · `isRowActive` concedía sin fecha demostrable
+
+Una fila `active`/`trialing` sin `currentPeriodEnd` daba acceso indefinido.
+`checkout.session.completed` de Stripe escribe exactamente esa forma y la fecha
+llega recién con `customer.subscription.updated`: si ese webhook no llegaba, el
+acceso no vencía **nunca**. Ahora sólo `isLifetime` puede omitirla.
+
+### 4 · Identidad ordinaria ambigua
+
+Si `app_user_id` / `original_app_user_id` / aliases resolvían a dos cuentas
+locales, se elegía la primera. Ahora se resuelven todas: con más de una se
+audita `ignored_ambiguous_identity`, no se muta acceso y se fuerza la
+reconciliación de ambas.
+
+> **SUPERADO.** Reconciliar ambas resultó peor que no hacer nada: los aliases
+> devuelven el MISMO `CustomerInfo`, así que una sola compra dejaba Pro a las dos
+> cuentas. El contrato vigente es **cuarentena**: se audita
+> `ignored_ambiguous_identity` y **no se reconcilia ninguna**; se resuelve a
+> mano. (Cero matches es otro caso: no se registra como procesado y el retry
+> acotado de RevenueCat lo vuelve a traer.)
+
+### 5 · Un mensual podía borrar un lifetime legado
+
+RevenueCat guarda UNA fila por (usuario, proveedor). La `EXPIRATION` del mensual
+escribía `free` / `expired` / `isLifetime: false` encima del lifetime.
+`guardLifetimePrecedence` impide que un evento cuyo producto no es lifetime baje
+esos tres campos; el resto del patch se aplica igual. Probado con la secuencia
+completa: lifetime + mensual + expiración del mensual conserva lifetime.
+
+### 6 · Doble proveedor sin doble salida
+
+`resolveEntitlement` podía decir `provider: "revenuecat"` + `isLifetime` y a la
+vez `canManageInStripePortal: true`, pero el Perfil mostraba una sola salida —la
+del ganador por rango— y el mensual de Stripe seguía cobrando sin forma visible
+de cancelarlo. Contrato aditivo: `canManageInRevenueCat` y `activeProviders`.
+`nativeSubscriptionManagement` declara cada salida por separado y el Perfil
+muestra **las dos**, diciendo que hay dos suscripciones activas.
+
+### 7 · El bloqueo ambiguo moría con la pantalla
+
+Vivía en `useState`: volver atrás y reabrir el paywall —o que iOS descarte la
+pantalla con la hoja de StoreKit arriba— devolvía el botón a "comprar" con un
+cargo posiblemente hecho. Ahora hay un marcador por cuenta en disco
+(`src/domain/purchaseGuard.ts` + `src/services/purchaseGuard.ts`, con stub web),
+escrito **antes** de abrir la hoja de la tienda. `nativePrimaryAction` recibe
+`guardLoaded`: mientras el marcador no se leyó no se ofrece ninguna acción de
+cobro, así que no hay ventana al montar. Sólo lo levantan una cancelación
+demostrada, un Restaurar vacío autoritativo o la confirmación del backend. Nunca
+concede acceso.
+
+### Archivos
+
+**Backend nuevo (2):** `convex/lib/revenueCatRest.ts`,
+`convex/payments/revenuecatRest.ts`.
+**Backend modificado (5):** `convex/lib/{entitlements,environment,revenueCatEvents}.ts`,
+`convex/payments/revenuecat.ts`, `convex/subscriptions.ts`.
+**Cliente nuevo (3):** `src/domain/purchaseGuard.ts`,
+`src/services/purchaseGuard.ts`, `src/services/purchaseGuard.web.ts`.
+**Cliente modificado (4):** `src/domain/nativeCommerce.ts`,
+`src/screens/v492/PlusPaywallScreen.tsx`,
+`src/components/orbita/ManageSubscription.tsx`, `src/services/appRefs.ts`.
+**Contrato/config/docs:** `convex/_generated/api.d.ts` (regenerado con
+`convex codegen`, no editado a mano), `convex/CHANGELOG.md`, `.env.example`
+(placeholders sin valores), `docs/native-commerce-release-checklist.md`.
+**Pruebas nuevas (6 archivos):** `entitlementPrecedence`,
+`revenueCatEnvironmentGate`, `revenueCatReconciliation`,
+`revenueCatWebhookHardening`, `purchaseGuard`, `dualProviderManagement`.
+**Pruebas actualizadas (4):** `revenueCatEvents`, `revenueCatLifecycle`,
+`nativeCommerceOffer`, `nativeCommerceSurface` — todas por cambio de diseño
+declarado, ninguna por debilitar una expectativa.
+
+### Resultados (HISTÓRICOS — superados por el cierre del 2026-08-19)
+
+- `pnpm typecheck` **exit 0**.
+- Focales backend de comercio — **112/112**.
+- `pnpm test` — **1743/1743** en 130 suites, 0 fallas.
+- `pnpm check:test-count` — **exit 0** (piso 745).
+- `git diff --check` y `--cached --check` — exit 0.
+- `pnpm build:web` + `pnpm check:web-export` — exit 0.
+- **Corte web sobre el bundle real:** `react-native-purchases`, `RCAnonymousID`,
+  `purchasePackage`, `REVENUECAT_SECRET_API_KEY`, `REVENUECAT_WEBHOOK_AUTH`,
+  `api.revenuecat.com` y la clave `orbita:purchase-guard` → **0 ocurrencias**;
+  `createCheckoutSession` → 2, Stripe intacto.
+- `convex codegen` local: agregó exactamente `lib/revenueCatRest` y
+  `payments/revenuecatRest` al catálogo. Deployment **sin tocar**.
+
+**Inventario:** 347 entradas = 333 heredadas + 11 archivos nuevos + 3 tracked
+que pasaron a modificados (`convex/subscriptions.ts`, `.env.example`,
+`src/services/appRefs.ts`; `convex/lib/environment.ts` ya estaba). Índice con
+las dos entradas de siempre.
+
+**Bloqueos externos:** los mismos del checklist, ninguno levantable desde el
+repo. Se suman dos configuraciones nuevas antes de TestFlight/review:
+`REVENUECAT_SECRET_API_KEY` y `REVENUECAT_SANDBOX_REVIEW_USER_IDS` (esta última
+se vacía al terminar la revisión).
+
+**No se ejecutó:** commit, push, `convex dev`/deploy, EAS, build nativo,
+TestFlight, App Store, dashboards de RevenueCat/Apple ni producción.
+
+## Comercio nativo — auditoría, corrección y cierre técnico (2026-08-18, pasada 16) · HISTÓRICO — SUPERADO
+
+> **HISTÓRICA Y SUPERADA.** Se conserva por trazabilidad de los 8 defectos. Sus
+> contratos de identidad quedaron reemplazados: el cambio de cuenta vigente es
+> **`logIn(B)` directo, sin logout intermedio**, con re-autenticación de Convex
+> y estado de tienda atado a su dueño. Contratos vigentes en la sección inicial
+> y en `docs/native-commerce-release-checklist.md`.
+
+**Owner:** Claude Code como ejecutor; Codex revisa. Se volvió al flujo canónico
+de `WORKFLOW.md`. Base `52836ad`, rama `feature/native-v492-implementation`, las
+dos entradas ya preparadas en el índice intactas y sin reordenarlo.
+
+**Qué se hizo:** auditar el trabajo heredado de esta etapa (dependencias,
+fingerprint/EAS, hardening del webhook, cliente/provider, paywall, Perfil,
+documentación) y cerrar los defectos encontrados. El backend heredado quedó
+confirmado sin cambios: sólo `orbita_pro` concede o revoca, producción rechaza
+`SANDBOX` y development rechaza `PRODUCTION`, `original_app_user_id` y aliases
+se resuelven, `CANCELLATION` exige una fecha demostrable, el usuario todavía no
+materializado es reintentable sin marcar el evento y la auditoría no guarda PII
+ni `subscriber_attributes`. **No se tocó `convex/**`, ni el schema, ni ninguna
+firma pública.**
+
+### Defectos corregidos
+
+1. **La oferta canónica de 7 días no existía en el código.** `NativeStorePlan`
+   no tenía campo de prueba, el cliente nunca leía `product.introPrice` y nadie
+   preguntaba elegibilidad. Ahora la prueba sale de `introPrice` +
+   `checkTrialOrIntroductoryPriceEligibility`, y se anuncia sólo con oferta
+   gratuita **y** `ELIGIBLE`. `UNKNOWN`, `INELIGIBLE`, un error de red o la
+   ausencia de oferta muestran el mensual sin promesa; la consulta caída degrada
+   a `unknown` sin romper la oferta. La duración se traduce del período de la
+   tienda (`P1W` → “7 días”), no se escribe.
+2. **Doble cobro tras un error posterior a la compra.** El `catch` volvía a
+   `idle` y el CTA reaparecía como “DESBLOQUEAR ÓRBITA PLUS” habilitado,
+   contradiciendo su propio aviso. Ahora un resultado ambiguo pasa el botón
+   primario a **Restaurar**, y si la tienda ya confirmó nunca se vuelve a
+   ofrecer comprar. Un Restaurar vacío levanta el bloqueo (fuerza el refresh del
+   recibo: es respuesta definitiva); un recheck vacío por caché, no.
+3. **Doble toque en el paywall.** `busy` era `useState`: el segundo toque del
+   mismo render pasaba la guarda, chocaba con el `actionLock` del provider y
+   mostraba “No pudimos confirmar el resultado” por un rebote de dedo. Las
+   cuatro acciones toman ahora el candado síncrono `createExclusiveGate`.
+4. **Acciones simultáneas en Perfil.** Gestionar y Restaurar usaban guardas
+   asimétricas sobre estado de React y podían entrar juntas. Comparten un único
+   candado síncrono, y los botones bloqueados se anuncian bloqueados.
+5. **Carrera de identidad al publicar el estado de tienda.** `purchase`,
+   `restore` y `refreshCustomerInfo` publicaban el resultado sin revalidar:
+   Clerk podía cambiar de cuenta durante el `await`. Ahora pasan por
+   `publishStoreState`, que descarta el resultado si la identidad cambió.
+6. **`storeIsPro` estaba muerto.** Se calculaba y nadie lo leía; la distinción
+   “compra recibida” vs “activación confirmada” dependía de un estado que se
+   perdía al remontar la pantalla. Ahora alimenta `nativeActivationPhase` y
+   sobrevive al remonte. Sigue siendo **sólo presentación**: ningún gate lo lee.
+7. **Etiquetas deshonestas.** El CTA decía “PREPARANDO LA OFERTA…” también con
+   compras no disponibles, sin Offering o con error de carga. Cada estado
+   terminal dice lo suyo.
+8. **Comentario falso** en `app/paywall.tsx` (“nativo → redirección al Perfil”)
+   y **stub web incompleto** (`client.web.ts` sin `trackNativePaywall`,
+   `listenForCustomerInfo`, `customerHasOrbitaPro` ni `nativeTrialEligibility`).
+   Los dos corregidos; la paridad de exports es ahora una prueba.
+
+### Archivos de la pasada 16
+
+Comercio (8 de producción): `src/domain/nativeCommerce.ts`,
+`src/services/revenuecat/{client.ts, client.web.ts, RevenueCatProvider.tsx}`,
+`src/screens/v492/PlusPaywallScreen.tsx`,
+`src/components/orbita/{ManageSubscription.tsx, kit.tsx}`, `app/paywall.tsx`.
+Cierre de la revisión de Codex (2): `convex/_generated/api.d.ts` (regenerado,
+no editado a mano) y `test/natalChartBase.test.ts` (fixture + guarda).
+Pruebas nuevas: 3 archivos. Pruebas heredadas actualizadas: 2.
+Documentación: `CURRENT_TASK.md` y
+`docs/native-commerce-release-checklist.md`.
+
+### Pruebas nuevas (100 casos)
+
+- `test/nativeCommerceOffer.test.ts` — **45** casos puros: elegibilidad de la
+  prueba (incluido `UNKNOWN` sin promesa y el precio introductorio rebajado que
+  no es prueba), duración traducida, plan mensual, identidad `A → logout → B`
+  *(escenario de esa pasada; el contrato vigente cubre el cambio directo
+  `logIn(B)` sin logout intermedio)*, botón primario contra doble cobro,
+  transiciones de respuesta de la tienda y vistas del Perfil.
+- `test/nativeCommerceSurface.test.ts` — **36** casos de alcance/estructura:
+  corte web/nativo recorriendo el grafo real de imports desde todas las rutas de
+  `app/`, catálogo mensual fail-closed, identidad, salidas del paywall, Perfil,
+  candados y paywall del onboarding todavía apagada.
+- `test/revenueCatLifecycle.test.ts` — **19** casos de lifecycle backend que no
+  tenían regresión: `PRODUCT_CHANGE`, `UNCANCELLATION`, `SUBSCRIPTION_PAUSED`,
+  tipo ausente/desconocido, corte de entorno visto desde la mutation completa,
+  evento viejo que no pisa el nuevo, resolución por alias y transferencia hacia
+  una cuenta ausente reintentable.
+
+**Tres pruebas heredadas reflejaban el diseño anterior y se actualizaron**, con
+la justificación escrita en el propio test: `accesoPostAlta` (dos) y
+`v492ReleaseP1` (una) prohibían que cualquier módulo nativo nombrara
+`/paywall`, porque antes el único checkout era web. Con la ruta resuelta por
+plataforma, la garantía que importa es que el grafo **nativo** no alcance la
+implementación web ni llame `createCheckoutSession` — eso es lo que ahora
+afirman, más la contraparte de que en nativo `/paywall` ES la compra con
+RevenueCat.
+
+### Resultados reales (HISTÓRICOS — superados por el cierre del 2026-08-19)
+
+- `pnpm typecheck` — **exit 0**.
+- Focales (13 archivos: comercio + natal + gate generado) — **253/253**, 0 fallas.
+- `pnpm test` — **1656/1656** en 113 suites, 0 fallas.
+- `pnpm check:test-count` — **exit 0** (1656 pasan, 0 fallan, piso 745).
+- `git diff --check` y `git diff --cached --check` — exit 0. Los archivos nuevos
+  se verificaron con `git diff --check --no-index`, sin tocar el índice.
+- `npx expo config --type public` — resuelve; `buildNumber` sigue en **18**,
+  `runtimeVersion` en `fingerprint`, `extra` sin secretos.
+- `pnpm build:web` + `pnpm check:web-export` — export local **exit 0** (32,12 MB
+  totales, 1012 KB de JS gzip sobre un límite de 1,25 MB).
+- **Evidencia del corte web sobre el bundle real:** `react-native-purchases`,
+  `purchasePackage`, `RCAnonymousID` y `checkTrialOrIntroductoryPriceEligibility`
+  aparecen **0 veces**; `presentCustomerCenter` aparece 1 vez y es el stub inerte
+  (`phase:"unavailable"`); `createCheckoutSession` aparece 2 veces, o sea que
+  Stripe sigue entero en web.
+
+### Las 5 fallas: causa raíz demostrada (corrección de la pasada anterior)
+
+**Mi atribución anterior era incorrecta.** Dije que las cuatro fallas natales
+eran heredadas y ajenas al comercio, apoyándome en los mtimes de
+`convex/lib/natalGeometry.ts` y `test/natalChartBase.test.ts`. El mtime no
+prueba comportamiento: la revisión de Codex señaló que
+`.local/audits/native-v492-recertification-2026-08-17/logs14/run-summary.md`
+certifica **1537/1537** a las 15:23 del 08-18, o sea DESPUÉS de esos mtimes.
+Las cuatro fallas sí las causó esta etapa.
+
+**Causa raíz, demostrada con un experimento reversible.** El endurecimiento de
+`isRowActive` en `convex/lib/entitlements.ts` (16:55, parte de este comercio)
+cambió el predicado de
+
+```
+if (row.entitlement === "free") return false;              // pasada 14
+if (row.entitlement !== PRO_ENTITLEMENT && row.entitlement !== "plus") return false;  // hoy
+```
+
+`test/natalChartBase.test.ts` sembraba la fila Pro como
+`{ status: "active", provider: "stub", isLifetime: true }`, **sin
+`entitlement`**. Con el predicado viejo, `undefined` no era `"free"` y la fila
+concedía acceso; con el nuevo, no concede. `getNatalChartBase` resuelve casas y
+aspectos con `isUserPro` → `resolveEntitlement`, así que la cuenta pasó a Free y
+`convex/layers.ts` cerró la geometría. De ahí los cuatro síntomas: casa solar
+`null`, oposición `range` ausente, geometría verificada ausente y 0 casas.
+
+**Prueba de causalidad:** revertir únicamente ese predicado deja
+`test/natalChartBase.test.ts` en **11/11**; restaurarlo lo devuelve a **7/12**.
+
+**El arreglo correcto es la fixture, no el predicado.** `convex/schema.ts:21`
+declara `entitlement` como `v.union(v.literal("free"), v.literal("plus"),
+v.literal("orbita_pro"))` y el campo **no es opcional**: una fila sin
+`entitlement` no puede existir en la base real. Para las tres filas que el
+schema sí admite, el predicado nuevo se comporta igual que el viejo (`free` →
+false; `plus` y `orbita_pro` → true), así que **el endurecimiento no cambia el
+comportamiento de producción** y se conserva tal cual. La fixture pasó a ser
+representable con `entitlement: "orbita_pro"`; ninguna expectativa se tocó ni se
+quitó cobertura.
+
+**Regresión agregada** (`test/natalChartBase.test.ts`): una guarda que resuelve
+la fila sembrada con el `resolveEntitlement` real y comprueba que su
+`entitlement` es uno de los que el schema declara. Verificada por falsación:
+al quitar `entitlement` de la fixture, la guarda falla **primero** y reproduce
+exactamente los cuatro síntomas originales. Antes, la deriva se manifestaba a
+cuatro assertions de distancia de la causa.
+
+**Codegen (5.ª falla):** `pnpm convex:codegen --typecheck disable`, local y sin
+deploy. El cambio generado es **exactamente el módulo esperado**: dos líneas en
+`convex/_generated/api.d.ts` (`import type * as lib_revenueCatEvents` y la
+entrada `"lib/revenueCatEvents"` del catálogo). `convex/_generated/api.js` y
+`convex/schema.ts` conservan su SHA-256 certificado
+(`f5130585…` y `79a13e87…`). El CLI imprime `Uploading functions to Convex…`
+como parte de su typegen: el catálogo del deployment sigue en **129 funciones**,
+igual que la pasada 14, verificado read-only con `convex function-spec`.
+
+### Bloqueos externos que siguen abiertos
+
+Ninguno se puede levantar desde el repo: precio y territorios sin decidir,
+producto mensual e introductory offer sin crear en App Store Connect,
+entitlement `orbita_pro` y Default Offering sin verificar en RevenueCat,
+webhook y su Authorization sin configurar, y sin development build no hay forma
+de certificar StoreKit. Todo eso está en
+`docs/native-commerce-release-checklist.md`.
+
+**No se ejecutó:** commit, push, PR, deploy a Convex, EAS Build, TestFlight, App
+Store Connect, dashboard de RevenueCat, producción ni publicación. No se
+cambiaron `buildNumber`, versión ni precio, y no se leyó ni escribió ningún
+secreto.
+
+## Comercial nativo — Free + Órbita Plus con RevenueCat/Apple (2026-08-18) · HISTÓRICO — SUPERADO
+
+> **HISTÓRICO — SUPERADO.** Es la ficha con la que **arrancó** la etapa
+> comercial: su "Objetivo" y sus "Criterios de aceptación" describen lo que se
+> proponía entonces, no el estado de hoy. Su inventario de **310 entradas** se
+> conserva sólo como evidencia de esa fecha; el vigente es **381**. El estado
+> actual está en el bloque del 2026-08-19, al inicio del archivo.
+
+**Objetivo:** convertir el acceso Plus que V4.9.2 ya entiende en un circuito
+comercial nativo real: oferta de tienda, compra, restauración, gestión y
+sincronización del entitlement. La experiencia Free sigue siendo una forma
+completa de usar Órbita; no se lanza una edición separada ni una app “solo
+Free”. Stripe web continúa vigente y Convex sigue siendo la autoridad de los
+gates server-side.
+
+**Criterios de aceptación:**
+
+- iOS/Android configuran RevenueCat sólo con una clave pública por plataforma y
+  vinculan la compra al `clerkUserId`; no se permite iniciar una compra sin una
+  cuenta identificada;
+- el paywall nativo usa el Offering real y los precios/localización de la
+  tienda, sin importes, pruebas ni descuentos hardcodeados;
+- comprar, cancelar, restaurar y abrir la gestión tienen estados honestos de
+  carga, cancelación, error y confirmación, y nunca conceden acceso mediante una
+  escritura del cliente;
+- `subscriptions.getCurrent` combina Stripe web y RevenueCat nativo sin romper
+  clientes anteriores; los webhooks son autenticados, idempotentes, toleran
+  desorden, reembolsos, grace period, extensiones y transferencias de identidad;
+- una cuenta Free conserva Hoy, Tránsitos, Vínculos, Carta base y 3 preguntas
+  diarias; Plus abre casas, aspectos y el cupo de 5, con caminos visibles desde
+  Perfil y los módulos cerrados;
+- la integración se prueba primero con RevenueCat Test Store/StoreKit y después
+  con Apple Sandbox/TestFlight; producción sólo se habilita tras una compra,
+  restauración, vencimiento/cancelación y recuperación entre dispositivos
+  verificadas en una cuenta legítima.
+
+**Ficha:** owner Codex por excepción explícita mientras Claude Code no está
+disponible. Territorio permitido: `convex/**`, `app/**`, `src/**`, configuración
+Expo/EAS, dependencias, pruebas y documentación de esta integración. Se trabaja
+sobre `feature/native-v492-implementation` / `52836ad`, preservando las 310
+entradas del cierre V4.9.2 y las dos entradas ya staged; no se reordena el
+índice. Cambio de contrato aditivo y compatible. Riesgo **alto** por pagos,
+identidad, webhooks y publicación nativa.
+
+**Pruebas:** regresiones puras del lifecycle RevenueCat y de la resolución
+multi-proveedor; estados del cliente y paywall; rutas/gates Free/Plus;
+`pnpm typecheck`, suite completa, `git diff --check`, export iOS/Android y build
+de development client. La pasada manual debe cubrir compra sandbox,
+restauración, cancelación con acceso hasta fin de período, vencimiento,
+billing/grace period, reinstalación y cambio de dispositivo/cuenta.
+
+**Rollout:** primero código local; luego un único sync a Convex Development y
+un development build cuando Lucas autorice esas acciones externas; después
+TestFlight interno. App Store Connect, RevenueCat y Apple se configuran con los
+ids reales del producto, pero no se publica ni se habilita producción hasta el
+gate comercial final. **Rollback:** desactivar el Offering/paywall en
+RevenueCat y mantener la app en Free; Stripe web y las filas existentes quedan
+intactos. **Fuera de alcance por ahora:** commit, push, merge, deploy de
+producción, envío a App Review, publicación en App Store, Google Play,
+alteración de precios sin decisión de Lucas y cualquier secreto dentro del
+repositorio.
+
+## Cierre de certificación V4.9.2 — pasada 15 (2026-08-18) · HISTÓRICO — SUPERADO
+
+> **HISTÓRICO — SUPERADO.** Sus cifras se conservan sólo como evidencia de esa
+> pasada: **1537/1537** en **93 suites** e inventario de **310** entradas. Los
+> valores vigentes son **2145/2145** en **196 suites** e inventario **381**, en
+> el bloque del 2026-08-19. Lo que sí sigue valiendo de acá es la **evidencia
+> visual y de runtime** de 04, 08 y 09, que no se recapturó después.
+
+**Estado: CERRADO técnicamente y en runtime para 04, 08 y 09** — *veredicto
+**histórico** de la pasada 15, no el estado actual*. De los 12
+estados visuales: **10 PASS · 1 BLOCKED externo (06 Plus) · 1 sin recapturar
+(02)**. Owner: Codex, mientras Claude Code no estuvo disponible. Se preservó la
+base `52836ad`, la rama `feature/native-v492-implementation`, el inventario de
+**310** entradas (`100` tracked + `210` untracked) y las dos entradas que ya
+estaban preparadas en el índice.
+
+**Rollout ejecutado en la pasada 14:** tres deploys puntuales y autorizados,
+exclusivamente a Convex Development `dutiful-viper-815` (14:33, 14:48 y 15:11
+ART). El primero publicó el contrato aditivo; el segundo invalidó los cachés
+editoriales viejos; el tercero publicó las correcciones surgidas de la auditoría
+posterior. El catálogo live quedó en **129 funciones**, incluidas:
+
+- `layers.getTransitArc` — query pública;
+- `layers.refreshTransitArc` — action pública;
+- `charts.recoverNatalChart` — action pública;
+- `charts.recheckNatalStateForRun` — query interna.
+
+**Defectos reproducidos y cerrados con regresión falla/pasa:** los cachés de
+`ORB-NAT-001` y de la comparación de Vínculos no incluían la versión editorial;
+Mapa elemental decía `uno planeta` y tenía dos bordes parciales de concordancia;
+y una caída del proveedor podía culpar falsamente a un perfil con fecha, hora y
+lugar completos. La invalidación quedó quirúrgica: `ORB-REL-001` conserva su
+versión v1 y sólo la comparación usa v2. No cambió schema, firma pública ni
+artifact generado.
+
+**Cierre técnico heredado de la pasada 14:** `pnpm typecheck` exit 0 · focales de capas/copy/Vínculos
+**91/91** · `pnpm test` **1537/1537** en 93 suites · working tree e índice sin
+errores de whitespace · `convex/_generated/api.d.ts` y `convex/schema.ts` con
+los mismos SHA-256 de la línea base de esta etapa. La auditoría post-arreglo
+cerró con **0 P0 / 0 P1 / 0 P2**.
+
+**Runtime:** 08 es **PASS** desde la pasada 14 con `La tierra…`, `CUANDO LA
+TIERRA SATURA` y `con un planeta`. En la **pasada 15**, después de restaurarse
+los créditos de la Astrology API, 04 y 09 también quedaron **PASS** sin cambios
+de código ni otro deploy. 04 abrió el arco real #2 `Urano en sextil con tu
+Saturno` y su trazabilidad mostró `ORB-TRN-001` +
+`transit-arc-planets-tropical-roots-v2`, nunca `ORB-TRN-002`. 09 produjo la
+comparación carta contra carta: los 14 contactos expandidos usan `Su … con tu …`
+o `Tu … en su …`, con 0 nombres propios repetidos. Evidencia final en `logs15/`,
+`shots/cert15/` y `compare15/`; `logs15/run-summary.md` registra el set aceptado
+y ninguna evidencia anterior fue sobrescrita.
+
+**No bloqueantes de V1:** 02 conserva evidencia histórica porque no había
+credenciales locales seguras para regenerar el fixture; recuperación natal no
+se ejercitó porque la única cuenta QA tenía carta completa; 06 requiere un
+entitlement Plus legítimo antes del lanzamiento comercial; VoiceOver requiere
+un iPhone físico; web autenticada es una tarea separada.
+
+**Cortes de revisión preparados, sin staging nuevo:** A contrato/backend **43**
+entradas, B aplicación nativa **258** (incluye las dos entradas ya staged) y C
+hardening/documentación **9**. El proceso canónico exige separar contrato de
+backend al convertir A en PR. No se autorizó commit, push, merge, producción,
+EAS, TestFlight, App Store, deploy web, monetización ni escritura directa de
+datos QA. La pasada 15 tampoco ejecutó deploy alguno.
+
+## Órbita V4.9.2 — capas de tiempo nativas iOS (2026-08-15, HISTÓRICO)
+
+**Objetivo:** implementar en la app nativa las 26 pantallas de Figma V4.9.2 y
+los diez análisis trazables de Carta, Tu momento, Hoy y Vínculos. La experiencia
+iOS queda exclusivamente astrológica; Tarot y Diario continúan únicamente en
+web. La entrega de producto es una sola, aunque contrato, backend y frontend se
+construyen en cortes internos revisables.
+
+**Criterios de aceptación:** cinco tabs `Hoy · Tránsitos · Vínculos · Umbral ·
+Perfil`; datos reales o degradación explícita; hora desconocida sin casas ni
+ángulos falsos; Cumpleluna como repetición del ángulo Sol–Luna natal; ranking y
+arcos deterministas; tres niveles de Vínculos sin puntaje global; trazabilidad
+`analysisId + sourceRefs`; cero mocks personales y cero regresiones web.
+
+**Ficha:** owner Codex para `convex/**`, contratos y pruebas; Claude Opus para
+`app/**`, `src/**` y evidencia visual. Worktree limpio
+`/Users/lucas/Documents/Core/worktrees/orbita/native-v492`, rama
+`feature/native-v492-implementation`, base `origin/main` `52836ad`. Cambio de
+contrato aditivo; riesgo alto por navegación, caches y cálculos; pruebas puras,
+suite completa, typecheck, export iOS/web y comparación con los 14 frames
+auditados. Rollout sin producción: integración local y RC solamente después de
+aprobación de Lucas. Rollback por descartar la rama/worktree; los contratos son
+aditivos y los clientes anteriores permanecen compatibles. Fuera de alcance:
+rediseño web/web-mobile, certificación Android, monetización, notificaciones,
+calendario mensual, deploy Convex, TestFlight, App Store, commit, push o merge.
+
+**Fuente visual y editorial:** Figma `UX V4.9 - Órbita Capas de Tiempo` y
+`docs/handoff-claude-figma-v492-copy-claridad.md` del checkout de producto. El
+frame canónico `Hoy · lo activo ahora` (`938:289`) fue leído por MCP antes de
+modificar código. Los PDFs permanecen locales; solo se incorporan metadatos y
+locators verificables.
+
+**Recertificación iOS local (2026-08-18, DECIMOTERCER pase — HISTÓRICO,
+reemplazado por el cierre de pasada 15 al inicio):**
+tres auditorías independientes reprodujeron sobre el duodécimo pase **un P1
+todavía abierto**, y una auditoría de release encontró **cuatro P2** de
+hardening. Los cinco están cerrados. **El veredicto visual de los 12 estados no
+cambia:** esta pasada no recapturó nada, no desplegó nada y no tocó datos QA.
+Informe histórico: `.local/audits/native-v492-recertification-2026-08-17/README.md`,
+sección de la decimotercera pasada, y `logs13/`.
+
+- **P1 · `refreshAndWait()` quedaba detrás de una action colgada del MISMO
+  alcance.** El relevo del duodécimo pase cubría el *cambio* de alcance, así que
+  el cuelgue sobrevivía justo donde nada cambiaba: con el refresco automático A
+  en vuelo y sin resolver, la recuperación natal terminaba `recoverNatalChart` y
+  pedía el refresco esperable para el **mismo** usuario, día, zona y hora. El
+  hook armaba la clave con el `attempt` que tenía en la mano —estado de React,
+  que en el mismo tick vale lo mismo—, la cola no relevaba nada, y el waiter
+  —**con el candado natal tomado**— no terminaba nunca. Reproducido: `runs=1`,
+  `pending` con el mismo pedido, `waiting=1`, `busy=true`, promesa sin resolver.
+  Ni siquiera era una deduplicación honesta: si A terminaba, recién entonces
+  arrancaba una segunda action idéntica.
+  **El arreglo:** el contador del intento se mudó al ciclo
+  (`src/domain/refreshCycle.ts`), que es ahora su única fuente de verdad, y la
+  vía forzada lo **RESERVA sincrónicamente en el mismo instante en que encola**.
+  `pedirYEsperar` ya no recibe una clave armada sino *cómo* armarla
+  (`(intento) => string | null`): quien llama **no elige el intento**, así que es
+  imposible encolar un pedido esperable con uno viejo. `setAttempt(v => v + 1)`
+  no alcanzaba —el estado nuevo recién existe en el render siguiente—. El efecto
+  del reloj arma su clave con `ciclo.intento()`, no con el espejo de React, así
+  que el render posterior a la reserva **no encola un duplicado**. La vía
+  automática con clave idéntica **sigue sin duplicar**: la semántica distinta es
+  deliberada y vale sólo para `refreshAndWait()` y la recuperación.
+- **P2-A · `.easignore` no protegía la evidencia local.** EAS deja de leer
+  `.gitignore` cuando existe `.easignore`, así que el parser real incluía
+  `.local/audit.bin`, `dist-ios/bundle.hbc` y `dist-android/bundle.hbc`. Se
+  agregaron `.local/`, `dist-ios/` y `dist-android/`; **no se borró evidencia**.
+  El gate se comprueba con dos motores que tienen que coincidir —el paquete
+  `ignore` que usa EAS CLI y el motor de gitignore de git— y quedó **versionado**
+  en `test/easignoreV492.test.ts`, así que lo corre `pnpm test` para siempre.
+- **P2-B · el runner de Android podía quedar verde sin APK.** El 12 terminaba con
+  `exit $gradle_exit`: con Gradle en 0 y sin APK, el log decía FALLO y el proceso
+  salía 0. El runner 13 calcula el veredicto como función de prebuild + Gradle +
+  **existencia del APK**, con self-test de las seis combinaciones.
+- **P2-C · la auditoría de bundle miraba sólo el primer `.hbc`.** El 13 recorre
+  **todos** los bundles de cada plataforma: lo prohibido se exige bundle por
+  bundle y el contrato se cuenta sobre el total, así que un segundo bundle no
+  puede ni esconder Tarot/Diario ni inflar el conteo. El self-test lo demuestra.
+- **P2-D · fidelidad byte a byte del snapshot Android.** Manifiestos
+  deterministas (ruta + tamaño + SHA-256) del árbol y del snapshot, comparados
+  **antes** del prebuild y con aborto si difieren. Resultado: 939 archivos, 0
+  symlinks, mismo digest; `BUILD SUCCESSFUL`, APK de 196 MB en disco. Ningún
+  `.env*` entra al manifiesto ni al snapshot.
+- **Checks.** `pnpm typecheck` 0 · `pnpm test` **1532/1532** (+13, ninguna
+  debilitada) · piso 1532/745 · gate `_generated` **7/7** sin codegen ·
+  `git diff --check` 0 y 0 · 209 untracked sin avisos de whitespace · exports
+  web/iOS/Android verdes con auditoría de **todos** los `.hbc` · smoke web
+  anónimo sin errores de consola · compilación Gradle real del snapshot
+  manifestado. Verificación en las dos direcciones: **10 reversiones**, todas
+  fallan sin su arreglo y pasan con él, restauradas byte por byte.
+- **Archivos de producto tocados (5):** `src/domain/refreshCycle.ts`,
+  `src/hooks/useLayers.tsx`, `test/refreshQueueV492.test.ts`,
+  `test/easignoreV492.test.ts` (nuevo) y `.easignore`. **Cero en backend.**
+  `src/domain/refreshQueue.ts` no hizo falta tocarlo: el relevo ya estaba bien,
+  lo que faltaba era declararle un alcance nuevo.
+- **Próximo paso de aquel momento — EJECUTADO/REEMPLAZADO por pasadas 14–15:** el
+  contrato se desplegó a Development y 04/09 se cerraron al volver el proveedor; 06,
+  02, VoiceOver físico y web autenticada siguen como pendientes no bloqueantes
+  según la ficha vigente al inicio.
+
+**Recertificación iOS local (2026-08-17, TERCERA pasada — cierre histórico de la
+auditoría independiente; el conteo vigente lo fija la PASADA 15 al
+inicio):** el veredicto honesto **no** era "los 12 estados pasan". Al cierre de esa
+pasada: **9 PASS · 1 PASS de frontend con el copy del backend pendiente de deploy
+(09) · 1 BLOCKED por entitlement externo (06) · 1 sin recapturar (02)**. Aparte: **D7 funcional PASS / visual N/A** y **VoiceOver
+BLOCKED** por el runtime. Informe y evidencia:
+`.local/audits/native-v492-recertification-2026-08-17/README.md`; resumen visual
+en `design-qa.md`.
+
+Una auditoría independiente comparó a ojo los PNG de `compare2/` y leyó el
+código: el "12 de 12 PASA" de la segunda pasada no se sostenía. Esta pasada
+corrige lo corregible localmente, recaptura y dice el resultado real. **Nada se
+borró:** conviven `compare/` (1.ª), `compare2/` + `logs2/` (2.ª) y `compare3/` +
+`logs3/` + `shots/cert3/` (ésta).
+
+- **`access.positions` NO es entitlement (D7, re-corregido).** En
+  `convex/layers.ts` vale `snapshot !== null`. Las dos pantallas de Carta lo
+  leían como acceso: el hub decía "TU CARTA SE ESTÁ CALCULANDO" sin mirar si
+  había una corrida, y la carta completa mostraba un **muro de Órbita Plus por
+  un cálculo pendiente**. Ahora el estado sale de `natalChartState` —siete
+  hechos: query en vuelo · faltan datos · corrida activa · sin corrida y sin
+  snapshot (recuperable) · parcial · listo— y el límite de Plus se pregunta
+  **por superficie** (`natalHousesAccess` / `natalAspectsAccess`). Medido en
+  runtime: **7 min 5 s** en el estado recuperable **sin ninguna corrida
+  activa**, y menos de 5 s para resolver al tocar `Comprobar de nuevo`
+  (`logs3/d7-recalculo.md`).
+- **D9, defecto nuevo: el candado de guardar y borrar era estado de React.**
+  `saving` y `borrando` se aplican en el render siguiente, así que dos toques
+  del mismo render entraban los dos; en el borrado, `borrando` se encendía
+  DESPUÉS de la confirmación y dos toques abrían dos alertas. Candado sincrónico
+  en `src/domain/exclusive.ts`, tomado antes del primer `await` y liberado en
+  `finally`. **Probado por comportamiento**, no por búsqueda de palabras.
+- **Vínculos con `data:null`.** El modo salía de `data?.generalOnly`, que sin
+  cálculo no existe: el nivel 01 dibujaba cinco barras en cero y culpaba a la
+  fecha de la otra persona aunque faltara la carta propia. Ahora el modo sale
+  del **nivel guardado**, no se dibuja ninguna barra en cero (`SIN CALCULAR`), y
+  cada causa dice **de quién** es el dato que falta; el botón que se ofrece es
+  el del dueño del hueco.
+- **Correcciones visuales recapturadas.** 03: los ordinales `10` y `11` se
+  partían en dos renglones (columna de 14 pt fija; dos dígitos de Roboto Mono a
+  13 px miden 15,6). 04: se comparaba con la trazabilidad plegada contra un
+  frame desplegado. 08: `Aire 1 · Urano` junto a `AIRE SIN PLANETAS`. 09: las
+  cinco barras de cobre → el tono sale del balance apoyo/tensión de cada
+  dimensión, y se declara en la leyenda y en la etiqueta accesible. 10: `1/6` y
+  "otras cinco" → escalera canónica `1/5`, "una dimensión / las otras cuatro",
+  riel azul. 12: una sola definición de qué anillos se dibujan; `Ves 2 anillos
+  de 4` y el dial dibuja dos. 06: se agregó la fecha del día en la barra
+  superior.
+- **La costura tenía un SEGUNDO defecto.** `fullpage2.mjs` arregló la barra fija
+  de abajo pero no la de arriba: en las pantallas de detalle, `← ARCO DEL
+  TRÁNSITO` se cosía una vez por costura, a mitad de página. `fullpage3.mjs`
+  detecta las dos bandas por píxeles (99 pt abajo, 50,7 pt arriba en detalle,
+  0 en pestañas).
+- **Estado 06 · BLOCKED por entitlement, no por diseño.** El frame dibuja una
+  carta completa (`12 CASAS · 8 ASPECTOS MAYORES`), o sea una cuenta con Plus.
+  **Ninguna cuenta QA local tiene Plus** —verificado en los tres simuladores— y
+  `isPro` sale de filas reales de suscripción. **No se concedió acceso, no se
+  tocó monetización y no se declara PASS.** Lo capturado es el estado
+  alternativo honesto, dicho como tal.
+- **D7 no se compara visualmente contra el frame `06`.** Uno es un recálculo y
+  el otro una carta lista. No existe frame canónico del estado pending, así que
+  se declara **FUNCIONAL PASS / VISUAL N/A** con before/pending/after y tiempos
+  reales.
+- **Estado 02 no se recapturó** y no se declara PASS de esta pasada: su fixture
+  vivía en un simulador descartable que la segunda borró. Su código no se tocó;
+  la evidencia válida sigue siendo la de aquella pasada.
+- **El smoke web, ahora con claves.** El anterior corrió sin claves públicas, así
+  que su `Could not find Convex client` en `/` y `/carta` no decía nada del
+  producto. Repetido con las `EXPO_PUBLIC_*` del checkout original cargadas
+  **sólo al entorno del proceso** (`tools/with-public-env.sh`, valores nunca
+  impresos) y con `--clear` —la caché de Metro conservaba el valor vacío—: las
+  **cinco rutas cargan sin un solo error de consola**. `/` dibuja la landing
+  entera. **No era un defecto del producto.**
+- **El gate de `style` en forma función ya no es ciego a los callbacks
+  multilínea.** Analiza el archivo entero y reporta la línea de la prop; se
+  auto-prueba en las dos direcciones, incluidas trampas donde blanquear
+  comentarios podría esconder código ejecutable.
+- **Checks.** `pnpm typecheck` 0 · `pnpm test` **1325/1325** (+16, ninguno
+  debilitado) · piso 1325/745 · `git diff --check` 0 · exports web/iOS/Android
+  verdes · bundles nativos sin Tarot ni Diario (las 3 apariciones de `diario`
+  son copy y dos rutas que en nativo sólo redirigen — el "0 en cualquier caso"
+  del informe anterior era inexacto).
+- **Árbol y datos QA.** Todo sin commitear, sin deploy. 19 archivos de código
+  tocados en esta pasada, **cero en backend**. El perfil QA quedó exactamente
+  restaurado (`16 Ago 1996 · 12:00 · Buenos Aires`, Ascendente Escorpio 28°,
+  2 personas guardadas), sin fixture natal temporal.
+- **Próximo paso exacto:** conseguir un entitlement Plus real para cerrar el
+  estado 06, recorrer la app con VoiceOver en un iPhone real, y desplegar los
+  dos cambios de copy del backend cuando Lucas lo autorice.
+
+**Recertificación iOS local (2026-08-17, segunda pasada — superada por la
+tercera):** declaró **los 12 estados capturados, comparados y aprobados** con
+ocho defectos funcionales corregidos (D1–D8). **Ese veredicto no se sostuvo**: la
+auditoría independiente encontró defectos funcionales abiertos y divergencias
+visuales materiales. Lo que sí quedó firme de esa pasada y sigue vigente: el
+cierre del defecto sistémico de `style`, el fixture del estado 02, D8, y las
+correcciones de canon y concordancia. El detalle de aquella pasada:
+
+- **La evidencia visual de la primera pasada era inválida** y se rehízo entera.
+  El cosido de página completa tenía DOS defectos: repetía la barra fija de
+  pestañas a mitad de página, y **perdía contenido** porque medía el
+  corrimiento con el árbol de accesibilidad mientras el `swipe` seguía con
+  inercia (511 pt de arrastre movían 882 pt, más que los 706 pt visibles: había
+  filas que no aparecían en ninguna captura). Ahora la banda fija se detecta por
+  píxeles y se pega una sola vez al final, el arrastre es lento (sin inercia) y
+  el corrimiento se mide sobre las imágenes. **Los 12 estados se recapturaron
+  desde cero** en `compare2/`; `compare/` se conserva intacto.
+- **Estados aprobados** (alto implementación → frame): 01 Hoy `2767→2436` ·
+  02 Hoy con evento `2788→2483` · 03 Tránsitos `3110→1990` · 04 Arco
+  `1337→2051` · 05 Tu momento `2697→2100` · 06 Carta `2133→1817` · 07 Tipo
+  lunar `2296→2271` · 08 Mapa elemental `1322→1212` · 09 Vínculos carta
+  `1897→1329` · 10 Vínculos signo `1406→1022` · 11 Carta sin hora `1738→2036` ·
+  12 Tu momento sin hora `2102→2177`.
+- **02 Cumpleluna hoy: RESUELTO.** La búsqueda inversa sobre efemérides que la
+  pasada anterior declaró irresoluble se resolvió con el propio motor del
+  proyecto: se pidió al proveedor real (`planets/tropical`) la elongación
+  Sol–Luna del día, se retrocedieron 371 meses sinódicos y se refinó con
+  `findCumplelunaCrossing`. Resultado verificado: **19/08/1996 · 16:10 · Buenos
+  Aires**, cuya repetición cae hoy a las 12:58. Se cargó por la UI pública en
+  una cuenta Clerk descartable, sobre un **simulador aparte** que después se
+  borró; la cuenta QA principal no se tocó. La app confirmó: *"Tu cumpleluna fue
+  hoy a las 12:58"*.
+- **D7 verificado en runtime, dos veces.** Quitar la hora: `17:50:39` →
+  carta lista sin hora `17:52:05` (**~86 s**). Devolverla: `17:58:51` →
+  `Ascendente en Escorpio, 28 grados` a las `18:00:45` (**~65 s**). El encargo
+  preveía 2–3 min; el proveedor terminó antes y se documenta la transición real,
+  sin forzar delay. Copy en curso y recuperable: `TU CARTA SE ESTÁ CALCULANDO` +
+  `Comprobar de nuevo si tu carta ya está calculada`.
+- **D8, defecto NUEVO encontrado al restaurar el perfil.** Tras guardar "No sé
+  la hora", el editor reabría mostrando `12:00` con el interruptor apagado y
+  `Guardar` bloqueado por "no cambiaste nada": **la hora era imposible de
+  devolver por la UI**. Causa raíz: el `patch` de `convex/birthData.ts` OMITE
+  `birthTime` en vez de borrarla. Corregido en los dos lados —la precisión manda
+  sobre el valor en el frontend, y el backend manda `birthTime: undefined`
+  explícito—, con tres gates.
+- **Defecto sistémico cerrado.** Las 18 ocurrencias pendientes de `style` en
+  forma función, **más `TabBar.web.tsx`** que el informe anterior no listaba.
+  **0 ocurrencias ejecutables** quedan en `app/**` + `src/**`, con gate nuevo
+  (`test/pressableStyleValue.test.ts`) que escanea el árbol entero y se
+  auto-prueba. Probado con un A/B en el simulador: el botón `PREGUNTAR` del
+  Umbral pasa de texto suelto a píldora con su borde.
+- **Correcciones de canon y concordancia:** el nivel 01 de Vínculos se encabeza
+  `VOS Y ALGUIEN DE TAURO` aunque la persona tenga nombre (regla en el dominio);
+  la pantalla ya no dice "las otras cuatro" mientras lista cinco; la estación
+  vital escribe mes y AÑO (`EMPEZÓ DIC 2023 · PRÓXIMA FASE NOV 2027`); el mapa
+  elemental dice `CUANDO LA TIERRA SATURA`; el mandala ya no dice
+  "Ves 1 anillos de 4".
+- **Backend corregido, tipado, probado y SIN desplegar** (dos cambios en
+  plantillas editoriales): el artículo del elemento (`la tierra` · `el agua` ·
+  `el fuego` · `el aire`) y la voz del canon en Vínculos (segunda persona sin
+  nombres: `Su Venus forma un trígono con tu Marte…`, con el artículo del
+  aspecto concordado). Como no hay deploy, **no se ven en las capturas**.
+- **Accesibilidad.** 375/393/440, Dynamic Type, Reduce Motion, contraste y
+  **orden de foco** medidos y aprobados. Dos correcciones al informe anterior:
+  el mínimo de contraste para TEXTO es **4,80:1** (no 5,13:1 — aquél midió sólo
+  contra un fondo), y **no se puede sostener** que la barra exponga rol `tab` y
+  estado `selected`: `idb` los devuelve como `GenericElement`.
+- **VoiceOver: BLOQUEO EXTERNO DEMOSTRADO.** Se agotaron cuatro vías seguras
+  (`simctl ui`, el default `VoiceOverTouchEnabled` + invalidación de cache,
+  Ajustes → Accesibilidad, Ajustes → Spoken Content) y se probó que el binario
+  no está: `ls /System/Library/CoreServices/VoiceOverTouch.app` → *No such file
+  or directory*. **No es una limitación de automatización: el lector no está
+  instalado en iOS 26.5 Simulator.** Exige un dispositivo físico.
+- **Checks.** `pnpm typecheck` 0 · `pnpm test` **1309/1309** (+15) ·
+  `git diff --check` 0 · export web dentro de límites (32.09 MB · JS gzip
+  1004.0 KB) · smoke web de las cinco rutas en Chrome headless · exports iOS y
+  Android verdes, los dos **sin Tarot ni Diario** (0 coincidencias, incluida
+  `diario`). Ningún test se debilitó: dos anclajes obsoletos se movieron
+  **reforzando** la garantía, comentados en el propio test.
+- **Árbol y datos QA.** Todo sin commitear, sin deploy. 29 archivos de código
+  tocados en esta pasada (18 front, 3 backend, 8 tests). El perfil QA quedó
+  exactamente como estaba (`16 Ago 1996 · 12:00 · Buenos Aires`, Ascendente
+  Escorpio 28°, 2 personas guardadas) y el simulador descartable se borró.
+- (El "próximo paso" de aquella pasada quedó reemplazado por el de la tercera,
+  arriba.)
+
+**Certificación iOS local (2026-08-16, corrida anterior):** el producto quedaba
+**NO CERTIFICADO** **con medición real**: **0 PASS · 11 FAIL · 1 BLOCKED**
+sobre 12 estados. Informe y evidencia completos:
+`.local/audits/native-v492-certification-2026-08-16/README.md`.
+
+**Los dos blockers del informe anterior están resueltos.**
+
+**Blocker B — `INPUT_HIT_SLOP` — RESUELTO.** `src/onboarding/screens/SignInScreen.tsx(148,28):
+TS2304` era un identificador libre: no estaba declarado ni importado en ningún
+lado, y además de romper el typecheck lanzaba `ReferenceError` en runtime en la
+rama `passwordPhase`. **Arreglo: se quitó esa única línea**, que es el cambio
+mínimo y coherente con los patrones del repo —no existe ningún token de hit slop
+(los 30+ usos son literales numéricos sobre `Pressable`) y **ningún `TextInput`
+del repo usa `hitSlop`**, empezando por el campo de email hermano en la misma
+pantalla con el mismo `styles.input`—. El archivo queda **idéntico a
+`origin/main`**. Verificado también en runtime: durante el login en el simulador
+SE la cuenta QA cayó en `passwordPhase` y la pantalla **renderizó sin excepción**.
+
+**Blocker A — backend Development — RESUELTO.** Se desplegó el backend V4.9.2
+**exclusivamente a `dutiful-viper-815` (Development)** con `pnpm exec convex dev
+--once --env-file <checkout original>/.env.local` (exit 0). Las variables entraron
+**sólo al proceso**: no se imprimieron ni se copiaron. La migración de esquema
+fue **aditiva y sin pérdida** —el comando sólo reportó tres índices nuevos
+(`natalEphemerisCachesV492.by_cache_key`, `.by_user`,
+`relationshipProfiles.by_user_creation_request_key`)— y nunca pidió una migración
+destructiva. El codegen actualizó `convex/_generated/api.d.ts` (+22 líneas).
+Verificación read-only posterior con `convex function-spec`: **125 funciones (86
+públicas, 39 internas)** y **las 9 del contrato presentes**
+(`layers.getNatalBase`, `getNatalChartBase`, `getForDate`, `refreshForDate`;
+`relationships.list`, `savePerson`, `removePerson`, `getComparison`,
+`refreshComparison`), `MISSING_COUNT: 0`. **Producción no se contactó ni para
+leer.** No hubo EAS, TestFlight, App Store, commit, push ni merge.
+
+**Cuenta y datos QA, todos por flujos públicos reales** (toque y teclado reales
+sobre el simulador; sin mocks y **sin una sola escritura directa a la base**):
+cuenta Clerk `orbita.v492+clerk_test@example.com` creada por la **UI oficial de
+Clerk** en la instancia Development con **OTP 424242** (sin OAuth y sin
+contraseña personal: Clerk exigió contraseña y se usó una generada al azar, no
+registrada; el reingreso va por código al email). Perfil propio cargado por el
+onboarding completo: **16/08/1996 · 12:00 · Buenos Aires, Ciudad Autónoma de
+Buenos Aires, Argentina** → tríada Sol Leo · Luna Virgo · Ascendente Escorpio.
+Vínculo carta con carta: **Martina QA, 4 de mayo de 1994 · 09:12 · Buenos
+Aires**. Vínculo signo: **Tauro** (se tipeó "Persona Tauro QA" y quedó guardada
+como "Persona Tauro"; el signo, que es lo que la certificación evalúa, es
+correcto). Datos reales verificados en el backend: posiciones tropicales del
+16/08/2026 y snapshots con `analysisId`, `status: "ready"` y `sourceRefs`.
+
+**Los 12 estados.** Se capturó **página completa a 393 pt** —los frames de
+`reference/` son páginas enteras de hasta 2500 pt— y se comparó **lado a lado con
+la referencia** en cortes de 850 pt (`compare/`, 41 imágenes). Se rechazaron y
+rehicieron capturas por diálogo del sistema encima (01), pantalla de recálculo
+(11) y una costura defectuosa (01). Las diferencias de datos astrológicos no
+cuentan como falla: los frames usan otra persona de muestra. **01, 03–12: FAIL.
+02: BLOCKED** (el estado exige el día en que ocurre la Cumpleluna; para este
+perfil es el 13/09, y falsear la fecha del dispositivo contaminaría los otros
+once). Tres patrones atraviesan los once FAIL: **bloques enteros ausentes**
+(`LO PRINCIPAL HOY`, `EL CICLO COMPLETO`, `POR DIMENSIÓN`, `AGREGAR O CORREGIR
+HORA`, los planetas por elemento, los tres contactos), **densidad** (la
+implementación mide entre 1,1× y 2,2× el alto del frame por descargos y
+explicaciones extra) y **encabezados de dos columnas que se parten en dos líneas**
+(05, 09, 10). Detalle estado por estado en el README del audit.
+
+**Siete defectos registrados, ninguno arreglado** (la instrucción lo prohibía):
+**D1** la barra de pestañas amontona los cinco ítems a la izquierda —ocupan de 2
+a 195 pt en pantallas de 375, 393 y 440— con "Hoy" en **18 pt de ancho** contra el
+mínimo táctil de 44, y el frame de referencia muestra la barra bien repartida;
+**D2** las ruedas nativas de "Agregar persona" y "Editar datos" capturan cualquier
+arrastre vertical y **cambian el dato en vez de scrollear** (medido: 4 → 27 de
+mayo, 1994 → 1992, 09:12 → 09:24, 16 → 23 de agosto; la primera persona se guardó
+efectivamente mal); **D3** ese picker está **en inglés** (`January…December`,
+`AM/PM`) en una app en español y expone sus columnas como `AXSlider` con
+`AXLabel: null`; **D4** "Guardar cambios" no respondió cuatro veces seguidas, sin
+error y sin llegar al backend, y sólo guardó tras volver a elegir la ciudad;
+**D5** el primer refresh tras el alta falla con `LAYER_INPUT_CHANGED_DURING_REFRESH`
+y **"REINTENTAR" no lo recupera** (sólo relanzar la app); **D6** el editor propone
+**medianoche** cuando no hay hora guardada; **D7** el recálculo natal tarda 2-3
+minutos mostrando "TU CARTA TODAVÍA NO ESTÁ CALCULADA".
+
+**Tamaños y accesibilidad, sólo lo medido.** 393 pt a fondo. **SE (375)** y **Max
+(440)**: login OTP real y Hoy completa en ambos, sin recortes en el contenido y
+con la misma barra rota. **Dynamic Type**: probado en 393 con
+`content_size accessibility-extra-large` + relanzamiento — el texto **escala y
+reflowea de verdad**, sin recortes (en caliente no cambia nada). **Objetivos
+táctiles**: falla en la barra (18–55 pt); el contenido va sobrado (tarjetas de
+345×304). **Semántica VoiceOver del contenido**: buena, con etiquetas completas e
+imágenes descritas; **de los formularios**: falla (D3). **Reduce Motion,
+contraste y VoiceOver con el lector encendido: NO evaluados**, sin resultado.
+
+**Nota de método — el Mac quedó bloqueado a mitad de corrida.** Sin sesión gráfica
+Simulator.app no crea ventanas y el harness anterior (`tools/qa.mjs`, que inyecta
+toque con `cliclick` sobre esa ventana) quedó inutilizable. **No se intentó
+desbloquear el Mac.** La corrida siguió con `idb`, que inyecta eventos HID
+directamente al simulador —toque, arrastre y teclado reales, sin ventana—, en
+`tools/hid.mjs`. Dos aprendizajes: el árbol de React por CDP **se queda viejo**
+con el navegador de pestañas (casi produce un falso defecto: la captura demostró
+que la pantalla sí renderizaba), así que la fuente de verdad para tocar pasó a ser
+el árbol de accesibilidad de iOS; y una costura mal medida **inventó** un
+solapamiento de texto en 05 que no existe, verificado contra el viewport crudo.
+
+**Checks finales:** `pnpm typecheck` **PASS exit 0**, `pnpm test` **PASS
+1267/1267** (93 suites, 0 fail), `git diff --check` **PASS exit 0**. Se
+preservaron todos los cambios sin commitear. Archivos tracked tocados por esta
+corrida: `src/onboarding/screens/SignInScreen.tsx` (queda idéntico a
+`origin/main`) y `convex/_generated/api.d.ts` (+22 de codegen). Todo lo demás vive
+en `.local/audits/native-v492-certification-2026-08-16/` más `.env.local`
+(ignorado por git). ⚠️ **`.local/` sigue sin estar en `.gitignore`**: un `git add
+-A` la arrastraría.
+
+**Próximos pasos sugeridos, no ejecutados:** (1) D1, la barra de pestañas, que
+rompe navegación y mínimo táctil en los tres tamaños; (2) D2 y D3, el formulario
+de "Agregar persona", donde hoy se puede guardar una fecha distinta de la elegida;
+(3) los bloques de diseño ausentes; (4) D5; (5) definir cómo se certifica el
+estado 02, que depende de un evento del calendario; (6) medir Reduce Motion,
+contraste y VoiceOver con el lector activo.
+
+**Duodécimo pase (2026-08-18, la action colgada que bloqueaba el ciclo y los
+gates de release que no eran gates) — un P1 de liveness, su P2 hermano y tres
+pendientes de release cerrados; el veredicto visual de los 12 estados NO cambia.**
+
+El undécimo pase cerró con typecheck limpio, gate 7/7 y 1505/1505. **Tres
+auditorías independientes** reprodujeron sobre él un P1 de LIVENESS, un P2
+hermano y tres pendientes de release que esa suite no podía ver porque no eran de
+código de producto: eran del proceso que lo certifica. Nada del cierre del
+undécimo se borra ni se corrige: era cierto.
+
+- **P1-A · una action colgada bloqueaba PARA SIEMPRE a un alcance más nuevo.**
+  `drain()` quedaba parado en `await deps.run(A)`. Si A no resolvía nunca —la red
+  cortada a mitad de la action— todo lo que llegara después con otra clave
+  quedaba `pending` para siempre: `busy` en `true`, `CALCULANDO…` permanente, y
+  volver de background sólo movía reloj e intento sin rotar la generación viva.
+  La cola garantizaba single-flight y "la más reciente gana", pero eso describía
+  la COLA, no el PROGRESO.
+  **El arreglo:** una semántica explícita de **alcance** (`RefreshScope`). La
+  clave del último pedido admitido —`cuenta|día|zona|hora|intento`, los cinco
+  ejes que hacen que un recálculo deje de servir— viaja con cada pedido, y cuando
+  el alcance de lo pendiente difiere del de la corrida viva, la cola hace un
+  **relevo**: avanza la generación, suelta el candado, deja la corrida vieja
+  huérfana —sin publicar flags, sin resolver waiters, sin pisar el resultado de
+  la nueva— y arranca la pertinente. **No es un temporizador:** el disparador es
+  el cambio de alcance, no el paso del tiempo, y hay una prueba dedicada a que
+  pasar cinco turnos del bucle de eventos **no** releva nada. El relevo se decide
+  **al final del tick** (microtarea), y por eso la secuencia física es **A/C** y
+  no A/B/C: B se descarta como intermedia, y una corrida que termina sola dentro
+  del mismo tick gana por el camino normal sin quedar huérfana al pedo.
+  **El precio, dicho:** cada relevo paga una huérfana física más, sólo cuando el
+  alcance cambió y la corrida anterior seguía viva. Es el mismo total de acciones
+  —A y C se ejecutan igual—, en paralelo en vez de en fila. Dentro de una misma
+  generación viva sigue habiendo una sola action, y sin alcance declarado la cola
+  no releva nada.
+- **P2-A · `pedirYEsperar()` envenenaba la clave durante la suspensión.**
+  Escribía la clave ANTES de llamar a `requestAndWait`, que con el ciclo
+  suspendido rechaza en el acto y **sin encolar nada**. La clave quedaba anotada
+  por un pedido que nunca salió, así que al reabrir el efecto la veía como propia
+  y se salteaba el refresco: la pantalla se quedaba con el sobre viejo y sin nada
+  en vuelo que lo arreglara.
+  **El arreglo:** la cola expone `accepts()` —exactamente la condición con la que
+  `requestAndWait` decide rechazar— y el ciclo la consulta en el **mismo instante
+  sincrónico** en que escribiría la clave. Reproducción cerrada por prueba: A
+  corre · se suspende · `pedirYEsperar(B)` rechaza · la clave no queda en B · al
+  reabrir, B corre **exactamente una vez**.
+- **P1-B · Android compila de verdad, por primera vez en esta corrida.** Lo que
+  se venía corriendo era `expo export --platform android`, que empaqueta el
+  bundle JS y **no compila una sola línea nativa**. Ahora: copia del árbol actual
+  —con los untracked productivos, sin `.git`, sin `.local/`, sin `dist*` y **sin
+  ningún `.env`**— a un temporal bajo `/private/tmp`, `node_modules` por symlink,
+  `expo prebuild --platform android --no-install` local y
+  **`./gradlew :app:assembleDebug --no-daemon`** con JDK Temurin 17.0.19, SDK 36
+  y NDK 27.1.12297006: **`BUILD SUCCESSFUL in 4m`, 511 tareas, exit 0, APK de
+  196 MB**. Sin EAS, sin instalar toolchain, sin ensuciar el worktree y borrando
+  sólo el temporal creado por el script. Un export ya no se llama compilación.
+- **P2-B · el runner de exports no podía fallar.** El anterior corría con `set -u`
+  solo, imprimía **`exit=0` hardcodeado** al final del bloque de auditoría, y los
+  tokens se imprimían sin compararse contra nada. `tools/run-exports12.sh` es un
+  gate: `set -euo pipefail` con control explícito por etapa, glob vacío que no
+  rompe pero tampoco pasa (sin bundle es FALLO), tokens prohibidos que hacen
+  fallar, **42 comprobaciones contractuales comparadas** contra su valor,
+  limpieza por `trap` con targets exactos y validados —`dist/` se conserva
+  siempre— y un **`--self-test`** que, sin correr un solo export, demuestra con 1
+  control positivo y 3 negativos que el runner sale **non-zero**. En el camino se
+  corrigió un defecto propio: el bloque de auditoría estaba escrito como
+  `{ ... } | tee`, y **un pipe abre una subshell**, así que el contador de fallas
+  se perdía y el gate podía ver un token prohibido y salir en verde igual.
+- **P2-C · `.local/` fuera del alcance de un `git add -A`.** Son 288 MB de
+  evidencia y **cero archivos con seguimiento**. Se agregaron `.local/`,
+  `dist-ios/` y `dist-android/` a `.gitignore` (`dist/` ya estaba). **No se borró
+  nada de la evidencia**: los 2660 archivos bajo `.local/` siguen completos en
+  disco. `git status -uall` pasa a listar **exactamente 208** entradas sin
+  seguimiento, y esas 208 son **todas** productivas. (La undécima había medido
+  601 untracked, 393 bajo `.local/`; esos 393 no eran los archivos reales: dos
+  entornos virtuales de Python bajo `.local/audits/` traen su propio `.gitignore`
+  con `*` y tapaban el resto, así que la cuenta anterior ni siquiera mostraba el
+  tamaño del riesgo.) **Deberán seleccionarse
+  intencionalmente, uno por uno, recién cuando Lucas autorice el commit**: esta
+  pasada no staged nada y el índice quedó con las dos entradas que ya tenía.
+- **P2-D · documentación y smoke web.** Se corrigió el conteo del undécimo pase
+  (decía 5 archivos de código y listaba 6; el total documental salía corrido) acá
+  y en el README del audit. El **smoke web de la tercera pasada ya no se cita
+  como vigente**: se repitió **sobre el export actual**, en Chrome headless con
+  perfil nuevo y descartable —**sin login, sin OAuth y sin inventar datos**—, y
+  las cinco rutas cargan con **cero errores de consola**. **Es anónimo por
+  construcción, así que NO es la verificación visual autenticada**: un export
+  verde y una suite verde no equivalen a un smoke visual/autenticado, y ninguno
+  reemplaza al otro. `convex/CHANGELOG.md` **no cambia y eso es lo correcto**:
+  esta pasada no toca un solo archivo de `convex/`.
+- **Pruebas nuevas (+14, de 1505 a 1519),** todas en `refreshQueueV492` y todas
+  con **promesas diferidas**, que es lo único que permite controlar el
+  interleaving de verdad: A colgada + B + C ⇒ secuencia A/C · A termina MIENTRAS
+  C corre · C sale bien y A falla después (`refreshFailed` en false) · los cinco
+  ejes del alcance uno por uno · el resume de foreground con sólo el intento
+  movido · la misma clave no releva ni duplica · una action del ciclo vigente y
+  una sola huérfana física · sin alcance declarado no se releva nada · **el
+  relevo no es un temporizador** · los waiters de la relevada los termina el
+  trabajo vigente una sola vez · el reintento automático conserva su alcance ·
+  y las tres de la clave admitida. **Ningún test se borró, se saltó ni se
+  aflojó**; los 37 del undécimo siguen pasando sin tocarlos.
+  **Verificadas en las dos direcciones** (`logs12/verificacion-antes-despues.md`):
+  los **seis** arreglos revertidos por separado hacen fallar su prueba focal
+  —entre 1 y 8 pruebas cada uno— y restaurados vuelven a pasar, con el sha256 de
+  cada archivo idéntico al de antes. Revertir sólo la microtarea del relevo rompe
+  4 pruebas, **3 de ellas del undécimo pase**: la decisión al final del tick es
+  load-bearing.
+- **Checks del pase:** `pnpm typecheck` PASS exit 0 · `pnpm test` **1519/1519**
+  (93 suites, 0 fail, exit 0) · gate de `_generated` **7/7** exit 0 (no hizo falta
+  codegen: no se toca `convex/`) · piso de cobertura **1519/745**, 0 fallos ·
+  focales de cola, ciclo, `useLayers` y recuperación natal **166/166** ·
+  `git diff --check` PASS en working tree e índice, y los **208** untracked
+  revisados con `--no-index` juzgando la SALIDA: **0 avisos** · export web PASS
+  con límites (32.10 MB / 50 · JS gzip 1006.2 KB / 1.25 MB · ficha completa) ·
+  **smoke web sobre el export actual**, cinco rutas sin errores de consola ·
+  exports iOS y Android PASS (7.0 MB cada bundle) · auditoría de bundle **42
+  comprobaciones, 0 fallas** · self-test del gate **exit=3** · **compilación
+  nativa Android `BUILD SUCCESSFUL`, APK 196 MB** · limpieza de `dist-ios/` y
+  `dist-android/` con targets exactos, `dist/` conservado, sin `git clean`.
+  Evidencia en `logs12/`.
+- **Qué NO cambió el veredicto.** No se abrió un simulador, no se recapturó un
+  solo estado, no se desplegó nada y no se tocaron datos QA, suscripciones ni
+  credenciales. **04 BLOCKED** —exige desplegar el contrato aditivo a Convex
+  Development **y recapturar**—, **06 BLOCKED** —exige entitlement Plus real—,
+  **02 sin recapturar**, **08 y 09 PASS de código con la evidencia runtime
+  pendiente**, **D7 funcional PASS / visual N/A** y **VoiceOver BLOCKED** por el
+  runtime del simulador: exige un iPhone físico. El defecto de liveness que este
+  pase cierra **no se pudo ejercitar en runtime**: reproducirlo pide una action
+  de Convex que no resuelva nunca. Está verificado por prueba y en las dos
+  direcciones, no por captura.
+- **Archivos del pase: 4 de código/pruebas + 1 de configuración + 3 documentos =
+  8** (más 3 herramientas bajo `.local/`, que no se versionan). Frontend:
+  `src/domain/refreshQueue.ts` · `src/domain/refreshCycle.ts` ·
+  `src/hooks/useLayers.tsx` (sólo documentación interna). Tests:
+  `test/refreshQueueV492.test.ts`. Configuración: `.gitignore`. Documentos:
+  `CURRENT_TASK.md` · `design-qa.md` · el README del audit. Herramientas del pase
+  dentro del audit: `tools/run-exports12.sh` · `tools/verify-reverts12.mjs` ·
+  `tools/android-native-compile12.sh`. **`convex/**` no se tocó**, así que
+  `convex/CHANGELOG.md` no cambia. `git status` **no suma ninguna entrada nueva**
+  sin seguimiento fuera de `.local/`. HEAD sigue en `52836ad`, **sin commit,
+  push, merge, rebase, deploy de Convex, EAS Update, EAS Build ni publicación
+  alguna**, sin codegen, y el árbol sucio con su índice quedó preservado: no se
+  corrió `git add`, `git reset` ni `git clean`.
+- **Límites externos que siguen abiertos:** el deploy del contrato aditivo a
+  Convex Development y la recaptura de 04; el entitlement Plus real de 06; la
+  recaptura de 02; el deploy del copy del backend para 08 y 09; la pasada de
+  VoiceOver en un iPhone físico; y la **verificación visual autenticada** de la
+  web, que exige una sesión y por lo tanto login. Ninguno depende de este pase.
+
+**Undécimo pase (2026-08-18, el fence de versión del claim y el replay único del
+refresh) — dos P1 y un P2 cerrados en código; el veredicto visual de los 12
+estados NO cambia.**
+
+El décimo pase cerró con typecheck limpio, gate 7/7 y 1493/1493 después del
+codegen de Codex. **Dos auditorías independientes** volvieron a reproducir dos P1
+y un P2 que esa suite no cubría: los tres son de INTERLEAVING, y ninguno se veía
+mirando cada mitad por separado. Nada del cierre post-codegen del décimo se borra
+ni se corrige: era cierto, y la auditoría posterior encontró estos tres.
+
+- **P1-A · un claimant de `cacheVersion` vieja podía destruir una lectura
+  vigente.** El CAS de `persistNatalReading` sí compara la versión configurada
+  con la del texto, pero llega tarde: el claim se toma ANTES y medía la fila
+  contra la versión que traía el claimant. Una action que arrancó en v1 y
+  aterriza en la mutación con la configuración ya en v2 veía la fila v2 como "de
+  otra versión", la tomaba, incrementaba `claimSeq` y la dejaba `pending` v1 con
+  el payload en null. Reproducidos los dos desenlaces: con una generación v2 **en
+  vuelo**, v2 terminaba en `claim_lost` y v1 en `cache_version_changed`, y la
+  fila quedaba pendiente sin nadie generando; con una lectura v2 **`ready`**, el
+  claim borraba el payload publicado y la escritura del claimant se rechazaba
+  igual —la lectura válida ya se había perdido—.
+  **El arreglo:** `applyNatalReadingClaim` compara `args.cacheVersion` con
+  `getAiGatewayNatalCacheVersion()` **antes de consultar o mutar
+  `natalInterpretations`**. Si no coinciden no toma claim, no incrementa
+  `claimSeq`, no cambia status/payload/versión/`updatedAt` y no programa ninguna
+  generación: devuelve `stale_cache_version`, cuarta variante de la unión interna
+  `NatalReadingClaimRejection`, tipada explícitamente. El caller la trata como
+  no-op —la registra con `cacheHit:false` y sale—, **no como error visible**: la
+  Carta sólo toma como fallo el *reject* de la action. El claimant de la versión
+  vigente conserva el flujo entero y el CAS final sigue exigiendo revisión +
+  claim + versión. **Sin cambios de schema ni de firmas públicas.**
+- **P1-B · suspend/resume podía ejecutar B dos veces.** La costura entre
+  `refreshQueue` y `useLayers`: A en vuelo, B como única pendiente, el cleanup
+  llamaba `suspend()` —que CONSERVA lo pendiente— y además borraba
+  `requested.current`. Al remontar, `resume()` tomaba B y el efecto, viendo la
+  clave en blanco, volvía a encolar la misma B: secuencia física **A/B/B**. Si la
+  B retomada salía bien y el duplicado fallaba, `refreshFailed` terminaba en
+  `true` **sobre datos recién calculados**.
+  **El arreglo:** la costura pasa a ser un módulo puro,
+  `src/domain/refreshCycle.ts`, que el hook consume entero. La política es una
+  línea —`claveTrasCerrar`—: la clave sobrevive **exactamente cuando su pedido
+  sobrevive**. Con algo pendiente se conserva (el ciclo nuevo lo retoma solo); sin
+  nada pendiente se borra, porque lo que había quedó huérfano y el primer refresh
+  se perdería con el doble montaje de StrictMode. Un cambio real de alcance
+  produce una clave distinta y entra por el camino normal: B se retoma y C queda
+  como la única pendiente. **No se reintroduce single-flight físico global**: la
+  semántica por generación viva del décimo pase queda intacta.
+- **P2-A · `request()` durante la suspensión encendía un busy fantasma.**
+  `encolar()` publicaba `onBusyChange(true)` aunque la cola estuviera suspendida:
+  `events:[true]`, `busy():false`, `suspended():true`. La UI podía mostrar
+  `CALCULANDO…` por trabajo que ningún ciclo vivo estaba haciendo.
+  **El arreglo:** suspendida, la cola **acepta y conserva** la solicitud con la
+  misma política de "la más reciente gana", pero no publica ni busy ni failed.
+  `resume()` sincroniza el flag con lo que la generación viva va a hacer de
+  verdad: `true` si toma trabajo —lo pendiente o una corrida viva—, `false` si no
+  hay ninguno. Un pedido hecho durante la suspensión corre **una vez** al
+  reanudar.
+- **Pruebas nuevas (+12, de 1493 a 1505).** Cuatro del fence de versión en
+  `natalInterpretationRevisionV492` —v2 en vuelo + claimant v1 tardío, v2 `ready`
+  comparada **byte por byte** antes y después, la corrida entera del claimant
+  atrasado por el camino de la action (con el despacho del claim demorado hasta
+  después del bump) y el claimant de la versión vigente tomando/reutilizando— más
+  dos aserciones nuevas en el test del CAS post-bump, que ahora deja explícito
+  que el claim SÍ se tomó cuando v1 era la vigente. Ocho en `refreshQueueV492`:
+  la política pura, los tres interleavings de la costura (A/B con la misma clave;
+  A sin pendiente; B pendiente con la clave ya en C), el duplicado que no puede
+  dejar `refreshFailed=true`, y tres del busy durante la suspensión.
+  **La prueba de forma que había se reemplazó por conductuales**: el grep del
+  hook (`requested.current = null`) ya no alcanzaba —el defecto vivía justo en la
+  costura que ese grep no miraba—, así que ahora se corre la cola real con el
+  ciclo real y del hook sólo se verifica el cableado, incluido que **no quede
+  ninguna copia de la clave fuera del ciclo**. Ningún test se borró ni se aflojó.
+  **Verificadas en las dos direcciones** (`logs11/verificacion-antes-despues.md`):
+  los cuatro arreglos revertidos por separado hacen fallar su prueba focal —entre
+  1 y 3 pruebas cada uno— y restaurados vuelven a pasar; el árbol queda byte por
+  byte como estaba.
+- **Checks del pase:** `pnpm typecheck` PASS exit 0 · `pnpm test` **1505/1505**
+  (93 suites, 0 fail, exit 0) · gate de `_generated` **7/7** exit 0 (no hizo falta
+  codegen: no se agregan módulos ni contrato público) · piso de cobertura
+  **1505/745**, 0 fallos, exit 0 · focales de charts/interpretación/cola/
+  recuperación **258/258** · `git diff --check` PASS en working tree e índice, y
+  los **601** untracked revisados con `--no-index` juzgando la SALIDA: **0
+  avisos** (208 fuera de `.local/`: los 207 del décimo más
+  `src/domain/refreshCycle.ts`) · export web PASS con límites (32.10 MB / 50 ·
+  JS gzip 1006.0 KB / 1.25 MB · ficha completa) · export iOS PASS (7.0 MB) ·
+  export Android PASS (7.0 MB) · bundles nativos **sin Tarot ni Diario**, con los
+  mismos tokens del décimo presentes 1 vez en cada plataforma y
+  `createRefreshCycle` 1 vez (las 3 apariciones de `diario` siguen siendo copy y
+  dos rutas que en nativo sólo redirigen). Evidencia en `logs11/`.
+- **Qué NO cambió el veredicto.** No se abrió un simulador, no se recapturó un
+  solo PNG, no se desplegó nada y no se tocaron datos QA, suscripciones ni
+  credenciales. `04` y `06` siguen **BLOCKED**, `02` sin recapturar, `08` y `09`
+  PASS en código con la evidencia pendiente de deploy, D7 funcional PASS / visual
+  N/A y VoiceOver BLOCKED por el runtime. Las tres carreras que este pase cierra
+  **no se pudieron ejercitar en runtime**: exigen desplegar Convex y una cuenta
+  con esas filas.
+- **Archivos del pase: 6 de código/pruebas + 1 de contrato + 3 documentos = 10**
+  (más 2 herramientas bajo `.local/`, que no se versionan). *(Corregido en el
+  duodécimo pase: acá decía "5 … = 9" y la lista de abajo siempre tuvo seis
+  archivos de código y pruebas.)*
+  Backend: `convex/charts.ts`. Contrato: `convex/CHANGELOG.md` (**sin cambios de
+  schema**). Frontend: `src/domain/refreshCycle.ts` (**nuevo**) ·
+  `src/domain/refreshQueue.ts` · `src/hooks/useLayers.tsx`. Tests:
+  `test/refreshQueueV492.test.ts` · `test/natalInterpretationRevisionV492.test.ts`.
+  Documentos: `CURRENT_TASK.md` · `design-qa.md` · el README del audit.
+  Herramientas del pase dentro del audit: `tools/verify-reverts11.mjs` ·
+  `tools/run-exports11.sh`. `git status` suma **una** entrada nueva sin
+  seguimiento fuera de `.local/` (`src/domain/refreshCycle.ts`). `dist-ios/` y
+  `dist-android/` se borraron con targets exactos, validando antes que fueran
+  directorios reales —no symlinks—, dentro del worktree y sin seguimiento de git;
+  `dist/` se conserva. No se corrió `git clean`. HEAD sigue en `52836ad`, sin
+  commit, push, merge ni deploy, y el árbol sucio con su índice quedó preservado.
+- **Límite externo que sigue abierto:** el entitlement Plus del estado 06, la
+  pasada de VoiceOver en un iPhone real y el deploy de los dos cambios de copy del
+  backend. Ninguno depende de este pase.
+
+**Décimo pase (2026-08-18, la carrera que quedaba, la identidad de la carta y el
+artifact generado) — cuatro P1, un P2 y un gate de release cerrados en código; el
+veredicto visual de los 12 estados NO cambia.**
+
+El noveno pase cerró con typecheck limpio y 1465/1465, pero **tres auditorías
+independientes** reprodujeron cuatro P1 y un P2 que esa suite no cubría, más un
+gate de release que ninguna prueba miraba. Los cinco defectos vuelven a ser de
+CONCURRENCIA; el gate es de otra clase: un artifact generado desincronizado del
+código, sostenido por una afirmación falsa repetida en tres documentos.
+
+- **P1-A · una falla tardía del proveedor ignoraba una carta concurrente
+  ganadora.** El noveno pase movió la decisión DENTRO de la mutación, pero quedaba
+  un camino que nunca llega ahí: la corrida que arranca **sin carta** y cuyo
+  proveedor falla no tiene candidato que persistir, así que devolvía el desenlace
+  que había decidido con su snapshot previo. Si otra corrida publicaba una carta
+  durante la espera, la primera igual informaba `provider_failed`,
+  `sufficient:false`, `chart:null`: `recoverNatalChart` daba un fallo falso y la
+  action legacy podía lanzar con una carta válida en la base.
+  **El arreglo:** antes de devolver esa rama se relee el estado natal vigente para
+  la MISMA identidad (`charts.recheckNatalStateForRun`, query interna cerrada que
+  mide suficiencia con la precisión natal de ahora y no escribe nada). Datos
+  natales cambiados ⇒ rechazo estable
+  `NATAL_BIRTH_DATA_CHANGED_DURING_CALCULATION`, nunca un éxito cruzado; carta
+  suficiente ⇒ `cache_sufficient`, `sufficient:true`, esa carta y sin detalle de
+  error; carta parcial ⇒ el fallo sigue siendo honesto pero **devuelve esa carta
+  real**; ninguna carta ⇒ igual que antes. La medida final es la misma función que
+  usa el camino con candidato (`resolveFinalNatalOutcome`). **Contratos públicos
+  intactos.**
+- **P1-B · una carta suficiente podía quedar ligada al `birthDataId` histórico
+  para siempre.** El hash y el `cacheKey` describen los CAMPOS natales, no la fila
+  que los guarda: una fila natal más nueva y semánticamente idéntica —recargar los
+  mismos datos, reescribir el alta— produce el mismo `cacheKey`. La carta que ya
+  existía ganaba (bien) pero sólo se le parcheaba `updatedAt`, así que seguía
+  apuntando a la fila vieja; el cache de perfil, igual. Como
+  `chartMatchesCompletionBirthData` exige la fila vigente exacta, el onboarding
+  quedaba en `chart_pending` **para siempre** con el payload correcto delante y
+  sin vía de reparación.
+  **El arreglo:** dentro de la misma mutación monotónica se reafirma la identidad
+  vigente en `natalCharts` (`userId`, `birthDataId`, `birthDataHash`, `cacheKey`,
+  `updatedAt`) y en `profileAstrologyCaches` (`userId`, `birthDataId`,
+  `natalChartId`, `cacheKey`, `cacheVersion`, payload elegido, `updatedAt`). Si
+  gana la fila existente, su payload, su `providerVersion` y su
+  `calculationVersion` quedan **byte por byte**: reafirmar identidad no es
+  relabelar una carta con la procedencia de otra. Sin filas duplicadas y sin
+  cambios de contrato.
+- **P1-C · un éxito de recuperación podía saltear el refresh del día.**
+  `useNatalChartRecovery` definía UN predicado `vigente()` que mezclaba dos cosas:
+  mismo montaje/alcance y `recovery === "reintentar"`. Pero `recovery` sale de una
+  query REACTIVA: el cálculo que funciona la mueve a `ninguna` antes de que la
+  continuación corra, así que `refreshAndWait` no salía **nunca** justo cuando la
+  recuperación había salido bien, y el sobre del día quedaba armado sin la
+  geometría recién calculada.
+  **El arreglo:** dos predicados explícitos. `mismoAlcance()` —montado + mismo
+  `userId` + mismo `inputHash`— decide si el ciclo sigue; `falloVigente()` —eso y
+  además que la salida siga siendo `reintentar`— decide si un error se publica. Un
+  cálculo publicable del mismo alcance ejecuta **exactamente un** refresco
+  esperable aunque la salida ya haya pasado a `ninguna`; un cambio real de alcance
+  o un desmonte lo impiden; y un error tardío que ya no describe nada no queda
+  pegado.
+- **P1-D · `suspend()`/`resume()` podía dejar el ciclo nuevo bloqueado por una
+  action huérfana.** El mutex de la cola seguía siendo un booleano global:
+  `suspend()` cortaba los waiters pero lo dejaba tomado, así que con la action de A
+  colgada `resume()` no podía arrancar nada y `CALCULANDO…` no se apagaba.
+  **No se puede tener single-flight FÍSICO global y progreso** si A no resuelve
+  nunca, y el arreglo no lo disimula: la semántica es **single-flight por
+  generación viva**. El mutex pasa a ser un token de corrida; `suspend()` avanza la
+  generación, corta las esperas, suelta el token y publica que el ciclo cerrado no
+  está ocupado; `resume()` deja arrancar YA una solicitud pertinente aunque A siga
+  pendiente; y una corrida sólo limpia al terminar **si todavía posee el token**,
+  así que la huérfana no apaga a B, no toca `failed` ni resuelve waiters nuevos. El
+  pedido que estaba en vuelo no se reencola en la cola —su efecto se descartó—:
+  `useLayers` borra `requested.current` en el cleanup, así que el montaje nuevo lo
+  vuelve a pedir y el primer refresh no se pierde con StrictMode. **La
+  documentación de la cola dice el precio** en vez de seguir afirmando que nunca
+  hay dos actions físicas.
+- **P2-A · `cacheVersion` de la interpretación natal no invalidaba nada.**
+  `ORBITA_LLM_NATAL_CACHE_VERSION` se persistía en cada fila y no la miraba nadie:
+  lectura pública, estado y claim validaban sólo `chartRevision`. Un bump v1 → v2
+  con el mismo prompt dejaba la fila v1 `ready` para siempre.
+  **El arreglo:** cache hit, readiness y claim exigen **revisión y versión**. Una
+  fila de otra versión queda no verificable: pública `pending` —no `error`—, no
+  frena la generación nueva y se toma un claim nuevo sobre la misma fila. El CAS
+  final exige además que la versión configurada AHORA sea la de ese texto, así que
+  una generación que arrancó en v1 y vuelve después del bump no vuelve a publicar
+  v1 (`cache_version_changed`) y la fila queda regenerable. **Sin cambios de
+  schema ni de firmas públicas**; las filas legadas se conservan.
+- **Gate de release · `convex/_generated/api.d.ts` estaba INCOMPLETO — CERRADO.**
+  **Antes:** el árbol tenía `convex/lib/natalGeometry.ts` y
+  `convex/lib/natalRevision.ts` y el artifact no los enumeraba. La afirmación que
+  sostenía el error —"`ApiFromModules` deriva el `api` de los módulos, así que no
+  hace falta regenerar nada"— es falsa a nivel de MÓDULO: lo que se deriva son las
+  FUNCIONES de los módulos que `fullApi` ya lista, y `fullApi` lo escribe el
+  codegen archivo por archivo.
+  **El gate** (`test/convexGeneratedApiGate.test.ts`) compara sin red los módulos
+  elegibles de `convex/**` con los imports y las entradas del artifact, en las dos
+  direcciones y con la consistencia alias↔ruta, usando las reglas reales de
+  `entryPoints()` del bundler de Convex 1.42.1 —no una lista de nombres, así que
+  un módulo futuro se exige igual—. Se auto-prueba con artifacts sintéticos.
+  **Durante:** falló a propósito nombrando esos dos módulos; ése era el estado
+  honesto del árbol. Claude escribió el gate y **no** corrió el codegen ni editó
+  `convex/_generated/**` a mano, porque el workflow le reserva ese comando al
+  backend.
+  **Después (2026-08-18):** **Codex** corrió `pnpm convex:codegen --typecheck
+  disable` (exit 0) fuera de esta sesión —sin `convex dev`, sin `finishPush` y sin
+  deploy— y el artifact incorporó los dos módulos que faltaban. El gate quedó
+  **7/7 en verde** y la suite completa en **1493/1493**. Contra `52836ad`,
+  `api.d.ts` suma +26 líneas y pasa de 58 a 71 entradas en `fullApi`: 11 módulos
+  venían del codegen de la certificación del 16/08 (las "+22 de codegen"
+  documentadas más arriba) y **2** los agregó esta corrida. Las afirmaciones
+  falsas quedaron corregidas en `convex/CHANGELOG.md`, `src/services/chartsApi.ts`,
+  `design-qa.md` y el README del audit.
+- **Pruebas nuevas (+28, de 1465 a 1493).** Cinco interleavings de la corrida sin
+  carta y dos de identidad natal en `natalRecoveryBackendV492`; cuatro del
+  controlador en `cartaRecuperacionV492`; ocho del ciclo de vida de la cola en
+  `refreshQueueV492`; tres de versión de caché en
+  `natalInterpretationRevisionV492`; y seis del gate nuevo. El harness del backend
+  despacha las queries internas por su NOMBRE canónico, así que corre el cuerpo
+  real de la relectura contra la base en memoria.
+  **Verificadas en las dos direcciones** (`logs10/verificacion-antes-despues.md`):
+  los diez arreglos revertidos por separado hacen fallar su prueba focal —entre 1
+  y 7 pruebas cada uno— y restaurados vuelven a pasar; el árbol queda byte por
+  byte como estaba. **Tres tests existentes cambiaron de forma y ninguno se
+  aflojó:** `personalityReading` y `natalInterpretationRevisionV492` resuelven
+  contra la identidad completa; `cartaRecuperacionV492` separa las dos banderas
+  igual que el hook separa los dos predicados; y `refreshQueueV492` **reescribe**
+  el test de remontaje —antes exigía que B no arrancara mientras A siguiera viva—
+  porque ésa es exactamente la semántica que este pase corrige. Ningún test se
+  borró ni se saltó.
+- **Checks del pase, estado FINAL (después del codegen de Codex):**
+  `pnpm typecheck` PASS exit 0 · `pnpm test` **1493/1493** (93 suites, 0 fail,
+  exit 0) · gate de `_generated` **7/7** exit 0 · piso de cobertura **1493/745**,
+  0 fallos, exit 0 · `git diff --check` PASS en working tree e índice, y los 595
+  untracked revisados con `--no-index` juzgando la SALIDA: 0 avisos (207 fuera de
+  `.local/`: los 206 de la novena más el gate nuevo; el untracked de más es la
+  ficha de este cierre dentro de `.local/`) · export web PASS con límites
+  (32.10 MB / 50 · JS gzip 1005.8 KB / 1.25 MB · ficha completa) · export iOS PASS
+  (7.0 MB) · export Android PASS (7.0 MB) · bundles nativos sin Tarot ni Diario,
+  con los mismos tokens de la novena presentes 1 vez en cada plataforma.
+  Evidencia final en `logs10/*-post-codegen.log`; los logs previos del mismo
+  directorio conservan el estado INTERMEDIO —typecheck PASS, suite 1492 + 1 fallo
+  deliberado del gate, focales de Carta 154/154, de tránsitos/caché 67/67, de la
+  cola 64/64 y de bindings 71 + 1 fallo— tal como estaba antes del codegen.
+- **Qué NO cambió el veredicto.** No se abrió un simulador, no se recapturó un
+  solo PNG, no se desplegó nada y no se tocaron datos QA, suscripciones ni
+  credenciales. `04` y `06` siguen **BLOCKED**, `02` sin recapturar, `08` y `09`
+  PASS en código con la evidencia pendiente de deploy, D7 funcional PASS / visual
+  N/A y VoiceOver BLOCKED por el runtime —evidencia heredada de la tercera
+  pasada—. Las carreras que este pase cierra **no se pudieron ejercitar en
+  runtime**: exigen desplegar Convex y una cuenta con esas filas.
+- **Archivos del pase: 13 de código/pruebas + 1 de contrato + 3 documentos = 17.**
+  Backend: `convex/charts.ts` · `convex/lib/natalRevision.ts`. Contrato:
+  `convex/CHANGELOG.md` (**sin cambios de schema**). Frontend:
+  `src/domain/refreshQueue.ts` · `src/domain/natalChartRecovery.ts` ·
+  `src/hooks/useNatalChartRecovery.ts` · `src/hooks/useLayers.tsx` ·
+  `src/services/chartsApi.ts` (sólo el comentario de cabecera). Tests:
+  `test/convexGeneratedApiGate.test.ts` (**nuevo**) ·
+  `test/natalRecoveryBackendV492.test.ts` · `test/refreshQueueV492.test.ts` ·
+  `test/cartaRecuperacionV492.test.ts` ·
+  `test/natalInterpretationRevisionV492.test.ts` ·
+  `test/personalityReading.test.ts`. Documentos: `CURRENT_TASK.md` ·
+  `design-qa.md` · el README del audit. Herramientas del pase dentro del audit:
+  `tools/run-exports10.sh` · `tools/verify-reverts10.mjs`. `git status` suma una
+  entrada nueva sin seguimiento fuera de `.local/`
+  (`test/convexGeneratedApiGate.test.ts`). El cierre posterior al codegen tocó
+  además `convex/_generated/api.d.ts` —**regenerado por Codex**, no editado a
+  mano— y `convex/CHANGELOG.md`, `CURRENT_TASK.md`, `design-qa.md`,
+  `src/services/chartsApi.ts`, el docblock de `test/convexGeneratedApiGate.test.ts`
+  y el README del audit, sólo para cambiar el estado del gate. **Ninguna línea de
+  lógica ni de aserción cambió**, y la suite se volvió a correr después del
+  retoque del comentario: 1493/1493.
+  `dist-ios/` y `dist-android/`, creados para la auditoría de bundle, se
+  borraron con targets exactos las **dos** veces que se generaron —la del pase y
+  la de los exports posteriores al codegen—, validando antes que fueran
+  directorios reales, no symlinks, dentro del worktree y sin seguimiento de git.
+  `dist/` se conserva: preexistía y es la salida canónica del export web. No se
+  corrió `git clean`.
+- **Handoff a Codex — CUMPLIDO.** Codex corrió
+  `pnpm convex:codegen --typecheck disable` (exit 0), sin `convex dev`, sin
+  `finishPush` y sin deploy, y regeneró los exports. La reverificación posterior
+  dio gate 7/7, typecheck exit 0, suite 1493/1493 y piso 1493/745. **No queda
+  ningún comando pendiente de este pase.**
+
+**Noveno pase (2026-08-17, concurrencia monotónica, bindings generados y ciclo
+de refresh cancelable) — seis P1 y dos P2 cerrados en código; el veredicto visual
+de los 12 estados NO cambia.**
+
+El octavo pase cerró con 1423/1423 y exports en verde, pero **tres auditorías
+independientes** reprodujeron carreras reales que esa suite no cubría. Los ocho
+hallazgos son de CONCURRENCIA, y por eso pasaban: ninguna prueba controlaba el
+orden real de resolución. Todas las pruebas nuevas de este pase mantienen la
+operación EN VUELO —el proveedor suspendido, la action colgada, el backoff
+dormido— y deciden cuándo y en qué orden termina cada cosa.
+
+- **P1-A · la carta natal podía EMPEORAR por una corrida atrasada.**
+  `runNatalChartCalculation` toma un snapshot A antes de llamar al proveedor, y
+  `persistCalculatedNatalChart` volvía a leer la fila por `cacheKey` pero la
+  parcheaba **a ciegas** con `args.payload`. Dos corridas que arrancan de la misma
+  carta A incompleta terminan en cualquier orden: la atrasada traía A vieja —o una
+  respuesta C que tampoco alcanzaba— y la escribía encima de la B completa ya
+  publicada; `profileAstrologyCaches` se iba con ella.
+  **El arreglo:** la decisión final es **monotónica** y vive DENTRO de la
+  transacción (`resolveNatalPersistDecision`, tabla pura de cuatro reglas, medida
+  con `storedNatalChartIsSufficient` y la precisión natal vigente): sin fila se
+  inserta el candidato aunque sea parcial; una fila **suficiente** se conserva
+  intacta pase lo que pase —tampoco la reemplaza otra completa atrasada del mismo
+  `cacheKey`—; una fila insuficiente sólo se reemplaza por algo que sí alcanza.
+  Cuando gana la fila que ya estaba, se reafirma su vigencia y **nada más**: no se
+  relabela su `providerVersion` con la del candidato descartado.
+  `profileAstrologyCaches` copia y referencia el payload **realmente elegido**. Y
+  al volver de la mutación se **vuelve a medir la carta final**
+  (`resolveFinalNatalOutcome`): si otra corrida ganó con una carta que alcanza, el
+  desenlace es éxito almacenado (`cache_sufficient` ⇒ `recovered`/`stored`) y no
+  un fallo falso. El cuerpo de la mutación se exporta como
+  `applyCalculatedNatalChart` para poder correrlo contra una base en memoria con
+  el orden bajo control.
+  **Y la identidad se revalida dentro de la transacción:** `birthDataId`,
+  `birthDataHash` y `cacheKey` contra los datos vigentes. Si cambiaron durante la
+  llamada al proveedor, se rechaza con
+  `NATAL_BIRTH_DATA_CHANGED_DURING_CALCULATION` en vez de publicar la carta de
+  datos que ya no existen. Es un rechazo estable y compatible: las dos actions ya
+  podían rechazar, el `returns` de `recoverNatalChart` no crece, y la pantalla lo
+  trata como cualquier otro fallo, con el reintento sobre los datos nuevos.
+  **Los contratos públicos quedan intactos.**
+- **P1-B · `recoverNatalChart` usaba una firma manual prohibida.** La action está
+  cerrada y ya aparece en `convex/_generated/api.d.ts`, pero `appRefs` la enlazaba
+  con `anyApi` y repetía su `returns` a mano: un cambio del contrato del backend
+  habría seguido compilando y el error habría aparecido en runtime.
+  **El arreglo:** sale de `appRefs` y entra en `src/services/chartsApi.ts`
+  (**nuevo**), que reexporta `api.charts.recoverNatalChart` del generado, con el
+  mismo criterio que `layersApi.ts` y `relationshipsApi.ts`. Sin
+  `FunctionReference` a mano, sin `anyApi`, sin `any`, sin casts. El gate
+  (`test/chartsBindingsV492.test.ts`) falla si la action aparece bajo `anyApi` o
+  casteada en cualquier archivo de `src/` o `app/`, comprueba por el **grafo real**
+  que las dos rutas de Carta llegan al servicio, y ata el contrato con
+  comprobaciones de TIPOS derivadas del generado: un cambio del `returns` rompe
+  `pnpm typecheck`. Las superficies legacy de `appRefs` **no** se migran acá.
+- **P1-C · un refresh colgado dejaba la recuperación bloqueada tras desmontar.**
+  `requestAndWait` movía sus waiters activos fuera del arreglo global antes del
+  `await`, y el cleanup de `useLayers` sólo ponía `mounted = false`: si la action
+  no resolvía y el árbol se desmontaba, la promesa no terminaba nunca, el gate
+  natal quedaba tomado y `CALCULANDO…` no se desbloqueaba **ni volviendo a
+  montar**.
+  **El arreglo:** la cola tiene ciclo de vida explícito. `suspend()` —lo llama el
+  cleanup— corta TODAS las esperas, las de la corrida en vuelo y las que esperaban
+  turno, con `LAYERS_REFRESH_UNAVAILABLE`. No se cancela la action (una action
+  Convex que ya salió no se puede cancelar): lo que se corta es su **efecto**, con
+  una generación de ciclo, así que su completion tardía no publica flags ni
+  resuelve waiters del ciclo nuevo. Lo pendiente sobrevive y `resume()` lo retoma
+  sin waiters huérfanos y sin abrir una segunda acción. **Sin este arreglo la
+  prueba no falla: se cuelga**, y el verificador lo informa así.
+- **P1-D · la solicitud nueva heredaba la espera y los retries de la vieja.** El
+  contador era global a la cola: si A gastaba el presupuesto y B llegaba durante
+  su backoff, B esperaba el resto y su primer fallo contaba como intento 4.
+  **El arreglo:** el intento pertenece al TRABAJO (identidad de la solicitud, no
+  contenido) y el backoff es **despertable** —`encolar` dispara la señal—, así que
+  una solicitud más nueva interrumpe la espera, corre enseguida después de la
+  action vigente y arranca con su crédito entero. "La más reciente gana" no
+  cambia; los waiters de la abandonada se transfieren al trabajo vigente y
+  terminan exactamente una vez. Single-flight intacto.
+- **P1-E · una completion natal vieja podía arrancar refresh en el scope nuevo.**
+  El controlador llamaba `recalcularCapas` de forma incondicional y lo que recibía
+  era el `refreshAndWait` **global**.
+  **El arreglo:** `NatalRecoveryDeps` exige `vigente()` —montado + mismo alcance +
+  salida todavía `reintentar`, tres refs vivas del hook— y el controlador la
+  consulta antes de tocar el ciclo de capas. Si dejó de ser vigente, libera el
+  gate del store viejo en estado **neutro** y no llama al refresco global. Un
+  error tardío que ya no describe nada tampoco se guarda: dejarlo pegado lo haría
+  reaparecer si ese hash volviera a ser recuperable. El flujo estable de una misma
+  carta no cambia: calcular → refresco esperado → quieto.
+- **P1-F · una mejora de carta podía dejar o reescribir una interpretación LLM
+  obsoleta.** Una mejora reescribe el payload sobre el MISMO `natalChartId`, y
+  `natalInterpretations` se identificaba sólo por carta + feature +
+  `promptVersion`.
+  **El arreglo:** `convex/lib/natalRevision.ts` (**nuevo**) deriva `chartRevision`
+  del payload con `stableInputHash` —la identidad del PAYLOAD, no la de la fila—.
+  Claim, lectura pública y persistencia se resuelven contra la revisión vigente:
+  una fila `ready` sólo es cache hit si coincide, y una de otra revisión no
+  publica, no frena una generación nueva y se declara `pending` (no `error`),
+  porque lo que corresponde es regenerarla. La escritura final es un **CAS**
+  (`resolveNatalReadingWrite`): la carta tiene que seguir en esa revisión y la
+  generación tiene que seguir siendo dueña del `claimSeq` monótono. Una generación
+  vieja no escribe después de una mejora ni después de que otro claim la
+  reemplazó, **ni siquiera para marcar `error`**. Las filas legadas sin revisión se
+  tratan como no verificadas y se regeneran. **Schema aditivo:** `chartRevision` y
+  `claimSeq`, los dos `v.optional()`; ninguna firma pública cambia y el borrado de
+  cuenta ya cubre la tabla por `by_user`.
+- **P2-A · el registro podía desalojar un store todavía montado.** El límite de
+  ocho sólo protegía `ocupado()`: un store idle con suscriptor vivo podía ser
+  desalojado y un segundo `storeFor` creaba otro candado para el mismo alcance.
+  **El arreglo:** la retención es explícita y verificable —`subscribe()` retiene,
+  su función de baja libera, `observadores()` los cuenta—; no se desaloja un store
+  ocupado NI observado; y al desuscribirse vuelve a ser desalojable, así que la
+  memoria no crece sin límite. No se supone nada sobre cuándo React termina con un
+  componente: se pregunta.
+- **P2-B · documentación que mezclaba pasadas.** `design-qa.md` tenía la tabla de
+  checks de la SÉPTIMA marcada como vigente (`logs7/`, 1385 pruebas): ahora la
+  vigente es la de la novena (`logs9/`, 1465) y se dice que las anteriores quedan
+  como historia. La fila **D18** decía que el controlador llama a
+  `calculateOrCreateNatalChart`: desde la octava llama a `charts.recoverNatalChart`
+  y encadena el **refresh esperable** (`useLayers().refreshAndWait`); corregido. La
+  nota de VoiceOver ahora incluye la novena entre las pasadas que no abrieron
+  simulador. Bloque de NOVENA pasada en el README del audit, en `design-qa.md`
+  (D25–D32) y acá. No se borró historia.
+- **Pruebas nuevas (+42, de 1423 a 1465).** Doce en
+  `test/natalInterpretationRevisionV492.test.ts` (**nuevo**) y cinco en
+  `test/chartsBindingsV492.test.ts` (**nuevo**); nueve más en
+  `test/refreshQueueV492.test.ts`, ocho en `test/cartaRecuperacionV492.test.ts` y
+  ocho en `test/natalRecoveryBackendV492.test.ts`. Helper nuevo:
+  `test/convexMemoryDb.ts`, una base Convex mínima en memoria (`insert`, `get`,
+  `patch`, `query().withIndex()`) que permite correr las mutaciones REALES con el
+  orden de resolución bajo control; los documentos se clonan al entrar y al salir.
+  **Verificadas en las dos direcciones:** los **diez** arreglos revertidos por
+  separado, nueve hacen fallar su prueba focal y uno —el ciclo de vida de la
+  cola— la deja **colgada**, que es el defecto exacto; restaurados, todos vuelven
+  a pasar (`logs9/verificacion-antes-despues.md`), y el árbol quedó byte por byte
+  como estaba. **Tres tests existentes cambiaron de forma y ninguno se aflojó:**
+  `personalityReading` (los tres resolvers reciben la revisión vigente, se
+  conservan todos los casos y se agregan los de revisión), `onboardingCompletion`
+  (los anclajes apuntan a la forma nueva del cuerpo compartido, más la exigencia de
+  que el desenlace se vuelva a medir después de persistir) y los harnesses de
+  `cartaRecuperacionV492` y `natalRecoveryBackendV492`, que pasan a controlar el
+  orden de resolución y a correr la mutación real. Ningún test se borró ni se saltó.
+- **Checks del pase:** `pnpm typecheck` PASS exit 0 · `pnpm test` PASS
+  **1465/1465** (93 suites, 0 fail) · piso 1465/745 · focales de Carta y
+  recuperación 140/140, de tránsitos/caché 67/67, de la cola 57/57 y de bindings y
+  contrato 65/65 · `git diff --check` PASS en working tree e índice, y los 589
+  untracked revisados con `--no-index` juzgando la SALIDA —no el código de
+  salida—: 0 avisos (206 fuera de `.local/`: los 201 de la octava más los cinco
+  archivos nuevos de ésta) · export web PASS con límites (32.10 MB / 50 · JS gzip
+  1005.8 KB / 1.25 MB · ficha completa) · export iOS PASS (7.0 MB) · export
+  Android PASS (7.0 MB) · bundles nativos sin Tarot ni Diario, con
+  `recoverNatalChart` (ya por el binding generado), `calculateOrCreateNatalChart`,
+  `createRefreshQueue`, `refreshAndWait`, `LAYERS_REFRESH_UNAVAILABLE`,
+  `active_transit_arc` y `matching_transit_arc` presentes 1 vez en cada
+  plataforma; las 3 apariciones de `diario` siguen siendo dos cadenas de ruta y el
+  rótulo `CAMBIA A DIARIO`. Evidencia en `logs9/`.
+- **Qué NO cambió el veredicto.** No se abrió un simulador, no se recapturó un
+  solo PNG, no se desplegó nada y no se tocaron datos QA, suscripciones ni
+  credenciales. `04` y `06` siguen **BLOCKED**, `02` sin recapturar, `08` y `09`
+  PASS en código con la evidencia pendiente de deploy, D7 funcional PASS / visual
+  N/A y VoiceOver BLOCKED por el runtime —evidencia heredada de la tercera
+  pasada—. Las carreras que este pase cierra **no se pudieron ejercitar en
+  runtime**: exigen desplegar Convex y una cuenta con esas filas.
+- **Archivos del pase: 16 de código/pruebas + 2 de contrato + 3 documentos = 21.**
+  Backend: `convex/charts.ts` · `convex/lib/natalRevision.ts` (**nuevo**).
+  Contrato: `convex/schema.ts` · `convex/CHANGELOG.md`. Frontend:
+  `src/services/chartsApi.ts` (**nuevo**) · `src/services/appRefs.ts` ·
+  `src/domain/refreshQueue.ts` · `src/domain/natalChartRecovery.ts` ·
+  `src/hooks/useNatalChartRecovery.ts` · `src/hooks/useLayers.tsx`. Tests:
+  `test/convexMemoryDb.ts` (**nuevo**, helper) ·
+  `test/natalInterpretationRevisionV492.test.ts` (**nuevo**) ·
+  `test/chartsBindingsV492.test.ts` (**nuevo**) ·
+  `test/natalRecoveryBackendV492.test.ts` · `test/refreshQueueV492.test.ts` ·
+  `test/cartaRecuperacionV492.test.ts` · `test/personalityReading.test.ts` ·
+  `test/onboardingCompletion.test.ts`. Documentos: `CURRENT_TASK.md` ·
+  `design-qa.md` · el README del audit. Herramientas del pase dentro del audit:
+  `tools/run-exports9.sh` · `tools/verify-reverts9.mjs`. `git status` pasa de
+  **168** a **174** entradas.
+
+**Octavo pase (2026-08-17, recuperación natal honesta y cierre de caché
+negativa) — dos P1 y tres P2 cerrados en código; el veredicto visual de los 12
+estados NO cambia.**
+
+Una auditoría independiente revisó el séptimo pase —que cerró con 1385/1385 en
+verde— y encontró dos P1 y tres P2 reales. Los cinco están cerrados acá, con
+pruebas que ejercitan la OPERACIÓN: contando llamadas al proveedor con el
+proveedor inyectado, manteniendo una promesa de refresco en vuelo, y publicando
+en un alcance mientras se mira otro.
+
+- **P1-A · un proveedor fallido —o insuficiente— se presentaba como éxito.** La
+  séptima pasada arregló *a quién llama* el botón; faltaba arreglar *qué se
+  considera que salió bien*. `charts.calculateOrCreateNatalChart` vuelve al
+  proveedor cuando la carta guardada no alcanza, y después declaraba éxito pasara
+  lo que pasara: con el proveedor caído reafirmaba la carta parcial y resolvía con
+  ella —y el controlador, que sólo entra en `fallo` ante un rechazo, dejaba la UI
+  `quieto`, silenciando el intento—; con una respuesta `success` que seguía sin
+  casas ni ejes la persistía **encima** de la anterior sin comprobar nada.
+  **El arreglo:** `runNatalChartCalculation` (cuerpo compartido, proveedor
+  inyectable) + `resolveNatalCalculationDecision` (tabla pura de ocho
+  combinaciones). Con una carta guardada que no alcanza, sólo se escribe algo
+  nuevo si ese algo **sí** alcanza, medido con `storedNatalChartIsSufficient`, la
+  misma regla que usa el read-model. Sin carta guardada se persiste igual: algo es
+  mejor que nada, pero el desenlace sigue diciendo la verdad.
+  **La vía contractual elegida es aditiva:** `charts.recoverNatalChart` (`args: {}`
+  y `returns` cerrados y discriminados: `recovered`/`stored`, `recovered`/`provider`,
+  `failed`/`provider_failed`, `failed`/`still_incomplete`). Se eligió aditiva y no
+  hacer rechazar a la de siempre porque el alta la espera de forma ESTRICTA
+  (`useBackendPersistStrict`): hacerla rechazar podía bloquear un onboarding
+  rehecho sobre una carta incompleta durante una caída del proveedor.
+  `calculateOrCreateNatalChart` queda intacta en firma y en comportamiento visible
+  para el alta, el editor de perfil y la Carta web. La pantalla muestra
+  `No pudimos completar el cálculo ahora.` y `REINTENTAR` en los dos casos, con la
+  carta parcial visible.
+- **P1-B · el candado terminaba antes que el recálculo real.**
+  `NatalRecoveryDeps.recalcularCapas` era `() => void`: `pedir()` lo invocaba sin
+  `await`, publicaba `quieto` y soltaba el gate, así que un segundo toque podía
+  volver a llamar la operación antes de que el refresco saliera.
+  **El arreglo:** la cola del recálculo sale del hook a `src/domain/refreshQueue.ts`
+  —misma política de single-flight, "la más reciente gana" y reintento automático
+  de la carrera del alta, ahora probable sin React—, y `useLayers` expone
+  **`refreshAndWait(): Promise<void>`** junto al `refresh(): void` de siempre, que
+  no cambia. La vía esperable entra en la MISMA cola: si ya hay una corrida en
+  vuelo espera a la pendiente más reciente y no abre ninguna acción paralela. El
+  ciclo entero —recuperar la carta → `refreshForDate` real— corre bajo el mismo
+  candado; si falla cualquiera de las dos mitades queda en `fallo`, con los datos
+  visibles intactos y el reintento disponible. `CALCULANDO…`, `disabled` y la
+  región viva cubren las dos mitades porque salen de la misma fase. Un detalle
+  corregido al mover la cola: el reintento transitorio ya no pisa una solicitud
+  más nueva que llegó mientras corría.
+- **P2-A · el fallo global se pegaba entre cartas y cuentas.** El store era un
+  singleton de módulo sin alcance ni reset. Ahora hay **un store por
+  `userId + chart.inputHash`**, con un valor estable para los huecos
+  (`sin-cuenta`, `sin-carta`): el hub y la Carta completa de la misma carta
+  comparten store y candado; otra cuenta u otra carta empiezan `quieto`; una
+  completion vieja publica en el alcance que la pidió y no puede tocar el nuevo; y
+  cuando `recovery` deja de ser `reintentar` el fallo se da por visto
+  (`olvidarFallo`, que no toca un trabajo en vuelo). La limpieza suelta los
+  alcances menos usados y **nunca** uno ocupado.
+- **P2-B · caché negativa vieja con ranking vacío.** `transitArcCoherence`
+  devolvía `coherente` apenas veía `arc.data === null`, antes de mirar el ranking:
+  un sobre negativo cacheado con `matching_transit_arc` convivía con un
+  `items: []` nuevo, y ese copy falso duraba hasta `validUntil` —o para siempre si
+  era `null`—. Ahora la lista se mira siempre: sin `data` el arco se conserva tal
+  cual; con `items: []` se normaliza a `active_transit_arc` y el código contrario
+  se descarta; con un primer ítem y sin arco correspondiente, `matching_transit_arc`.
+  Los demás faltantes del sobre sin dato se conservan, y un sobre que ya declara
+  exactamente ese hecho no se reescribe. Método, `inputHash`, alcance, `status`,
+  `stale` y `validUntil` quedan compatibles y nunca se relabela el arco de otro
+  contacto. **Copy:** la limitación decía *"el que estaba guardado es de otro
+  día"* —puede ser de otra hora del mismo día— y ahora dice *"ya no corresponde a
+  la lista actual"*, sólo cuando de verdad había un arco con dato que retirar.
+- **P2-C · documentación contradictoria.** El README del audit decía *"seis
+  pasadas"* cuando ya iban siete (ahora dice siete antes de ésta, y ocho en
+  total); su título *"Archivos tocados … (14)"* excluía los documentos (ahora
+  desglosa la cifra exacta); y `design-qa.md` afirmaba que VoiceOver fue
+  *"reverificado en esta pasada"* cuando la séptima no abrió simulador (ahora dice
+  que la evidencia vigente se hereda de la tercera y que el bloqueo exige un
+  iPhone físico).
+- **Pruebas nuevas (+38, de 1385 a 1423).** Once en
+  `test/natalRecoveryBackendV492.test.ts` (**nuevo**): el cuerpo real del cálculo
+  natal con el proveedor inyectado y una base en memoria —cache incompleto +
+  proveedor caído, cache incompleto + respuesta insuficiente, cache incompleto +
+  respuesta completa, cache completo con cero llamadas al proveedor,
+  `unknown`/`approximate` sin exigir geometría, y la tabla de decisión entera—.
+  Trece en `test/refreshQueueV492.test.ts` (**nuevo**): single-flight real,
+  `requestAndWait` que no resuelve al encolar, espera a la pendiente más reciente,
+  rechazo con reintento, carrera del alta reintentada sin soltar a quien espera, y
+  desmonte —incluido el corte de una espera que el desmonte deja sin atender, para
+  que el candado de quien esperaba no quede tomado para siempre—. Siete en `test/cartaRecuperacionV492.test.ts`: refresco mantenido en
+  vuelo, segundo toque bloqueado, refresco rechazado, respuesta que no mejora, y
+  los cuatro casos de alcance. Tres en `test/transitArcDetailV492.test.ts`,
+  incluido el que faltaba: ranking vacío + arco `data:null` cacheado con
+  `matching_transit_arc` → `active_transit_arc`, sin el otro código y con el copy
+  cotidiano correcto. **Verificadas en las dos direcciones:** revirtiendo cada
+  arreglo por separado, su prueba focal falla y con el arreglo restaurado vuelve a
+  pasar (`logs8/verificacion-antes-despues.md`). **Cuatro tests existentes
+  cambiaron de forma y ninguno se aflojó:** `v492ReleaseP1` y `nativeDefectsV492`
+  (D5) pasaron de mirar la fuente a ejercitar el comportamiento de la cola;
+  `natalChartBase` y `onboardingCompletion` reapuntaron sus anclajes al cuerpo
+  compartido, sumando la exigencia de que las dos actions públicas sigan sin
+  argumentos y de que la del alta siga devolviendo una carta o un rechazo. Ningún
+  test se borró ni se saltó.
+- **Checks del pase:** `pnpm typecheck` PASS exit 0 · `pnpm test` PASS
+  **1423/1423** (93 suites, 0 fail) · piso 1423/745 · focales de Carta 103/103, de
+  tránsitos/caché 67/67 y de la cola 48/48 · `git diff --check` PASS, y los 580
+  untracked revisados con `--no-index` juzgando la SALIDA —no el código de salida—:
+  0 avisos (201 fuera de `.local/`: los 198 de la séptima pasada más los tres
+  archivos nuevos de ésta) · export web
+  PASS con límites (32.10 MB / 50 · JS gzip 1005.5 KB / 1.25 MB) · export iOS PASS
+  (7.0 MB) · export Android PASS (7.0 MB) · bundles nativos sin Tarot ni Diario,
+  con `recoverNatalChart`, `refreshAndWait`, `createRefreshQueue`,
+  `calculateOrCreateNatalChart`, `active_transit_arc` y `matching_transit_arc`
+  presentes 1 vez en cada uno. Evidencia en `logs8/`.
+  **Detalle de método:** Hermes guarda en UTF-16LE cualquier literal con un
+  caracter no ASCII, así que un `grep` de bytes no encontraba
+  `No pudimos completar el cálculo ahora` ni `CALCULANDO…`; el script los cuenta
+  ahora en las dos codificaciones y dan 1.
+- **Qué NO cambió el veredicto.** No se abrió un simulador, no se recapturó un
+  solo PNG, no se desplegó nada y no se tocaron datos QA, suscripciones ni
+  credenciales. `04` y `06` siguen **BLOCKED**, `02` sin recapturar, `08` y `09`
+  PASS en código con la evidencia pendiente de deploy, D7 funcional PASS / visual
+  N/A y VoiceOver BLOCKED por el runtime —su evidencia vigente se hereda de la
+  tercera pasada—. El camino real de recuperación —tocar el botón contra un
+  backend con una carta incompleta y contra un proveedor caído— **sigue sin poder
+  ejercitarse en runtime**: exige desplegar `charts.recoverNatalChart` y una
+  cuenta con esa fila.
+- **Archivos del pase: 17 de código/pruebas + 1 de contrato + 3 documentos = 21.**
+  Backend: `convex/charts.ts` · `convex/layers.ts`. Contrato:
+  `convex/CHANGELOG.md`. Frontend: `src/domain/refreshQueue.ts` (**nuevo**) ·
+  `src/domain/natalChartRecovery.ts` · `src/hooks/useLayers.tsx` ·
+  `src/hooks/useNatalChartRecovery.ts` · `src/services/appRefs.ts` ·
+  `src/screens/v492/CartaHubScreen.tsx` ·
+  `src/screens/v492/CartaCompletaV492Screen.tsx`. Tests:
+  `test/refreshQueueV492.test.ts` (**nuevo**) ·
+  `test/natalRecoveryBackendV492.test.ts` (**nuevo**) ·
+  `test/cartaRecuperacionV492.test.ts` · `test/transitArcDetailV492.test.ts` ·
+  `test/natalChartBase.test.ts` · `test/nativeDefectsV492.test.ts` ·
+  `test/v492ReleaseP1.test.ts` · `test/onboardingCompletion.test.ts`. Documentos:
+  `CURRENT_TASK.md` · `design-qa.md` · el README del audit. Herramientas del pase
+  dentro del audit: `tools/run-exports8.sh` · `tools/verify-reverts8.mjs`.
+
+**Séptimo pase (2026-08-17, recuperación natal real y motivo del ranking vacío) —
+un P1 funcional y un P2 de copy cerrados en código; el veredicto visual de los 12
+estados NO cambia.**
+
+Una auditoría independiente revisó el sexto pase y encontró que la Carta ofrecía
+una salida que no podía llevar a ningún lado.
+
+- **P1 · el CTA de recuperación de Carta llamaba a la acción equivocada.**
+  `natalChartState` declaraba bien `recovery: "reintentar"` cuando hay posiciones
+  canónicas y falta geometría (`verified_ascendant_mc_geometry`,
+  `verified_twelve_house_geometry`), pero las dos pantallas cableaban esa salida a
+  `useLayers().refresh`, que ejecuta `layers.refreshForDate` y **nada más**. La
+  geometría —Ascendente, Medio Cielo y las doce cúspides— no sale de ahí: sale de
+  la carta persistida en `natalCharts`, y la única operación que la escribe es
+  `charts.calculateOrCreateNatalChart`. "COMPROBAR DE NUEVO" repetía el cálculo de
+  capas indefinidamente sin generar nunca lo que la propia pantalla decía que
+  faltaba. Ahora hay **un solo controlador compartido**:
+  `src/domain/natalChartRecovery.ts` (store puro sobre `createExclusiveGate`, sin
+  React ni Convex) y `src/hooks/useNatalChartRecovery.ts` (store **de módulo**, uno
+  para toda la app, porque el hub y la carta completa conviven en la pila). Hace
+  dos cosas y siempre en este orden: `charts.calculateOrCreateNatalChart({})` y
+  después el recálculo del día —al revés, `layers.persistRefresh` rechazaría con
+  `LAYER_INPUT_CHANGED_DURING_REFRESH` un refresco salido antes de que la carta
+  cambiara—. El read-model es reactivo, así que las dos pantallas ven el resultado
+  solas; el sobre del día no lo es, y por eso se encadena. El controlador **exige
+  la salida declarada** y sólo calcula con `reintentar`: con `completar-hora` no
+  llama a nada y no anuncia ningún cálculo. Un fallo se dice en región viva, deja
+  la carta parcial visible y permite reintentar; en curso, el botón queda bloqueado
+  con `CALCULANDO…`. `access.positions` sigue sin ser entitlement y Plus se sigue
+  preguntando por superficie.
+- **Borde cerrado en `convex/charts.ts`.** El `cacheKey` de `natalCharts` se arma
+  con los DATOS natales: dice "esta carta se calculó con estos datos", no "el
+  cálculo llegó hasta donde estos datos permiten". Una corrida en la que el
+  proveedor no devolvió `houses` —y por lo tanto tampoco Ascendente— dejaba una
+  fila que la Carta declara `partial` y que la action reutilizaba para siempre. La
+  action ahora mide la **suficiencia** del payload con la misma regla de geometría
+  que usa `layers.ts` (`convex/lib/natalGeometry.ts`, extraído de allí para que las
+  dos preguntas no puedan discrepar); si con hora exacta falta geometría, vuelve al
+  proveedor. Sin hora exacta no hay geometría que exigir y el cache sano se
+  reutiliza igual que antes. **No se agregó ningún `force` público**, y si el
+  proveedor tampoco puede mejorarla se conserva la carta que ya había en vez de
+  dejar la cuenta sin ninguna.
+- **P2 · el ranking vacío retiraba el arco con el motivo equivocado.**
+  `coherentTransitArc` publicaba siempre `matching_transit_arc` —"todavía no está
+  calculado el arco del tránsito que hoy encabeza tu lista"—, y con `items: []` la
+  propia lista ya afirmó que no hay tal tránsito. Ahora la coherencia devuelve el
+  MOTIVO: lista vacía → `active_transit_arc` ("Hoy no hay ningún tránsito mayor
+  activo para formar un arco"), primer ítem que no es el del arco →
+  `matching_transit_arc`, ranking sin `data` → el arco se conserva. `active_transit_arc`
+  es el código canónico que ya usaba `layerAssembly` y que ya tenía traducción
+  visible: no se inventó ninguno y el código interno no se expone.
+- **Pruebas nuevas (+16, de 1369 a 1385).** Nueve en
+  `test/cartaRecuperacionV492.test.ts` —controlador real con dependencias
+  instrumentadas: dos entradas del mismo tick con una sola action, candado
+  sincrónico, encadenamiento en orden, store compartido entre dos suscriptores,
+  fallo con parcial visible y reintento que vuelve a ejecutar, `completar-hora` sin
+  action, cableado por el grafo de módulos desde las dos rutas, y bloqueo/voz/región
+  viva—. Cinco en `test/natalChartBase.test.ts` para la suficiencia del cache,
+  atadas al mismo payload que el read-model. Dos en
+  `test/transitArcDetailV492.test.ts` para el ranking sin dato y el mensaje visible
+  del arco ajeno. **Verificadas en las dos direcciones:** revirtiendo cada arreglo
+  por separado, el test correspondiente falla y sólo ése
+  (`logs7/verificacion-antes-despues.md`). **Un test existente cambió de
+  expectativa** —el que afirmaba `matching_transit_arc` para el ranking vacío: esa
+  afirmación era el defecto—, y dos estructurales se ajustaron a la forma nueva sin
+  aflojar su intención (`test/cartaV492.test.ts`, `test/onboardingCompletion.test.ts`).
+  Ningún test se borró ni se saltó.
+- **Checks del pase:** `pnpm typecheck` PASS exit 0 · `pnpm test` PASS
+  **1385/1385** (93 suites, 0 fail) · piso 1385/745 · focales de Carta 73/73 y de
+  tránsitos/caché 64/64 · `git diff --check` PASS, y los 198 untracked revisados
+  además con `--no-index` (un aviso heredado en `convex/lib/stableHash.ts`,
+  corregido) · export web PASS con límites (32.10 MB / 50 · JS gzip 1005.2 KB /
+  1.25 MB) · export iOS PASS (7.0 MB) · export Android PASS (7.0 MB) · bundles
+  nativos sin Tarot ni Diario, con `calculateOrCreateNatalChart` y
+  `active_transit_arc` presentes 1 vez en cada uno. Evidencia en `logs7/`.
+- **Qué NO cambió el veredicto.** No se abrió un simulador, no se recapturó un solo
+  PNG, no se desplegó nada y no se tocaron datos QA, suscripciones ni credenciales.
+  `04` y `06` siguen **BLOCKED**, `02` sin recapturar, `08` y `09` PASS en código
+  con la evidencia pendiente de deploy, D7 funcional PASS / visual N/A y VoiceOver
+  BLOCKED por el runtime. El camino real de recuperación —tocar el botón contra un
+  backend con una carta incompleta— **no se pudo ejercitar en runtime**: exige
+  desplegar y una cuenta con esa fila.
+- **Archivos del pase (9 de código + docs).** Backend: `convex/lib/natalGeometry.ts`
+  (nuevo) · `convex/layers.ts` · `convex/charts.ts` · `convex/CHANGELOG.md`.
+  Frontend: `src/domain/natalChartRecovery.ts` (nuevo) ·
+  `src/hooks/useNatalChartRecovery.ts` (nuevo) · `src/screens/v492/CartaHubScreen.tsx` ·
+  `src/screens/v492/CartaCompletaV492Screen.tsx`. Higiene:
+  `convex/lib/stableHash.ts`. Tests: `test/cartaRecuperacionV492.test.ts` (nuevo) ·
+  `test/natalChartBase.test.ts` · `test/transitArcDetailV492.test.ts` ·
+  `test/cartaV492.test.ts` · `test/onboardingCompletion.test.ts`.
+
+**Sexto pase (2026-08-17, coherencia del par cacheado y dos bordes de Carta) —
+un P1 y dos P2 cerrados en código; el veredicto visual de los 12 estados NO
+cambia.**
+
+Una auditoría independiente revisó el quinto pase y encontró que el arreglo de
+identidad cubría el **cálculo**, no la **lectura**.
+
+- **P1 · el ranking y el arco CACHEADOS podían divergir.** Quedaban dos caminos
+  que rescatan los dos sobres por separado sin mirar si se corresponden:
+  `layers.getForDate` —lectura pura— y `layers.refreshForDate` cuando no hay
+  efeméride. Una fila escrita **antes** del quinto pase —o por otra ventana lógica
+  del día— podía combinar un ranking cuyo `items[0]` es A con un arco que describe
+  B, y en modo caché u offline ese par podía durar **indefinidamente**. Ahora un
+  helper puro (`transitArcMatchesRanking`) y su componedor (`coherentTransitArc`)
+  se aplican en **todo camino que arma el bundle**, y exigen el `arcId` **y** la
+  tupla —planeta en tránsito, punto natal, aspecto—: sólo el `arcId` dejaría pasar
+  dos identidades iguales sobre contactos distintos, y sólo la tupla dejaría pasar
+  el mismo contacto con un identificador que la lista de al lado no reconoce. Si no
+  corresponden, el arco **se descarta** —nunca se relabela `ORB-TRN-002` ni se
+  mezcla el arco de otro contacto— y va un `ORB-TRN-001` honesto sin dato, con el
+  faltante nuevo `matching_transit_arc` y su limitación; **nunca `stale`**, porque
+  no existe fila correspondiente que mostrar. En `refreshForDate` ese sobre
+  **reemplaza** la fila incoherente, así que el defecto no sobrevive al refresh. Un
+  ranking **sin dato** no afirma nada y no descarta ningún arco; uno **con la lista
+  vacía** sí afirma que hoy no encabeza ningún contacto, y ahí ningún arco con dato
+  se publica. Ninguna firma cambió.
+- **P2 · `refreshFailed` volvía reintentable la carta limitada sólo por la hora.**
+  `natalChartState` hacía `refreshFailed || …`: con el refresco del día fallado y
+  `exact_birth_time` como único faltante, la salida pasaba de `completar-hora` a
+  `reintentar`. Lo que falló fue traer el cielo de HOY, y el cielo de hoy no tiene
+  nada que ver con la hora a la que naciste. Ahora ese fallo no participa de la
+  decisión; un parcial que ya tenía cálculo pendiente sigue siendo reintentable.
+  **Corrige una afirmación del quinto pase**, que declaraba lo contrario.
+- **P2 · Carta completa descartaba la salida del estado.** `CartaCompletaLive`
+  resolvía `estado` y al pasar al contenido se quedaba sólo con `chart` y
+  `timezone`: un parcial con los ejes o las casas pendientes no ofrecía nada. El
+  estado viaja ahora al contenido y las dos pantallas de Carta ofrecen la misma
+  salida con el mismo texto y la misma voz —`FALTA UNA PARTE DEL CÁLCULO` +
+  *"Comprobar de nuevo si el cálculo ya publicó lo que falta"*—; cálculo en curso
+  espera sin botón, listo no ofrece ningún CTA, y el botón se anuncia bloqueado
+  mientras hay una corrida en vuelo. **No se agregó ningún muro de Plus por
+  disponibilidad de efeméride:** `access.positions` sigue siendo snapshot y el
+  límite de plan se pregunta por superficie.
+- **Pruebas nuevas (+8, de 1361 a 1369).** Cinco en `test/transitArcDetailV492.test.ts`
+  para la coherencia del par —lectura pura, rescate sin efeméride, `arcId` y tupla
+  por separado, ranking vacío, y el par coherente que SÍ se sigue reutilizando— y
+  tres en `test/cartaV492.test.ts` para los dos bordes de Carta. **Todas
+  verificadas en las dos direcciones:** se restauró a mano el comportamiento
+  anterior y las nuevas fallaron (`logs6/coherencia-par-antes-despues.md`). **Un
+  test existente cambió de expectativa** —el que afirmaba que `refreshFailed` deja
+  reintentable un parcial cuyo único faltante es la hora—: esa afirmación era el
+  defecto, se invirtió con su motivo escrito en el propio test, y la parte que
+  seguía siendo cierta se conservó como caso propio. Ningún otro test se debilitó.
+- **Checks del pase:** `pnpm typecheck` PASS exit 0 · `pnpm test` PASS
+  **1369/1369** (93 suites, 0 fail) · piso 1369/745 · `git diff --check` PASS ·
+  export web PASS con límites (32.10 MB / 50 · JS gzip 1005.2 KB / 1.25 MB) ·
+  export iOS PASS (7.0 MB) · export Android PASS (7.0 MB) · bundles nativos sin
+  Tarot ni Diario (`tarot` 0; las 3 apariciones de `diario` son las mismas de
+  siempre: dos cadenas de ruta que en nativo sólo redirigen y el rótulo de cadencia
+  `CAMBIA A DIARIO`). Evidencia en `logs6/`.
+- **Qué NO cambió el veredicto.** No se abrió un simulador, no se recapturó un solo
+  PNG, no se desplegó nada y no se tocaron datos QA, suscripciones ni
+  credenciales. `04` y `06` siguen **BLOCKED**, `02` sin recapturar, `08` y `09`
+  PASS en código con la evidencia pendiente de deploy, D7 funcional PASS / visual
+  N/A y VoiceOver BLOCKED por el runtime. Las dos correcciones de Carta de este
+  pase **tampoco** se declaran PASS visual: están verificadas por prueba, no por
+  captura.
+- **Archivos del pase (5 de código + docs).** Backend: `convex/layers.ts` ·
+  `convex/CHANGELOG.md`. Frontend: `src/domain/layers.ts` ·
+  `src/domain/natalChartState.ts` · `src/screens/v492/CartaCompletaV492Screen.tsx`.
+  Tests ampliados: `test/transitArcDetailV492.test.ts` · `test/cartaV492.test.ts`.
+
+**Quinto pase (2026-08-17, identidad del arco y estados de Carta) — tres defectos
+cerrados en código; el veredicto visual de los 12 estados NO cambia.**
+
+La auditoría reprodujo que `compare3/04` abrió el ranking **#1** —el arco
+principal, el único que el bundle ya trae— y aun así cayó al fallback: el ranking
+publicaba `arc_v1_0pa9p2w` para Saturno–Marte y la cronología verificada
+`arc_v1_19nh0r0` para ese mismo contacto. El cuarto pase le había dado a cada arco
+de la lista su propio `ORB-TRN-001`, pero la causa de fondo seguía abierta.
+
+- **La identidad del arco dependía de cómo se había medido la ventana.**
+  `convex/lib/transitTimeline.ts` sembraba `arcWindowKey` con
+  `verified:<fecha de la ventana verificada>` y `convex/lib/transitLayers.ts`
+  metía esa clave en la semilla del `arcId` con un prefijo propio. El ranking
+  extrapola la ventana con la velocidad del día; el seguimiento la verifica contra
+  efemérides reales: dos medidas del mismo proceso, dos identificadores. **Ahora la
+  identidad V1 es carta + planeta en tránsito + aspecto + punto natal + ventana
+  lógica**, la procedencia se descarta (`verified:2026-05-12` y `2026-05-12` son la
+  misma ventana), y quien verifica pasadas **propaga** la ventana lógica que el
+  contacto ya traía en vez de sembrar una nueva con sus bordes. Sólo un contacto
+  sin ninguna ventana —un instante suelto— recibe la verificada, que es la medida
+  más estable y no se mueve porque se observe otro día: esa garantía anterior
+  (`test/transitTimeline.test.ts`) se conservó intacta. `refreshForDate` además le
+  declara al contacto principal el `arcId` que publicó el ranking de esa corrida.
+  **Las fechas no cambiaron:** el arco sigue mostrando la ventana verificada.
+- **El cache viejo ya no se puede tomar por otro contacto.** El arco principal se
+  reutiliza sólo si la fila guardada declara el `arcId` vigente **además** del
+  mismo planeta, punto natal y aspecto. Una fila escrita con la identidad anterior
+  se recalcula: la invalidación es explícita y por identidad, no por versión de
+  tabla. Ninguna firma de función cambió; el soporte de arcos no principales del
+  cuarto pase queda intacto.
+- **Carta, hora exacta y eje todavía sin publicar.** El hub decía `Necesita tu
+  hora` en la fila del Ascendente mientras VoiceOver decía —bien— que el cálculo
+  no había publicado los ejes verificados: dos ramas para el mismo hecho, y la
+  visible mandaba a corregir un dato que ya estaba bien. Ahora el estado del eje se
+  resuelve una vez en el dominio (`angleRowView`) y de ahí salen el valor y la voz:
+  `Calculando…` mientras falta el cálculo, `Necesita tu hora` sólo sin hora, signo
+  y grado cuando está. La etiqueta accesible de la rueda pregunta lo mismo.
+- **Reintentar sólo cuando reintentar resuelve algo.** `natalChartState` marcaba
+  `canRetry: true` para CUALQUIER `parcial`, incluida la carta sin hora, que es
+  completa para los datos que hay. El estado publica ahora la salida real
+  (`recovery`: `ninguna` · `cargar-datos` · `completar-hora` · `reintentar`) y
+  `canRetry` se deriva de ella. Un parcial con cálculo pendiente ofrece comprobar
+  de nuevo; uno limitado sólo por la hora ofrece completar la hora y ningún
+  reintento. Los estados D7 corregidos en el tercer pase quedan igual.
+- **Pruebas nuevas (+12, de 1349 a 1361).** Seis en `test/transitLayers.test.ts`
+  y `test/transitArcDetailV492.test.ts` para la identidad —igualdad ranking/arco
+  del principal con cronología verificada, tres pasadas retrógradas, cruce
+  359°/0°, seis procesos distintos que no comparten identidad, y el cache con otra
+  identidad que se recalcula— y seis en `test/cartaV492.test.ts` para los dos
+  estados de Carta. **Todas verificadas en las dos direcciones:** se restauró a
+  mano el motor anterior y las nuevas fallaron
+  (`logs5/identidad-arco-antes-despues.md`). Ningún test anterior se debilitó.
+- **Checks del pase:** `pnpm typecheck` PASS exit 0 · `pnpm test` PASS
+  **1361/1361** (93 suites, 0 fail) · piso 1361/745 · `git diff --check` PASS ·
+  export web PASS con límites (32.10 MB / 50 · JS gzip 1005.2 KB / 1.25 MB) ·
+  export iOS PASS · export Android PASS · bundles nativos sin Tarot ni Diario.
+  Evidencia en `logs5/`.
+- **Qué NO cambió el veredicto.** No se recapturó ningún estado, no se tocó el
+  simulador, los datos QA ni el entitlement, y no se desplegó nada. `04` sigue
+  **BLOCKED**: con la identidad estable, abrir el **primer** tránsito de la lista
+  ya no depende del contrato nuevo —usa el sobre del bundle—, pero eso no se
+  declara PASS visual sin recaptura, y el detalle de un arco **no principal** sigue
+  necesitando el deploy. `06` sigue BLOCKED por entitlement, `02` sin recapturar,
+  D7 funcional PASS / visual N/A y VoiceOver BLOCKED por el runtime.
+- **Archivos del pase (8 de código + docs).** Backend: `convex/lib/transitLayers.ts`
+  · `convex/lib/transitTimeline.ts` · `convex/layers.ts` · `convex/CHANGELOG.md`.
+  Frontend: `src/domain/natalChartBase.ts` · `src/domain/natalChartState.ts` ·
+  `src/screens/v492/CartaHubScreen.tsx` · `src/screens/v492/CartaCompletaV492Screen.tsx`.
+  Tests ampliados: `test/transitLayers.test.ts` ·
+  `test/transitArcDetailV492.test.ts` · `test/cartaV492.test.ts`.
+
+**Cuarto pase (2026-08-17, cierre del arco seleccionado) — P1 y P2 cerrados en
+código; la evidencia visual de 04 queda BLOCKED por deploy.**
+
+La auditoría independiente encontró que el detalle de un arco NO principal mentía
+sobre su propio análisis. `bundle.today.transitArc` trae sólo el arco principal y
+es `ORB-TRN-001`; al abrir otro `arcId` del ranking la pantalla armaba una
+pseudo-ventana con el ítem `ORB-TRN-002` y le pasaba **ese** sobre al
+`TraceAccordion`. Por eso la captura `04` mostraba
+`ORB-TRN-002 · transit-ranking-v1` dentro de `ARCO DEL TRÁNSITO`: método,
+precisión, limitaciones y bibliografía de otro cálculo.
+
+**Contrato aditivo nuevo (sin deploy).** `layers.getTransitArc({ localDate,
+timezone, arcId })` —query reactiva y pura— y `layers.refreshTransitArc({
+localDate, timezone, arcId })` —action que calcula y persiste—. Las dos devuelven
+el sobre cerrado `AnalysisResult<TransitArcData>` de `ORB-TRN-001`, con
+validadores cerrados de `args` y `returns`, sin `v.any` ni `anyApi`. La
+autorización y el ownership son los de `getForDate`/`refreshForDate`
+(`findCurrentUser` / `getRefreshState` + `expectedInputFingerprint`).
+
+- **Cálculo real, no rótulo.** Se reutiliza el estado del día, la efeméride
+  global vigente —o la anterior declarada `stale`—, la carta natal canónica y el
+  motor existente. Se reconstruyen los contactos, se selecciona el activo cuyo
+  `arcId` coincide exactamente con el pedido, se corre `verifiedTimelineForContact`
+  para **ese** contacto y se arma `buildTransitArcLayerData({ contacts,
+  observedAt, arcId })`.
+- **Alcance propio.** El hash y el `cacheKey` incluyen `{ localDate, timezone,
+  arcId }`. Dos arcos del mismo día y el arco principal son tres filas distintas
+  en `analysisSnapshotsV492`; ninguna se lee en lugar de otra. Un `stale` sólo se
+  reutiliza si el dato guardado declara el mismo `arcId`.
+- **Estados honestos.** Arco fuera de la lista → `unavailable` con
+  `requested_transit_arc`. Sin cálculo todavía → la query lo declara con
+  `requested_transit_arc_calculation`, que la pantalla distingue de "ya no está
+  activo". Proveedor o seguimiento caídos → `stale` / `partial` / `error` con su
+  motivo. Nunca se reconstruye con metadatos del ranking.
+- **Identidad estable del arco.** `TransitContactInput` acepta `arcId?`.
+  Verificar las pasadas corre los bordes de la ventana y con ellos el
+  identificador derivado: sin este campo el mismo tránsito cambiaba de `arcId` al
+  verificarse y dejaba de corresponder al que publicó el ranking. Aditivo: sin el
+  campo el motor se comporta igual que antes.
+- **Frontend.** `src/services/layersApi.ts` expone los dos bindings generados;
+  `src/hooks/useTransitArc.ts` lee la query reactiva y pide la acción **una vez**
+  por arco/día/zona/hora civil (`src/domain/transitArcRequest.ts`), y una
+  respuesta tardía sólo escribe estado si sigue siendo el pedido vigente.
+  `ArcoDetailScreen` quedó con un solo sobre: titular, chip, ventana, pasadas,
+  resumen, precisión y trazabilidad salen todos del mismo `ORB-TRN-001`. Se
+  eliminó por completo el fallback del ranking; del ranking sólo queda el NOMBRE
+  del tránsito mientras su cálculo específico viaja, y la pantalla lo dice.
+- **P2 — Vínculos.** Se quitó el pie visible `MÉTODO ${comparison.methodVersion}`.
+  Método y versión viven únicamente dentro del `TraceAccordion`; la fecha humana
+  de la última verificación se conserva.
+
+**Pruebas nuevas (+24, de 1325 a 1349).** `test/transitArcDetailV492.test.ts` (12),
+`test/arcoDetailNativeV492.test.ts` (9) y tres más en `test/transitLayers.test.ts`
+para la identidad declarada del arco. Son de comportamiento y contrato: dos
+`arcId` del mismo día producen dos `ORB-TRN-001` con hash distinto y tres
+`cacheKey` distintos al persistir; un arco no principal obtiene su cronología
+verificada contra efemérides sintéticas servidas por un `fetch` interceptado y su
+`data.arcId` es el pedido; un arco inactivo devuelve `ORB-TRN-001 unavailable` y
+nunca el método de `ORB-TRN-002`; el cielo vencido publica `stale`; sin efeméride
+publica `error` fechado; un `stale` de otro arco no se rescata; `getTransitArc`
+lee exactamente la fila del arco pedido y `getForDate` sigue publicando el arco
+principal; una respuesta tardía de A no reemplaza B; y ninguna pantalla con
+acordeón imprime la versión del método por fuera.
+
+**Checks del pase:** `pnpm typecheck` PASS exit 0 · `pnpm test` PASS 1349/1349
+(93 suites, 0 fail) · `git diff --check` PASS exit 0 · export web PASS con límites
+(32.10 MB / 50 · JS gzip 1005.2 KB / 1.25 MB) · export iOS PASS · export Android
+PASS · bundle nativo sin Tarot ni Diario. Evidencia en
+`.local/audits/native-v492-recertification-2026-08-17/logs4/`.
+
+**Lo que sigue BLOCKED, y por qué.** El estado visual `04` **no** se declara PASS:
+la función nueva no existe en el deployment Development y desplegarla estaba
+prohibido en este encargo. Queda
+`BLOCKED — requiere desplegar el contrato aditivo a Development y recapturar el
+mismo arcId con el acordeón abierto`. Con eso, el conteo honesto de los 12 estados
+es **7 PASS visual · 2 PASS de código con evidencia runtime pendiente de deploy
+(08 y 09) · 2 BLOCKED (04 por deploy, 06 por entitlement Plus real) · 1 sin
+recapturar (02, evidencia previa válida)**. Aparte: D7 funcional PASS / visual
+N/A, y VoiceOver BLOCKED en simulador —exige un iPhone físico—.
+
+**Sin commit, sin push, sin merge, sin rebase y sin deploy** de Convex, EAS,
+TestFlight, App Store ni producción. Datos QA y entitlement intactos.
+
 ## Tarot Free — la carta misma abre Plus al llegar al límite (2026-08-12)
 
 **Objetivo:** evitar el estado confuso donde la octava carta quedaba boca abajo
@@ -891,9 +4128,12 @@ El badge **"Development mode"** es esperable con la instancia de desarrollo y `p
 
 La pasada manual del hotfix de autenticación mostró la plantilla breve (`Núcleo`, `Clima interno`, etc.) como si fuera la lectura natal final. El motor largo de siete capítulos sí está mergeado y Convex dev tiene LLM/modelo/clave configurados; el problema es de estado: `charts.personalityReading()` devolvía el fallback breve mientras la action generaba. Rama aislada `codex/natal-reading-state`: la query devuelve `null` hasta cache `ready` y la action rechaza cualquier fallo para que el frontend existente muestre carga o reintento. Pendiente: tests/typecheck, deploy solo a dev y pasada manual carga → lectura larga; producción no se toca.
 
-## Estado vigente — 2026-07-16
+## Estado histórico — 2026-07-16 · SUPERADO
 
-Esta sección es la fuente de verdad actual. El contenido posterior queda como historial y contexto técnico.
+Esta sección fue la fuente de verdad **al 2026-07-16** y hoy se conserva como
+historial. El estado actual está en el bloque del 2026-08-19, al inicio del
+archivo. El contenido posterior a esta sección también es historial y contexto
+técnico.
 
 ### Mazo completo de 78 cartas — coordinación backend/frontend
 

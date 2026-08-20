@@ -1,5 +1,16 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import {
+  analysisDataValidator,
+  analysisIdValidator,
+  analysisStatusValidator,
+  comparisonLevelValidator,
+  elaborationValidator,
+  ephemerisPositionValidator,
+  precisionValidator,
+  relationshipComparisonDataValidator,
+  sourceRefValidator,
+} from "./lib/layerContract";
 
 const identity = v.union(v.literal("ella"), v.literal("el"), v.literal("prefiero_no_decirlo"));
 const paymentState = v.union(v.literal("not_started"), v.literal("started"), v.literal("paid"), v.literal("skipped"));
@@ -220,6 +231,22 @@ export default defineSchema({
     status: generationStatus,
     payload: v.any(),
     usage: v.optional(v.any()),
+    /**
+     * Revisión del payload natal con el que se generó esta lectura
+     * (`natalPayloadRevision`). El `natalChartId` NO alcanza: una mejora de la
+     * carta reescribe el payload sobre la misma fila, así que una lectura
+     * `ready` de la carta parcial seguiría leyéndose como cache hit sobre la
+     * carta completa. Opcional para las filas legadas, que no pueden demostrar
+     * sobre qué carta se generaron y por eso se regeneran en vez de publicarse.
+     */
+    chartRevision: v.optional(v.string()),
+    /**
+     * Número del claim vigente, monótono por fila. La persistencia final es un
+     * CAS: una generación sólo escribe si todavía es dueña de este número. Una
+     * generación vieja que perdió el lease no puede pisar la lectura del claim
+     * nuevo.
+     */
+    claimSeq: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number()
   })
@@ -331,17 +358,123 @@ export default defineSchema({
 
   relationshipProfiles: defineTable({
     userId: v.id("users"),
+    // Clave opaca del intento de creación. Permite reintentar una mutation sin
+    // confundir el reintento con otra persona intencionalmente igual.
+    creationRequestKey: v.optional(v.string()),
     name: v.string(),
     birthDate: v.optional(v.string()),
     birthTime: v.optional(v.string()),
+    birthTimePrecision: v.optional(birthTimePrecision),
     birthPlaceLabel: v.optional(v.string()),
+    placeId: v.optional(v.string()),
+    placeProvider: v.optional(v.string()),
+    latitude: v.optional(v.number()),
+    longitude: v.optional(v.number()),
+    timezone: v.optional(v.string()),
     zodiacSign: v.optional(v.string()),
     isActive: v.boolean(),
     createdAt: v.number(),
     updatedAt: v.number()
   })
     .index("by_user", ["userId"])
-    .index("by_user_active", ["userId", "isActive"]),
+    .index("by_user_active", ["userId", "isActive"])
+    .index("by_user_creation_request_key", ["userId", "creationRequestKey"]),
+
+  // V4.9.2: resultados personales con un contrato cerrado. Las filas legacy
+  // siguen intactas para clientes instalados; la nueva app nunca escribe mocks.
+  analysisSnapshotsV492: defineTable({
+    userId: v.id("users"),
+    birthDataId: v.optional(v.id("birthData")),
+    natalChartId: v.optional(v.id("natalCharts")),
+    analysisId: analysisIdValidator,
+    cacheKey: v.string(),
+    localDate: v.optional(v.string()),
+    timezone: v.optional(v.string()),
+    methodVersion: v.string(),
+    providerVersion: v.optional(v.string()),
+    inputHash: v.string(),
+    status: analysisStatusValidator,
+    precision: precisionValidator,
+    observedAt: v.number(),
+    validUntil: v.union(v.number(), v.null()),
+    data: v.union(analysisDataValidator, v.null()),
+    missingInputs: v.array(v.string()),
+    limitations: v.array(v.string()),
+    elaboration: elaborationValidator,
+    sourceRefs: v.array(sourceRefValidator),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_analysis", ["userId", "analysisId"])
+    .index("by_cache_key", ["cacheKey"]),
+
+  // Posiciones natales canónicas de `planets/tropical`. Se guardan sólo las
+  // diez posiciones normalizadas que usa V4.9.2; nunca el payload crudo del
+  // proveedor. El hash cambia con los datos natales o la versión del método,
+  // por lo que una efeméride histórica se calcula una sola vez por carta.
+  natalEphemerisCachesV492: defineTable({
+    userId: v.id("users"),
+    birthDataId: v.optional(v.id("birthData")),
+    natalChartId: v.optional(v.id("natalCharts")),
+    cacheKey: v.string(),
+    inputHash: v.string(),
+    methodVersion: v.string(),
+    providerVersion: v.string(),
+    birthTimePrecision: birthTimePrecision,
+    samples: v.array(
+      v.object({
+        instantMs: v.number(),
+        positions: v.array(ephemerisPositionValidator),
+      }),
+    ),
+    calculatedAt: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_cache_key", ["cacheKey"]),
+
+  // Efeméride global tipada. No contiene datos natales ni pertenece a una
+  // cuenta, por eso no forma parte del borrado personal.
+  globalSkySnapshotsV492: defineTable({
+    cacheKey: v.string(),
+    localDate: v.string(),
+    timezone: v.string(),
+    providerVersion: v.string(),
+    observedAt: v.number(),
+    validUntil: v.number(),
+    positions: v.array(ephemerisPositionValidator),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_cache_key", ["cacheKey"])
+    .index("by_date_timezone", ["localDate", "timezone"]),
+
+  relationshipComparisonCachesV492: defineTable({
+    userId: v.id("users"),
+    profileId: v.id("relationshipProfiles"),
+    requestedLevel: comparisonLevelValidator,
+    cacheKey: v.string(),
+    analysisId: v.union(v.literal("ORB-REL-002"), v.literal("ORB-REL-003")),
+    methodVersion: v.string(),
+    providerVersion: v.optional(v.string()),
+    inputHash: v.string(),
+    status: analysisStatusValidator,
+    precision: precisionValidator,
+    observedAt: v.number(),
+    validUntil: v.union(v.number(), v.null()),
+    data: v.union(relationshipComparisonDataValidator, v.null()),
+    missingInputs: v.array(v.string()),
+    limitations: v.array(v.string()),
+    elaboration: elaborationValidator,
+    sourceRefs: v.array(sourceRefValidator),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_profile", ["userId", "profileId"])
+    .index("by_cache_key", ["cacheKey"]),
 
   notificationPreferences: defineTable({
     userId: v.id("users"),
@@ -362,9 +495,22 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_pushToken", ["pushToken"]),
 
-  // Una fila por (userId, provider): cada webhook (RevenueCat, Stripe) escribe
-  // su propia fila sin pisar la del otro proveedor. `subscriptions.getCurrent`
-  // resuelve el acceso combinando todas las filas del usuario.
+  // Identidad de una fila: **(userId, provider, environment)**.
+  //
+  // Cada webhook (RevenueCat, Stripe) escribe su propia fila sin pisar la del
+  // otro proveedor, y `subscriptions.getCurrent` resuelve el acceso combinando
+  // todas las filas del usuario.
+  //
+  // `environment` es parte de la identidad, no un adorno: una cuenta de review
+  // tiene una fila `production` y otra `sandbox` A LA VEZ y no pueden pisarse
+  // —un recibo Sandbox no sostiene acceso productivo—. El índice sigue siendo
+  // `by_user_provider` porque son una o dos filas por proveedor: los escritores
+  // (`payments/revenuecat.ts`, `payments/revenuecatRest.ts`) las colectan y
+  // eligen por entorno en vez de usar `first()`, que dejaba la elección librada
+  // al orden del índice. Ver `convex/CHANGELOG.md`.
+  //
+  // Las filas de RevenueCat SIN `environment` son legado: fallan cerrado en
+  // `isRowActive` y la reconciliación REST las repara escribiendo el entorno.
   subscriptions: defineTable({
     userId: v.id("users"),
     // Denormalizado para que los webhooks resuelvan el usuario sin auth ctx.
@@ -517,14 +663,183 @@ export default defineSchema({
   // borrador del alta, o "all" para el fusible global—. No guarda datos
   // natales: el sujeto es un hash corto. `by_expiresAt` limpia las vencidas.
   publicRateLimits: defineTable({
+    // `bucketKey` ya no lleva el sujeto en claro: se hashea (ver
+    // `rateLimitSubjectHash`). Esta tabla puede sobrevivir a un borrado de
+    // cuenta que falle a mitad, y no puede quedar con un identificador de
+    // persona pegado.
     bucketKey: v.string(),
     scope: v.string(),
+    /**
+     * Hash del sujeto, indexado. Es lo único que permite encontrar y borrar los
+     * contadores de una cuenta durante la eliminación, sin guardar su id.
+     * Opcional: las filas anónimas (fusible global) no tienen sujeto.
+     */
+    subjectHash: v.optional(v.string()),
     count: v.number(),
     windowStartedAt: v.number(),
     expiresAt: v.number()
   })
     .index("by_bucketKey", ["bucketKey"])
     .index("by_expiresAt", ["expiresAt"])
+    .index("by_scope_subjectHash", ["scope", "subjectHash"]),
+
+  // Estado DURABLE de la reconciliación con la tienda.
+  //
+  // Existe porque las scheduled ACTIONS de Convex son at-most-once y no se
+  // reprograman solas: si la action muere —o si nunca llega a su primera
+  // línea— la reparación se pierde y el cargo queda sin reflejarse. Intentar
+  // cerrar eso desde la propia action (preagendar su sucesora) no alcanza: si
+  // ese `runAfter` rechaza, la action muere sin sucesor y no queda nada.
+  //
+  // El modelo que sí cierra la ventana es el documentado por Convex: una
+  // MUTATION agendada comprueba el estado persistido y agenda —o reagenda— la
+  // action de forma atómica. Las mutations sí se reintentan ante un fallo
+  // transitorio, y su `scheduler.runAfter` es parte de su transacción: o quedan
+  // escritos el intento y su vigilancia, o no queda nada a medias.
+  //
+  // Una fila por trabajo. `status: "pending"` significa "hay una reparación sin
+  // confirmar y un watchdog vigilándola"; `settled` la cierra y cancela el
+  // watchdog. `attempt` acota el reintento y hace la recuperación idempotente.
+  // Exactamente UNA fila por cuenta, reutilizada entre generaciones: el trabajo
+  // no se acumula. `enqueueStoreReconcile` la crea o la reabre; la eliminación
+  // de cuenta la borra.
+  reconcileJobs: defineTable({
+    clerkUserId: v.string(),
+    /** Quién pidió la reparación. Sólo auditoría; nunca decide acceso. */
+    trigger: v.string(),
+    /**
+     * Señales y generación — lo que cierra el "lost wakeup".
+     *
+     * `requestedSeq` sube en CADA pedido, incluso si ya hay un trabajo en
+     * curso: sin eso, un webhook que llegaba mientras una corrida estaba en
+     * vuelo se perdía, y esa corrida —con un snapshot ya viejo— liquidaba el
+     * trabajo. `startedSeq` es la señal que la corrida actual está atendiendo:
+     * si `requestedSeq` la superó, la corrida NO puede liquidar.
+     *
+     * `generation` sube cuando una señal nueva reabre un trabajo ya cerrado, y
+     * forma parte del lease para que una respuesta tardía de la generación
+     * anterior no pueda tocar la nueva.
+     */
+    generation: v.number(),
+    requestedSeq: v.number(),
+    startedSeq: v.number(),
+    attempt: v.number(),
+    status: v.union(v.literal("pending"), v.literal("settled")),
+    /** Por qué se cerró: `resolved`, `exhausted`, o el motivo permanente. */
+    outcome: v.optional(v.string()),
+    /**
+     * Token determinista de la corrida vigente (`generación:señal:intento`). La
+     * action lo transporta y `settleReconcileJob` sólo acepta el que coincide:
+     * un resultado tardío no liquida un trabajo que ya es de otra corrida, y
+     * tampoco cancela su watchdog.
+     */
+    leaseToken: v.optional(v.string()),
+    /**
+     * Id del scheduled function que vigila este intento. Es un
+     * `Id<"_scheduled_functions">`, que en runtime es un string; se guarda como
+     * string para no acoplar la tabla al validador de una tabla de sistema.
+     */
+    watchdogId: v.optional(v.string()),
+    nextCheckAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number()
+  })
+    .index("by_clerkUserId", ["clerkUserId"])
+    .index("by_status", ["status"])
+    .index("by_status_user", ["status", "clerkUserId"]),
+
+  /**
+   * Fence de supresión: identidades cuya cuenta ya fue borrada.
+   *
+   * ## El agujero que cierra
+   *
+   * `deleteAccountV2` barre la cuenta, pero el token de Clerk sigue siendo
+   * válido hasta que la identidad se borra y el JWT expira. En esa ventana
+   * cualquier llamada autenticada —otro dispositivo, otra pestaña, un retry
+   * tardío de `ensureUser`— vuelve a entrar por `getOrCreateUser` y **recrea**
+   * la fila `users` y su `account_created`. La cuenta reaparece.
+   *
+   * Esta tabla sobrevive a la barrida (no la toca `deleteAccountData`) y es lo
+   * que hace que esa llamada falle cerrado.
+   *
+   * ## Qué guarda, y qué NO
+   *
+   * Sólo una clave derivada. **Cero** `clerkUserId`, `tokenIdentifier`, email o
+   * `userId` en crudo: si guardáramos el subject, el fence sería un registro de
+   * quién borró su cuenta, que es exactamente lo que la eliminación promete
+   * hacer desaparecer.
+   *
+   * `identityKey` es una **clave seudónima de supresión**, no una anonimización:
+   * es un SHA-256 de un dominio versionado + el `subject` de Clerk, sin secreto,
+   * así que quien tenga un subject candidato puede comprobar si está en la
+   * tabla. Los Clerk IDs tienen alta entropía, de modo que no es enumerable por
+   * fuerza bruta, pero tampoco es irreversible frente a un candidato conocido.
+   * `keyVersion` existe para migrar a HMAC con secreto en una etapa posterior
+   * sin tener que reinterpretar las filas viejas.
+   *
+   * **No expira.** Expirar reabriría exactamente la ventana del token viejo. Un
+   * alta nueva en Clerk obtiene otro `subject`, así que nadie queda bloqueado.
+   */
+  accountDeletionFences: defineTable({
+    identityKey: v.string(),
+    keyVersion: v.number(),
+    createdAt: v.number(),
+    /**
+     * **Tombstone durable: Clerk confirmó que esta identidad ya no existe.**
+     *
+     * Antes ese hecho vivía sólo en memoria del cliente (`identityConfirmedFor`
+     * en `PendingDeletionBoundary`). Si el proceso moría entre el `deleteUser`
+     * ok y la escritura del checkpoint, no quedaba rastro: el arranque siguiente
+     * mandaba a `needs-owner`, o sea a entrar con una cuenta que ya no existe, y
+     * la única salida era soporte.
+     *
+     * Vive acá, y no en una tabla nueva, porque la fila del fence ya existe para
+     * exactamente este `subject` y ya está indexada por su clave seudónima: es
+     * el mismo hecho en otra etapa, no un hecho distinto.
+     *
+     * Ausente = no se sabe. **Nunca se infiere de un `signed-out`**: sólo lo
+     * escribe el finalizador, y sólo cuando Clerk confirma.
+     */
+    identityDeletedAt: v.optional(v.number())
+  }).index("by_identityKey", ["identityKey"]),
+
+  /**
+   * Trabajo durable: borrar la identidad en Clerk, con reintentos.
+   *
+   * ## Por qué existe
+   *
+   * El borrado de una cuenta son dos cosas en dos lugares: los datos (Convex) y
+   * la identidad (Clerk). Mientras el segundo paso lo daba el cliente, dependía
+   * de que la app siguiera viva. Esta fila lo convierte en trabajo del servidor:
+   * se escribe en la MISMA transacción que el fence y la barrida, así que o
+   * quedan los tres o no queda ninguno.
+   *
+   * ## El identificador en crudo, y por qué está acotado
+   *
+   * `clerkUserId` es el Clerk id **en claro**: no se puede pedirle a Clerk que
+   * borre una identidad sin nombrarla. Es una excepción deliberada y **acotada
+   * en el tiempo**: la fila se borra en cuanto Clerk confirma, y lo único que
+   * queda para siempre es la clave seudónima del fence. Esta tabla NO está en
+   * `USER_SCOPED_DELETION_STEPS` — si la barrida se la llevara, el trabajo
+   * moriría en la transacción que lo crea y la identidad no se borraría nunca.
+   */
+  identityDeletionJobs: defineTable({
+    /** Clerk id en claro. Transitorio: la fila se borra al confirmar. */
+    clerkUserId: v.string(),
+    /** Fence que este trabajo promueve cuando Clerk confirma. */
+    identityKey: v.string(),
+    keyVersion: v.number(),
+    attempt: v.number(),
+    status: v.union(v.literal("pending"), v.literal("settled")),
+    /** Por qué se cerró, cuando se cierra sin borrar. Sólo auditoría. */
+    outcome: v.optional(v.string()),
+    createdAt: v.number(),
+    /** Backoff: antes de este instante no se reintenta. */
+    nextAttemptAt: v.optional(v.number()),
+    watchdogId: v.optional(v.string())
+  })
+    .index("by_identityKey", ["identityKey"])
+    .index("by_status", ["status"])
 });
 
 // ---------------------------------------------------------------------------

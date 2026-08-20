@@ -7,7 +7,8 @@ import {
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { extractNormalizedChartFromPayload } from "./lib/orbita";
-import { resolveEntitlement, type SubscriptionRow } from "./lib/entitlements";
+import type { SubscriptionRow } from "./lib/entitlements";
+import { resolveRowsForUser } from "./lib/subscriptionAccess";
 import { findCurrentUser, findUserByTokenIdentifier, requireIdentity } from "./lib/users";
 import { resolveCanonicalDailyContext } from "./daily";
 
@@ -413,7 +414,7 @@ export const getVoidState = internalQuery({
       .query("subscriptions")
       .withIndex("by_user", (q: any) => q.eq("userId", user._id))
       .collect()) as SubscriptionRow[];
-    const { isPro } = resolveEntitlement(subscriptions, Date.now());
+    const { isPro } = resolveRowsForUser(subscriptions, Date.now());
 
     return {
       userId: user._id,
@@ -587,7 +588,7 @@ export const today = query({
       .query("subscriptions")
       .withIndex("by_user", (q: any) => q.eq("userId", user._id))
       .collect()) as SubscriptionRow[];
-    const { isPro } = resolveEntitlement(subscriptions, Date.now());
+    const { isPro } = resolveRowsForUser(subscriptions, Date.now());
     const limit = isPro ? LIMIT_PRO : LIMIT_FREE;
     const used = answersToday.length;
     return { limit, used, remaining: Math.max(0, limit - used), isPro };

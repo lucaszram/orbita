@@ -17,7 +17,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createRequire } from "node:module";
 import Module from "node:module";
-import { readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
 import { ROOT } from "./moduleGraph";
@@ -99,8 +99,54 @@ test("la URL con grupo y la URL sin grupo son el MISMO destino", () => {
 test("las secciones de la navegación web siguen resolviendo donde PR 1 las dejó", () => {
   assert.equal(destino("/home"), "home");
   assert.equal(destino("/transito"), "transito");
-  assert.equal(destino("/umbral"), "umbral");
-  assert.equal(destino("/perfil"), "(tabs) > perfil");
+  assert.equal(destino("/umbral"), "(tabs) > umbral > index");
+  assert.equal(destino("/perfil"), "(tabs) > perfil > index");
+});
+
+test("las cinco pestañas canónicas resuelven a la raíz de sus cinco stacks", () => {
+  const destinos = new Map([
+    ["/hoy", "(tabs) > hoy > index"],
+    ["/transitos", "(tabs) > transitos > index"],
+    ["/vinculos", "(tabs) > vinculos > index"],
+    ["/umbral", "(tabs) > umbral > index"],
+    ["/perfil", "(tabs) > perfil > index"]
+  ]);
+
+  for (const [url, esperado] of destinos) assert.equal(destino(url), esperado, url);
+});
+
+test("Carta y sus tres detalles tienen destinos únicos dentro del stack de Perfil", () => {
+  const destinos = new Map([
+    ["/perfil/carta", "(tabs) > perfil > carta"],
+    ["/perfil/carta/completa", "(tabs) > perfil > carta/completa"],
+    ["/perfil/carta/tipo-lunar", "(tabs) > perfil > carta/tipo-lunar"],
+    ["/perfil/carta/mapa-elemental", "(tabs) > perfil > carta/mapa-elemental"]
+  ]);
+
+  for (const [url, esperado] of destinos) assert.equal(destino(url), esperado, url);
+});
+
+test("Tu momento y cada arco tienen destinos no ambiguos dentro del stack de Tránsitos", () => {
+  assert.equal(destino("/transitos/momento"), "(tabs) > transitos > momento");
+  assert.equal(destino("/transitos/arco/foo"), "(tabs) > transitos > arco/[arcId]");
+
+  // Un dinámico suelto (`transitos/[arcId]`) también aceptaría `momento` y
+  // cualquier futura vista de un segmento. El prefijo `arco/` hace explícita
+  // la diferencia entre una vista del tab y el detalle de un evento.
+  assert.equal(
+    existsSync(join(ROOT, "app/(tabs)/transitos/[arcId].tsx")),
+    false,
+    "el detalle legado transitos/[arcId] debe retirarse: todos los arcos viven en transitos/arco/[arcId]"
+  );
+});
+
+test("/vacio conserva el deep link histórico y redirige a la ruta canónica existente", () => {
+  assert.equal(destino("/vacio"), "(tabs) > vacio");
+
+  const alias = readFileSync(join(ROOT, "app/(tabs)/vacio.tsx"), "utf8");
+  const target = alias.match(/<Redirect\s+href="([^"]+)"\s*\/>/)?.[1];
+  assert.equal(target, "/umbral", "el alias histórico debe apuntar al nombre de producto actual");
+  assert.equal(destino(target), "(tabs) > umbral > index", "el destino del alias debe existir en el router");
 });
 
 test("la entrada `/` sigue siendo el resolvedor de destino, no una pestaña", () => {

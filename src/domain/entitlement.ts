@@ -37,8 +37,31 @@ export type RecepcionCta = "cargando" | "desbloquear" | "entrar";
  * Free: el botón espera. Sin sesión viva (build local o backend apagado) no hay
  * plan que consultar y se conserva la salida histórica a la carta.
  */
-export function recepcionCta(input: { entitlement: Entitlement; live: boolean }): RecepcionCta {
-  if (!input.live) return "entrar";
+export function recepcionCta(input: {
+  entitlement: Entitlement;
+  live: boolean;
+  /**
+   * Hay sesión de Clerk, aunque la app todavía no esté `live` (la fila `users`
+   * puede seguir creándose, o el entitlement puede no estar correlacionado).
+   *
+   * Sin esto, esa ventana caía en la salida histórica y dejaba entrar sin saber
+   * el plan. Con sesión firmada la respuesta honesta es esperar; el "entrar"
+   * directo queda para lo que de verdad es: build sin backend o sin sesión.
+   */
+  signedIn?: boolean;
+  /**
+   * Clerk/Convex todavía están resolviendo la sesión.
+   *
+   * Hace falta como señal PROPIA: mientras Clerk carga, `useOrbitaAuth`
+   * normaliza `isSignedIn` a `false`, así que el primer render de alguien con
+   * sesión es indistinguible de no tener ninguna. Sin esto, ese render caía en
+   * la salida histórica y dejaba entrar sin saber el plan — un parpadeo, pero
+   * uno que abre la carta de alguien que quizás es Free.
+   */
+  authLoading?: boolean;
+}): RecepcionCta {
+  if (input.authLoading) return "cargando";
+  if (!input.live) return input.signedIn ? "cargando" : "entrar";
   const access = surfaceAccess({ entitlement: input.entitlement });
   if (access === "cargando") return "cargando";
   return access === "libre" ? "entrar" : "desbloquear";

@@ -7,10 +7,13 @@ import {
   resolveAccountDestination,
   type AccountState
 } from "../src/domain/accountDestination";
+import { resolveEntryForPlatform, type ModulePlatform } from "./moduleGraph";
 
 const ROOT = join(import.meta.dirname, "..");
 const sinComentarios = (x: string) =>
   x.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+const fuenteDeEntrada = (ruta: string, plataforma: ModulePlatform) =>
+  readFileSync(resolveEntryForPlatform(ruta, plataforma), "utf8");
 
 const BASE: AccountState = {
   backendConfigured: true,
@@ -186,34 +189,51 @@ test("`birthData` dejó de ser la autoridad de acceso", () => {
 });
 
 test("las tabs no tienen bypass de web: bloquean hasta datos natales persistidos", () => {
-  const layout = sinComentarios(readFileSync(join(ROOT, "app/(tabs)/_layout.tsx"), "utf8"));
-  // El bypass dejaba entrar a la web con cualquier sesión, sin datos ni carta.
-  assert.ok(!/IS_WEB\s*\?\s*"allow"/.test(layout), "el bypass de web no puede volver");
-  assert.ok(/AccountGate/.test(layout), "las tabs pasan por el gate compartido");
-  assert.ok(/surface="app"/.test(layout));
-  // La regla local (builds sin envs) sigue existiendo, pero sólo ahí.
-  assert.ok(/if \(BACKEND_CONFIGURED\)/.test(layout));
-  assert.ok(/resolveTabsGuard/.test(layout));
+  const wrapper = sinComentarios(readFileSync(join(ROOT, "app/(tabs)/_layout.tsx"), "utf8"));
+  assert.match(
+    wrapper,
+    /export \{ default \} from "@\/routes\/v492\/tabs-layout"/,
+    "Expo Router debe delegar en el módulo que Metro resuelve por plataforma"
+  );
+
+  const implementaciones = {
+    native: resolveEntryForPlatform("app/(tabs)/_layout.tsx", "native"),
+    web: resolveEntryForPlatform("app/(tabs)/_layout.tsx", "web")
+  } as const;
+  assert.equal(implementaciones.native, join(ROOT, "src/routes/v492/tabs-layout.tsx"));
+  assert.equal(implementaciones.web, join(ROOT, "src/routes/v492/tabs-layout.web.tsx"));
+
+  for (const [plataforma, archivo] of Object.entries(implementaciones)) {
+    const layout = sinComentarios(readFileSync(archivo, "utf8"));
+    // El bypass dejaba entrar a la web con cualquier sesión, sin datos ni carta.
+    assert.ok(!/IS_WEB\s*\?\s*"allow"/.test(layout), `el bypass de ${plataforma} no puede volver`);
+    assert.ok(/AccountGate/.test(layout), `las tabs de ${plataforma} pasan por el gate compartido`);
+    assert.ok(/surface="app"/.test(layout), `${plataforma} declara la superficie app`);
+    // La regla local (builds sin envs) sigue existiendo, pero sólo ahí.
+    assert.ok(/if \(BACKEND_CONFIGURED\)/.test(layout), `${plataforma} conserva la guarda de backend`);
+    assert.ok(/resolveTabsGuard/.test(layout), `${plataforma} conserva la decisión local explícita`);
+  }
 });
 
 // --- Cableado: una sola decisión, no siete ----------------------------------
 
 test("todas las superficies de entrada pasan por el gate compartido", () => {
-  const rutas = {
-    "app/index.tsx": "landing",
-    "app/crear-cuenta.tsx": "auth",
-    "src/onboarding/OnboardingGate.tsx": "onboarding",
-    "app/editar-datos.tsx": "edit-birth-data",
-    "app/(tabs)/_layout.tsx": "app",
-    "src/components/web/require-session.tsx": "app"
-  } as const;
-  for (const [ruta, surface] of Object.entries(rutas)) {
-    const src = readFileSync(join(ROOT, ruta), "utf8");
+  const rutas = [
+    ["app/index.tsx", "web", "landing"],
+    ["app/crear-cuenta.tsx", "web", "auth"],
+    ["src/onboarding/OnboardingGate.tsx", "native", "onboarding"],
+    ["app/editar-datos.tsx", "native", "edit-birth-data"],
+    ["app/(tabs)/_layout.tsx", "native", "app"],
+    ["app/(tabs)/_layout.tsx", "web", "app"],
+    ["src/components/web/require-session.tsx", "web", "app"]
+  ] as const satisfies ReadonlyArray<readonly [string, ModulePlatform, string]>;
+  for (const [ruta, plataforma, surface] of rutas) {
+    const src = fuenteDeEntrada(ruta, plataforma);
     // El atributo puede quedar en otra línea por el formato multilínea del JSX.
-    assert.ok(/AccountGate/.test(src), `${ruta} debe usar el gate compartido`);
+    assert.ok(/AccountGate/.test(src), `${ruta} (${plataforma}) debe usar el gate compartido`);
     assert.ok(
       new RegExp(`surface="${surface}"`).test(src),
-      `${ruta} debe declarar surface="${surface}"`
+      `${ruta} (${plataforma}) debe declarar surface="${surface}"`
     );
   }
 });

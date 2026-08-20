@@ -13,7 +13,14 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
 import { CONTENT_CANVAS_MAX_WIDTH, fitSquare } from "../src/domain/contentCanvas";
-import { ROOT, importsOf, pathTo, reachableFrom } from "./moduleGraph";
+import {
+  ROOT,
+  importsOf,
+  pathTo,
+  reachableFrom,
+  resolveEntryForPlatform,
+  type ModulePlatform
+} from "./moduleGraph";
 
 const leer = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
 const sinComentarios = (x: string) => x.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
@@ -31,6 +38,12 @@ function archivos(dir: string): string[] {
 }
 
 const RUTAS = archivos("app");
+const CARTA_FULL_ENTRY = "app/carta-full.tsx";
+const CARTA_FULL_NATIVE = "src/routes/v492/carta-full.tsx";
+const CARTA_FULL_WEB = "src/routes/v492/carta-full.web.tsx";
+const RECEPCION_ENTRY = "app/recepcion.tsx";
+const RECEPCION_NATIVE = "src/routes/v492/recepcion.tsx";
+const RECEPCION_WEB = "src/routes/v492/recepcion.web.tsx";
 
 // --- 1. El lienzo lo montan los shells, una sola vez -------------------------
 
@@ -44,9 +57,10 @@ const SHELLS = [
   "src/components/orbita/kit.tsx", // OrbitaScreen — Carta, Perfil, Tránsitos, Vínculo
   "src/components/home/DetailScreen.tsx", // detalles de la Home — Valores, Diario, lecturas
   "src/components/void/VoidExperience.tsx", // el Umbral
+  "src/components/v492/Screen.tsx", // pantallas nativas V4.9.2
   "src/screens/HomeScreen.tsx", // Inicio: shell propio (fondo full-bleed + ritual)
-  "app/recepcion.tsx", // la ceremonia del día 1
-  "app/carta-full.tsx" // la rueda a pantalla completa
+  RECEPCION_WEB, // la ceremonia del día 1, conservada sólo en web
+  CARTA_FULL_WEB // la rueda inmersiva que web conserva en la ruta legada
 ] as const;
 
 /**
@@ -59,10 +73,60 @@ const ENVOLTORIO: Record<(typeof SHELLS)[number], RegExp> = {
   "src/components/home/DetailScreen.tsx":
     /<ContentCanvas variant=\{canvas\}>\s*<View style=\{styles\.body\}>\{children\}<\/View>/,
   "src/components/void/VoidExperience.tsx": /<ContentCanvas variant="immersive" fill>/,
+  "src/components/v492/Screen.tsx":
+    /<ContentCanvas variant="reading">[\s\S]*<ContentCanvas variant="reading">\{children\}<\/ContentCanvas>/,
   "src/screens/HomeScreen.tsx": /<ContentCanvas variant="wide">/,
-  "app/recepcion.tsx": /<ContentCanvas>/,
-  "app/carta-full.tsx": /<ContentCanvas variant="immersive">/
+  [RECEPCION_WEB]: /<ContentCanvas>/,
+  [CARTA_FULL_WEB]: /<ContentCanvas variant="immersive">/
 };
+
+test("carta-full conserva un reexport platform-resolved y audita cada implementación real", () => {
+  const wrapper = sinComentarios(leer(CARTA_FULL_ENTRY)).trim();
+  assert.equal(
+    wrapper,
+    'export { default } from "@/routes/v492/carta-full";',
+    "la ruta de Expo debe seguir siendo un wrapper neutro"
+  );
+
+  const nativeImpl = relative(ROOT, resolveEntryForPlatform(CARTA_FULL_ENTRY, "native"));
+  const webImpl = relative(ROOT, resolveEntryForPlatform(CARTA_FULL_ENTRY, "web"));
+  assert.equal(nativeImpl, CARTA_FULL_NATIVE, "Metro debe resolver la implementación nativa V4.9.2");
+  assert.equal(webImpl, CARTA_FULL_WEB, "Metro debe conservar la rueda inmersiva sólo en web");
+
+  const native = sinComentarios(leer(nativeImpl));
+  assert.match(
+    native,
+    /<Redirect href="\/perfil\/carta\/completa"\s*\/>/,
+    "la implementación nativa real redirige a la Carta completa dentro del stack"
+  );
+  assert.doesNotMatch(
+    native,
+    /ContentCanvas|NatalWheel|charts\.current|useQuery/,
+    "el redirect nativo no puede arrastrar la rueda legada ni su árbol de datos"
+  );
+});
+
+test("recepción conserva la ceremonia web y una redirección nativa limpia", () => {
+  const wrapper = sinComentarios(leer(RECEPCION_ENTRY)).trim();
+  assert.equal(
+    wrapper,
+    'export { default } from "@/routes/v492/recepcion";',
+    "la ruta de Expo debe seguir siendo un wrapper neutro"
+  );
+
+  const nativeImpl = relative(ROOT, resolveEntryForPlatform(RECEPCION_ENTRY, "native"));
+  const webImpl = relative(ROOT, resolveEntryForPlatform(RECEPCION_ENTRY, "web"));
+  assert.equal(nativeImpl, RECEPCION_NATIVE, "Metro debe resolver la redirección nativa V4.9.2");
+  assert.equal(webImpl, RECEPCION_WEB, "Metro debe conservar la ceremonia histórica sólo en web");
+
+  const native = sinComentarios(leer(nativeImpl));
+  assert.match(native, /<Redirect href="\/perfil\/carta"\s*\/>/);
+  assert.doesNotMatch(
+    native,
+    /ContentCanvas|NatalWheel|TriadLine|subscriptions\.getCurrent|\/paywall/,
+    "la redirección nativa no puede arrastrar el shell ni la compra web"
+  );
+});
 
 test("cada shell envuelve su contenido con el lienzo compartido", () => {
   for (const shell of SHELLS) {
@@ -197,15 +261,38 @@ test("todas las rutas del producto llegan a un shell que aplica el lienzo", () =
   const shells = new Set<string>([...SHELLS, "src/onboarding/components/Screen.tsx"]);
   const sinLienzo: string[] = [];
   for (const ruta of RUTAS) {
-    if (FUERA.has(ruta)) continue;
-    // Una redirección pura no renderiza contenido: no necesita lienzo.
-    const codigo = sinComentarios(leer(ruta));
-    const soloRedirect = /<Redirect/.test(codigo) && !/<[A-Z][A-Za-z]*(Screen|Experience|Shell|Gate|Flow)/.test(codigo);
-    if (soloRedirect) continue;
+    // Los layouts sólo aportan gate/chrome/Stack. Cada ruta hija se audita por
+    // separado y es la que tiene que llegar a un shell con lienzo.
+    if (FUERA.has(ruta) || ruta.endsWith("/_layout.tsx")) continue;
+    // Los wrappers neutros de Expo Router no contienen la pantalla: Metro
+    // resuelve su implementación `.web` o nativa FUERA de `app/`. Se auditan
+    // las dos implementaciones reales. Mirar sólo el wrapper haría dos falsos
+    // positivos opuestos: marcaría una pantalla nativa como huérfana y podría
+    // dejar pasar una implementación web sin lienzo.
+    for (const plataforma of ["native", "web"] as const satisfies readonly ModulePlatform[]) {
+      const implementacion = resolveEntryForPlatform(ruta, plataforma);
+      const implementacionRel = relative(ROOT, implementacion);
+      const codigo = sinComentarios(readFileSync(implementacion, "utf8"));
 
-    // La ruta tiene que poder LLEGAR a alguno de los shells verificados arriba;
-    // sólo por ahí se renderiza contenido dentro de la columna.
-    if (!shells.has(ruta) && !pathTo(ruta, (rel) => shells.has(rel))) sinLienzo.push(ruta);
+      // Una redirección pura no renderiza contenido: no necesita lienzo. La
+      // condición se evalúa sobre la implementación RESUELTA, no sobre el
+      // wrapper que sólo reexporta el default.
+      const soloRedirect =
+        /<Redirect/.test(codigo) &&
+        !/<[A-Z][A-Za-z]*(Screen|Experience|Shell|Gate|Flow)/.test(codigo);
+      if (soloRedirect) continue;
+
+      // La ruta tiene que poder LLEGAR a alguno de los shells verificados
+      // arriba por el grafo de ESA plataforma; sólo por ahí renderiza dentro de
+      // la columna. Conservar el wrapper como raíz también verifica que no se
+      // haya cortado el reexport platform-resolved.
+      if (
+        !shells.has(implementacionRel) &&
+        !pathTo(ruta, (rel) => shells.has(rel), plataforma)
+      ) {
+        sinLienzo.push(`${ruta} (${plataforma}: ${implementacionRel})`);
+      }
+    }
   }
   assert.deepEqual(sinLienzo, [], "estas rutas renderizan contenido fuera de todo shell con lienzo");
 });
@@ -216,7 +303,7 @@ test("el lienzo no se anida consigo mismo dentro de un shell", () => {
   // las pantallas: hoy la pantalla elige su VARIANTE, no monta su columna.
   const repetidores = [
     "src/screens/CartaScreen.tsx",
-    "app/(tabs)/perfil.tsx",
+    "src/screens/PerfilScreen.tsx",
     "src/screens/TransitosScreen.tsx",
     "src/screens/ValoresScreen.tsx",
     "src/screens/DiarioScreen.tsx"
@@ -241,9 +328,13 @@ const VARIANTE: Record<string, RegExp> = {
   // Y todos sus estados pasan por ese shell, no sólo el del mapa cargado.
   "src/screens/DiarioScreen.tsx": /<DetailScreen eyebrow="Tu diario" canvas="wide">/,
   // El Perfil es una columna de lectura a propósito: son datos y links.
-  "app/(tabs)/perfil.tsx": /<OrbitaScreen canvas="reading">/,
-  // La rueda a pantalla completa y el Umbral SON la pieza: sin tope.
-  "app/carta-full.tsx": /<ContentCanvas variant="immersive">/,
+  "src/screens/PerfilScreen.tsx": /<OrbitaScreen canvas="reading">/,
+  // LayerScreen y DetailLayerScreen fijan la columna de lectura una sola vez
+  // para todas las pantallas nativas V4.9.2.
+  "src/components/v492/Screen.tsx": /<ContentCanvas variant="reading">/,
+  // La rueda legada de web y el Umbral SON la pieza: sin tope. En nativo,
+  // carta-full es el redirect platform-resolved verificado arriba.
+  [CARTA_FULL_WEB]: /<ContentCanvas variant="immersive">/,
   "src/components/void/VoidExperience.tsx": /<ContentCanvas variant="immersive"/
 };
 
@@ -435,7 +526,7 @@ test("el Perfil no dibuja el hero en escritorio, y sí en móvil y nativo", () =
   // El hero es una banda de 240px dentro de una columna de 720 sobre un fondo
   // cósmico full-bleed: en escritorio quedaba como una lámina rectangular con
   // los bordes cortados contra ese fondo. Fuera de escritorio se conserva.
-  const perfil = sinComentarios(leer("app/(tabs)/perfil.tsx"));
+  const perfil = sinComentarios(leer("src/screens/PerfilScreen.tsx"));
   assert.match(perfil, /const desktop = useIsDesktop\(\);/, "el Perfil consume el contexto de layout");
   assert.match(
     perfil,
@@ -602,7 +693,7 @@ test("los módulos de maqueta del app core ya no existen ni se importan", () => 
 });
 
 test("el Perfil ya no arrastra el mock del app core para una frase fija", () => {
-  const perfil = "app/(tabs)/perfil.tsx";
+  const perfil = "src/screens/PerfilScreen.tsx";
   assert.equal(pathTo(perfil, (rel) => /appData|chartMock/.test(rel)), null);
   // Y la frase sigue estando: el arreglo no fue borrar el microcopy.
   assert.match(leer(perfil), /No los compartimos con nadie\./);

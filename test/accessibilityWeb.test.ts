@@ -12,7 +12,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
 import { loopIterations, reducedMotionInitialState } from "../src/domain/reducedMotion";
-import { ROOT } from "./moduleGraph";
+import { ROOT, resolveEntryForPlatform } from "./moduleGraph";
 
 const leer = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
 const sinComentarios = (x: string) => x.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
@@ -78,7 +78,7 @@ test("hay foco visible en web y sólo con teclado", () => {
 const CONTROLES: Array<[string, string]> = [
   ["src/components/home/DetailScreen.tsx", "backBtn"], // volver, en todas las pantallas de detalle
   ["src/components/void/VoidExperience.tsx", "backBtn"], // volver, en el Umbral
-  ["app/carta-full.tsx", "closeBtn"], // cerrar la rueda a pantalla completa
+  [relative(ROOT, resolveEntryForPlatform("app/carta-full.tsx", "web")), "closeBtn"], // cerrar la rueda web
   ["app/editar-datos.tsx", "backBtn"] // cancelar la edición de datos
 ];
 

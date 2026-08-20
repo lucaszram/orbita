@@ -345,13 +345,38 @@ export const appApi = {
       UserDoc
     >,
     // Eliminación completa de cuenta (App Review). Idempotente: borra todos los
-    // datos propios en Convex; el cliente borra Clerk DESPUÉS de que responda ok.
-    // Backend mergeado (PR #27); por ahora desplegado solo en Convex dev.
-    deleteAccount: anyApi.users.deleteAccount as FunctionReference<
+    // datos propios en Convex; el boundary borra Clerk DESPUÉS de que responda ok.
+    //
+    // **V2**, y el cliente sólo usa ésta. `expectedClerkUserId` NO elige a quién
+    // borrar: el objetivo sigue siendo la identidad autenticada. Es una
+    // exigencia — el handler compara contra `identity.subject` y tira si no
+    // coincide. Sin eso, un flujo empezado por A que llegaba a la mutation con la
+    // sesión de B borraba a B.
+    //
+    // El `deleteAccount` legado (sin argumentos) sigue desplegado para los builds
+    // ya instalados y está marcado deprecado en `convex/users.ts`; ningún cliente
+    // de este repo lo llama.
+    deleteAccountV2: anyApi.users.deleteAccountV2 as FunctionReference<
       "mutation",
       "public",
-      Empty,
+      { expectedClerkUserId: string },
       { deleted: true }
+    >,
+    /**
+     * ¿Consta que esta identidad ya se borró en Clerk?
+     *
+     * Pública porque quien pregunta está SIN sesión: si su identidad se borró,
+     * no tiene token con qué autenticarse. Es la consulta que saca del callejón
+     * sin salida a quien perdió el checkpoint en memoria.
+     *
+     * `confirmed` es lo único que autoriza a purgar. `pending` y `unknown` son
+     * los dos "no se sabe" y se tratan igual de cerrados.
+     */
+    checkIdentityDeletionStatus: anyApi.users.checkIdentityDeletionStatus as FunctionReference<
+      "mutation",
+      "public",
+      { clerkUserId: string },
+      { status: "confirmed" | "pending" | "unknown" | "rate_limited"; retryAfterMs?: number }
     >
   },
   placeTimezone: {
@@ -456,6 +481,11 @@ export const appApi = {
       Empty,
       NatalChartDoc
     >,
+    // `charts.recoverNatalChart` NO vive acá. Es una superficie NUEVA, y una
+    // superficie nueva no puede nacer con una firma escrita a mano: se consume
+    // por la referencia GENERADA, en `src/services/chartsApi.ts`. Un cast a
+    // `FunctionReference` compila igual aunque el backend cambie el contrato; la
+    // referencia generada, no.
     // Ya implementadas en backend (el "propuesto" quedó obsoleto): derivan de la carta.
     valuesMap: anyApi.charts.valuesMap as FunctionReference<"query", "public", Empty, ValuesMapPayload | null>,
     personalityReading: anyApi.charts.personalityReading as FunctionReference<
@@ -539,7 +569,39 @@ export const appApi = {
         currentPeriodEnd?: number;
         willRenew?: boolean;
         canManageInStripePortal: boolean;
+        // Aditivos: `provider` nombra un ganador, pero puede haber dos cobros
+        // vivos y las dos salidas tienen que ser visibles.
+        canManageInRevenueCat: boolean;
+        activeProviders: string[];
+        /**
+         * Dueño para el que se calculó ESTE resultado. Permite descartar un
+         * valor cacheado de la cuenta anterior durante un cambio A → B.
+         */
+        clerkUserId: string | null;
       }
+    >,
+    /**
+     * Pide una reconciliación server-side contra la REST de RevenueCat.
+     *
+     * Es una **mutation**, no una action, y eso es lo que la hace confiable: el
+     * backend consume el cupo y deja el trabajo ESCRITO en una sola
+     * transacción. Como action podía morir antes de crear nada y el toque de la
+     * persona se perdía sin dejar rastro.
+     *
+     * Por eso tampoco devuelve el resultado de la lectura: devuelve que el
+     * trabajo quedó encolado. El acceso, cuando se repare, llega por la query
+     * reactiva `subscriptions.getCurrent`.
+     *
+     * NO recibe argumentos a propósito: el backend deriva la cuenta de la
+     * sesión de Clerk. El cliente no manda su identidad, ni su `CustomerInfo`,
+     * ni un recibo — nada de lo que viaja desde el teléfono concede acceso.
+     */
+    requestStoreReconcile: anyApi.payments.revenuecatRest
+      .requestStoreReconcile as FunctionReference<
+      "mutation",
+      "public",
+      Empty,
+      { status: "queued" | "cooldown" | "unauthenticated" }
     >
   }
 } as const;

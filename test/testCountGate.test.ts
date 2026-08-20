@@ -27,23 +27,29 @@ const resumen = (pass: number, fail = 0) =>
     ""
   ].join("\n");
 
-test("el piso es el del brief: 745 tests", () => {
-  assert.equal(DEFAULT_MINIMUM, 745);
+test("el piso acompaña a la suite: 2347 tests", () => {
+  // El brief original pedía 745; la suite creció con V4.9.2, identidad, comercio,
+  // la reestructura de la pestaña 5, el bloque de frescura, Hoy sin arco, los
+  // detalles editoriales y ahora el cierre de frescura —el resultado que resuelve
+  // sin cielo, la ruta vieja del arco y el destino de la pestaña Tránsitos—. El
+  // piso sube con ella —y queda en el conteo REAL de la corrida, no en un número
+  // redondo—: bajar de acá significa que se borró o se debilitó una prueba.
+  assert.equal(DEFAULT_MINIMUM, 2347);
 });
 
 test("una corrida completa por encima del piso pasa", () => {
-  const verdict = evaluateTestRun(resumen(764));
+  const verdict = evaluateTestRun(resumen(2384));
   assert.equal(verdict.ok, true);
-  assert.equal(verdict.pass, 764);
+  assert.equal(verdict.pass, 2384);
   assert.deepEqual(verdict.failures, []);
 });
 
-test("el piso incluye su propio número: exactamente 745 pasa, 744 falla", () => {
-  assert.equal(evaluateTestRun(resumen(745)).ok, true);
+test("el piso incluye su propio número: exactamente 2347 pasa, 2346 falla", () => {
+  assert.equal(evaluateTestRun(resumen(2347)).ok, true);
 
-  const abajo = evaluateTestRun(resumen(744));
+  const abajo = evaluateTestRun(resumen(2346));
   assert.equal(abajo.ok, false);
-  assert.match(abajo.failures[0], /744/);
+  assert.match(abajo.failures[0], /2346/);
   assert.match(abajo.failures[0], /falta/);
 });
 
@@ -62,19 +68,19 @@ test("una corrida sin resumen NO pasa: la ausencia de `fail` no es `fail 0`", ()
 });
 
 test("el formato TAP del runner también se lee", () => {
-  const tap = ["# tests 764", "# pass 764", "# fail 0", ""].join("\n");
+  const tap = ["# tests 2367", "# pass 2367", "# fail 0", ""].join("\n");
   const verdict = evaluateTestRun(tap);
   assert.equal(verdict.ok, true);
-  assert.equal(verdict.pass, 764);
+  assert.equal(verdict.pass, 2367);
 });
 
 test("un nombre de test que imita el resumen no le gana al resumen real", () => {
   // El resumen va al final; se toma la última aparición, no la primera.
-  const salida = ["✔ pass 1 no debería contar (0.1ms)", resumen(764)].join("\n");
-  assert.equal(readCounter(salida, "pass"), 764);
+  const salida = ["✔ pass 1 no debería contar (0.1ms)", resumen(2367)].join("\n");
+  assert.equal(readCounter(salida, "pass"), 2367);
 });
 
 test("el mínimo es configurable para poder subir el piso sin tocar la lógica", () => {
-  assert.equal(evaluateTestRun(resumen(764), { minimum: 900 }).ok, false);
-  assert.equal(evaluateTestRun(resumen(764), { minimum: 700 }).ok, true);
+  assert.equal(evaluateTestRun(resumen(2367), { minimum: 2427 }).ok, false);
+  assert.equal(evaluateTestRun(resumen(2367), { minimum: 700 }).ok, true);
 });

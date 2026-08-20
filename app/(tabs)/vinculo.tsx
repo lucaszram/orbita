@@ -1,45 +1,11 @@
-import { StyleSheet, Text, View } from "react-native";
-import { Body, Eyebrow, H2, OrbitaScreen, Section } from "@/components/orbita/kit";
-import { FullBleedHero } from "@/components/orbita/ImmersiveHero";
-import { orbita } from "@/theme/orbita";
-
-/** Vínculo (sinastría) — estado Próximamente honesto: sin par ni textos inventados. */
-export default function VinculoScreen() {
-  return (
-    <OrbitaScreen>
-      <FullBleedHero kind="vinculo" />
-      <Section style={{ paddingTop: orbita.spacing.lg }}>
-        <Eyebrow>VÍNCULO · PRÓXIMAMENTE</Eyebrow>
-        <H2>Dos cartas,{"\n"}un cielo.</H2>
-        <Body>
-          Vas a poder comparar tu carta con la de otra persona: dónde fluyen, dónde chocan y qué energía comparten.
-        </Body>
-        <Body>
-          Lo estamos afinando para que lea de verdad, sin adivinar de más. Te avisamos apenas esté.
-        </Body>
-        <View style={{ height: orbita.spacing.xl }} />
-        <View style={styles.comingPill}>
-          <Text style={styles.comingPillText}>TE AVISAMOS CUANDO ESTÉ</Text>
-        </View>
-      </Section>
-    </OrbitaScreen>
-  );
-}
-
-const styles = StyleSheet.create({
-  comingPill: {
-    alignSelf: "flex-start",
-    borderColor: orbita.colors.line,
-    borderRadius: orbita.radius.lg,
-    borderWidth: 1,
-    height: 52,
-    justifyContent: "center",
-    paddingHorizontal: orbita.spacing.xxl
-  },
-  comingPillText: {
-    color: orbita.colors.mutedDim,
-    fontFamily: orbita.fonts.monoMedium,
-    fontSize: 13,
-    letterSpacing: 1
-  }
-});
+/**
+ * Wrapper de ruta. La implementación vive FUERA de `app/`, en
+ * `src/routes/v492/tabs-vinculo` (`.tsx` nativo / `.web.tsx` web).
+ *
+ * Expo Router incluye en el grafo TODOS los archivos de `app/`, también las
+ * variantes `.web.tsx`: por eso el bundle nativo terminaba empaquetando el
+ * árbol web (landing, Home, tarot) aunque nunca lo renderizara. Con la
+ * implementación afuera, la que elige es la resolución por plataforma de Metro
+ * y el nativo no llega a ver el módulo web.
+ */
+export { default } from "@/routes/v492/tabs-vinculo";

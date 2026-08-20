@@ -3,15 +3,15 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { resolveDebugStep } from "../src/domain/onboardingDebug";
+import { ROOT, resolveEntryForPlatform } from "./moduleGraph";
 
-const ROOT = join(import.meta.dirname, "..");
 const FLOW = readFileSync(join(ROOT, "src/onboarding/OnboardingFlow.tsx"), "utf8");
 const PERSIST_RAW = readFileSync(join(ROOT, "src/onboarding/useAccount.ts"), "utf8");
 /** Sin comentarios: varios explican de qué se migró y nombran lo viejo. */
 const PERSIST = PERSIST_RAW.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 const EDITOR = readFileSync(join(ROOT, "app/editar-datos.tsx"), "utf8");
-const EMPEZAR = readFileSync(join(ROOT, "app/empezar.tsx"), "utf8");
-const ONBOARDING = readFileSync(join(ROOT, "app/onboarding.tsx"), "utf8");
+const EMPEZAR = readFileSync(resolveEntryForPlatform("app/empezar.tsx", "web"), "utf8");
+const ONBOARDING = readFileSync(resolveEntryForPlatform("app/onboarding.tsx", "native"), "utf8");
 const GATE = readFileSync(join(ROOT, "src/onboarding/OnboardingGate.tsx"), "utf8");
 /** Sin comentarios: varios nombran el patrón viejo a propósito. */
 const FLOW_CODE = FLOW.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
@@ -170,7 +170,10 @@ test("la persistencia compartida ya no genera el día con la fecha del dispositi
 test("web y nativo rechazan una cuenta completa por el MISMO gate", () => {
   const sinComentarios = (x: string) =>
     x.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
-  for (const [nombre, src] of [["app/empezar.tsx", EMPEZAR], ["app/onboarding.tsx", ONBOARDING]] as const) {
+  for (const [nombre, src] of [
+    ["app/empezar.tsx (web)", EMPEZAR],
+    ["app/onboarding.tsx (nativo)", ONBOARDING]
+  ] as const) {
     const codigo = sinComentarios(src);
     assert.ok(/OnboardingGate/.test(codigo), `${nombre} debe pasar por el gate compartido`);
     assert.ok(
@@ -336,14 +339,56 @@ test("el borrador remoto se guarda y se CONFIRMA antes de abrir Clerk", () => {
   // guardar, así que acá no se valida el payload: se guarda, y quien decide si
   // el borrador está completo es `confirmSignupDraft`. Sin ese `ready`, no se
   // crea la identidad — una cuenta sin datos no la sabe recuperar nadie.
+  //
+  // La cadena se mudó a `src/domain/anonymousSignupDraft.ts` y las dos llamadas
+  // al contrato a `src/services/anonymousOnboardingTransport.ts`, porque el
+  // canal tiene que ser uno SIN autenticar (ver `anonymousSignupDraftRace`).
+  // Las mismas garantías se siguen exigiendo, cada una donde ahora vive.
   const inner = bloqueDesde(PERSIST, "function useOnboardingSignupDraftInner()");
-  const iGuarda = inner.indexOf("appApi.onboarding.saveDraft");
-  const iConfirma = inner.indexOf("appApi.onboarding.confirmSignupDraft");
-  assert.ok(iGuarda !== -1 && iGuarda < iConfirma, "primero se guarda, después se confirma");
-  assert.ok(/clientDraftId: input\.clientDraftId/.test(inner), "el borrador es reencontrable");
-  assert.ok(/runSessionAttempts\(\{/.test(inner), "un enriquecimiento en vuelo no es un error");
-  assert.ok(/throw new Error\("ONBOARDING_SIGNUP_DRAFT_NOT_READY"\)/.test(inner));
+  assert.ok(
+    !/useConvex\(\)/.test(inner),
+    "el borrador anónimo no puede viajar por el cliente atado a Clerk"
+  );
+  assert.ok(/anonymousSignupDraftTransport\(\)/.test(inner), "el transporte es el dedicado");
+  assert.ok(/persistSignupDraft\(transport, input\)/.test(inner), "la cadena es la del dominio");
   assert.ok(!/deviceTimezone\(\)/.test(inner), "la zona no sale del dispositivo");
+
+  const TRANSPORTE = readFileSync(join(ROOT, "src/services/anonymousOnboardingTransport.ts"), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/.*$/gm, "");
+  const iGuarda = TRANSPORTE.indexOf("appApi.onboarding.saveDraft");
+  const iConfirma = TRANSPORTE.indexOf("appApi.onboarding.confirmSignupDraft");
+  assert.ok(iGuarda !== -1 && iGuarda < iConfirma, "primero se guarda, después se confirma");
+  assert.ok(
+    /clientDraftId: args\.clientDraftId/.test(TRANSPORTE),
+    "el borrador es reencontrable"
+  );
+  assert.ok(!/setAuth/.test(TRANSPORTE), "sobre este cliente no se setea auth");
+  assert.ok(!/deviceTimezone\(\)/.test(TRANSPORTE), "la zona no sale del dispositivo");
+
+  const CADENA = readFileSync(join(ROOT, "src/domain/anonymousSignupDraft.ts"), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/.*$/gm, "");
+  // Sin `bloqueDesde`: la firma trae un `{ now, sleep }` opcional, así que la
+  // primera llave NO es la del cuerpo. La cadena es lo último del archivo.
+  const chain = CADENA.slice(CADENA.indexOf("export async function persistSignupDraft("));
+  assert.ok(chain.length > 0, "no se encontró la cadena del borrador");
+  assert.ok(
+    chain.indexOf("transport.saveDraft(") < chain.indexOf("transport.confirmSignupDraft("),
+    "primero se guarda, después se confirma"
+  );
+  assert.ok(/runSessionAttempts\(\{/.test(chain), "un enriquecimiento en vuelo no es un error");
+  assert.ok(
+    /clientDraftId: input\.clientDraftId/.test(chain),
+    "la confirmación apunta al MISMO borrador"
+  );
+  assert.ok(/throw new Error\(SIGNUP_DRAFT_NOT_READY\)/.test(chain));
+  assert.ok(
+    /SIGNUP_DRAFT_NOT_READY = "ONBOARDING_SIGNUP_DRAFT_NOT_READY"/.test(CADENA),
+    "el código de error que interpreta el alta no cambió"
+  );
+  assert.ok(!/deviceTimezone\(\)/.test(CADENA), "la zona no sale del dispositivo");
+
   // Y el paso de cuenta no abre Clerk sin ese `ready`.
   const cuenta = readFileSync(join(ROOT, "src/onboarding/screens/AccountScreen.tsx"), "utf8");
   assert.match(cuenta, /phase === "ready" \? \([\s\S]{0,200}<ClerkSignUp\b/);

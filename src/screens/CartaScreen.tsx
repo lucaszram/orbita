@@ -21,10 +21,13 @@ import { bodySymbol, RETROGRADE_CODE, type BodyGlyphKey } from "@/domain/astroSy
 import { mapNatalChart } from "@/domain/natalChart";
 import { personalChartGate } from "@/domain/natalChartGate";
 import { Radar } from "@/components/orbita/Radar";
-import { cartaGate, readingBlockPhase, type ReadingBlockPhase } from "@/domain/cartaNatalCarga";
+import { usePressedState } from "@/components/v492/Touchable";
+import { cartaGate, type ReadingBlockPhase } from "@/domain/cartaNatalCarga";
+import { natalPlacementLine } from "@/domain/lecturaNatal";
 import { sessionPhase } from "@/domain/screenPhase";
 import { useIsDesktop } from "@/hooks/useLayoutMode";
 import { useLiveApp } from "@/hooks/useLiveApp";
+import { useNatalReading } from "@/hooks/useNatalReading";
 import {
   appApi,
   type NatalChartAspect,
@@ -97,45 +100,12 @@ function CartaLive() {
   // devolver la carta VIEJA (ver `domain/natalChartGate`). Sin esta verificación
   // se presentaba la carta de otros datos como si fuera la actual.
   const remoteBirth = useQuery(appApi.birthData.getCurrent, {});
-  const reading = useQuery(appApi.charts.personalityReading, {});
-  // Señal reactiva de la generación (pending/ready/error): si el prewarm del
-  // backend tomó el claim y FALLÓ, acá llega `error` y el bloque de lectura
-  // ofrece reintento en vez de quedar en "Preparando…" para siempre.
-  const readingState = useQuery(appApi.charts.personalityReadingState, {});
   const values = useQuery(appApi.charts.valuesMap, {});
-  // Dispara la generación LLM natal (no-opea si ya está cacheada o no hay
-  // carta; una resolución `{ status: "pending" }` significa que el prewarm del
-  // backend ya la está generando y NO es error). Si REJECTA, el bloque de
-  // lectura lo dice inline con REINTENTAR — sin esto, "reading" quedaría null
-  // para siempre y la carga sería eterna. El reintento limpia el fallo local y
-  // vuelve a disparar la action; `generating` cubre la ventana hasta que el
-  // backend pise el `error` remoto de la ronda anterior.
-  const generate = useAction(appApi.charts.generatePersonalityReading);
-  const [generateFailed, setGenerateFailed] = useState(false);
-  const [generating, setGenerating] = useState(true);
-  const [attempt, setAttempt] = useState(0);
-  // La action es Plus-only: con `locked` el backend la rechaza por diseño, así
-  // que dispararla igual solo producía un Server Error en cada cuenta Free. Se
-  // espera la señal remota (`undefined` = query en vuelo) y se dispara solo si
-  // no está bloqueada. La dependencia es este booleano — no el status crudo —
-  // para que pending→ready/error no re-dispare la generación.
-  const canGenerate = readingState !== undefined && readingState.status !== "locked";
-  useEffect(() => {
-    if (!canGenerate) return;
-    let alive = true;
-    setGenerateFailed(false);
-    setGenerating(true);
-    generate({})
-      .catch(() => {
-        if (alive) setGenerateFailed(true);
-      })
-      .finally(() => {
-        if (alive) setGenerating(false);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [generate, attempt, canGenerate]);
+  // La lectura larga —query, señal remota, generación, fallo y reintento— vive
+  // en UN solo lugar (`@/hooks/useNatalReading`), compartido con la Carta
+  // completa V4.9.2. Mientras cada pantalla montaba su propio efecto las dos
+  // podían derivar sobre el mismo dato.
+  const lectura = useNatalReading();
 
   // Gate GENERAL: solo carta + mapa de valores (llegan en <1 s). La lectura
   // larga (40–61 s) NO participa: nunca devuelve la pantalla a MinimalLoading.
@@ -196,18 +166,12 @@ function CartaLive() {
   // La lectura larga resuelve INLINE dentro de "Tu carta, explicada":
   // pendiente → carga inline; reject del generador o `error` remoto → error
   // inline con REINTENTAR; lista → los siete capítulos intactos.
-  const readingPhase = readingBlockPhase({
-    reading,
-    failed: generateFailed,
-    generating,
-    state: readingState?.status
-  });
   return (
     <CartaView
       payload={payload}
-      reading={readingPhase === "listo" ? reading! : null}
-      readingPhase={readingPhase}
-      onRetryReading={() => setAttempt((a) => a + 1)}
+      reading={lectura.reading}
+      readingPhase={lectura.phase}
+      onRetryReading={lectura.retry}
       values={values ?? null}
     />
   );
@@ -515,9 +479,7 @@ function SectorBlock({ s, n }: { s: PersonalitySection; n: number }) {
         <View style={styles.sectorMarker}>
           <AstroGlyph symbol={bodySymbol({ label: s.placement.label })} size={16} color={orbita.colors.bone} strokeWidth={2} />
         </View>
-        <Text style={styles.sectorPlacement}>
-          {`${s.placement.planet} en ${s.placement.sign ?? ""}${s.placement.house ? ` · Casa ${s.placement.house}` : ""}`.toUpperCase()}
-        </Text>
+        <Text style={styles.sectorPlacement}>{natalPlacementLine(s.placement)}</Text>
       </View>
       <Text style={styles.sectorTitle}>{s.title}</Text>
       <Text style={styles.sectorBody}>{s.body}</Text>
@@ -580,8 +542,15 @@ function AspectRow({ a }: { a: NatalChartAspect }) {
 }
 
 function LinkRow({ label, onPress }: { label: string; onPress?: () => void }) {
+  const { pressed, pressableProps } = usePressedState();
+
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" style={({ pressed }) => pressed && { opacity: 0.6 }}>
+    <Pressable
+      onPress={onPress}
+      {...pressableProps}
+      accessibilityRole="button"
+      style={pressed ? styles.linkPressed : null}
+    >
       <Text style={styles.linkText}>{`${label} →`}</Text>
     </Pressable>
   );
@@ -640,5 +609,6 @@ const styles = StyleSheet.create({
   houseTheme: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 13, marginTop: 1 },
 
   links: { flexDirection: "row", flexWrap: "wrap", gap: orbita.spacing.xl, marginTop: orbita.spacing.xl, marginBottom: orbita.spacing.lg },
-  linkText: { color: orbita.colors.muted, fontFamily: orbita.fonts.monoMedium, fontSize: 11, letterSpacing: 1 }
+  linkText: { color: orbita.colors.muted, fontFamily: orbita.fonts.monoMedium, fontSize: 11, letterSpacing: 1 },
+  linkPressed: { opacity: 0.6 }
 });

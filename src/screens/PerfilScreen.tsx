@@ -1,26 +1,28 @@
 import { useRef, useState } from "react";
 import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
-import { useMutation } from "convex/react";
 import { Body, Divider, Eyebrow, H2, MonoLine, Note, OrbitaScreen, Pill, Section } from "@/components/orbita/kit";
 import { ManageSubscriptionBlock } from "@/components/orbita/ManageSubscription";
+import { usePendingDeletionGate } from "@/components/PendingDeletionBoundary";
 import { useConfirm } from "@/components/orbita/ConfirmHost";
 import { FullBleedHero } from "@/components/orbita/ImmersiveHero";
 import { CartaCard } from "@/components/home/CartaCard";
 import { useQuery } from "convex/react";
 import { resolveBirthInfo } from "@/domain/birthInfo";
 import { requestAccountDeletion } from "@/domain/accountDeletion";
+// El inventario de lo que se borra es lo único que cambia por plataforma: la
+// web nombra su Diario, nativo no (no lo tiene). Metro resuelve la variante.
+import {
+  DELETE_ACCOUNT_SUBSCRIPTION_WARNING,
+  DELETE_ACCOUNT_WARNING
+} from "@/domain/accountDeletionCopy";
 import { useAppState } from "@/hooks/useAppState";
 import { useIsDesktop } from "@/hooks/useLayoutMode";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import type { OrbitaAuth } from "@/hooks/useOrbitaAuth";
 import { appApi } from "@/services/appRefs";
 import { backendConfig } from "@/services/backendProviders";
-import {
-  clearAccountSnapshot,
-  clearPendingAccountDeletion,
-  storePendingAccountDeletion
-} from "@/services/storage";
+import { storePendingAccountDeletion } from "@/services/storage";
 import { orbita } from "@/theme/orbita";
 
 const PRIVACY_URL = "https://orbitaastrologia.xyz/privacy";
@@ -33,7 +35,15 @@ const SUPPORT_URL = "https://orbitaastrologia.xyz/support";
  */
 const PRIVACY_NOTE = "Se usan solo para calcular tu carta. No los compartimos con nadie.";
 
-export default function PerfilScreen() {
+/**
+ * Perfil — la pantalla administrativa canónica.
+ *
+ * Desde 2026-08-19 tiene dos superficies: en WEB sigue siendo `/perfil` tal
+ * cual (hero + tarjeta de carta + cuerpo administrativo). En NATIVO la pestaña
+ * "Tu carta" muestra el hub de la carta, y este cuerpo vive detrás del
+ * engranaje, en `/perfil/ajustes` (ver `PerfilAjustesBody` más abajo).
+ */
+export function PerfilScreen() {
   const { auth, isAuthLoading, userError, retryUser } = useLiveApp();
   // `useIsDesktop` sólo puede ser true bajo el shell web: en nativo el contexto
   // no está montado y vale siempre "mobile".
@@ -71,6 +81,47 @@ export default function PerfilScreen() {
         )}
         {/* Con datos incompletos no se dibuja rueda ni se afirma que hay carta. */}
         {birth.status === "complete" ? <CartaCard /> : null}
+        <CuerpoAdministrativo
+          desktop={desktop}
+          birth={birth}
+          auth={auth}
+          isAuthLoading={isAuthLoading}
+          userError={userError}
+          retryUser={retryUser}
+        />
+      </>
+    </OrbitaScreen>
+  );
+}
+
+/**
+ * El cuerpo administrativo del Perfil: editar datos, cuenta, suscripción y
+ * legales. Extraído para servir a dos superficies sin duplicar una línea:
+ *
+ * - `PerfilScreen` (web): igual que siempre, debajo del hero y la tarjeta.
+ * - `PerfilAjustesBody` (nativo): detrás del engranaje de "Tu carta", dentro de
+ *   un `DetailLayerScreen` con ← que vive en `src/routes/v492/perfil-ajustes.tsx`.
+ *
+ * El texto de este archivo está fijado por varios tests que lo leen como
+ * fuente (eliminación de cuenta, suscripción, App Review): la extracción
+ * conserva el JSX byte a byte.
+ */
+function CuerpoAdministrativo({
+  desktop,
+  birth,
+  auth,
+  isAuthLoading,
+  userError,
+  retryUser
+}: {
+  desktop: boolean;
+  birth: ReturnType<typeof resolveBirthInfo>;
+  auth: OrbitaAuth | null;
+  isAuthLoading: boolean;
+  userError: boolean;
+  retryUser: () => void;
+}) {
+  return (
         <Section style={{ paddingTop: orbita.spacing.lg }}>
           <Eyebrow>PERFIL</Eyebrow>
           <H2>Tu carta,{"\n"}tus datos.</H2>
@@ -136,8 +187,30 @@ export default function PerfilScreen() {
             <Body bone>Soporte</Body>
           </Pressable>
         </Section>
-      </>
-    </OrbitaScreen>
+  );
+}
+
+/**
+ * Lo administrativo del Perfil, para la pantalla nativa de ajustes.
+ *
+ * En nativo la pestaña "Tu carta" muestra el hub de la carta; esto queda
+ * detrás del engranaje. Sin `OrbitaScreen`, sin hero y sin `CartaCard`: el
+ * shell (scroll + lienzo + ←) lo pone el `DetailLayerScreen` del wrapper.
+ */
+export function PerfilAjustesBody() {
+  const { auth, isAuthLoading, userError, retryUser } = useLiveApp();
+  const isLive = !!auth?.isSignedIn;
+  const remote = useQuery(appApi.birthData.getCurrent, isLive ? {} : "skip");
+  const birth = resolveBirthInfo({ doc: remote ?? null, resolved: !isLive || remote !== undefined });
+  return (
+    <CuerpoAdministrativo
+      desktop={false}
+      birth={birth}
+      auth={auth ?? null}
+      isAuthLoading={isAuthLoading}
+      userError={userError}
+      retryUser={retryUser}
+    />
   );
 }
 
@@ -153,14 +226,20 @@ function AccountSignedIn({
   retryUser: () => void;
 }) {
   const { archiveAccountData, resetApp } = useAppState();
+  // El boundary global de eliminación pendiente: si la eliminación queda a
+  // medias, publicarle el marcador desmonta el producto entero.
+  const { publish: publishPendingDeletion } = usePendingDeletionGate();
   // `Alert.alert` es no-op en react-native-web: en la web la confirmación
   // nunca resolvía y el flujo de borrado quedaba colgado con el lock tomado.
   const askConfirm = useConfirm();
-  const deleteConvexAccount = useMutation(appApi.users.deleteAccount);
+  // Acá NO se llama a Convex: la mutación destructiva (`deleteAccountV2`) la
+  // dispara el boundary global, con el producto ya desmontado.
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<"convex" | "marker" | "clerk" | null>(null);
+  // El único error de pantalla que queda es no poder escribir el marcador: ahí
+  // no se borró nada. Todo lo destructivo vive en el boundary.
+  const [deleteError, setDeleteError] = useState<"marker" | null>(null);
   // Lock SINCRÓNICO de reentrada: `deleting` (estado React) recién se refleja
   // en el próximo render, así que dos taps rápidos abrirían dos flujos
   // destructivos en paralelo (dos cadenas de alerts, dos user.delete()). El
@@ -212,8 +291,9 @@ function AccountSignedIn({
         confirmWarning: () =>
           askConfirm({
             title: "Eliminar tu cuenta",
-            message:
-              "Vas a borrar tu cuenta de Órbita y todos tus datos: tu carta natal, tus lecturas, tu diario y tus guardadas. Esta acción no se puede deshacer.",
+            // El aviso comercial va en la PRIMERA confirmación, con tiempo de
+            // salir a cancelar: borrar la cuenta no detiene el cobro.
+            message: `${DELETE_ACCOUNT_WARNING}\n\n${DELETE_ACCOUNT_SUBSCRIPTION_WARNING}`,
             confirmLabel: "Continuar"
           }),
         confirmDestructive: () =>
@@ -225,40 +305,38 @@ function AccountSignedIn({
           })
       },
       {
-        // Orden estricto Convex → marcador backend_deleted → Clerk → marcador
-        // identity_deleted → limpieza local → retirar marcador (ver
-        // domain/accountDeletion). El marcador con FASE es lo único que
-        // autoriza al arranque a completar lo que falte si algo muere acá.
-        deleteConvexAccount: async () => {
+        // La pantalla NO borra nada. Deja escrita la intención —fase
+        // `deletion_requested`, con el dueño capturado— y entrega el control.
+        //
+        // Hasta la pasada anterior la mutación destructiva de Convex salía de
+        // acá, con la app entera montada: entre la segunda confirmación y esa
+        // llamada Clerk podía entregar otra sesión, así que el camino FELIZ era
+        // una carrera A → B. Y si el proceso moría en ese hueco, no quedaba nada
+        // en disco que dijera que esta cuenta se estaba borrando.
+        ownerUserId: userId ?? "",
+        markDeletionRequested: async () => {
           setDeleting(true);
-          return await deleteConvexAccount({});
-        },
-        markPendingCleanup: async () => {
-          // Fallar cerrado: sin userId el marcador no tendría dueño (no se
-          // podría retirar el snapshot por cuenta) — y sin marcador válido no
-          // se borra Clerk.
+          // Fallar cerrado: sin userId el marcador no tendría dueño, y sin
+          // marcador válido no se le entrega el control a nadie.
           if (!userId) throw new Error("userId requerido para el marcador de eliminación");
-          await storePendingAccountDeletion(userId, "backend_deleted");
-        },
-        deleteClerkUser: () => auth.deleteUser(),
-        markIdentityDeleted: async () => {
-          if (userId) await storePendingAccountDeletion(userId, "identity_deleted");
-        },
-        clearLocalData: async () => {
-          await resetApp();
-          // A diferencia del logout, acá también se borra el snapshot por
-          // cuenta: la cuenta ya no existe y no hay nada que restaurar.
-          if (userId) await clearAccountSnapshot(userId);
-        },
-        clearPendingCleanup: () => clearPendingAccountDeletion(),
-        goToEntry: () => router.replace("/onboarding")
+          await storePendingAccountDeletion(userId, "deletion_requested");
+        }
       }
     );
     if (result.status === "error") setDeleteError(result.step);
-    if (result.status !== "success") {
-      setDeleting(false);
-      deletionInFlight.current = false;
+    // La intención está persistida: se entrega el control AHORA, antes de que
+    // se haya borrado nada.
+    //
+    // `publish` es sincrónico: el producto —sesión, AppState, bootstrap, Stack—
+    // se desmonta en este mismo render. No se navega ni se libera la pantalla:
+    // dejar el Perfil usable permitía cerrar sesión o entrar con otra cuenta con
+    // el marcador de ésta vivo en disco.
+    if (result.status === "handoff") {
+      publishPendingDeletion(result.marker);
+      return;
     }
+    setDeleting(false);
+    deletionInFlight.current = false;
   }
 
   return (
@@ -288,11 +366,9 @@ function AccountSignedIn({
       </Pressable>
       {deleteError ? (
         <Note>
-          {deleteError === "convex"
-            ? "No pudimos eliminar tu cuenta. Todo sigue como estaba; probá de nuevo."
-            : "La eliminación quedó incompleta. Tu sesión sigue acá; probá de nuevo para terminarla."}
-          {/* "marker" y "clerk" comparten copy: en ambos la sesión sigue viva
-              y el reintento re-corre el flujo completo (Convex es idempotente). */}
+          {/* El único corte posible pasa ANTES de borrar nada: no se pudo dejar
+              la marca en este dispositivo. Todo sigue como estaba. */}
+          No pudimos empezar a eliminar tu cuenta. Todo sigue como estaba; probá de nuevo.
         </Note>
       ) : null}
       <Pressable

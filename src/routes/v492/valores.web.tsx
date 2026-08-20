@@ -1,8 +1,8 @@
 import { Redirect } from "expo-router";
-import { VoidExperience } from "@/components/void/VoidExperience";
+import { ValoresScreen } from "@/screens/ValoresScreen";
 import { WebAppShell } from "@/components/web/web-app-shell";
 
-// El Umbral: la misma experiencia que la pestaña nativa.
+// Mapa de valores: destino contextual de la Carta.
 // Es la pantalla canónica compartida con el nativo, no una versión web aparte.
 // `WebAppShell` aporta la navegación que en nativo pone el layout de pestañas.
 export default function Route() {
@@ -11,8 +11,8 @@ export default function Route() {
   }
 
   return (
-    <WebAppShell active="umbral">
-      <VoidExperience showBack={false} />
+    <WebAppShell active="carta">
+      <ValoresScreen />
     </WebAppShell>
   );
 }

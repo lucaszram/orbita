@@ -5,6 +5,7 @@ import { useQuery } from "convex/react";
 import { MeasuredSquare } from "@/components/orbita/ContentCanvas";
 import { NatalWheel } from "@/components/orbita/NatalWheel";
 import { TriadLine } from "@/components/orbita/TriadLine";
+import { usePressedState } from "@/components/v492/Touchable";
 import { INCOMPLETE_BIRTH_MESSAGE } from "@/domain/birthInfo";
 import { mapNatalChart } from "@/domain/natalChart";
 import { personalChartGate } from "@/domain/natalChartGate";
@@ -32,6 +33,9 @@ export function CartaCard({ variant = "card" }: { variant?: "card" | "hero" }) {
   const remoteBirth = useQuery(appApi.birthData.getCurrent, phase === "live" ? {} : "skip");
   const chartGate = personalChartGate({ birth: remoteBirth, chart: doc });
   const hero = variant === "hero";
+  // Antes de las salidas tempranas: el estado de presionado es un hook y el
+  // orden de los hooks no puede depender de la fase.
+  const { pressed, pressableProps } = usePressedState();
 
   if (phase === "cargando") {
     return (
@@ -129,7 +133,8 @@ export function CartaCard({ variant = "card" }: { variant?: "card" | "hero" }) {
     <View style={hero ? styles.heroSection : styles.section}>
       <Pressable
         onPress={() => router.push("/(tabs)/carta")}
-        style={({ pressed }) => [hero ? styles.hero : styles.card, pressed && styles.pressed]}
+        {...pressableProps}
+        style={[hero ? styles.hero : styles.card, pressed ? styles.pressed : null]}
         accessibilityRole="button"
         accessibilityLabel="Ver mi carta natal"
       >
@@ -142,7 +147,12 @@ export function CartaCard({ variant = "card" }: { variant?: "card" | "hero" }) {
           units={[
             { symbol: "sun", label: t.sun.sign },
             { symbol: "moon", label: t.moon.sign },
-            { symbol: "ascendant", label: t.ascendant.sign }
+            // El Ascendente se marca con la MISMA flecha ascendente que usa el
+            // hub de la Carta, no con su monograma: a 14 px, al lado de dos
+            // glifos planetarios, `Ac` se lee como una sigla suelta. El glifo
+            // del catálogo sigue siendo el de la rueda y el de las tablas de
+            // datos; acá cambia sólo la marca de esta tríada.
+            { symbol: "ascendant", marker: "↑", label: t.ascendant.sign }
           ]}
           textStyle={styles.triadText}
           glyphColor={orbita.colors.bone}
@@ -171,11 +181,13 @@ function CardFrame({
   ctaLabel?: string;
   children: ReactNode;
 }) {
+  const { pressed, pressableProps } = usePressedState();
   return (
     <View style={hero ? styles.heroSection : styles.section}>
       <Pressable
         onPress={onPress ?? (() => router.push("/(tabs)/carta"))}
-        style={({ pressed }) => [hero ? styles.hero : styles.card, pressed && styles.pressed]}
+        {...pressableProps}
+        style={[hero ? styles.hero : styles.card, pressed ? styles.pressed : null]}
         accessibilityRole="button"
         accessibilityLabel="Tu carta natal"
       >

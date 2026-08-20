@@ -1415,7 +1415,10 @@ export function normalizeAstrologyApiNatalChart(args: {
   const chartData = asRecord(chartDataRoot.data);
   const interpretation = Object.keys(interpretationData).length > 0 ? interpretationData : interpretationRoot;
   const chartSource = Object.keys(chartData).length > 0 ? chartData : chartDataRoot;
-  const hasKnownTime = args.input.birthTimePrecision !== "unknown" && args.calculationTimeSource === "birth_time";
+  // Una hora aproximada sin margen declarado no alcanza para certificar
+  // ángulos ni casas. V4.9.2 la trata igual que una hora desconocida para
+  // cualquier geometría sensible al reloj; sólo `known` habilita esa parte.
+  const hasKnownTime = args.input.birthTimePrecision === "known" && args.calculationTimeSource === "birth_time";
   const placements = asArray(interpretation.planets).map((rawPlanet) => {
     const planet = asRecord(rawPlanet);
     const key = normalizeKey(planet.name);
@@ -1481,7 +1484,7 @@ export function normalizeAstrologyApiNatalChart(args: {
     .sort((left, right) => (left.orb ?? 99) - (right.orb ?? 99))
     .slice(0, 6);
   const limitations =
-    args.input.birthTimePrecision === "unknown"
+    args.input.birthTimePrecision !== "known"
       ? ["Sin hora natal exacta: ascendente, casas y Luna pueden quedar aproximados."]
       : [];
 
@@ -1497,7 +1500,7 @@ export function normalizeAstrologyApiNatalChart(args: {
     aspects,
     summary: {
       title: "Estos son tus puntos de partida.",
-      accuracy: args.input.birthTimePrecision === "unknown" ? "approximate_without_birth_time" : "calculated",
+      accuracy: args.input.birthTimePrecision === "known" ? "calculated" : "approximate_without_birth_time",
       sun: placementsWithAscendant.find((placement) => placement.key === "sun") ?? null,
       moon: placementsWithAscendant.find((placement) => placement.key === "moon") ?? null,
       ascendant,

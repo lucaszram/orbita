@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 
 import { CONTENT_CANVAS_MAX_WIDTH, fitSquare } from "../src/domain/contentCanvas";
 import {
@@ -14,15 +14,20 @@ import {
   splitsColumns,
   WEB_LAYOUT_BREAKPOINT
 } from "../src/domain/webLayout";
+import { resolveEntryForPlatform, type ModulePlatform } from "./moduleGraph";
 
 const ROOT = join(import.meta.dirname, "..");
 const sinComentarios = (x: string) => x.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 const leer = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
+const entrada = (ruta: string, plataforma: ModulePlatform) => {
+  const archivo = resolveEntryForPlatform(ruta, plataforma);
+  return { rel: relative(ROOT, archivo), src: readFileSync(archivo, "utf8") };
+};
 
 const CANVAS = leer("src/components/orbita/ContentCanvas.tsx");
 const CARTA = leer("src/screens/CartaScreen.tsx");
 const CARTA_CARD = leer("src/components/home/CartaCard.tsx");
-const PERFIL = leer("app/(tabs)/perfil.tsx");
+const PERFIL = leer("src/screens/PerfilScreen.tsx");
 const WHEEL = leer("src/components/orbita/NatalWheel.tsx");
 
 // --- El tamaño sale del contenedor, no del viewport -------------------------
@@ -105,10 +110,11 @@ test("ninguna pantalla de la carta lee el ancho de la ventana", () => {
     ["src/components/home/CartaCard.tsx", CARTA_CARD],
     ["src/components/orbita/NatalWheel.tsx", WHEEL],
     ["src/components/orbita/ContentCanvas.tsx", CANVAS],
-    // Las otras tres superficies que montan la MISMA rueda.
-    ["app/recepcion.tsx", leer("app/recepcion.tsx")],
-    ["app/carta-full.tsx", leer("app/carta-full.tsx")],
-    ["app/reading/rueda.tsx", leer("app/reading/rueda.tsx")]
+    // Las implementaciones web reales de las otras tres superficies que montan
+    // la MISMA rueda. Las entradas de `app/` son wrappers neutros.
+    [entrada("app/recepcion.tsx", "web").rel, entrada("app/recepcion.tsx", "web").src],
+    [entrada("app/carta-full.tsx", "web").rel, entrada("app/carta-full.tsx", "web").src],
+    [entrada("app/reading/rueda.tsx", "web").rel, entrada("app/reading/rueda.tsx", "web").src]
   ] as const) {
     const codigo = sinComentarios(src);
     assert.ok(!/useWindowDimensions/.test(codigo), `${rel} no puede dimensionar por viewport`);
@@ -135,10 +141,20 @@ test("en escritorio la rueda mide SU COLUMNA, no el lienzo ancho", () => {
 });
 
 test("toda superficie que monta la rueda la mide por contenedor", () => {
-  for (const rel of ["app/recepcion.tsx", "app/carta-full.tsx", "app/reading/rueda.tsx"]) {
-    const codigo = sinComentarios(leer(rel));
-    assert.ok(/<MeasuredSquare max=\{\d+\}/.test(codigo), `${rel} tiene que medir su contenedor`);
-    assert.ok(/size=\{size\}/.test(codigo), `${rel}: el lado viene de la medición`);
+  for (const ruta of ["app/recepcion.tsx", "app/carta-full.tsx", "app/reading/rueda.tsx"]) {
+    const web = entrada(ruta, "web");
+    const codigo = sinComentarios(web.src);
+    assert.ok(/<MeasuredSquare max=\{\d+\}/.test(codigo), `${web.rel} tiene que medir su contenedor`);
+    assert.ok(/size=\{size\}/.test(codigo), `${web.rel}: el lado viene de la medición`);
+
+    const native = entrada(ruta, "native");
+    const redirect = sinComentarios(native.src);
+    assert.match(redirect, /<Redirect\b/, `${native.rel} debe ser una redirección nativa pura`);
+    assert.doesNotMatch(
+      redirect,
+      /MeasuredSquare|NatalWheel|useWindowDimensions|Dimensions\.get|window\.inner/,
+      `${native.rel} no puede arrastrar la rueda web ni su lógica de medida`
+    );
   }
 });
 
@@ -192,7 +208,7 @@ test("Carta y Perfil montan el MISMO lienzo — ahora desde el shell compartido"
   );
   for (const [rel, src] of [
     ["src/screens/CartaScreen.tsx", CARTA],
-    ["app/(tabs)/perfil.tsx", PERFIL]
+    ["src/screens/PerfilScreen.tsx", PERFIL]
   ] as const) {
     const codigo = sinComentarios(src);
     assert.ok(/<OrbitaScreen/.test(codigo), `${rel} monta el shell que aplica el lienzo`);

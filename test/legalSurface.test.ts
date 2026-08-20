@@ -15,7 +15,7 @@ import { test } from "node:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { ROOT } from "./moduleGraph";
+import { ROOT, resolveEntryForPlatform } from "./moduleGraph";
 import { SUPPORT_EMAIL } from "../src/domain/support";
 import { isPublicWebRoute } from "../src/domain/webSession";
 
@@ -23,7 +23,7 @@ const leer = (ruta: string) => readFileSync(join(ROOT, ruta), "utf8");
 
 const legal = leer("src/components/web/orbita-legal.tsx");
 const paywall = leer("src/components/web/orbita-paywall.tsx");
-const rutaTerminos = leer("app/terminos.tsx");
+const rutaTerminos = readFileSync(resolveEntryForPlatform("app/terminos.tsx", "web"), "utf8");
 
 /** Sección de un archivo, entre el nombre de un componente y el siguiente `export function`. */
 function bloque(src: string, componente: string): string {
@@ -75,7 +75,7 @@ test("el mail queda como vía de ayuda, no como mecanismo de baja", () => {
 // --- Privacidad -------------------------------------------------------------
 
 test("Privacidad nombra a los proveedores reales que tocan datos", () => {
-  for (const proveedor of ["Clerk", "Google", "Convex", "Stripe"]) {
+  for (const proveedor of ["Clerk", "Google", "Convex", "Stripe", "RevenueCat", "Apple"]) {
     assert.match(privacidad, new RegExp(`>${proveedor}<`), `Privacidad no nombra a ${proveedor}`);
   }
 });
@@ -84,6 +84,9 @@ test("Privacidad ubica a cada proveedor en su función", () => {
   assert.match(privacidad, /Clerk<\/Text> — autenticación/);
   assert.match(privacidad, /Convex<\/Text> — backend/);
   assert.match(privacidad, /Stripe<\/Text> — pagos en la web/);
+  assert.match(privacidad, /RevenueCat<\/Text> — gestión del estado de compras/);
+  assert.match(privacidad, /Apple<\/Text> — distribución de la app y procesamiento/);
+  assert.doesNotMatch(privacidad, /si en el futuro activás una suscripción/);
 });
 
 test("Privacidad dice que la eliminación se hace desde el perfil", () => {

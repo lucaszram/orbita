@@ -11,6 +11,7 @@ import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { AstroGlyph } from "@/components/orbita/AstroGlyph";
 import { ContentCanvas } from "@/components/orbita/ContentCanvas";
 import { ReadingBlock } from "@/components/orbita/Layout";
+import { usePressedState } from "@/components/v492/Touchable";
 import { bodySymbolForName, type BodyGlyphKey } from "@/domain/astroSymbols";
 import { GuestState } from "@/components/orbita/GuestState";
 import { ErrorState, MinimalLoading } from "@/components/orbita/states";
@@ -56,8 +57,9 @@ type VoidViewProps = {
 
 /**
  * El Vacío — experiencia completa (entrada → escuchando → respuesta), reutilizada
- * por el tab `app/(tabs)/vacio.tsx` (showBack=false) y por la ruta `app/reading/void.tsx`
- * (showBack=true). Live con sesión (cupo + sugeridas personalizadas); invitado → estado honesto.
+ * por el tab `app/(tabs)/umbral/index.tsx` (showBack=false) y por la lectura web
+ * `src/routes/v492/reading-void.web.tsx` (showBack=true; en nativo esa ruta
+ * redirige al tab). Live con sesión (cupo + sugeridas personalizadas); invitado → estado honesto.
  */
 export function VoidExperience({ showBack = true }: { showBack?: boolean }) {
   const live = useLiveApp();
@@ -92,6 +94,22 @@ export function VoidExperience({ showBack = true }: { showBack?: boolean }) {
     );
   }
   return <VoidLive showBack={showBack} />;
+}
+
+/** Una pregunta sugerida de la lista. Es su propio componente porque el estado
+ *  de "presionado" es un hook y la lista se arma con `map`. */
+function PromptRow({ prompt, onPress }: { prompt: string; onPress: () => void }) {
+  const { pressed, pressableProps } = usePressedState();
+  return (
+    <Pressable
+      onPress={onPress}
+      {...pressableProps}
+      style={[styles.promptRow, pressed ? styles.pressed : null]}
+      accessibilityRole="button"
+    >
+      <Text style={styles.promptText}>{prompt}</Text>
+    </Pressable>
+  );
 }
 
 /** Marco mínimo (fondo Órbita) para los estados de carga/error del Umbral. */
@@ -168,6 +186,10 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
   // que no termina sola, así que es la que la preferencia de menos movimiento
   // tiene que poder apagar.
   const reducedMotion = useReducedMotion();
+  // El estado "presionado" vive acá, no en la forma función de `style`: en
+  // nativo NativeWind descarta esa forma y el botón se dibuja sin su píldora.
+  const askPress = usePressedState();
+  const retryPress = usePressedState();
 
   const question = typed.trim() || DEFAULT_QUESTION;
   const activeCategory = categories.find((c) => c.key === category) ?? categories[0];
@@ -310,14 +332,7 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
             keyboardShouldPersistTaps="handled"
           >
             {activeCategory.prompts.map((p) => (
-              <Pressable
-                key={p}
-                onPress={() => askQuestion(p)}
-                style={({ pressed }) => [styles.promptRow, pressed && styles.pressed]}
-                accessibilityRole="button"
-              >
-                <Text style={styles.promptText}>{p}</Text>
-              </Pressable>
+              <PromptRow key={p} prompt={p} onPress={() => askQuestion(p)} />
             ))}
           </ScrollView>
 
@@ -338,7 +353,8 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
               onPress={() => askQuestion(question)}
               hitSlop={8}
               accessibilityRole="button"
-              style={({ pressed }) => [styles.askBtn, pressed && styles.pressed]}
+              {...askPress.pressableProps}
+              style={[styles.askBtn, askPress.pressed ? styles.pressed : null]}
             >
               <Text style={styles.askBtnText}>PREGUNTAR</Text>
             </Pressable>
@@ -395,7 +411,8 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
               setAskFailed(false);
               setPhase("escuchando");
             }}
-            style={({ pressed }) => [pressed && styles.pressed]}
+            {...retryPress.pressableProps}
+            style={retryPress.pressed ? styles.pressed : null}
             accessibilityRole="button"
           >
             <View style={styles.ghostCta}>
