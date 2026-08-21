@@ -1,5 +1,1126 @@
 # Current Task
 
+## RC iOS 1.0.0 (23) · PREPARACIÓN DE CONFIGURACIÓN LOCAL (2026-08-21) · CONFIG LISTA · BUILD NO LANZADO
+
+**Estado: configuración local lista, sin build.** El único cambio de producto de
+esta tarea es `expo.ios.buildNumber` de `"22"` a `"23"` en `app.json`.
+`expo.version` **queda en `"1.0.0"`** y ninguna otra clave de `app.json` se tocó.
+**El build de EAS todavía NO se lanzó**, y no hubo commit, push, submit ni envío
+a App Review. Esto prepara el terreno del próximo RC; no lo arma ni lo
+distribuye.
+
+**Ficha de tarea.**
+
+- **Objetivo.** Dejar la configuración local del repo lista para el próximo
+  Release Candidate de iOS **1.0.0 (23)**: subir el número de build de iOS a
+  `23` conservando la versión pública `1.0.0`, y registrar en este archivo qué
+  quedó hecho y qué sigue dependiendo de una autorización.
+- **Criterios de aceptación.**
+  1. `app.json` tiene `expo.ios.buildNumber: "23"`.
+  2. `app.json` conserva `expo.version: "1.0.0"`.
+  3. Ninguna otra clave de `app.json` cambia: bundle id, plugins, `extra`,
+     `runtimeVersion`, `updates`, `web`, `android` e `infoPlist` quedan
+     idénticos.
+  4. `CURRENT_TASK.md` queda con esta ficha arriba y con el estado real del
+     codegen corregido en el cierre QA22 de abajo.
+  5. No se ejecutó build, commit, push, deploy, submit ni App Review, y el
+     archivo lo dice de forma explícita.
+- **Owner.** Claude (frontend), en el worktree
+  `worktrees/orbita/qa22-fixes`, branch `fix/qa22-build22`.
+- **Territorio permitido.** `app.json` y `CURRENT_TASK.md`, nada más. `app.json`
+  es **territorio compartido y sensible** (§4 del proceso: `app.json` / `eas.json`
+  requieren explicación explícita), así que el cambio queda justificado acá y
+  tiene que volver a explicarse en el PR que lo lleve.
+- **Commit base.** `ac384cf` — `release: Órbita 1.0.0 (22)`, con todo el árbol de
+  QA22 **todavía sin commitear** encima.
+- **Cambio de contrato.** **No.** No se tocó `convex/**` ni `convex/schema.ts`, y
+  no hay entrada nueva en `convex/CHANGELOG.md` por esta tarea.
+- **Riesgo.** **Alto por clasificación**, aunque el diff sea de una línea: §11
+  ubica EAS y configuración de build en el nivel alto. Un `buildNumber` repetido
+  o salteado rompe el envío a App Store Connect, y `expo.version` movida sin
+  querer cambiaría la versión pública. Mitigación: el diff se revisa entero
+  contra los cinco criterios de arriba antes de cualquier build.
+- **Plan de pruebas.** **Ninguna suite se corrió en esta tarea**, por instrucción
+  explícita y porque el cambio no toca código de aplicación: `buildNumber` no
+  entra en `pnpm typecheck` ni en `pnpm test`. La verificación vigente es la del
+  cierre QA22 de abajo (**2542/2542**, `typecheck` y `git diff --check` verdes,
+  codegen en verde). Antes de cortar el RC hay que **revalidar sobre el commit
+  exacto** que se use, no sobre este árbol sucio.
+- **Plan de rollout.** Por etapas y con corte entre cada una: (1) esta
+  preparación de configuración —hecha—; (2) commit identificable del árbol QA22 +
+  este cambio, con revisión de diff; (3) build EAS de RC contra configuración
+  productiva; (4) TestFlight al grupo Release Candidate y smoke tests de §13.8;
+  (5) aprobación explícita de Lucas; (6) el **mismo binario** a App Store. De la
+  (2) en adelante, cada etapa necesita autorización propia y **ninguna está
+  dada**.
+- **Plan de rollback.** Revertir `expo.ios.buildNumber` a `"22"` en `app.json` —
+  una línea, sin efectos en runtime— y descartar esta ficha. Como no hubo
+  commit, push, build ni publicación, no hay nada que revertir aguas abajo: el
+  binario distribuido sigue siendo el build 22. Si el RC ya se hubiese subido,
+  el rollback pasa a ser no promover ese build en App Store Connect y cortar uno
+  nuevo con `buildNumber` mayor, nunca reutilizando el `23`.
+- **Fuera de alcance.** Lanzar el build de EAS; commitear, pushear, abrir PR,
+  deployar Convex, subir a TestFlight o enviar a App Review; tocar `eas.json`,
+  `package.json` o cualquier archivo de `app/**`, `src/**` o `convex/**`; correr
+  tests, typecheck o codegen; revalidar en dispositivo los 31 casos del registro
+  físico del build 22.
+
+**Nada de esto autoriza un RC productivo desde este árbol.** El worktree está
+**sucio** —todo QA22 sin commitear sobre `ac384cf`— y en una rama de trabajo,
+`fix/qa22-build22`. §13 del proceso es explícito: *no se publica producción desde
+un worktree sucio, una rama personal o un commit no identificable*, y §14 exige
+commit y build exactos identificados, worktree limpio y **aprobación explícita de
+Lucas**. Mientras esas tres condiciones no se cumplan, desde acá no se lanza
+build de EAS, no se sube a TestFlight y no se envía a App Review.
+
+## QA22 · CIERRE INTEGRAL DE CÓDIGO — build 22 (2026-08-21) · CERRADO EN CÓDIGO
+
+**Estado: CERRADO EN CÓDIGO.** Los **seis bloques de implementación** de QA22
+están terminados y revisados. Codex corrió la verificación **sobre el árbol
+completo** —ya no por tandas focales— y quedó todo en verde. El **codegen de
+Convex ya corrió**, también en verde (detalle abajo). Lo que sigue pendiente no
+es código: son las autorizaciones del release, cada una por separado.
+
+**Verificación integral (corrida de Codex, sobre el árbol completo).**
+
+| Qué | Resultado |
+|---|---|
+| Suite completa | **2542 pruebas · 2542 en verde · 0 fallos** (piso obligatorio: **2347**) |
+| `pnpm check:test-count /private/tmp/qa22-test-output.log` | **VERDE** |
+| `pnpm typecheck` | **VERDE** |
+| `git diff --check` | **VERDE** |
+| Export Expo web | **VERDE** — generado **sólo** en `/private/tmp/orbita-qa22-web.Ix5Wzv` |
+| Export Expo iOS | **VERDE** — generado **sólo** en `/private/tmp/orbita-qa22-ios.3sfrNx` |
+| Revisión de archivos inesperados | **VERDE** — el alcance del árbol coincide con QA22 |
+| Codegen de Convex (`CONVEX_DEPLOYMENT=dev:dutiful-viper-815`) | **VERDE** — corrió y **no dejó cambios** en `convex/_generated` |
+| Commit · push · deploy · build EAS · submit · App Review | **NO** — nada de eso se hizo |
+
+Los dos exports se escribieron **fuera del repositorio**, en esos directorios
+temporales y nada más: no dejaron artefactos en el árbol y **no son builds
+distribuibles**.
+
+**Codegen de Convex: HECHO, en verde.** Lo corrió **Codex**, pasándole
+`CONVEX_DEPLOYMENT=dev:dutiful-viper-815` al proceso: **sin leer `.env.local`** y
+**sin deploy**. Terminó bien y **no dejó cambios en `convex/_generated`** —los
+tipos generados ya estaban al día con el contrato, así que el árbol no se movió—.
+La verificación posterior al codegen quedó igual de verde: suite en
+**2542/2542**, `pnpm typecheck` **VERDE** y `git diff --check` **VERDE**. Para el
+contrato aditivo del bloque 4B (`driverDetails`) esto levanta el bloqueo que
+estaba anotado acá: ya no falta codegen. Lo que falta para que los sobres nuevos
+traigan el campo es el **deploy del backend**, que es otra autorización y **no se
+hizo**; hasta que ocurra, la lectura degrada del lado del cliente exactamente
+como está escrito en esa ficha.
+
+**Lo que sigue PENDIENTE, y por qué.**
+
+- **RC 1.0.0 (23).** No se armó. La configuración local ya quedó preparada —ver
+  la ficha de arriba: `expo.ios.buildNumber` en `"23"` y `expo.version` en
+  `"1.0.0"`—, pero **el build de EAS todavía NO se lanzó**.
+- **Commit · push · submit · App Review.** Nada de eso se hizo ni está
+  autorizado. El árbol sigue sucio sobre `ac384cf`.
+- **TestFlight.** No se subió nada.
+- **QA física de los 31 casos del registro del build 22.** No se revalidó en
+  dispositivo: no se instaló ningún binario nuevo.
+
+Los cuatro son autorizaciones separadas. Este cierre **no** los anticipa ni los
+da por hechos: cubre el código y su verificación, nada más. Y vale lo mismo que
+dice la ficha del RC: **un RC productivo no se corta desde este árbol** —sucio y
+en rama de trabajo— sin un **commit identificable** y la **autorización explícita
+de Lucas** (§13 y §14 del proceso).
+
+## QA22 · BLOQUE 6 — limpieza visual de Ajustes, paywall y Carta completa (2026-08-21) · VERIFICADO
+
+**Estado: VERIFICADO.** La implementación está completa y Codex ya corrió la
+verificación sobre esta pasada: `pnpm typecheck` **limpio**, la tanda focal
+—`test/visualCleanupQA22.test.ts` + `test/cartaV492.test.ts` +
+`test/cartaNatalCarga.test.ts` + `test/accesoPostAlta.test.ts` +
+`test/perfilAppReview.test.ts` + `test/nativeDefectsV492.test.ts` +
+`test/nativeCommerceIntegration.test.ts` + `test/nativeCommerceSurface.test.ts` +
+`test/dualProviderManagement.test.ts` + `test/planIndicatorQA22.test.ts` +
+`test/responsiveShells.test.ts`— en **370/370 verdes**, y `git diff --check`
+**limpio**. Es una tanda **FOCAL** sobre las once tandas que leen estas pantallas
+como fuente: **la suite completa no se corrió en esta tanda** —la corrió después
+el *CIERRE INTEGRAL DE CÓDIGO* de arriba, en verde— y **tampoco hubo
+revalidación física** en el dispositivo del registro del build 22. Cubre
+**QA22-006**,
+**QA22-007** y **QA22-030** del registro físico del build 22, y deja **QA22-022**
+verificado como intacto. No hubo commit, push, deploy, build ni codegen: el árbol
+sigue con los cambios de los bloques anteriores sin commitear, sobre `ac384cf`.
+
+**Ficha de tarea (obligatoria antes de tocar archivos).**
+
+- **Objetivo.** Tres pantallas se leen desprolijas por el mismo motivo: la FORMA
+  no distingue de qué tipo es cada cosa.
+  1. **Ajustes.** `ManageSubscriptionBlock`
+     (`src/components/orbita/ManageSubscription.tsx`) sigue escrito con el kit
+     legado —`Body`, `Divider`, `Eyebrow`, `Note`, `Pill` de
+     `@/components/orbita/kit`— mientras la pantalla que lo contiene en nativo es
+     V4.9.2 (`PerfilAjustesBody` dentro del `DetailLayerScreen` del wrapper
+     `src/routes/v492/perfil-ajustes.tsx`). Dos sistemas tipográficos y dos
+     escalas de espaciado en la misma columna. Y encima, cuatro cosas de
+     naturaleza distinta caen en una sola lista plana con el mismo peso:
+     **activar** (`ACTIVAR ÓRBITA PLUS`), **gestionar** (`GESTIONAR SUSCRIPCIÓN`
+     / `GESTIONAR EN LA TIENDA` / `GESTIONAR LA SUSCRIPCIÓN WEB`), **restaurar**
+     (`Restaurar compras`) y las **acciones de cuenta y destructivas** (`Cerrar
+     sesión`, `Eliminar mi cuenta`), que además hoy quedan ARRIBA del bloque de
+     suscripción —`AccountSignedIn` se dibuja antes que `ManageSubscriptionBlock`
+     en `CuerpoAdministrativo`—, así que el borrado de cuenta vive en el medio de
+     la columna y pegado a lo comercial.
+  2. **Paywall.** `PlusPaywallScreen` lista TRES beneficios —las doce casas, los
+     aspectos, cinco preguntas por día en El Umbral— y no nombra la superficie
+     más grande que abre el plan: los siete capítulos de "Tu carta, explicada",
+     que la Carta completa cierra con `PlusBlock` cuando `lectura.phase` es
+     `bloqueado`. Se ofrece algo que no se enumera.
+  3. **Carta completa.** `CartaCompletaV492Screen` envuelve en `Card` lo que son
+     LISTAS NORMALES de datos: los datos natales, los ejes, las diez posiciones,
+     los contactos y las doce casas, más la ficha de método. Seis cajas apiladas
+     una atrás de otra convierten una lectura editorial en un tablero, y le
+     quitan a la `Card` lo único que la hacía significar algo: marcar lo
+     excepcional.
+- **Criterios de aceptación (a verificar sobre el código entregado).**
+  1. **El bloque de suscripción habla el idioma de la pantalla (QA22-006).**
+     `ManageSubscription.tsx` deja de importar de `@/components/orbita/kit` y
+     pasa al sistema V4.9.2: tipografías de `@/components/v492/typography`,
+     `ModuleHeader` / `Card` / `DataRow` de `@/components/v492/Module`,
+     `PrimaryButton` de `@/components/v492/States` y espaciados de
+     `@/components/v492/tokens`. Ningún color, tamaño ni margen hardcodeado: si
+     falta un token se propone, no se inventa.
+  2. **Cuatro cosas distintas, cuatro zonas distintas.** La separación es visual
+     Y semántica, no sólo un margen más: **activar** es la única acción primaria
+     del bloque; **gestionar** es la salida de quien ya paga y nunca comparte
+     peso con activar; **restaurar** queda como acción secundaria nombrada
+     —recuperar algo que ya se compró no es comprar—; y **cuenta y destructivas**
+     viven en su propia zona, al FINAL de la columna, detrás de su divisor y su
+     rótulo, después de la suscripción. `Eliminar mi cuenta` conserva su
+     tratamiento de peligro y no queda adyacente a `Restaurar compras` ni a
+     `GESTIONAR SUSCRIPCIÓN`: confundir una con otra es el error caro de esta
+     pantalla. Toque mínimo 44 y `accessibilityRole` / `accessibilityState` de
+     cada acción se conservan tal cual.
+  3. **El paywall nombra los capítulos (QA22-007).** El bloque "Qué abre Plus"
+     suma un cuarto `Benefit` con el literal EXACTO **`7 capítulos personalizados
+     de Tu carta, explicada`**, y **no se quita ninguno** de los tres que ya
+     están ni se cambia su orden. Es lo único que cambia en esa pantalla: la
+     oferta, los importes, el botón primario, la tarjeta de activación y el
+     legal quedan intactos. El beneficio es comprobable —esa superficie existe y
+     el backend la cierra por plan—, así que no promete nada que el producto no
+     entregue.
+  4. **La Carta completa vuelve a ser una columna editorial (QA22-030).** Los
+     datos se dibujan como datos: título de bloque, pares rótulo/valor y
+     divisores de hairline (`v492.colors.line`) entre filas, sin superficie
+     encajonada. `Card` queda reservada para **loading, error, empty, bloqueado
+     por plan y acciones excepcionales**: `Calculando`, `SinCalculo`,
+     `FaltaCalculo`, `PlusBlock`, los estados de `LecturaNatal` (`cargando`,
+     `error`, lectura sin capítulos) y las explicaciones de lo que no se puede
+     dibujar (rueda sin grados, ejes sin hora, casas o contactos pendientes). Lo
+     que NO cambia: ningún dato se agrega, se quita ni se reordena; ningún copy
+     se reescribe; los `accessibilityLabel` de cada fila —`view.voice`— y los
+     roles siguen siendo los mismos, así que VoiceOver lee exactamente lo de
+     hoy.
+  5. **El borrado de cuenta (QA22-022) queda idéntico.** `handleDeleteAccount`,
+     `requestAccountDeletion`, la doble confirmación con sus literales
+     —`Eliminar tu cuenta` / `Continuar` y `¿Eliminar definitivamente?` /
+     `Eliminar mi cuenta`—, `DELETE_ACCOUNT_WARNING`,
+     `DELETE_ACCOUNT_SUBSCRIPTION_WARNING`, el marcador
+     (`storePendingAccountDeletion`), el handoff al boundary
+     (`publishPendingDeletion`) y el lock sincrónico `deletionInFlight` no se
+     tocan. En `PerfilScreen.tsx` esta pasada cambia **sólo composición y
+     estilos**: agrupar, ordenar y separar. Ni una línea de autoridad, de
+     handler ni de copy.
+- **Cambio de contrato: NO.** Ninguna función nueva de Convex, ningún campo
+  nuevo, ningún schema tocado, ningún `useQuery` agregado. El bloque de
+  suscripción sigue leyendo el plan de `useEntitlement()`, como lo dejó 5A.
+- **Owner:** Claude (frontend), sin excepción de territorio.
+- **Territorio previsto.** Todo propio: `src/components/orbita/ManageSubscription.tsx`
+  (migración visual completa), `src/screens/PerfilScreen.tsx` (**sólo**
+  composición y estilos, sin tocar `handleDeleteAccount` ni el circuito de
+  eliminación), `src/screens/v492/PlusPaywallScreen.tsx` (**sólo** el beneficio
+  nuevo), `src/screens/v492/CartaCompletaV492Screen.tsx`, `test/**` y esta ficha
+  en `CURRENT_TASK.md`. **No toca `convex/**`** —ni schema, ni CHANGELOG, ni
+  `_generated`—, así que del lado de Codex no hay nada que revisar más allá de la
+  verificación.
+- **Commit base:** `ac384cf` (`release: Órbita 1.0.0 (22)`), preservado.
+- **Riesgo:** medio, y concentrado en cinco puntos.
+  1. **Estos archivos están fijados por pruebas que los leen como fuente.**
+     `PerfilScreen.tsx` lo leen las tandas de eliminación de cuenta, suscripción
+     y App Review; `ManageSubscription.tsx` y el paywall los leen
+     `nativeCommerceSurface`, `nativeCommerceIntegration` y `planIndicatorQA22`.
+     Reordenar y recomponer puede romperlas. La regla de corte: una prueba se
+     actualiza SÓLO cuando fija la primitiva vieja o la posición vieja; si fija
+     un copy, una autoridad o una guarda, manda la prueba y se ajusta el diseño.
+  2. **Sacar la `Card` puede aplanar la lectura.** Sin superficie, lo único que
+     separa una fila de la siguiente es el divisor y el ritmo vertical: con poco
+     contraste, las diez posiciones se leen como un bloque continuo. La
+     mitigación es usar los tokens de la retícula —divisor, `space.md`,
+     `rowSpaced`— y conservar el glifo y la alineación de valor a la derecha que
+     ya distinguen cada fila.
+  3. **La costura entre dos sistemas puede empeorar antes de mejorar.** Si sólo
+     migra el bloque de suscripción, el resto de `CuerpoAdministrativo` sigue en
+     el kit legado y el contraste queda más visible que hoy. Por eso el alcance
+     en `PerfilScreen.tsx` incluye alinear la composición de las zonas vecinas
+     —agrupación, orden, divisores y rótulos—, siempre dentro de composición y
+     estilos y nunca sobre handlers ni copies.
+  4. **Mover el borrado de lugar es tocar la vecindad de una acción
+     irreversible.** El flujo no cambia, pero cambia dónde está el botón. Se
+     acota exigiendo que la prueba fije la nueva vecindad: `Eliminar mi cuenta`
+     al final, con divisor y rótulo propios, y nunca pegado a una acción
+     comercial.
+  5. **Un cuarto beneficio alarga la tarjeta del paywall.** Empuja hacia abajo
+     el legal y los links, que ya viven en un `ScrollView` con el footer fijo
+     aparte: no tapa el CTA, pero suma scroll. Se acepta a cambio de enumerar lo
+     que el plan realmente abre.
+- **Plan de pruebas (previsto, todavía no corrido).** Tanda focal nueva,
+  estructural sobre el CÓDIGO con los comentarios removidos, como el resto de
+  QA22 —una regla que se cumple sólo en un comentario no se cumple—:
+  - **Ajustes:** cero imports del kit legado en `ManageSubscription.tsx`,
+    primitivas V4.9.2 presentes, cero valores hardcodeados de color o espaciado;
+    las cuatro zonas existen y están separadas; `Restaurar compras` no comparte
+    tratamiento con el primario; el bloque no monta `useQuery` propia (garantía
+    de 5A, que no se puede perder por el camino).
+  - **Borrado (QA22-022):** los literales de las dos confirmaciones, el orden
+    aviso → destructiva, el ref de reentrada y el handoff al boundary siguen
+    idénticos; `Eliminar mi cuenta` aparece UNA sola vez, en su zona y después
+    de la suscripción.
+  - **Paywall:** los CUATRO beneficios, el nuevo con el literal exacto y una
+    sola aparición, los tres viejos conservados; ninguna referencia a precio,
+    Offering ni entitlement cambia en ese bloque.
+  - **Carta completa:** `Card` aparece SÓLO en los bloques de estado permitidos
+    —se cuentan y se nombran uno por uno— y ninguna envuelve una lista de datos;
+    la cantidad de filas y de `DataRow` se conserva; los `accessibilityLabel` de
+    las filas son los mismos de hoy.
+  - **Tandas existentes a revisar** porque leen estos archivos como fuente:
+    `nativeCommerceSurface`, `nativeCommerceIntegration`, `planIndicatorQA22`,
+    `v492CopyA11y`, `lecturasQA22` y las de eliminación de cuenta / App Review.
+  `pnpm typecheck` y la tanda focal quedan **por correr**: esta ficha no afirma
+  ninguna corrida ni ningún resultado.
+- **Plan de rollout (previsto).** Merge por PR a `main`. Sin cambio de contrato,
+  sin codegen y sin deploy de Convex: el efecto es puramente de cliente y aparece
+  con el próximo build. Nada se persiste, nada se migra, nada hay que limpiar.
+  **Commit, push, build y deploy no están autorizados en esta tanda.**
+- **Plan de rollback (previsto).** Revertir el commit del front alcanza y no deja
+  nada vivo: no hay contrato, ni fila remota, ni clave nueva en disco. Vuelven
+  las `Card` de la Carta completa, el bloque de suscripción con el kit legado y
+  la lista de tres beneficios, sin ningún estado huérfano.
+- **Fuera de alcance:** la superficie web y su circuito de Stripe, incluida la
+  variante hermana del bloque de suscripción; `convex/**`, el codegen y el
+  deploy; cualquier uso de IA/LLM; precios, productos, ids de paquete y la
+  lectura del Offering; el entitlement central del 5A, su snapshot y el chip de
+  plan; el estado de activación recuperable del 5B; el circuito de la tienda
+  —identidad de RevenueCat, cola serial, Customer Center—; el flujo de
+  eliminación de cuenta de QA22-022, que se conserva idéntico; agregar, quitar o
+  reordenar capacidades del producto —esta pasada es visual—; el resto del plan
+  QA22; commit, push, build EAS, TestFlight y App Store; otros worktrees.
+
+## QA22 · BLOQUE 5B — activación recuperable y protección de compra (2026-08-21) · VERIFICADO
+
+**Estado: VERIFICADO.** La implementación está completa y Codex ya corrió la
+verificación sobre esta pasada: `pnpm typecheck` **limpio**, la tanda focal
+—`test/activationRecoveryQA22.test.ts` + `test/nativeCommerceOffer.test.ts` +
+`test/nativeCommerceIntegration.test.ts` + `test/nativeCommerceSurface.test.ts` +
+`test/nativeIdentityAndGuard.test.ts` + `test/planIndicatorQA22.test.ts`— en
+**232/232 verdes**, y `git diff --check` **limpio**. Es una tanda **FOCAL** sobre
+las seis tandas que tocan esta pantalla: **la suite completa no se corrió en esta
+tanda** —la corrió después el *CIERRE INTEGRAL DE CÓDIGO* de arriba, en verde— y
+**tampoco hubo revalidación física** en el dispositivo del registro del build 22.
+No hubo commit, push, deploy, build ni codegen: el árbol de trabajo queda tal
+cual, con los cambios sin commitear. Cierra el residual **QA22-028**, el único
+punto que el bloque 5A dejó explícitamente PENDIENTE.
+
+**Ficha de tarea (obligatoria antes de tocar archivos).**
+
+- **Objetivo (cumplido):** cerrar **QA22-028**. Antes, cuando la tienda ya había
+  aceptado la compra y Convex todavía no la confirmaba, la pantalla entraba en
+  `activating` y **se quedaba ahí**: a los 20 s aparecía un aviso más largo y un
+  único enlace `COMPROBAR DE NUEVO`, pero la fase no cambiaba nunca, el botón
+  primario seguía diciendo `ACTIVANDO ÓRBITA PLUS…` deshabilitado y no había
+  salida nombrada. Una espera sin final es el escenario donde alguien vuelve a la
+  tienda y paga dos veces. Ahora, **a los 20 s sin confirmación del backend**, la
+  pantalla SALE de `activating` hacia `recoverable`, un estado que ofrece
+  exactamente dos acciones, con estos literales: **`REINTENTAR ACTIVACIÓN`** y
+  **`RESTAURAR COMPRA`**. El enlace viejo se retiró, y la prueba prohíbe que
+  vuelva a aparecer en la pantalla o en el dominio.
+- **Criterios de aceptación (verificados sobre el código entregado):**
+  1. **La espera termina, y termina en un estado accionable (QA22-028).**
+     `NativeActivationPhase` suma `recoverable`, y `nativeActivationPhase`
+     (`src/domain/nativeCommerce.ts`) recibe el tiempo transcurrido como **dato**
+     —`elapsedMs`— en vez de leer el reloj: la decisión es pura y se prueba en
+     node sin timers falsos. El umbral es `NATIVE_ACTIVATION_RECOVERY_MS = 20_000`,
+     exportado del dominio y usado por las DOS cosas que tienen que coincidir —la
+     frontera de la fase y el plazo del `setTimeout` de la pantalla—, y el corte es
+     `>=`: 19 999 ms todavía es `activating`, 20 000 ya es `recoverable`. Sin dato,
+     con `NaN` o con un valor negativo la respuesta cae del lado conservador
+     (`activating`): adelantar la reparación no es más seguro que atrasarla, sólo
+     cambia qué se le ofrece a alguien cuyo cargo ya existe. **Cambió respecto del
+     plan:** la ficha previa anunciaba reutilizar `BACKEND_ACTIVATION_WAIT_MS`; ese
+     nombre ya no existe ni en el dominio ni en la pantalla y la prueba lo prohíbe,
+     para que no queden dos plazos con nombres distintos.
+  2. **Los dos botones, con el literal exacto.** La tarjeta de `recoverable`
+     dibuja exactamente DOS `Pressable` —`REINTENTAR ACTIVACIÓN` y `RESTAURAR
+     COMPRA`— y ninguna acción más, las dos con `accessibilityRole="button"`, con
+     su `accessibilityState.disabled` anunciado, con toque mínimo 44
+     (`inlineAction`) y dentro de una tarjeta con `accessibilityRole="alert"` y
+     `accessibilityLiveRegion="polite"`. Ninguna de las dos dice "comprar": la
+     prueba exige que `purchase(` no aparezca en el bloque. El copy nombra además
+     una tercera salida que no es una acción nueva —seguir con Free—, la que el
+     footer ya tenía. **Cambió respecto del plan:** los literales NO se extrajeron
+     a constantes del dominio; quedaron escritos en el JSX y fijados por la prueba,
+     que exige que cada uno aparezca UNA sola vez en toda la pantalla.
+  3. **Sólo Convex confirma el acceso.** `activating` y `recoverable` son
+     **presentación**: no abren una capa, un cupo ni un contenido. Los gates
+     siguen leyendo `subscriptions.getCurrent` a través de
+     `useEntitlement().remote`, y `backendIsPro === true` gana sobre cualquier
+     reloj vencido: si el webhook llega al segundo 25, la fase pasa a `confirmed`
+     sola, sin tocar nada.
+  4. **Nunca un segundo cargo.** Con la compra confirmada por la tienda
+     (`storeConfirmed`), con el marcador todavía sin leer (`guard: "loading"`) o
+     bloqueado, y en TODO el estado recuperable, `nativePrimaryAction` no puede
+     devolver `purchase`. El orden de guardas de la función se conserva tal cual y
+     la fase nueva no abre ninguna rama que lo esquive: `recoverable` se deriva de
+     `storeConfirmed`, así que llegar ahí implica que la salida ya no es comprar.
+     La prueba barre las 48 combinaciones de `backendIsPro` × `busy` ×
+     `guardLoaded` × `lastOutcome` × `offeringReady` con `storeConfirmed: true` y
+     exige `wait` en todas, con un control positivo que impide que el barrido pase
+     por una función que conteste `wait` siempre.
+  5. **Reintentar pide reparación y refresca la tienda.** `REINTENTAR ACTIVACIÓN`
+     usa el circuito existente de `retryActivation`: primero
+     `subscriptions.requestStoreReconcile` —mutation, el backend deja el trabajo
+     escrito— y después `refreshCustomerInfo`. Una respuesta vacía es
+     `recheck_empty` y **no** levanta el marcador: `getCustomerInfo` puede
+     contestar desde el caché del SDK y no prueba que no haya compra.
+  6. **Restaurar es el circuito de siempre.** `RESTAURAR COMPRA` llama al mismo
+     `restore()` que ya usan el botón primario y el rótulo del nav: mismo candado
+     por dueño (`runExclusive` / `createOwnerGates`), mismo marcador armado antes
+     de tocar la tienda, mismas respuestas (`restore_empty` / `store_confirmed` /
+     `purchase_ambiguous`). No se escribe un segundo camino de restauración.
+  7. **Un solo reloj, con dueño y sin bucle.** La pantalla tiene UN `setTimeout`
+     —la prueba los cuenta—: publica `0` al entrar, no arma nada si no hay espera y
+     desarma con `clearTimeout` en la limpieza. Su entrada es `waitingForBackend`
+     (`storeConfirmed && backendIsPro !== true`) y **no** la fase que él mismo
+     produce: si dependiera de `activation`, publicar el vencimiento cambiaría la
+     fase, el efecto volvería a correr, reiniciaría su propio plazo y la pantalla
+     oscilaría entre "activando" y la reparación para siempre. Se rearma sólo
+     cuando cambia la espera o la cuenta (`[waitingForBackend, identifiedUserId]`).
+  8. **Nada de A se ve en B.** El tiempo de espera viaja en un
+     `OwnedValue<number>` (`activationWaitSlot`): se publica con
+     `publishOwnedValue` contra `ownerRef.current` y se lee con `readOwnedValue`
+     para el dueño vigente, así que un plazo armado para A no puede abrirle a B una
+     tarjeta de reparación, y B arranca su propia espera desde cero. Detalle real
+     de la implementación: el slot **no es un cronómetro** —guarda `0` o el
+     umbral—, porque la decisión es una sola frontera y un reloj corriendo
+     obligaría a re-renderizar varias veces por segundo sin decidir nada distinto.
+  9. **El primario deja de prometer un final inminente.** Con la fase vencida,
+     `primaryLabel` devuelve **`ACTIVACIÓN PENDIENTE`** y el CTA va deshabilitado
+     (`primary === "wait"`): dice lo único cierto —el cargo existe, Convex todavía
+     no lo refleja— y no invita a comprar. `ACTIVANDO ÓRBITA PLUS…` queda para la
+     espera joven, que se nombra y no ofrece ninguna acción. La oferta y su
+     impresión siguen atadas a `activation === "idle"`: a quien ya pagó no se le
+     vuelve a dibujar el catálogo ni se le cuenta una impresión.
+  10. **El 5A queda intacto.** `EntitlementProvider`, `resolvePlanView`, el
+      snapshot en disco, `planLabel` y el chip de plan quedan exactamente como los
+      dejó el bloque 5A. 5B **lee** `useEntitlement()` y no cambia cómo se
+      resuelve, se cachea ni se borra el último entitlement confirmado.
+- **Cambio de contrato: NO.** Ninguna función nueva de Convex, ningún campo
+  nuevo, ningún schema tocado. `subscriptions.requestStoreReconcile` y
+  `subscriptions.getCurrent` ya existen y se usan tal como están.
+- **Owner:** Claude (frontend), sin excepción de territorio.
+- **Territorio.** Todo territorio propio: `src/domain/**`, `src/screens/**`,
+  `test/**` y esta ficha en `CURRENT_TASK.md`. **No toca `convex/**`** —ni el
+  schema, ni el CHANGELOG, ni `_generated`—, ni `app/**`, ni la superficie web, ni
+  el circuito de identidad de RevenueCat, así que no hay nada que revisar del lado
+  de Codex más allá de la verificación.
+- **Archivos de esta pasada.** Dominio: `src/domain/nativeCommerce.ts`
+  —`NATIVE_ACTIVATION_RECOVERY_MS`, `NativeActivationPhase` con `recoverable` y
+  `nativeActivationPhase` recibiendo `elapsedMs`—. Pantalla:
+  `src/screens/v492/PlusPaywallScreen.tsx` —el slot de espera con dueño, el único
+  `setTimeout`, la tarjeta de reparación con sus dos acciones y el rótulo del
+  primario—. Pruebas: `test/activationRecoveryQA22.test.ts` (nueva, catorce casos)
+  y `test/nativeCommerceSurface.test.ts` (ampliada: las dos salidas exactas, el
+  rótulo `ACTIVACIÓN PENDIENTE` y la ausencia del enlace viejo). Documentación:
+  esta ficha.
+- **Commit base:** `ac384cf` (`release: Órbita 1.0.0 (22)`), preservado.
+- **Riesgo:** medio, y concentrado en cuatro puntos.
+  1. **El umbral puede cortar antes que el webhook.** En una red lenta, 20 s
+     pueden vencer con la activación en camino. Está acotado a propósito: el
+     estado recuperable no retrocede ningún acceso, no afirma que la compra falló
+     y no ofrece comprar; y la confirmación del backend lo reemplaza sola apenas
+     llega.
+  2. **Volver a entrar reinicia la espera.** El tiempo transcurrido vive en el
+     estado de la pantalla, así que quien sale del paywall y vuelve —con la tienda
+     todavía informando la compra y Convex sin confirmarla— ve otra vez la espera
+     joven y tiene que esperar otros 20 s para que reaparezcan las dos salidas. No
+     pierde nada: ni el marcador ni el acceso dependen de este reloj, y las mismas
+     salidas siguen existiendo en el nav y en el primario. Persistir el arranque de
+     la espera habría metido una clave nueva en disco para un problema que se
+     resuelve solo apenas llega el webhook.
+  3. **Ofrecer Restaurar justo cuando probablemente hubo cargo.** Un
+     `restore_empty` en ese momento levanta el marcador. Es el comportamiento que
+     ya existe y está razonado —`restorePurchases` fuerza un refresh del recibo—;
+     el riesgo se contiene reutilizando ese circuito sin variantes, en vez de
+     escribir uno nuevo con reglas propias.
+  4. **Tres rótulos para el mismo circuito, y ninguno en el dominio.**
+     `Restaurar`, `RESTAURAR MI COMPRA` y `RESTAURAR COMPRA` conviven en la misma
+     pantalla, y los literales quedaron en el JSX y no en constantes del dominio
+     como preveía el plan. El literal pedido por el registro no se toca; la
+     mitigación real es la prueba, que fija los dos textos exactos y exige que cada
+     uno aparezca UNA sola vez, así que "unificarlos" o duplicarlos rompe la tanda.
+     Fuera de ese archivo no hay nada que los proteja.
+- **Plan de pruebas (previsto, todavía no corrido).** Tanda focal nueva sobre el
+  dominio y la superficie:
+  - **Reloj y bordes:** 19 999 ms → `activating`; 20 000 ms → `recoverable`;
+    `elapsedMs` grande sin `storeConfirmed` → `idle` (el reloj solo nunca crea el
+    estado); `backendIsPro === true` con el reloj vencido → `confirmed`.
+  - **Fase:** la tabla completa de `nativeActivationPhase` con el estado nuevo,
+    incluida la transición `activating → recoverable → confirmed`.
+  - **Doble compra:** `nativePrimaryAction` nunca devuelve `purchase` con
+    `storeConfirmed`, con `guard: "loading"`, con el marcador bloqueado ni en
+    `recoverable`; y una cancelación demostrada sigue permitiendo comprar.
+  - **Cambio de dueño:** una publicación tardía de A no cambia la fase ni el aviso
+    de B, y el reloj de B arranca de cero.
+  - **Acciones y copy:** los dos botones existen con el literal EXACTO, con rol de
+    botón, deshabilitados mientras hay algo en curso, con toque mínimo 44 y dentro
+    de una live region; el copy no promete acceso que Convex no confirmó.
+  Las comprobaciones estructurales corren sobre el CÓDIGO con los comentarios
+  removidos, como el resto de QA22. Se revisan además las tandas de comercio ya
+  existentes (`nativeCommerceIntegration`, `nativeCommerceSurface`,
+  `planIndicatorQA22`) porque tocan la misma pantalla.
+- **Plan de rollout (previsto).** Merge por PR a `main`. Sin cambio de contrato,
+  sin codegen y sin deploy de Convex: el efecto es puramente de cliente y aparece
+  con el próximo build. No se persiste nada nuevo —el umbral vive en memoria de la
+  pantalla— así que no hay que migrar ni limpiar nada. **Commit, push, build y
+  deploy no están autorizados en esta tanda.**
+- **Plan de rollback (previsto).** Revertir el commit del front alcanza y no deja
+  nada vivo: no hay contrato, ni fila remota, ni clave nueva en disco. Volver
+  atrás devuelve la tarjeta de activación del 5A —aviso demorado y `COMPROBAR DE
+  NUEVO`— sin ningún estado huérfano.
+- **Fuera de alcance:** precios, productos, ids de paquete y la lectura del
+  Offering; el entitlement central del 5A, su snapshot y el chip de plan; el
+  circuito de la tienda —identidad de RevenueCat, cola serial, Customer Center—;
+  cualquier uso de IA/LLM; la superficie web y su circuito de Stripe; `convex/**`,
+  el codegen y el deploy; el resto del plan QA22; commit, push, build EAS,
+  TestFlight y App Store; otros worktrees.
+
+## QA22 · BLOQUE 5A — El plan se dice en pantalla, y se dice desde un solo lugar (2026-08-21) · VERIFICADO
+
+**Estado: VERIFICADO.** La implementación está completa y Codex ya corrió la
+verificación sobre esta pasada: `pnpm typecheck` **limpio**, la tanda focal
+—`test/planIndicatorQA22.test.ts` + `test/nativeCommerceIntegration.test.ts` +
+`test/nativeCommerceSurface.test.ts`— en **134/134 verdes**, y `git diff --check`
+**limpio**. No hubo commit, push, deploy, build ni codegen: el árbol de trabajo
+queda tal cual, con los cambios sin commitear.
+
+**Ficha de tarea (obligatoria antes de tocar archivos).**
+
+- **Objetivo:** cerrar **QA22-003** del registro físico del build 22. La app no
+  decía en ninguna pantalla de capas si la cuenta era Free o Plus, así que un
+  bloque recortado por el backend —casas sin datos, un mapa de valores vacío, una
+  lectura de personalidad que no aparece— se leía como una falla y no como una
+  oferta. Y donde el plan sí se consultaba, se consultaba tres veces: el paywall,
+  el bloque de suscripción del perfil y los docs vivos montaban cada uno su
+  propia `subscriptions.getCurrent` y repetían por su cuenta la correlación con
+  el dueño de Clerk. Tres copias de la misma verdad, cada una con su ventana de
+  "todavía no sé", y ninguna con memoria: al arrancar en frío, a quien paga la
+  app se le decía "Free" hasta que su query resolviera.
+- **Criterios de aceptación:**
+  1. **El plan se ve, y con su nombre entero (QA22-003).** `PlanBadge`
+     (`src/components/v492/Screen.tsx`) dibuja `Órbita Plus` u `Órbita Free` en
+     las DOS pantallas base —`LayerScreen`, arriba junto a la marca, y
+     `DetailLayerScreen`, en el extremo derecho de la barra—, una sola vez cada
+     una. El texto en pantalla es EL MISMO que anuncia VoiceOver
+     (`Tu plan: {label}`). La marca corta (`PLUS`/`FREE`) queda fuera del chip:
+     ahorraba dos palabras a cambio de pedir que ya se supiera qué es "PLUS", que
+     es justo lo que el chip viene a contestar. Los nombres salen del dominio
+     (`PLAN_PLUS_LABEL` / `PLAN_FREE_LABEL`), nunca de un literal suelto, y
+     `planLabel` es la ÚNICA función que puede escribir "Órbita Plus".
+  2. **Una sola query, montada una sola vez.** `EntitlementProvider`
+     (`src/hooks/useLiveApp.tsx`) tiene la única `subscriptions.getCurrent` de la
+     UI nativa y se monta una vez en `app/_layout.tsx`, DENTRO de
+     `OrbitaSessionProvider`: sin dueño de Clerk no hay plan que correlacionar.
+     El paywall, el bloque de perfil y `useLiveAppDocs` pasan a leer de
+     `useEntitlement()` y no montan query propia.
+  3. **El último confirmado llena el hueco, y no hay parpadeo Free.**
+     `resolvePlanView` (`src/domain/entitlement.ts`, pura) tiene un solo filo:
+     **el snapshot sólo llena el hueco**. Con respuesta remota —Free, Plus o
+     `null`— manda el remoto y el snapshot se actualiza o se borra; nunca al
+     revés, que es exactamente cómo una suscripción vencida se quedaría "activa"
+     para siempre en esta pantalla. Sin respuesta remota se usa el último plan
+     confirmado, y sólo si el disco ya se leyó (`hydrated`); antes de eso la
+     respuesta honesta es "no sé" y el chip **no dibuja nada** (`labelReady`), en
+     vez de publicar un "Free" especulativo.
+  4. **Presentar no es conceder.** El cache es SÓLO presentación: pone una
+     etiqueta y nada más. Todo lo que decide acceso o plata —los gates de
+     lectura, comprar, restaurar, abrir el portal de facturación— lee `remote` y
+     `resolved`, el remoto confirmado para la cuenta vigente. Un snapshot jamás
+     levanta `resolved`: dice cómo se llamaba el plan la última vez, no qué
+     autoriza la tienda hoy. En disco se guarda sólo `isPro`, no el entitlement
+     entero: proveedor, portal y vida del cargo son decisiones de plata.
+  5. **El cambio de cuenta falla cerrado.** La query va con `skip` sin sesión
+     viva y el resultado se correlaciona con el dueño (`safeEntitlement`) antes
+     de publicarse, porque el `skip` no alcanza —Convex conserva el último valor
+     mientras la nueva suscripción resuelve—. El snapshot en memoria viaja con su
+     dueño (`OwnedValue`) y la caída es **síncrona**, en el mismo render del
+     cambio: los efectos corren después, y un render con el plan de A bajo la
+     sesión de B es lo que no puede pasar. En disco hay una clave por cuenta **y**
+     el dueño adentro del valor; ante cualquier duda —ilegible, sin dueño
+     vigente, de otra cuenta, forma equivocada— `parsePlanSnapshot` devuelve
+     `null` y no afirma ningún plan.
+  6. **La barra de detalle queda centrada de verdad.** Los dos extremos miden lo
+     mismo (`DETAIL_EDGE`, ancho FIJO y no `minWidth`: un mínimo deja crecer el
+     lado del chip y descentra el rótulo) y el rótulo del medio se centra con
+     `flex: 1`. La reserva es el ancho del nombre más largo —calculable sin medir
+     porque la familia es monoespaciada— y nunca baja del toque mínimo de 44.
+     Los dos nombres tienen el mismo largo, así que cambiar de plan no mueve un
+     punto; con Dynamic Type al tope el chip encoge y se recorta antes que
+     invadir el rótulo, y VoiceOver sigue diciendo el plan entero.
+- **Cambio de contrato: NO.** Ninguna función nueva de Convex, ningún campo
+  nuevo, ningún schema tocado. Esta pasada RESTA queries en vez de agregar
+  contrato: `subscriptions.getCurrent` ya existía y ahora se pide una sola vez.
+- **Owner:** Claude (frontend), sin excepción de territorio.
+- **Territorio.** Todo territorio propio: `app/_layout.tsx`, `src/**` y `test/**`.
+  **No toca `convex/**`** —ni el schema, ni el CHANGELOG, ni `_generated`—, así
+  que no hay nada que revisar del lado de Codex más allá de la verificación.
+- **Archivos de esta pasada.** Montaje: `app/_layout.tsx`. Estado central:
+  `src/hooks/useLiveApp.tsx` (`EntitlementProvider`, `useEntitlement`, y
+  `useLiveAppDocs` que deja de pedir el plan por su cuenta). Dominio:
+  `src/domain/entitlement.ts` (`PlanView`, `planLabel`, `planMark`,
+  `resolvePlanView`, `serializePlanSnapshot`, `parsePlanSnapshot`). Persistencia:
+  `src/services/entitlementSnapshot.ts` (nuevo) y
+  `src/services/entitlementSnapshot.web.ts` (nuevo, no-op, para que el bundle web
+  no arrastre `AsyncStorage`). Presentación: `src/components/v492/Screen.tsx`.
+  Consumidores de plata: `src/screens/v492/PlusPaywallScreen.tsx` y
+  `src/components/orbita/ManageSubscription.tsx`. Pruebas:
+  `test/planIndicatorQA22.test.ts` (nueva), `test/nativeCommerceIntegration.test.ts`
+  y `test/nativeCommerceSurface.test.ts`. Documentación: esta ficha.
+- **Commit base:** `ac384cf` (`release: Órbita 1.0.0 (22)`), preservado.
+- **Riesgo:** medio, y concentrado en cuatro puntos.
+  1. **La etiqueta puede ir por delante del acceso.** En la ventana sin remoto,
+     alguien cuyo Plus venció ve el chip que dice Plus hasta que el backend
+     conteste. Es a propósito y está acotado: el acceso no cambia —los gates y el
+     cobro leen `remote`/`resolved`— y la respuesta remota borra el snapshot.
+  2. **Un cuarto consumidor reabre el agujero.** Si mañana una pantalla vuelve a
+     montar su propia `subscriptions.getCurrent`, vuelven la copia de la verdad y
+     su ventana de espera. No falla: se degrada en silencio. Por eso las pruebas
+     lo cuentan sobre el CÓDIGO —una sola `getCurrent` operativa, una sola
+     `safeEntitlement`, cero `useQuery` en las dos pantallas de plata—.
+  3. **El disco puede quedar con una etiqueta vieja.** `clearEntitlementSnapshot`
+     propaga el fallo y el provider lo traga: si el borrado no llega al disco, el
+     próximo arranque en frío puede mostrar "Órbita Plus" de más hasta que el
+     remoto conteste. No concede nada, y el remoto lo corrige.
+  4. **La reserva de ancho es un cálculo, no una medición.** `PLAN_BADGE_WIDTH`
+     asume Roboto Mono y su avance por glifo. Si el chip cambia de familia,
+     cuerpo o tracking sin mover esa constante, el rótulo del detalle se
+     descentra. Las pruebas fijan la simetría, no la tipografía.
+- **Plan de pruebas.** `test/planIndicatorQA22.test.ts` (nueva) cubre las cuatro
+  garantías: la decisión pura en sus cuatro cuadrantes —incluido el filo Free
+  remoto sobre cache Plus—, el snapshot con su dueño adentro y su lectura
+  defensiva (otra cuenta, ilegible, JSON válido con forma equivocada, `__proto__`),
+  los dos nombres y el chip que no especula, y las comprobaciones estructurales:
+  un solo provider dentro de la sesión, una sola `getCurrent`, una sola
+  correlación, las dos pantallas de plata leyendo el remoto sin query propia, el
+  chip en las dos pantallas base y los dos extremos con el mismo ancho fijo. Esas
+  comprobaciones corren sobre el CÓDIGO con los comentarios removidos: estos
+  archivos documentan largo, y una regla que se cumple sólo en un comentario no se
+  cumple. `nativeCommerceIntegration` y `nativeCommerceSurface` se actualizan
+  porque el paywall y el bloque de perfil cambiaron de fuente de plan.
+  **Corrida de Codex sobre esta pasada: `pnpm typecheck` limpio, 134/134 focales
+  en verde y `git diff --check` limpio.**
+- **Plan de rollout.** Merge por PR a `main`. Sin cambio de contrato, sin codegen
+  y sin deploy de Convex: el efecto es puramente de cliente y aparece con el
+  próximo build. El snapshot se crea solo, en el primer arranque de cada cuenta
+  que reciba un remoto confirmado; nadie tiene que migrar ni limpiar nada.
+  **Commit, push, build y deploy no están autorizados en esta tanda.**
+- **Plan de rollback.** Revertir el commit del front alcanza y no deja nada vivo:
+  no hay contrato ni fila remota que deshacer. Lo único que sobrevive es la clave
+  `orbita:entitlement-snapshot:{owner}` en el AsyncStorage de quien ya la haya
+  escrito, y queda huérfana e inerte: no la lee nadie y nunca concedió acceso. No
+  hay migración que revertir.
+- **Fuera de alcance:** **QA22-028 (la activación) queda PENDIENTE** y no entró
+  en esta pasada; la superficie web, que conserva su circuito de Stripe y recibe
+  el stub no-op del snapshot; derivar el plan de `RevenueCat.storeIsPro` o del
+  marcador de compra en vuelo —la tienda dice qué cobró, no qué acceso concede
+  Órbita—; mostrar el chip fuera de las dos pantallas base; `convex/**`, el
+  codegen y el deploy; el resto del plan QA22; commit, push, build EAS,
+  TestFlight y App Store; otros worktrees.
+
+## QA22 · BLOQUE 4B — Vínculos: el contrato publica la evidencia y la lectura la explica (2026-08-21) · EN REVISIÓN
+
+**Estado: EN REVISIÓN.** La implementación de 4B está completa y entregada a
+Codex. Codex ya corrió `pnpm typecheck` —**limpio**— y la tanda focal —**212/212
+en verde**—, pero al cerrar esta tanda **el codegen de Convex y la suite completa
+seguían pendientes**. **Actualización:** la suite completa ya corrió en verde en
+el *CIERRE INTEGRAL DE CÓDIGO* de arriba; **el codegen de Convex sigue
+pendiente**, así que el gate de contrato de 4B todavía no está cerrado y esta
+ficha **no** lo marca VERIFICADO.
+
+**Ficha de tarea (obligatoria antes de tocar archivos).**
+
+- **Objetivo:** cerrar QA22-014, QA22-017, QA22-019, QA22-020 y QA22-021 del
+  registro físico del build 22. En Vínculos, el descargo del alta no decía de qué
+  hablaba —no se distinguía si anunciaba qué compara la lectura, una limitación
+  del cálculo o una advertencia legal—; la lectura ponía método y limitaciones
+  antes que una interpretación útil, y cada dimensión repetía la misma fórmula
+  sobre una lista de contactos enumerados; `+ 1 CONTACTO MÁS` no decía a qué
+  dimensión pertenecía lo plegado, cuántos había ni con qué criterio estaban
+  ordenados; el largo y el color de las barras no tenían una semántica
+  reconstruible y se leían como un porcentaje de compatibilidad; y un mismo
+  contacto que alimenta dos dimensiones se mostraba dos veces, como si fueran dos
+  hallazgos distintos.
+- **Criterios de aceptación:**
+  1. **El descargo dice qué es (QA22-014).** El bloque único se parte en dos
+     rótulos con función declarada —`RELATIONSHIP_WHAT_YOU_SEE_LABEL` y
+     `RELATIONSHIP_READING_LIMITS_LABEL`, en `src/domain/relationships.ts`—: uno
+     anuncia QUÉ va a leer esa persona con los datos que cargó y el otro dice
+     dónde termina el alcance del cálculo. El texto sigue siendo el del
+     guardrail de marca: entretenimiento y autoconocimiento, sin claims.
+  2. **La lectura interpreta antes de explicarse (QA22-017).** `relationshipReading`
+     (`src/domain/relationshipReading.ts`, puro: sin React, sin Convex y sin
+     reloj) abre con DOS o TRES dinámicas reales —`RELATIONSHIP_MAX_DYNAMICS`—,
+     cada una un contacto del cálculo con su propia oración, y no un puntaje
+     global. Por dimensión escribe **qué se facilita**, **qué puede tensarse** y
+     **una invitación** —acción cuando el balance es más fluido, pregunta cuando
+     no—, apoyadas en la evidencia real de `driverDetails` y no en la plantilla
+     por tono. Lo que no se puede afirmar se dice que no se puede afirmar: nunca
+     se inventa una calidad, un peso ni una precisión.
+  3. **El plegado dice qué pliega y cuántos (QA22-019).** El copy es el literal
+     del registro: `VER LOS {N} CONTACTOS QUE FORMAN {DIMENSIÓN}`, con `N` = los
+     contactos ÚNICOS por id de esa dimensión y la dimensión nombrada
+     (`relationshipContactsToggleLabel` / `relationshipContactsCollapseLabel`).
+     La concordancia en singular se resuelve donde se puede resolver sin torcer
+     el copy pedido: en la etiqueta accesible
+     (`relationshipContactsToggleVoice`). El orden es explícito y determinístico
+     —**fuerza, calidad, precisión** y dos desempates estables: la posición que
+     el sobre ya traía y el id—.
+  4. **La barra se dice en palabras (QA22-020).** La barra por dimensión se
+     reemplaza por texto: `relationshipDimensionRow` escribe `3 contactos ·
+     mixto` y `relationshipDimensionRowVoice` lo dice entero para el lector de
+     pantalla. No hay riel, no hay porcentaje y no hay significado que dependa
+     del color: el color acompaña SÓLO a la palabra del balance, nunca a la
+     cantidad, para no sugerir que el número mide algo que no mide. La barra de
+     NIVEL (`01`/`02`/`03`) se conserva: ésa sí es una posición dentro de tres.
+  5. **La reutilización se dice, no se duplica (QA22-021).** El mismo `id` en dos
+     dimensiones es UN contacto leído desde dos lados, y así se escribe
+     (`alsoIn` por dimensión, `dimensions` en la dinámica,
+     `relationshipContactRole` y `relationshipDynamicRole`). El cierre factual
+     cuenta contactos **distintos** y cuántos se comparten
+     (`relationshipContactsLine`), en vez de sumar filas y contar dos veces el
+     mismo contacto.
+- **Cambio de contrato: SÍ, y es aditivo.** `relationships.getComparison`
+  conserva `drivers: string[]` exactamente con su semántica y su orden, y agrega
+  por dimensión `driverDetails` **opcional**
+  (`relationshipDriverDetailValidator` en `convex/lib/layerContract.ts`): una
+  entrada por contacto único con `id`, `text`, `quality`
+  (`support` · `tension` · `neutral`), `weight` y `precision`. Es un SUBCONJUNTO
+  de lo que `buildDimensions` ya calculaba —`relationshipDriverDetails` en
+  `convex/lib/relationshipLayers.ts`—: sin LLM, sin heurística y sin orden nuevo.
+  Los ids son **deterministas y semánticos** (`aspect:a:venus:b:sun:trine`,
+  `house:b:sun:a:7`): salen de QUÉ toca a QUÉ, nunca del índice del arreglo ni
+  del texto. Se **deduplica sólo por id** —dos contactos con texto parecido y
+  distinto id son dos contactos, y borrar uno perdería evidencia real—, y el
+  MISMO id puede vivir en varias dimensiones, que es justamente lo que permite
+  explicar la reutilización. El detalle está escrito en `convex/CHANGELOG.md`
+  (entrada 2026-08-21 · bloque 4B).
+- **Compatibilidad (cachés y build 22).** El campo es opcional en el validator
+  **por los sobres ya persistidos**: `relationshipComparisonCachesV492.data` se
+  valida contra `relationshipComparisonDataValidator`, así que las filas escritas
+  antes de este cambio tienen que seguir siendo válidas sin migración. Un cliente
+  del build 22 no lee el campo nuevo y no cambia de comportamiento. Del lado del
+  front la degradación es explícita: sin `driverDetails`, `quality`, `weight` y
+  `precision` quedan en `null`, los contactos se muestran igual y en el orden que
+  el sobre ya traía, el id sintético `legacy:{dimensión}:{texto}` existe SÓLO
+  para poder listar y dedupear dentro de la pantalla —no se presenta como
+  identidad certificada— y un sobre legacy **nunca** afirma que un contacto se
+  reutiliza. Sin migración destructiva, sin tabla nueva y sin índice nuevo.
+- **Owner:** Claude (frontend), con la excepción de contrato declarada.
+- **Territorio.** Esta pasada **sí toca `convex/**`**, que normalmente es de
+  Codex: es el cambio de contrato aditivo y va acompañado de su nota en
+  `convex/CHANGELOG.md`, como pide `CLAUDE.md`. Alcanza a
+  `convex/lib/layerContract.ts` (validators y tipos), `convex/lib/relationshipLayers.ts`
+  (`relationshipDriverDetails`) y `convex/relationships.ts` (emisión). **La
+  revisión de esas tres, el codegen y el deploy son de Codex.** El resto es
+  territorio propio: `src/domain/**`, `src/screens/v492/**`, `test/**` y esta
+  ficha. No toca `app/**`, ni las rutas, ni la superficie web, ni `convex/schema.ts`.
+- **Archivos de esta pasada.** Contrato: `convex/lib/layerContract.ts`,
+  `convex/lib/relationshipLayers.ts`, `convex/relationships.ts` y
+  `convex/CHANGELOG.md`. Dominio: `src/domain/relationshipReading.ts` (nuevo) y
+  `src/domain/relationships.ts`. Pantallas: `src/screens/v492/VinculosResultScreen.tsx`
+  (la lectura) y `src/screens/v492/VinculosConnectScreen.tsx` (el descargo del
+  alta). Pruebas: `test/vinculosLecturaQA22.test.ts` y
+  `test/vinculosReadingQA22.test.ts` (las dos nuevas). Documentación: esta ficha.
+- **Commit base:** `ac384cf` (`release: Órbita 1.0.0 (22)`), preservado. 4B se
+  apoya sobre 4A y no toca ninguno de sus archivos de decisión salvo
+  `src/domain/relationships.ts` y las dos pantallas de Vínculos, así que la
+  corrida de 4A hay que repetirla junto con ésta.
+- **Riesgo:** medio-alto, y concentrado en tres puntos.
+  1. **El campo llega tarde.** Hasta que Codex corra el codegen y despliegue,
+     ningún sobre nuevo trae `driverDetails` y la lectura corre en su modo
+     degradado. Durante la ventana de expiración de los cachés conviven dos
+     lecturas —una con evidencia y otra sin ella— para dos personas de la misma
+     cuenta. Es visible a propósito: la pantalla lo dice en vez de disimularlo.
+  2. **El balance se reproduce, no se lee.** El sobre no publica su `tone`, así
+     que `relationshipDimensionBalance` reproduce del lado del cliente la MISMA
+     regla que el backend usa en `dimensionSummary` (apoyo/tensión con margen
+     1,25; sólo neutrales ⇒ sutil). Si Codex cambia su regla y no cambia ésta, la
+     fila y el resumen del backend van a decir cosas distintas.
+  3. **Los ids son la identidad.** Toda la explicación de la reutilización y toda
+     la dedupe cuelgan de que el id sea estable entre corridas. Un id que pase a
+     depender del índice o del texto rompe QA22-021 en silencio: no falla, dice
+     otra cosa. Por eso las pruebas lo fijan sobre el motor real.
+- **Plan de pruebas.** `test/vinculosLecturaQA22.test.ts` — corre el MOTOR real
+  (`buildRelationshipComparisonResult`) de punta a punta y fija el contrato: los
+  ids, la forma cerrada de `driverDetails`, que `drivers` conserve semántica y
+  orden, y el cableado que una prueba de dominio no puede ver.
+  `test/vinculosReadingQA22.test.ts` — la contraparte sin motor: sobres mínimos
+  escritos a mano y tipados contra el contrato, uno por regla, para aislar
+  identidad (mismo id repetido se descarta; dos ids con el mismo texto
+  sobreviven; el mismo id en dos dimensiones es uno y se dice), degradación
+  build 22, cada escalón del orden con su desempate, el texto de las cinco
+  dimensiones y el copy literal del control de contactos, más que el validator
+  siga siendo aditivo y que la pantalla no vuelva a dibujar la barra por
+  dimensión. **Corrida de Codex sobre esta pasada: `pnpm typecheck` limpio y
+  212/212 focales en verde. La suite completa corrió después, en verde, en el
+  *CIERRE INTEGRAL DE CÓDIGO* de arriba; falta el codegen de Convex, y sin eso
+  4B no se marca VERIFICADO.**
+- **Plan de rollout.** Merge por PR a `main`. El campo es aditivo, así que back y
+  front pueden viajar en el mismo PR sin orden entre ellos, pero el efecto
+  visible depende de Codex: **codegen + deploy de Convex**, y recién ahí los
+  sobres nuevos empiezan a traer `driverDetails`. Los sobres viejos no se
+  reescriben: caducan por su propia invalidación de entradas/método. **El deploy
+  no está autorizado en esta tanda.**
+- **Plan de rollback.** Mientras no haya deploy, revertir el commit del PR alcanza
+  y no deja nada atrás: ninguna fila se escribió con el campo nuevo. **Después de
+  un deploy que ya haya escrito sobres con `driverDetails`, revertir el validator
+  no es gratis:** `relationshipComparisonCachesV492.data` se valida contra el
+  validator cerrado, así que un push de schema sin el campo declarado fallaría
+  contra esas filas. En ese escenario el rollback correcto es revertir sólo el
+  front —la lectura degrada sola— y dejar el campo publicado hasta que los cachés
+  expiren. No hay migración que deshacer.
+- **Fuera de alcance:** el codegen de Convex y el deploy, que son de Codex;
+  unificar `drivers` con `driverDetails` o retirar el string (el contrato queda
+  con los dos a propósito); publicar el `tone` de la dimensión desde el backend;
+  recalcular o migrar los sobres ya persistidos; el resto del plan QA22; `app/**`,
+  las rutas y la superficie web; commit, push, build EAS, TestFlight y App Store;
+  otros worktrees.
+
+## QA22 · BLOQUE 4A — Vínculos: guardar no es calcular, el nivel no se elige dos veces y el alta es un flujo (2026-08-21) · EN REVISIÓN
+
+**Estado: EN REVISIÓN.** La implementación de 4A está completa y entregada a
+Codex. Codex corrió `pnpm typecheck` y la tanda focal sobre la pasada previa a
+esta revisión; el cierre estructural del mutex de guardado (ver *Ajuste de esta
+revisión*) es POSTERIOR a esa corrida, así que la que vale es la que Codex repita
+ahora. **Actualización:** esa corrida posterior ya existe —el *CIERRE INTEGRAL
+DE CÓDIGO* de arriba, con la suite completa en verde sobre el árbol que incluye
+este ajuste—.
+
+**Ficha de tarea (obligatoria antes de tocar archivos).**
+
+- **Objetivo:** cerrar QA22-013, QA22-015, QA22-016, QA22-018 y QA22-023 del
+  registro físico del build 22. En Vínculos, elegir una modalidad navegaba sola y
+  el CTA quedaba empujado fuera de la vista por el límite del nivel; guardar una
+  persona abría la lectura y la espera del proveedor quedaba en el medio, sin
+  decir si lo que tardaba era escribir la persona o generar la comparación; el
+  nivel se pedía dos veces —como preferencia en el selector y otra vez como
+  consecuencia de los datos—; y quitar la fecha dejaba la hora y la ciudad
+  escritas en pantalla como si siguieran guardadas.
+- **Criterios de aceptación:**
+  1. **Elegir no navega y el CTA no se escapa (QA22-013).** En el ALTA, tocar una
+     modalidad sólo la elige: no avanza de paso ni apaga nada. `CONTINUAR` queda
+     inmediatamente debajo de las tres opciones y siempre accionable —hay una
+     modalidad elegida desde el primer render—, con el límite del nivel DEBAJO en
+     vez de empujando la acción fuera de la pantalla. La elección acusa recibo en
+     una región viva que VoiceOver anuncia sin ir a buscarla. El alta pasa a ser
+     un flujo de tres pasos: 1 nombre → 2 qué comparar → 3 los datos de ese nivel.
+  2. **El guardado termina en la raíz, no en la lectura (QA22-015).** Guardar
+     vuelve a `/vinculos` con `router.dismissTo`, con el nombre confirmado y la
+     fila de esa persona a la vista; abrir la comparación es una acción
+     explícita. Los destinos y el copy se arman en el dominio
+     (`relationshipSavedHref`, `relationshipSavedConfirmation`,
+     `relationshipSavedMode`, `RELATIONSHIP_SAVED_PARAM`) y el id que se confirma
+     es el que devolvió `relationships.savePerson`, validado además contra la
+     lista autorizada de la cuenta: un id de URL no abre nada por sí solo.
+  3. **Guardar no es calcular (QA22-016).** El estado del CÁLCULO vive separado
+     del guardado en `src/domain/relationshipCalc.ts`, puro y compartido:
+     `relationshipCalcPhase` (`buscando` · `calculando` · `error` · `pendiente` ·
+     `lista`), `relationshipNeedsCalculation` y `relationshipCalcNote`. Se anuncia
+     donde pasa —en SU fila y en SU lectura—, nunca reemplazando la pantalla: la
+     lista, el patrón propio y el botón de agregar siguen usables todo el tiempo.
+     El recálculo automático es UNO por estado del sobre (`relationshipCalcKey`
+     sobre persona + nivel + entradas) y la fila admite dos reintentos manuales
+     (`RELATIONSHIP_ROW_RETRY_LIMIT`) antes de mandar a la lectura, que es donde
+     el reintento tiene todo el contexto. `needs_birth_time` queda fuera de los
+     estados recalculables a propósito: ahí no falta una corrida, falta un dato.
+     La consulta del sobre se monta sólo para la persona recién guardada, no una
+     por cada fila de la lista.
+  4. **El nivel es consecuencia de los datos, no una preferencia (QA22-018).**
+     `relationshipLevelFromDraft` es la ÚNICA derivación y es la misma regla que
+     aplica el backend; la pantalla lo ANUNCIA (`NIVEL QUE PERMITEN ESTOS DATOS`)
+     en vez de volver a preguntarlo. Editar entra directo a los datos, con todos
+     los campos precompletados y SIN selector de modalidad, y el borrador de una
+     persona guardada vuelve a derivar el nivel en lugar de copiar el
+     persistido. El pedido de guardado no lleva `level`. "Editar datos de …" está
+     siempre disponible: en la lectura y en la fila de la lista
+     (`relationshipEditHref`), y guarda SOBRE la misma persona en vez de crear una
+     segunda copia.
+  5. **Bajar de nivel es tan explícito como subirlo (QA22-023).** `QUITAR LA
+     FECHA` se lleva la hora y la ciudad con ella, y `QUITAR LA HORA` baja a fecha
+     con fecha: nada queda escrito en pantalla como cargado si el guardado lo va a
+     descartar. Cada dato se guarda por lo que es —el signo no se deriva de la
+     fecha, no se inventa una hora—, y la zona horaria se resuelve en el backend
+     desde las COORDENADAS de la ciudad antes de escribir: si no se resuelve, no
+     se guarda nada (fallar cerrado), nunca se cae a la zona del teléfono.
+  6. **Dos toques en Guardar no guardan dos veces.** El candado son dos refs, no
+     estado de React: `enVuelo` cierra la puerta en el mismo tick —`saving` recién
+     existe en el render siguiente— y `guardado` la deja cerrada entre la
+     respuesta del backend y el desmonte de la pantalla. Encima, el mismo pedido
+     reintentado viaja con la MISMA clave de idempotencia
+     (`relationshipSaveSignature` + `createRelationshipIdempotencyKey`): cambiar
+     un dato estrena clave, corregir un espacio no.
+- **Ajuste de esta revisión (cierre 4A).** El mutex de `save` recupera su forma
+  estructural canónica: dos guards consecutivos, primero `if (guardado.current)
+  return;` y después exactamente `if (enVuelo.current || block !== null)
+  return;` —que es la forma que fija la regresión existente
+  `test/nativeDefectsV492.test.ts` ("D4 · no hay submits dobles")—. El
+  comportamiento es el mismo que la forma fusionada: cierra el doble toque antes
+  del primer `await` y sigue cerrado una vez confirmado el guardado. La
+  aserción de `test/vinculosQA22.test.ts` pasa a exigir los DOS guards y en ese
+  orden, así que la prueba queda igual de estricta o más, no más débil.
+- **Owner:** Claude (frontend).
+- **Territorio permitido:** `src/domain/**`, `src/screens/v492/**`, `test/**` y
+  `CURRENT_TASK.md`. **Esta pasada no toca `convex/**`** —ni código ni
+  `CHANGELOG.md`— ni `app/**`, ni las rutas, ni la superficie web.
+- **Archivos de esta pasada.** Dominio: `src/domain/relationshipCalc.ts` (nuevo)
+  y `src/domain/relationships.ts`. Pantallas: `src/screens/v492/
+  VinculosConnectScreen.tsx`, `VinculosHubScreen.tsx` y
+  `VinculosResultScreen.tsx`. Pruebas: `test/vinculosQA22.test.ts` (nueva) y
+  `test/vinculosNativeV492.test.ts` (actualizada). Documentación: esta ficha.
+- **Commit base:** `ac384cf` (`release: Órbita 1.0.0 (22)`), preservado. 4A no
+  toca ningún archivo de los bloques 1, 2 ni 3A, así que sus corridas siguen
+  valiendo.
+- **Cambio de contrato:** **no.** Ninguna firma de Convex cambia, no hay campos
+  nuevos, no hay codegen y no hay nota de contrato: 4A consume
+  `relationships.list`, `relationships.savePerson`, `relationships.getComparison`
+  y `relationships.refreshComparison` tal como ya existen.
+- **Riesgo:** medio. Toca las tres superficies de Vínculos y el camino del
+  guardado, pero sin migración, sin escritura nueva y sin auth nueva. El riesgo
+  concreto es el ciclo de cálculo: `relationshipNeedsCalculation` decide desde
+  una lista cerrada de estados, así que un `status` nuevo del backend se leería
+  como "listo" y la fila no ofrecería recalcularlo. El recálculo automático está
+  acotado por `relationshipCalcKey` (uno por estado del sobre) justamente para
+  que un proveedor caído no lo deje girando.
+- **Plan de pruebas:** `test/vinculosQA22.test.ts` (nueva, 21 pruebas) — nivel
+  derivado de los datos y bordes que no suben de escalón, paridad de la
+  derivación con el backend, borrador que re-deriva en vez de copiar, el nivel
+  dicho con lo que agregaría el dato siguiente, lo mínimo exigible al editar
+  contra lo prometido en el alta, el pedido que guarda exactamente los datos del
+  nivel derivado, destinos unívocos del dominio, confirmación con nombre y lugar,
+  guardado que vuelve a la raíz y NO abre la lectura, elegir que no navega ni
+  apaga el CTA, `CONTINUAR` pegado a las opciones, edición sin selector, "editar
+  datos" presente en las dos superficies, la fase del cálculo como función pura,
+  qué se recalcula y cuándo se gasta el intento automático, la persona visible
+  antes del cálculo, la regla de recálculo compartida por fila y lectura, el
+  doble toque con sus dos guards y su clave de idempotencia, y las tres rutas +
+  la superficie web sin moverse. Actualizada: `test/vinculosNativeV492.test.ts`.
+  Más `pnpm typecheck` y la suite completa, que **corre Codex**. **Resultado: la
+  corrida posterior a este ajuste quedó en verde; está registrada en el *CIERRE
+  INTEGRAL DE CÓDIGO* de arriba.**
+- **Plan de rollout:** merge por PR a `main`. No cambia ninguna función de Convex
+  ni el esquema, así que no hay orden entre back y front ni deploy asociado.
+- **Plan de rollback:** revertir el commit del PR. Todo el cambio es de lectura,
+  presentación y navegación sobre funciones que ya existían; el único efecto
+  persistente sigue siendo el que ya hacía `relationships.savePerson`, con su
+  clave de idempotencia. No deja datos ni migraciones detrás.
+- **Fuera de alcance:** **el BLOQUE 4B, que queda PENDIENTE**, y el resto del
+  plan QA22; cualquier cambio en `convex/**`; el rediseño de la lectura de
+  comparación; commit, push, deploy de Convex, codegen, build EAS, TestFlight y
+  App Store; otros worktrees.
+
+## QA22 · BLOQUE 2 — Tránsitos: título legible, un solo estado, dos hitos y una pantalla que se lee antes de calcular (2026-08-21) · VERIFICADO
+
+**Verificación (corrida de Codex, posterior a la corrección del `EXACTO AHORA`).**
+`pnpm typecheck` **limpio** y **130 focales en verde**. QA22-008, QA22-009,
+QA22-010, QA22-011 y QA22-012 quedan cerrados en código; lo que resta es el paso
+por el binario, que va con el release. La pasada 3A no toca nada del bloque 2
+—`src/domain/transitState.ts`, `src/domain/transitDetail.ts`,
+`src/domain/layers.ts`, `src/components/v492/TransitCard.tsx`,
+`src/components/v492/Layout.tsx` ni `src/screens/v492/ArcoDetailScreen.tsx`—, así
+que la corrida sigue valiendo.
+
+**Ficha de tarea (obligatoria antes de tocar archivos).**
+
+- **Objetivo:** cerrar QA22-008, QA22-009, QA22-010, QA22-011 y QA22-012 del
+  registro físico del build 22 (`native-v492/docs/QA-FISICA-BUILD22.md`, leído
+  para esta tarea). La lista de Tránsitos se escaneaba en glifos y no dejaba
+  elegir un tránsito; el mismo arco decía `ACERCÁNDOSE · EXACTO HOY` en la lista
+  y `EXACTO` en su detalle, y encima anunciaba un “próximo contacto” que era el
+  de hoy; `HOY` y `EXACTO` se fusionaban en una marca cuando compartían fecha;
+  la primera apertura de cada detalle reemplazaba toda la pantalla por
+  “Calculando la línea de tiempo…”; y con tres contactos los rótulos de la línea
+  saltaban a una segunda fila desde la izquierda.
+- **Criterios de aceptación:**
+  1. **Título corto legible junto a los glifos (QA22-008).** Cada `TransitRow`
+     dibuja `Luna cuadratura tu Marte` en su propio renglón, debajo de la
+     notación simbólica —no dentro de ella, que es donde competía por el ancho
+     con el ordinal y el orbe—. Los símbolos se conservan y VoiceOver sigue
+     recibiendo el titular COMPLETO (`transitHeadline`), no la forma corta.
+  2. **Una sola derivación canónica del estado (QA22-009).** `ORB-TRN-001` y
+     `ORB-TRN-002` publican `state` con reglas distintas —±6 h del pico contra
+     orbe ≤ 0,1°—, así que **el origen realmente diverge**. La derivación única
+     vive en `src/domain/transitState.ts` y la usan la fila y el detalle: sale de
+     los INSTANTES que los dos sobres ya publican, por eso vale también para los
+     sobres persistidos y no necesita deploy. El campo crudo se conserva como
+     respaldo. La divergencia y la decisión quedan escritas en
+     `convex/CHANGELOG.md`.
+     **La regla, cerrada (corrección de la revisión Codex):** antes del pico
+     `approaching`; durante el **mismo minuto civil** del instante exacto,
+     `exact` / `EXACTO AHORA`; pasado ese minuto, `integrating` —aunque siga
+     siendo el mismo día—. La comparación es por minuto en la zona de la persona
+     (`sameCivilMinute`), sin ninguna ventana horaria inventada. La primera
+     versión dejaba `exact` hasta la medianoche, y eso afirmaba a las 23:40 que un
+     contacto de las 16:00 estaba ocurriendo *ahora*: el mismo defecto de
+     QA22-009 con otra ventana. `peakToday` sobrevive como dato del RANKING —el
+     motivo `EXACTO HOY` sigue siendo cierto todo el día—, y por eso la frase de
+     etapa lleva la hora a los dos lados del pico (`Se acerca al punto exacto,
+     hoy a las 16:00` · `Ya pasó el punto exacto, hoy a las 16:00`): así el chip
+     `INTEGRÁNDOSE` y el motivo `EXACTO HOY` dicen lo mismo en vez de pelearse.
+  3. **Sin “próximo contacto” cuando el contacto ya es hoy (QA22-009).**
+     `contactWorthNaming` deja fuera de esa línea cualquier contacto que caiga en
+     el día civil de hoy: ya lo dicen la etapa, el motivo del ranking y la marca
+     `EXACTO` de la línea de tiempo.
+  4. **`HOY` y `EXACTO` son dos hitos aunque compartan fecha (QA22-010).** `HOY`
+     se ubica en `nowMs` y el contacto en su instante exacto; el contacto que es
+     de hoy lleva la hora en el rótulo (`EXACTO 16:00`). La marca fusionada
+     `HOY · EXACTO` desaparece.
+  5. **La línea proporcional se conserva y los rótulos pasan a una lista
+     cronológica (QA22-012).** Un hito por renglón —Inicio / Hoy / Picos /
+     Cierre—, con su punto del mismo color que su marca. Se retira la fila con
+     `flexWrap`, que es la que reordenaba las etiquetas. VoiceOver mantiene UN
+     anuncio, entero y en orden cronológico.
+  6. **La primera apertura del detalle se lee entera menos la cronología
+     (QA22-011).** Con la fila del ranking que se acaba de tocar
+     (`transitPreviewFromRanking`) la pantalla dibuja de inmediato título, etapa,
+     significado y acción; la línea de tiempo es lo ÚNICO que muestra su carga,
+     su “ya no está en la lista” o su fallo, dentro de su propio bloque y con su
+     propio reintento. El adelanto **no** aporta fechas, ventanas, pasadas ni
+     trazabilidad.
+- **Owner:** Claude (frontend).
+- **Territorio permitido:** `src/components/v492/**`, `src/domain/**`,
+  `src/screens/v492/**`, `test/**`, `CURRENT_TASK.md` y `convex/CHANGELOG.md`
+  (sólo la nota de contrato). **No se tocó código de `convex/**`.**
+- **Commit base:** `ac384cf` (`release: Órbita 1.0.0 (22)`), preservado. El
+  bloque 1 queda intacto: esta pasada no toca `convex/void.ts`,
+  `src/components/void/**` ni `src/services/appRefs.ts`.
+- **Cambio de contrato:** **no.** Ninguna firma cambia y no hay codegen. Lo que
+  sí hay es una **nota de contrato** en `convex/CHANGELOG.md`: `state` no
+  significa lo mismo en los dos análisis, y el cliente publica una proyección
+  canónica compatible. `summaryWithCanonicalState` declara además su dependencia
+  del copy de etapa que compone el backend, con la degradación segura escrita.
+- **Riesgo:** medio. Toca las dos superficies de Tránsitos y el vocabulario de
+  etapa. Sin migración, sin escritura y sin auth nueva. El riesgo concreto es de
+  copy: si Codex cambia la frase de etapa de un `summary`, el reemplazo deja de
+  aplicar y el chip podría volver a discrepar del párrafo (el texto se dibuja
+  igual: no se recorta a ciegas).
+- **Plan de pruebas:** `test/transitosQA22.test.ts` (nuevo) — título corto,
+  etapa canónica compartida por las dos superficies **en los tres tramos del día**
+  (antes del pico, durante su minuto, después), `EXACTO AHORA` acotado a ese
+  minuto —incluidos `PICO−1 ms`, `PICO+59 999 ms`, `PICO+60 000 ms` y un pico con
+  segundos—, el minuto comparado en zona (Buenos Aires, no UTC), respaldo del
+  sobre viejo, reemplazo de la frase de etapa, contacto de hoy que no se anuncia
+  como próximo, línea con UNO y con TRES contactos y el cableado del adelanto.
+  Actualizados: `transitDetailV492` (fijaba `HOY · EXACTO`),
+  `arcoDetailNativeV492`, `layerMeaningV492` y `v492CopyA11y`. Más
+  `pnpm typecheck` y la suite completa, que **corre Codex**.
+- **Plan de rollout:** merge por PR a `main`. No cambia ninguna función de
+  Convex, así que no hay orden entre back y front.
+- **Plan de rollback:** revertir el commit del PR. Todo el cambio es de lectura y
+  presentación: no deja datos ni migraciones detrás.
+- **Fuera de alcance:** el resto del plan QA22 (bloques 3+), la unificación de
+  `stageFromTrend`/`arcStage` en el backend (queda anotada para Codex), el
+  indicador directo/retrógrado sobre la línea de tiempo, commit, push, deploy de
+  Convex, codegen, build EAS, TestFlight y App Store; otros worktrees; el piso de
+  `testCountGate` (es un piso, y esta pasada sólo suma pruebas).
+
+**Archivos de esta pasada.** Dominio: `transitState.ts` (nuevo),
+`transitDetail.ts` (dos hitos, hora del contacto de hoy, adelanto), `layers.ts`
+(`transitShortTitle`). Componentes: `v492/TransitCard.tsx`, `v492/Layout.tsx`
+(`ArcTimeline`). Pantallas: `v492/ArcoDetailScreen.tsx`. Pruebas:
+`transitosQA22.test.ts` (nueva) y actualizaciones en `transitDetailV492`,
+`arcoDetailNativeV492`, `layerMeaningV492` y `v492CopyA11y`. Documentación:
+`convex/CHANGELOG.md` y esta ficha.
+
+**Estado: VERIFICADO.** La revisión de Codex encontró y se corrigió el punto del
+`EXACTO AHORA` que duraba todo el día (`src/domain/transitState.ts` +
+`test/transitosQA22.test.ts`); la corrida posterior de Codex cerró el bloque con
+`pnpm typecheck` limpio y 130 focales en verde.
+
+---
+
+## QA22 · BLOQUE 1 — El Umbral: entrada inmediata, salida siempre visible y límite que informa (2026-08-20) · VERIFICADO
+
+**Verificación (corrida de Codex).** `pnpm typecheck` **limpio** y **147 focales
+en verde**. QA22-001, QA22-002 y QA22-031 quedan cerrados en código; lo que resta
+es el paso por el binario, que va con el release. Esta pasada del bloque 2 no
+tocó nada del bloque 1 —`convex/void.ts`, `src/components/void/**`,
+`src/domain/voidSession.ts` ni `src/services/appRefs.ts`—, así que la corrida
+sigue valiendo.
+
+**Ficha de tarea (obligatoria antes de tocar archivos).**
+
+- **Objetivo:** cerrar QA22-001, QA22-002 y QA22-031 del registro físico del
+  build 22 (`native-v492/docs/QA-FISICA-BUILD22.md`, leído para esta tarea).
+  El Umbral se quedaba en “Cargando tu cielo…” hasta que la action de sugeridas
+  —que genera texto con un LLM— contestaba; dibujaba categorías genéricas que
+  después se pisaban con las personalizadas; no ofrecía ninguna acción visible
+  para volver al selector desde la respuesta, el error, la espera ni el cupo
+  agotado; y el estado de cupo agotado no decía cuántas preguntas se usaron.
+- **Criterios de aceptación:**
+  1. `void.suggestedToday` es una query **aditiva** que devuelve el set de
+     sugeridas YA cacheado del día del usuario **sin disparar la action ni el
+     LLM**, y `null` cuando el día todavía no tiene set. `void.ask`,
+     `void.today` y `void.suggestedQuestions` quedan intactas.
+  2. El Umbral muestra la superficie para preguntar (campo + `PREGUNTAR`) y la
+     cuota del día apenas resuelve la query de cuota; la carga de sugeridas es
+     una sección **localizada** dentro de la fase de entrada. Con el set del día
+     ya cacheado —la “carga caliente” que QA22-001 pide no invalidar— la entrada
+     dibuja las sugeridas reales sin pagar un LLM.
+  3. Nunca se dibujan categorías genéricas que después cambien: o están las del
+     día, o está el estado de carga/error de esa sección.
+  4. `HACER OTRA PREGUNTA` aparece en respuesta normal, error, carga y cupo
+     agotado —las cuatro superficies que QA22-002 nombra—. Resetea **sólo** la
+     interacción actual (fase, texto, payload, bloqueo, fallo) y **no toca la
+     cuota**: el contador sigue saliendo de la query reactiva.
+  5. Copy dinámico exacto del cupo agotado, como estado concreto y primero:
+     `Usaste tus {limit} preguntas de hoy. Volvé mañana para hacer más.`
+     La frase editorial queda como texto secundario, no como reemplazo
+     (QA22-031).
+- **Owner:** Claude (frontend), con el cambio de contrato Convex autorizado
+  explícitamente por Lucas para esta tarea.
+- **Territorio permitido:** `src/components/void/**`, `src/domain/**`,
+  `src/services/appRefs.ts`, `test/**`, `CURRENT_TASK.md`, y — por autorización
+  expresa — `convex/void.ts` + `convex/CHANGELOG.md`.
+- **Commit base:** `ac384cf` (`release: Órbita 1.0.0 (22)`), preservado.
+- **Cambio de contrato:** **sí**, aditivo. `void.suggestedToday` (query pública,
+  `args: {}`, `returns: { categories } | null`). No agrega tabla ni índice: lee
+  `voidPromptSets` por el índice `by_user_date` que ya existe. **No se corrió
+  codegen** (lo corre Codex): el módulo `void` ya está enumerado en
+  `convex/_generated/api.d.ts`, así que `ApiFromModules` deriva la función nueva
+  y el front la consume por `anyApi`.
+- **Riesgo:** medio. Toca la lógica de una pantalla y agrega una query de
+  lectura. Sin migración, sin escritura nueva, sin auth nueva.
+- **Plan de pruebas:** `test/voidUmbralQA22.test.ts` (nuevo) — decisiones puras
+  de `src/domain/voidSession.ts`, la query real de Convex contra la base en
+  memoria, y los gates de composición del Umbral. Más los focales que ya cubrían
+  el archivo (`responsiveShells`, `accessibilityWeb`, `pressableStyleValue`,
+  `parityFoundations`, `perfilAppReview`, `convexGeneratedApiGate`) y
+  `pnpm typecheck`.
+- **Plan de rollout:** merge por PR a `main` como cualquier fix. No cambia
+  ninguna función existente, así que un cliente viejo sigue funcionando: sin
+  `void.suggestedToday` el front cae al camino de generar y no rompe.
+- **Plan de rollback:** revertir el commit del PR. La query nueva es de lectura:
+  quitarla no deja datos huérfanos ni migración pendiente.
+- **Fuera de alcance:** el resto del plan QA22 (bloques 2+), commit, push,
+  deploy de Convex, build EAS, TestFlight y App Store; otros worktrees; codegen
+  de Convex; el piso de `testCountGate` (es un piso, y esta pasada sólo suma
+  pruebas).
+
+---
+
 ## Cierre de frescura, ruta del arco, pestaña Tránsitos y contrato `ORB-TRN` (2026-08-20) · VIGENTE
 
 **Éste es el único bloque vigente del archivo.** El de abajo —*Frescura, Hoy sin
