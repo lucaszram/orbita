@@ -136,6 +136,58 @@ export type RelationshipDimension = {
   drivers: RelationshipDriver[];
 };
 
+/**
+ * La evidencia de un contacto, lista para publicar.
+ *
+ * Es un SUBCONJUNTO de `RelationshipDriver`, no un cálculo nuevo: mismo id,
+ * mismo texto, misma calidad, mismo peso y misma precisión que ya produjo
+ * `buildDimensions`. No hay LLM, no hay heurística y no hay orden nuevo.
+ */
+export type RelationshipDriverDetail = {
+  id: string;
+  text: string;
+  quality: RelationshipDriverQuality;
+  /** Peso dentro de ESA dimensión. Se suma; no es un porcentaje. */
+  weight: number;
+  precision: RelationshipPointPrecision;
+};
+
+/**
+ * Los contactos de una dimensión, uno por identidad real.
+ *
+ * **Deduplica sólo por `id`.** Dos contactos con el mismo texto y distinto id
+ * son dos contactos —`Su Descendente □ tu Luna` y `Su Ascendente □ tu Luna`
+ * describen cosas distintas aunque la oración quede casi igual—, y borrar uno
+ * por parecerse al otro sería perder evidencia real. Sólo se descarta la
+ * repetición EXACTA de un id dentro de la misma dimensión, que sería un contacto
+ * contado dos veces.
+ *
+ * El MISMO id puede aparecer en varias dimensiones y eso se conserva: un
+ * contacto que alimenta `Deseo` y `Fricción` es uno solo, y su id es lo que
+ * permite decirlo en vez de mostrarlo como dos.
+ *
+ * El orden es el que ya trae la dimensión: peso descendente y, a igual peso, el
+ * id — determinístico y estable entre corridas.
+ */
+export function relationshipDriverDetails(
+  drivers: readonly RelationshipDriver[]
+): RelationshipDriverDetail[] {
+  const vistos = new Set<string>();
+  const details: RelationshipDriverDetail[] = [];
+  for (const driver of drivers) {
+    if (vistos.has(driver.id)) continue;
+    vistos.add(driver.id);
+    details.push({
+      id: driver.id,
+      text: driver.text,
+      quality: driver.quality,
+      weight: driver.weight,
+      precision: driver.precision
+    });
+  }
+  return details;
+}
+
 export type RelationshipGeneralStyle = {
   title: string;
   body: string;

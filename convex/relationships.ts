@@ -26,6 +26,7 @@ import {
 import { findCurrentBirthData, findCurrentNatalChart } from "./lib/birthDataConsistency";
 import {
   buildRelationshipComparison,
+  relationshipDriverDetails,
   RELATIONSHIP_COMPARISON_VERSION,
   type RelationshipBirthTimePrecision,
   type RelationshipChartInput,
@@ -690,7 +691,12 @@ function comparisonData(comparison: RelationshipComparison) {
       label: dimension.label,
       value: dimensionValue(dimension),
       summary: dimension.summary,
+      // `drivers` NO cambia: misma fuente, mismo orden, mismas oraciones. Es lo
+      // que leen los clientes ya instalados y se publica exactamente igual.
       drivers: dimension.drivers.map((driver) => driver.text),
+      // La misma evidencia, estructurada. Sale de la MISMA derivación
+      // determinística —no hay un cálculo aparte— y sólo agrega campos.
+      driverDetails: relationshipDriverDetails(dimension.drivers),
       precision: dimensionPrecision(dimension),
     })),
     includedTechniques:

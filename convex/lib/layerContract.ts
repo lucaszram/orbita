@@ -427,12 +427,58 @@ export const relationshipDimensionKeyValidator = v.union(
   v.literal("shared_project"),
 );
 
+/**
+ * De qué clase es un contacto. Es el vocabulario CANÓNICO del motor
+ * (`RelationshipDriverQuality` en `convex/lib/relationshipLayers.ts`), publicado
+ * tal cual: `support` no es "bueno" ni `tension` "malo", son la familia del
+ * aspecto —trígono y sextil de un lado, cuadratura y oposición del otro— y la
+ * conjunción, que sola no inclina nada.
+ */
+export const relationshipDriverQualityValidator = v.union(
+  v.literal("support"),
+  v.literal("tension"),
+  v.literal("neutral"),
+);
+
+/**
+ * Un contacto de una dimensión, con la evidencia que lo sostiene.
+ *
+ * Es la forma ESTRUCTURADA de lo que `drivers: string[]` ya publicaba como
+ * prosa. Se agrega —no reemplaza— para que un cliente pueda explicar por qué
+ * una dimensión dice lo que dice sin volver a parsear la oración.
+ *
+ * - `id`: la identidad real del contacto (`aspect:a:venus:b:sun:trine`,
+ *   `house:b:sun:a:7`). Sale de QUÉ toca a QUÉ, nunca del índice del arreglo ni
+ *   del texto. El MISMO contacto conserva el MISMO id cuando alimenta más de una
+ *   dimensión: eso es lo que permite explicar la reutilización en vez de
+ *   presentarla como dos contactos distintos.
+ * - `weight`: cuánto pesa ese contacto DENTRO de esa dimensión. Se suma con los
+ *   demás de la misma dimensión; **no es un porcentaje** y no está normalizado a
+ *   1: el mismo contacto puede pesar distinto en dos dimensiones porque el par
+ *   de puntos importa distinto en cada una.
+ * - `precision`: la misma escala que el resto del contrato (`precisionValidator`).
+ */
+export const relationshipDriverDetailValidator = v.object({
+  id: v.string(),
+  text: v.string(),
+  quality: relationshipDriverQualityValidator,
+  weight: v.number(),
+  precision: precisionValidator,
+});
+
 export const relationshipDimensionValidator = v.object({
   key: relationshipDimensionKeyValidator,
   label: v.string(),
   value: v.number(),
   summary: v.string(),
   drivers: v.array(v.string()),
+  /**
+   * Aditivo y opcional. Los cachés escritos antes de esta versión —y los
+   * clientes del build 22, que no lo leen— siguen siendo válidos: `drivers`
+   * conserva exactamente su semántica y su orden. Cuando está, trae UNA entrada
+   * por contacto único de esa dimensión.
+   */
+  driverDetails: v.optional(v.array(relationshipDriverDetailValidator)),
   precision: precisionValidator,
 });
 
@@ -677,6 +723,8 @@ export type MoonOnChartResult = Infer<typeof moonOnChartResultValidator>;
 export type CumplelunaResult = Infer<typeof cumplelunaResultValidator>;
 export type RelationshipPatternResult = Infer<typeof relationshipPatternResultValidator>;
 export type RelationshipComparisonResult = Infer<typeof relationshipComparisonResultValidator>;
+export type RelationshipDriverQuality = Infer<typeof relationshipDriverQualityValidator>;
+export type RelationshipDriverDetail = Infer<typeof relationshipDriverDetailValidator>;
 export type LayerBundle = Infer<typeof layerBundleValidator>;
 export type NatalBaseBundle = Infer<typeof natalBaseBundleValidator>;
 export type RelationshipProfile = Infer<typeof relationshipProfileValidator>;

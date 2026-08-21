@@ -1,5 +1,164 @@
 # Contrato — CHANGELOG
 
+## 2026-08-21 (QA22 · bloque 4B) — `relationships.getComparison`: la evidencia por contacto, sin tocar `drivers`
+
+**Aditivo, no breaking. Codegen pendiente de Codex; deploy NO autorizado.**
+
+`relationships.getComparison` **conserva `drivers: string[]`** en cada dimensión,
+con exactamente la misma semántica y el mismo orden, y **agrega por dimensión un
+`driverDetails` opcional**:
+
+```ts
+// convex/lib/layerContract.ts
+relationshipDriverDetailValidator = v.object({
+  id: v.string(),
+  text: v.string(),
+  quality: v.union(v.literal("support"), v.literal("tension"), v.literal("neutral")),
+  weight: v.number(),
+  precision: precisionValidator, // exact | estimated | range | not_applicable
+})
+
+relationshipDimensionValidator = v.object({
+  key, label, value, summary,
+  drivers: v.array(v.string()),                                  // sin cambios
+  driverDetails: v.optional(v.array(relationshipDriverDetailValidator)), // nuevo
+  precision: precisionValidator,
+})
+```
+
+- **Por qué existe.** `drivers` publica prosa. Un cliente que quiera explicar
+  **por qué** una dimensión dice lo que dice tenía que volver a parsear la
+  oración —o inventar una calidad—. `driverDetails` es la forma ESTRUCTURADA de
+  lo que el motor ya había calculado, no un cálculo nuevo: mismo id, mismo texto,
+  misma calidad, mismo peso y misma precisión que produce `buildDimensions`. Sin
+  LLM, sin heurística y sin orden nuevo (`relationshipDriverDetails` en
+  `convex/lib/relationshipLayers.ts`).
+- **Opcional en el validator POR LOS SOBRES PERSISTIDOS.**
+  `relationshipComparisonCachesV492.data` se valida contra
+  `relationshipComparisonDataValidator`, así que Convex verifica cada fila ya
+  guardada cuando se pushea el schema. Declararlo requerido invalidaría todos los
+  cachés escritos antes de este cambio. **Emitido en las respuestas nuevas**: una
+  comparación recién calculada trae siempre `driverDetails`, con una entrada por
+  contacto único de esa dimensión.
+- **`quality` es la familia del aspecto, no un juicio.** `support` no es "bueno"
+  ni `tension` "malo": trígono y sextil de un lado, cuadratura y oposición del
+  otro, y la conjunción, que sola no inclina nada.
+- **`weight` no es un porcentaje.** Es cuánto pesa ese contacto DENTRO de esa
+  dimensión; se suma con los demás de la misma dimensión y no está normalizado a
+  1. El mismo contacto puede pesar distinto en dos dimensiones, porque el par de
+  puntos importa distinto en cada una.
+- **Ids deterministas y semánticos.** `aspect:a:venus:b:sun:trine`,
+  `house:b:sun:a:7`. Salen de QUÉ toca a QUÉ: nunca del índice del arreglo, nunca
+  del texto. Dos corridas del mismo cálculo devuelven los mismos ids.
+- **Se deduplica SÓLO por id.** Dos contactos con texto parecido —o igual— y
+  distinto id son dos contactos: `Su Descendente □ tu Luna` y `Su Ascendente □ tu
+  Luna` describen cosas distintas aunque la oración quede casi igual, y borrar uno
+  por parecido perdería evidencia real. Lo único que se descarta es la repetición
+  EXACTA de un id dentro de la misma dimensión, que sería contar dos veces el
+  mismo contacto.
+- **El mismo id puede vivir en varias dimensiones, y eso se conserva.** Un
+  contacto que alimenta `Deseo` y `Fricción` es UNO solo, aparece en las dos y su
+  id es lo que permite decirlo en vez de publicarlo como dos hallazgos distintos.
+  Un consumidor que quiera contar contactos reales tiene que contar ids únicos,
+  no filas.
+- **Sin migración destructiva.** No hay tabla nueva, no hay índice nuevo, no se
+  reescribe ninguna fila y no se borra nada. Los sobres ya persistidos siguen
+  siendo válidos tal como están y se renuevan por su propia invalidación de
+  entradas/método.
+- **Cliente build 22 compatible.** No lee el campo nuevo y no cambia de
+  comportamiento: `drivers` le sigue llegando igual. El cliente nuevo degrada en
+  la otra dirección —sobre sin `driverDetails`, `quality`/`weight`/`precision` en
+  `null`— y dice que no puede afirmar el balance en vez de inventarlo.
+- **Pendiente de Codex.** Correr el **codegen** (`convex/_generated/**` es
+  read-only para el front) y revisar las tres funciones tocadas en `convex/**`:
+  `lib/layerContract.ts`, `lib/relationshipLayers.ts` y `relationships.ts`. **El
+  deploy no está autorizado en esta tanda**, así que hasta que corra no hay sobre
+  nuevo con `driverDetails` en producción.
+
+## 2026-08-21 (QA22 · bloque 2) — nota de contrato: `state` de `ORB-TRN-001` y `ORB-TRN-002` no es el mismo dato
+
+**Sin cambio de firma. Nada que desplegar.** Esta entrada documenta una
+divergencia REAL del contrato encontrada al cerrar QA22-009 y la decisión que se
+tomó del lado del cliente. No se tocó `convex/**`.
+
+**Lo medido.** Los dos análisis publican un campo llamado `state`, y cada uno lo
+calcula con una regla distinta sobre el mismo arco y el mismo instante:
+
+| Análisis | Función | Regla de `exact` |
+|---|---|---|
+| `ORB-TRN-002` (ranking) | `stageFromTrend` (`convex/lib/transitLayers.ts:427`) | orbe ≤ `EXACT_TRANSIT_ORB_DEGREES` (**0,1°**); si no, tendencia |
+| `ORB-TRN-001` (arco) | `arcStage` (`convex/lib/transitLayers.ts:909`) | algún contacto a ≤ `ARC_EXACT_WINDOW_MS` (**±6 h**) del instante de referencia |
+
+Con Luna–Marte a 0°07′ (0,1167°) y el pico más tarde ese mismo día, la primera
+regla devuelve `approaching` y la segunda `exact`. Las dos son correctas para su
+propia definición: la lista mostraba `ACERCÁNDOSE · EXACTO HOY` y el detalle
+`EXACTO`, "en su punto más exacto". El `summary` de cada sobre arrastra la misma
+divergencia, porque su última frase se compone a partir de ese `state`
+(`adaptTransitArcToData` y `transitStageSummary`, en `convex/lib/layerAssembly.ts`).
+
+**La decisión: la derivación canónica vive en el cliente.**
+`src/domain/transitState.ts` deriva la etapa de los INSTANTES que los dos sobres
+ya publican —el contacto exacto más cercano a ahora, comparado con el instante
+actual y con el día civil— y la usan la fila y el detalle. Por qué acá y no en el
+backend:
+
+- lo que las pantallas leen son sobres **persistidos**; unificar `stageFromTrend`
+  con `arcStage` arreglaría los cálculos nuevos y dejaría contradiciéndose a los
+  que ya están guardados hasta que expiren;
+- recalcularlos exige un deploy de Convex, que esta tanda no tiene autorizado;
+- el campo crudo **no se toca**: se sigue publicando igual y el cliente lo usa
+  como respaldo cuando el sobre no trae ningún instante con el que derivar.
+
+**Dependencia de copy declarada.** `summaryWithCanonicalState` reconoce por texto
+EXACTO las seis frases de etapa que el backend adjunta al final de cada `summary`
+(tres por análisis) y sólo las reemplaza por la de la misma familia. Si Codex
+cambia esa redacción, el reemplazo deja de aplicar y el resumen se dibuja tal
+cual —no se recorta a ciegas—, pero el chip y el resumen podrían volver a decir
+cosas distintas. Las seis frases están copiadas y comentadas en
+`src/domain/transitState.ts`.
+
+**Pendiente para Codex, si se quiere cerrar en el origen.** Unificar las dos
+funciones en una sola derivación —o renombrar los campos para que digan qué mide
+cada uno— y republicar. La proyección del cliente es compatible con ese cambio:
+si el backend pasa a publicar la misma etapa que el canon deriva, `corrected`
+queda en `false` y no cambia nada de lo que se ve.
+
+## 2026-08-20 (QA22 · bloque 1) — `void.suggestedToday`: el set del día, sin LLM
+
+**Aditivo, no breaking.** Query pública nueva: `void.suggestedToday`.
+
+```ts
+args: {}
+returns: v.union(v.object({ categories: v.array(voidPromptCategoryValidator) }), v.null())
+// voidPromptCategoryValidator = { key: string, label: string, glyph: string, prompts: string[] }
+```
+
+- **Defecto (QA22-001, registro físico del build 22).** El Umbral se quedaba en
+  “Cargando tu cielo…” a pantalla completa hasta que `void.suggestedQuestions`
+  contestaba. Esa function es una **action**: en la carga fría genera el set con
+  el AI Gateway, así que la espera es de segundos y bloqueaba también la
+  superficie para preguntar y el contador de cupo, que no dependen de ella.
+- **Ahora.** `suggestedToday` devuelve la fila de `voidPromptSets` del día del
+  usuario —la misma que la action lee antes de decidir si genera— como **query
+  reactiva**: no llama al AI Gateway, no escribe, no consume cupo. `null`
+  significa exactamente “este día todavía no tiene set”, y es la señal con la
+  que el front dispara la action una sola vez.
+- **Compatibilidad.** `void.ask`, `void.today` y `void.suggestedQuestions` no
+  cambian de firma ni de comportamiento. Un cliente anterior sigue funcionando
+  sin conocer la query nueva.
+- **Sin tabla, sin índice, sin migración.** Lee `voidPromptSets` por el índice
+  `by_user_date` que ya existe. `payload` sigue siendo `v.any()` en la tabla; el
+  validator de salida es cerrado y la lectura es defensiva (un set deformado o a
+  medias se reporta como `null`, no se publica a medias).
+- **Día civil unificado.** `getVoidState`, `today` y `suggestedToday` resuelven
+  el `localDate` con el mismo helper (`resolveVoidLocalDate`, extracción textual
+  de lo que ya hacían las dos primeras). Si divergieran, la pantalla mostraría
+  el contador de hoy junto a las preguntas de ayer.
+- **Codegen pendiente de Codex.** No se corrió: el módulo `void` ya está
+  enumerado en `convex/_generated/api.d.ts`, así que `ApiFromModules` deriva la
+  function nueva y `convexGeneratedApiGate` —que compara a nivel de módulo—
+  sigue verde. El front la consume por `anyApi`.
+
 ## 2026-08-20 — ranking temporal y detalle canónico de tránsitos
 
 **Aditivo, con invalidación por versión de método.** `ORB-TRN-002` pasa a
