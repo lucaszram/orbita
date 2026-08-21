@@ -1,77 +1,74 @@
 # Current Task
 
-## RC iOS 1.0.0 (23) · PREPARACIÓN DE CONFIGURACIÓN LOCAL (2026-08-21) · CONFIG LISTA · BUILD NO LANZADO
+## RC iOS 1.0.0 (23) · RESULTADO (2026-08-21) · BINARIO ARMADO LOCALMENTE · SIN PUSH NI DISTRIBUCIÓN
 
-**Estado: configuración local lista, sin build.** El único cambio de producto de
-esta tarea es `expo.ios.buildNumber` de `"22"` a `"23"` en `app.json`.
-`expo.version` **queda en `"1.0.0"`** y ninguna otra clave de `app.json` se tocó.
-**El build de EAS todavía NO se lanzó**, y no hubo commit, push, submit ni envío
-a App Review. Esto prepara el terreno del próximo RC; no lo arma ni lo
-distribuye.
+**Estado: RC armado.** El binario existe y su **commit exacto es `0ec205d`**.
+Se hizo con **autorización explícita de Lucas** para tres cosas y sólo tres:
+**commits locales**, **deploy productivo de Convex** y **build de iOS**. Esa
+autorización **no incluyó push, TestFlight, App Review ni publicación**, y nada
+de eso se hizo. El cambio de producto sigue siendo el de la preparación:
+`expo.ios.buildNumber` de `"22"` a `"23"`, con `expo.version` en `"1.0.0"`.
 
-**Ficha de tarea.**
+**Commits locales del release** (en este worktree, **sin push**):
 
-- **Objetivo.** Dejar la configuración local del repo lista para el próximo
-  Release Candidate de iOS **1.0.0 (23)**: subir el número de build de iOS a
-  `23` conservando la versión pública `1.0.0`, y registrar en este archivo qué
-  quedó hecho y qué sigue dependiendo de una autorización.
-- **Criterios de aceptación.**
-  1. `app.json` tiene `expo.ios.buildNumber: "23"`.
-  2. `app.json` conserva `expo.version: "1.0.0"`.
-  3. Ninguna otra clave de `app.json` cambia: bundle id, plugins, `extra`,
-     `runtimeVersion`, `updates`, `web`, `android` e `infoPlist` quedan
-     idénticos.
-  4. `CURRENT_TASK.md` queda con esta ficha arriba y con el estado real del
-     codegen corregido en el cierre QA22 de abajo.
-  5. No se ejecutó build, commit, push, deploy, submit ni App Review, y el
-     archivo lo dice de forma explícita.
-- **Owner.** Claude (frontend), en el worktree
-  `worktrees/orbita/qa22-fixes`, branch `fix/qa22-build22`.
-- **Territorio permitido.** `app.json` y `CURRENT_TASK.md`, nada más. `app.json`
-  es **territorio compartido y sensible** (§4 del proceso: `app.json` / `eas.json`
-  requieren explicación explícita), así que el cambio queda justificado acá y
-  tiene que volver a explicarse en el PR que lo lleve.
-- **Commit base.** `ac384cf` — `release: Órbita 1.0.0 (22)`, con todo el árbol de
-  QA22 **todavía sin commitear** encima.
-- **Cambio de contrato.** **No.** No se tocó `convex/**` ni `convex/schema.ts`, y
-  no hay entrada nueva en `convex/CHANGELOG.md` por esta tarea.
-- **Riesgo.** **Alto por clasificación**, aunque el diff sea de una línea: §11
-  ubica EAS y configuración de build en el nivel alto. Un `buildNumber` repetido
-  o salteado rompe el envío a App Store Connect, y `expo.version` movida sin
-  querer cambiaría la versión pública. Mitigación: el diff se revisa entero
-  contra los cinco criterios de arriba antes de cualquier build.
-- **Plan de pruebas.** **Ninguna suite se corrió en esta tarea**, por instrucción
-  explícita y porque el cambio no toca código de aplicación: `buildNumber` no
-  entra en `pnpm typecheck` ni en `pnpm test`. La verificación vigente es la del
-  cierre QA22 de abajo (**2542/2542**, `typecheck` y `git diff --check` verdes,
-  codegen en verde). Antes de cortar el RC hay que **revalidar sobre el commit
-  exacto** que se use, no sobre este árbol sucio.
-- **Plan de rollout.** Por etapas y con corte entre cada una: (1) esta
-  preparación de configuración —hecha—; (2) commit identificable del árbol QA22 +
-  este cambio, con revisión de diff; (3) build EAS de RC contra configuración
-  productiva; (4) TestFlight al grupo Release Candidate y smoke tests de §13.8;
-  (5) aprobación explícita de Lucas; (6) el **mismo binario** a App Store. De la
-  (2) en adelante, cada etapa necesita autorización propia y **ninguna está
-  dada**.
-- **Plan de rollback.** Revertir `expo.ios.buildNumber` a `"22"` en `app.json` —
-  una línea, sin efectos en runtime— y descartar esta ficha. Como no hubo
-  commit, push, build ni publicación, no hay nada que revertir aguas abajo: el
-  binario distribuido sigue siendo el build 22. Si el RC ya se hubiese subido,
-  el rollback pasa a ser no promover ese build en App Store Connect y cortar uno
-  nuevo con `buildNumber` mayor, nunca reutilizando el `23`.
-- **Fuera de alcance.** Lanzar el build de EAS; commitear, pushear, abrir PR,
-  deployar Convex, subir a TestFlight o enviar a App Review; tocar `eas.json`,
-  `package.json` o cualquier archivo de `app/**`, `src/**` o `convex/**`; correr
-  tests, typecheck o codegen; revalidar en dispositivo los 31 casos del registro
-  físico del build 22.
+| Commit | Mensaje |
+|---|---|
+| `de08b60` | `fix(qa22): add compatible backend envelopes` |
+| `0442876` | `fix(qa22): resolve physical QA findings` |
+| `0ec205d` | `chore(release): prepare iOS build 23` — **commit exacto del binario** |
 
-**Nada de esto autoriza un RC productivo desde este árbol.** El worktree está
-**sucio** —todo QA22 sin commitear sobre `ac384cf`— y en una rama de trabajo,
-`fix/qa22-build22`. §13 del proceso es explícito: *no se publica producción desde
-un worktree sucio, una rama personal o un commit no identificable*, y §14 exige
-commit y build exactos identificados, worktree limpio y **aprobación explícita de
-Lucas**. Mientras esas tres condiciones no se cumplan, desde acá no se lanza
-build de EAS, no se sube a TestFlight y no se envía a App Review.
+`release/1.0.0` se cortó **localmente** desde `0ec205d`. **No se pusheó.**
+
+**Convex producción: desplegado.** Deployment `exciting-bat-311`, desde ese
+mismo árbol. **Sin índices eliminados**, **validación de schema completa** y
+**smoke read-only de `void:suggestedToday` en verde**. **No hubo migración
+destructiva.**
+
+**Build de EAS.**
+
+- **EAS cloud, perfil `production`:** cargó el proyecto pero **NO creó build**.
+  La **cuota mensual Free de iOS está agotada**; **resetea el 2026-09-01**.
+- **Alternativa oficial local de EAS, mismo perfil `production`:** **build
+  exitoso**, desde el commit exacto **`0ec205d`**.
+
+**Artefacto.**
+
+| Dato | Valor |
+|---|---|
+| IPA | `/private/tmp/orbita-1.0.0-23.ipa` |
+| Tamaño | 49.210.399 bytes |
+| SHA-256 | `7b1565b8adcd2ed9188703331781ff2be02ad12ca4d0789372445aa194ed817f` |
+| Versión · build | `1.0.0` · `23` |
+| Bundle · display | `com.lucasssram.orbita` · `Órbita` |
+| Arquitectura | `arm64` |
+| Team ID | `UN3VVJMCDQ` |
+| Provisioning | App Store, **activo hasta 2027-07-09** |
+| `get-task-allow` | `false` |
+| `beta-reports-active` | `true` |
+
+**Limitación de la inspección post-build, no fallo de compilación.** El
+**archive de Xcode y el export firmado terminaron con éxito**. La verificación
+`codesign` posterior **no pudo reconstruir la cadena de confianza** porque el
+EAS local **destruye su keychain temporal al finalizar**. Queda registrado como
+**limitación de la inspección post-build**, no como fallo de compilación.
+
+**Expo Doctor durante el build: 17/18.** Lo único en rojo son *patch
+mismatches*: `expo` 54.0.35 vs `~54.0.37`, `expo-constants` 18.0.13 vs
+`~18.0.14`, `expo-updates` 29.0.18 vs `~29.0.20`. El archive terminó
+exitosamente igual. **No actualizar dependencias dentro de este RC** sin una
+tarea separada.
+
+**Nota de seguridad — rotación recomendada.** El modo verbose del *dry-run* de
+Convex **imprimió valores de variables de entorno** en el log local de
+herramientas. **No se guardaron ni se commitearon en el repositorio**, y acá no
+se repite ningún valor. Recomendación: **rotar los secretos live antes de la
+publicación**.
+
+**Pendiente, cada uno con autorización separada y ninguna dada.** Push de
+`release/1.0.0`; subida a **TestFlight**; **instalación física** y revalidación
+de los **31 casos** originales del registro del build 22; **App Review** y
+**publicación**. Nada de eso está autorizado ni hecho: la autorización recibida
+cubrió commits locales, deploy de Convex y build, y ahí termina.
 
 ## QA22 · CIERRE INTEGRAL DE CÓDIGO — build 22 (2026-08-21) · CERRADO EN CÓDIGO
 
@@ -93,7 +90,7 @@ es código: son las autorizaciones del release, cada una por separado.
 | Export Expo iOS | **VERDE** — generado **sólo** en `/private/tmp/orbita-qa22-ios.3sfrNx` |
 | Revisión de archivos inesperados | **VERDE** — el alcance del árbol coincide con QA22 |
 | Codegen de Convex (`CONVEX_DEPLOYMENT=dev:dutiful-viper-815`) | **VERDE** — corrió y **no dejó cambios** en `convex/_generated` |
-| Commit · push · deploy · build EAS · submit · App Review | **NO** — nada de eso se hizo |
+| Commit · push · deploy · build EAS · submit · App Review | **NO al momento de esta verificación** — lo que pasó después está en la ficha del RC de arriba |
 
 Los dos exports se escribieron **fuera del repositorio**, en esos directorios
 temporales y nada más: no dejaron artefactos en el árbol y **no son builds
@@ -109,24 +106,28 @@ contrato aditivo del bloque 4B (`driverDetails`) esto levanta el bloqueo que
 estaba anotado acá: ya no falta codegen. Lo que falta para que los sobres nuevos
 traigan el campo es el **deploy del backend**, que es otra autorización y **no se
 hizo**; hasta que ocurra, la lectura degrada del lado del cliente exactamente
-como está escrito en esa ficha.
+como está escrito en esa ficha. — **Actualización posterior: ese deploy ya se
+hizo** (`exciting-bat-311`); ver el bullet de abajo y la ficha del RC.
 
-**Lo que sigue PENDIENTE, y por qué.**
+**Estado actualizado de los pendientes (ver la ficha del RC arriba).**
 
-- **RC 1.0.0 (23).** No se armó. La configuración local ya quedó preparada —ver
-  la ficha de arriba: `expo.ios.buildNumber` en `"23"` y `expo.version` en
-  `"1.0.0"`—, pero **el build de EAS todavía NO se lanzó**.
-- **Commit · push · submit · App Review.** Nada de eso se hizo ni está
-  autorizado. El árbol sigue sucio sobre `ac384cf`.
-- **TestFlight.** No se subió nada.
-- **QA física de los 31 casos del registro del build 22.** No se revalidó en
-  dispositivo: no se instaló ningún binario nuevo.
+- **RC 1.0.0 (23). HECHO.** El árbol se commiteó (`de08b60`, `0442876`,
+  `0ec205d`), `release/1.0.0` se cortó **localmente** desde `0ec205d` y el
+  **build salió desde ese commit exacto** con el EAS local, perfil
+  `production` —el EAS cloud no pudo por cuota Free agotada—.
+- **Deploy de Convex producción. HECHO.** `exciting-bat-311`, sin índices
+  eliminados y sin migración destructiva. Con esto queda **levantado el
+  bloqueo del contrato aditivo del bloque 4B (`driverDetails`)**: los sobres
+  nuevos ya pueden traer el campo y la lectura deja de depender de la
+  degradación del lado del cliente.
+- **Push · TestFlight · App Review · publicación. PENDIENTE.** Ninguna de esas
+  autorizaciones se pidió ni se dio.
+- **QA física de los 31 casos del registro del build 22. PENDIENTE.** No se
+  instaló el binario en dispositivo: la IPA existe pero no se distribuyó.
 
-Los cuatro son autorizaciones separadas. Este cierre **no** los anticipa ni los
-da por hechos: cubre el código y su verificación, nada más. Y vale lo mismo que
-dice la ficha del RC: **un RC productivo no se corta desde este árbol** —sucio y
-en rama de trabajo— sin un **commit identificable** y la **autorización explícita
-de Lucas** (§13 y §14 del proceso).
+Cada pendiente sigue siendo una autorización separada. Este cierre cubre el
+código y su verificación; el estado real del binario y del backend está en la
+ficha del RC, con **`0ec205d` como commit exacto**.
 
 ## QA22 · BLOQUE 6 — limpieza visual de Ajustes, paywall y Carta completa (2026-08-21) · VERIFICADO
 
