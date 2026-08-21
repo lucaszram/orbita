@@ -41,6 +41,22 @@ import { createOwnerGates, runExclusive } from "../src/domain/exclusive";
 import { parsePurchaseGuardRead, purchaseGuardBlocks } from "../src/domain/purchaseGuard";
 import { ROOT } from "./moduleGraph";
 
+const leer = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
+/** Una regla se comprueba sobre el CÓDIGO, no sobre lo que los comentarios cuentan de él. */
+const sinComentarios = (source: string) =>
+  source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+const cuenta = (source: string, re: RegExp) => (source.match(re) ?? []).length;
+
+/**
+ * El provider central del plan, sin comentarios.
+ *
+ * `EntitlementProvider` (en `useLiveApp`) es el único que monta
+ * `subscriptions.getCurrent`, el único que la correlaciona con el dueño de Clerk
+ * y el que publica `owner` / `remote` / `resolved` / `effective`. Los
+ * consumidores reciben esa verdad hecha; ya no la rehacen cada uno.
+ */
+const PLAN_PROVIDER = sinComentarios(leer("src/hooks/useLiveApp.tsx"));
+
 // ---------------------------------------------------------------------------
 // P1 1 — el marcador se decide por la RESPUESTA, no por el timing de setState
 // ---------------------------------------------------------------------------
@@ -997,8 +1013,22 @@ describe("G — el portal de Stripe no depende de RevenueCat", () => {
 
   it("la oferta y la impresión exigen entitlement correlacionado y `activation === idle`", () => {
     const paywall = readFileSync(join(ROOT, "src/screens/v492/PlusPaywallScreen.tsx"), "utf8");
-    assert.match(paywall, /const entitlement = safeEntitlement\(rawEntitlement, clerkOwner\);/);
-    assert.match(paywall, /const entitlementResuelto = entitlement !== undefined;/);
+    // La correlación ya no se rehace acá: llega hecha del provider central. Lo
+    // que la pantalla toma son los DOS campos que el backend confirmó para esta
+    // cuenta —`remote` y `resolved`—, nunca la vista efectiva ni el estado del
+    // snapshot: una etiqueta cacheada puede nombrar un plan, no autorizar un cobro.
+    assert.match(
+      paywall,
+      /const \{ remote: entitlement, resolved: entitlementResuelto \} = useEntitlement\(\);/
+    );
+    const codigoPaywall = sinComentarios(paywall);
+    for (const campo of ["effective", "hydrated", "source", "labelReady"]) {
+      assert.equal(
+        new RegExp(`\\b${campo}\\b`).test(codigoPaywall),
+        false,
+        `${campo}: en la pantalla donde equivocarse cuesta plata sólo entra el remoto`
+      );
+    }
     // La oferta: sólo con el plan validado Y sin ninguna compra en curso.
     assert.match(
       paywall,
@@ -1012,18 +1042,46 @@ describe("G — el portal de Stripe no depende de RevenueCat", () => {
     );
   });
 
-  it("TODOS los consumidores derivan del entitlement correlacionado", () => {
+  it("la correlación se hace UNA vez y los consumidores nativos la reciben hecha", () => {
+    // El provider central: una query, una correlación, un dueño de Clerk. Tres
+    // copias de la misma verdad —paywall, Perfil y docs vivos— eran tres
+    // ventanas distintas de "todavía no sé" sobre la misma cuenta.
+    assert.equal(cuenta(PLAN_PROVIDER, /appApi\.subscriptions\.getCurrent/g), 1, "una sola query");
+    assert.equal(cuenta(PLAN_PROVIDER, /safeEntitlement\(/g), 1, "una sola correlación");
+    assert.match(PLAN_PROVIDER, /const owner = auth\?\.isSignedIn \? auth\.userId \?\? null : null;/);
+    assert.match(PLAN_PROVIDER, /const remote = safeEntitlement\(raw[^)]*, owner\);/);
+
+    // Las dos superficies nativas de comercio no montan nada propio: ni query,
+    // ni crudo, ni una segunda copia de la correlación.
     for (const archivo of [
       "src/screens/v492/PlusPaywallScreen.tsx",
-      "src/components/orbita/ManageSubscription.tsx",
-      "src/components/orbita/ManageSubscription.web.tsx",
-      "src/routes/v492/recepcion.web.tsx",
-      "src/hooks/useLiveApp.tsx"
+      "src/components/orbita/ManageSubscription.tsx"
     ]) {
-      const fuente = readFileSync(join(ROOT, archivo), "utf8");
+      const fuente = sinComentarios(leer(archivo));
+      assert.match(fuente, /useEntitlement\(\)/, `${archivo}: no consume el provider central`);
+      assert.equal(/subscriptions\.getCurrent/.test(fuente), false, `${archivo}: query propia`);
+      assert.equal(/useQuery\(/.test(fuente), false, `${archivo}: query propia`);
+      assert.equal(/safeEntitlement\(/.test(fuente), false, `${archivo}: correlación duplicada`);
+      assert.equal(/raw(Entitlement|Subscription)\b/.test(fuente), false, `${archivo}: crudo suelto`);
+    }
+
+    // El gate de LECTURA también sale del remoto confirmado: un snapshot
+    // cacheado pone una etiqueta, nunca abre una casa ni un aspecto.
+    const inicioDocs = PLAN_PROVIDER.indexOf("function useLiveAppDocsInner");
+    assert.ok(inicioDocs > 0, "falta el hook de docs vivos");
+    const docs = PLAN_PROVIDER.slice(inicioDocs);
+    assert.match(docs, /const \{ remote, resolved \} = useEntitlement\(\);/);
+    assert.match(docs, /subscriptionResolved: resolved/);
+    assert.equal(/effective/.test(docs), false, "una lectura no se abre con caché");
+
+    // Web conserva su propia correlación —ahí no hay provider nativo— y el crudo
+    // se sigue leyendo UNA sola vez, sólo para entrar a `safeEntitlement`.
+    for (const archivo of [
+      "src/components/orbita/ManageSubscription.web.tsx",
+      "src/routes/v492/recepcion.web.tsx"
+    ]) {
+      const fuente = leer(archivo);
       assert.match(fuente, /safeEntitlement\(/, `${archivo}: falta la correlación`);
-      // El crudo se nombra distinto y NO se usa para decidir: sólo entra a
-      // `safeEntitlement`.
       const usosCrudos = [...fuente.matchAll(/raw(Entitlement|Subscription)\b/g)];
       assert.equal(usosCrudos.length, 2, `${archivo}: el crudo sólo se lee una vez`);
     }
@@ -1034,16 +1092,18 @@ describe("G — el portal de Stripe no depende de RevenueCat", () => {
     const manage = readFileSync(join(ROOT, "src/components/orbita/ManageSubscription.tsx"), "utf8");
     assert.match(paywall, /if \(!entitlementBelongsTo\(entitlement, userId\)\) return;/);
     assert.match(manage, /if \(!entitlementBelongsTo\(entitlement, storeOwner\)\) return;/);
-    // Y la query se corta sin sesión viva, para no arrastrar el valor de A.
+    // Y la query se corta sin sesión viva, para no arrastrar el valor de A. Vive
+    // en el provider central: las dos pantallas la RECIBEN, no la montan.
+    assert.match(
+      PLAN_PROVIDER,
+      /const raw = useQuery\(appApi\.subscriptions\.getCurrent, isLive \? \{\} : "skip"\);/
+    );
     for (const [nombre, fuente] of [
       ["paywall", paywall],
       ["manage", manage]
     ] as const) {
-      assert.match(
-        fuente,
-        /useQuery\(appApi\.subscriptions\.getCurrent, isLive \? \{\} : "skip"\)/,
-        nombre
-      );
+      assert.match(fuente, /useEntitlement\(\)/, nombre);
+      assert.equal(/subscriptions\.getCurrent/.test(sinComentarios(fuente)), false, nombre);
     }
     // El servidor es quien pone el dueño: el cliente no lo inventa.
     const backend = readFileSync(join(ROOT, "convex/subscriptions.ts"), "utf8");
@@ -1053,8 +1113,17 @@ describe("G — el portal de Stripe no depende de RevenueCat", () => {
 
   it("el bloque nativo separa los dos dueños y ata cada acción al suyo", () => {
     const manage = readFileSync(join(ROOT, "src/components/orbita/ManageSubscription.tsx"), "utf8");
-    assert.match(manage, /const clerkOwner = auth\?\.isSignedIn \? auth\.userId \?\? null : null;/);
+    // Siguen siendo DOS dueños de dos comercios distintos. Lo que cambió es de
+    // dónde sale el de Órbita: del provider central, que lo deriva de Clerk. El
+    // de la tienda sigue saliendo del SDK, y no se mezclan.
+    assert.match(manage, /const \{ remote: entitlement, owner: clerkOwner \} = useEntitlement\(\);/);
     assert.match(manage, /const storeOwner = revenueCat\.identifiedUserId;/);
+    assert.match(PLAN_PROVIDER, /const owner = auth\?\.isSignedIn \? auth\.userId \?\? null : null;/);
+    assert.equal(
+      /revenueCat|identifiedUserId|storeIsPro/.test(PLAN_PROVIDER),
+      false,
+      "el plan no puede depender de que la tienda esté disponible"
+    );
     // El estado de UI cuelga de Clerk: si colgara de la tienda, el bloque se
     // quedaba sin mensajes justo cuando sólo hay Stripe.
     assert.match(manage, /readOwnedValue\(stateSlot, clerkOwner, "idle"\)/);

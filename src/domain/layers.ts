@@ -318,6 +318,29 @@ export function transitHeadline(input: {
   return `${input.transitPlanet} en ${ASPECT_LABEL[input.aspect]} con tu ${input.natalPoint}`;
 }
 
+/**
+ * "Saturno cuadratura tu Ascendente" — el mismo dato en tres o cuatro palabras.
+ *
+ * Existe por QA22-008: la cabecera de cada fila es notación simbólica —el glifo
+ * del cuerpo, el del aspecto y el del punto natal— y la línea que se escanea
+ * primero no dice QUÉ tránsito es si no se conocen los glifos. Lucas no pudo
+ * encontrar Saturno–Júpiter en su propia lista y tuvo que leer los párrafos de
+ * abajo uno por uno.
+ *
+ * Es una forma CORTA a propósito: sin la preposición ni el conector del titular
+ * completo (`en … con tu …`), que son las dos palabras que hacen que la línea
+ * compita por el ancho con el orbe. El titular entero sigue vivo donde importa
+ * que esté completo: en la etiqueta de VoiceOver de la fila y en el título del
+ * detalle.
+ */
+export function transitShortTitle(input: {
+  transitPlanet: string;
+  aspect: TransitAspect;
+  natalPoint: string;
+}): string {
+  return `${input.transitPlanet} ${ASPECT_LABEL[input.aspect]} tu ${input.natalPoint}`;
+}
+
 /** Etapa del contacto, dicha sin jerga ("aplicando/separando" no se muestra). */
 export const TRANSIT_STATE_LABEL: Record<TransitState, string> = {
   approaching: "Se acerca al punto exacto",

@@ -16,9 +16,9 @@ import {
   orbDeltaLabel,
   relativeDayLabel,
   transitHeadline,
-  TRANSIT_STATE_CHIP,
-  TRANSIT_STATE_LABEL
+  transitShortTitle
 } from "@/domain/layers";
+import { canonicalTransitState, summaryWithCanonicalState } from "@/domain/transitState";
 import type { TransitRankingItem } from "@/services/layersApi";
 
 /**
@@ -32,22 +32,39 @@ import type { TransitRankingItem } from "@/services/layersApi";
  * tres lugares; eso es lo que hacía que la pantalla midiera el doble que el
  * frame.
  *
- * ## La cabecera es notación, no una frase
+ * ## La cabecera es notación, con un título corto debajo
  *
  * Escribía `Mercurio □ tu Saturno` con el glifo del aspecto entre dos NOMBRES,
  * y esos nombres ya estaban dos veces más abajo en la misma fila —en la frase
  * del cálculo— y una tercera en la etiqueta accesible. La línea quedaba larga,
  * competía con el orbe por el ancho y era lo primero que se rompía con Dynamic
- * Type. Ahora los tres términos son SÍMBOLO: el cuerpo en tránsito en cobre, el
- * aspecto con el color del sistema y el punto natal en marfil. La jerarquía de
- * color es la que dice cuál es cuál —cobre = lo que se mueve, marfil = tu
+ * Type. Por eso los tres términos son SÍMBOLO: el cuerpo en tránsito en cobre,
+ * el aspecto con el color del sistema y el punto natal en marfil. La jerarquía
+ * de color es la que dice cuál es cuál —cobre = lo que se mueve, marfil = tu
  * carta— y el orbe queda solo contra el borde derecho.
+ *
+ * **Pero los símbolos solos no alcanzaban (QA22-008).** Con la lista abierta,
+ * Lucas no pudo encontrar Saturno–Júpiter desde la cabecera y tuvo que leer los
+ * párrafos de abajo uno por uno: la línea que se escanea primero no dice qué
+ * tránsito es si no se conocen los glifos. Debajo de la notación va ahora el
+ * título corto (`Saturno cuadratura tu Júpiter`), en su propio renglón: no
+ * compite con el orbe por el ancho —que es lo que rompía la versión anterior—,
+ * no repite la preposición del titular completo y hace que la fila se pueda
+ * elegir sin traducir tres símbolos.
  *
  * La fila entera es UN botón, así que VoiceOver lee su etiqueta y nada de lo de
  * adentro: por eso la etiqueta dice todo lo que se ve —posición, titular
  * completo CON LOS NOMBRES y el del aspecto, etapa, orbe, cambio respecto de
  * ayer, casa, la frase del cálculo y la fecha del punto más exacto— y no un
  * resumen. Los símbolos comprimen la cabecera; no borran el dato.
+ *
+ * ## La etapa se deriva, no se copia
+ *
+ * El chip, la voz y la frase del cálculo salen de la etapa CANÓNICA
+ * (`canonicalTransitState`), no del `state` crudo de la fila: `ORB-TRN-002` lo
+ * decide por orbe y `ORB-TRN-001` por tiempo, así que el mismo tránsito podía
+ * decir `ACERCÁNDOSE` acá y `EXACTO` en su detalle (QA22-009). Ver
+ * `src/domain/transitState.ts`.
  *
  * ## Por qué está en la lista: lo dice el cálculo, no la fila
  *
@@ -80,19 +97,31 @@ export function TransitRow({
   first?: boolean;
 }) {
   const headline = transitHeadline(item);
+  const titulo = transitShortTitle(item);
   const house = houseLine(item.natalHouse);
   const delta = orbDeltaLabel(item.orbDegrees, yesterdayOrb);
   // El criterio del propio cálculo manda; la fecha derivada es el respaldo de los
   // sobres viejos. Nunca las dos: serían el mismo dato dicho dos veces.
   const motivo = rankingReasonLabel(item.rankingReason) ?? picoLabel(item, nowMs, timezone);
+  // La etapa canónica: la misma que va a mostrar el detalle de este arco.
+  const estado = canonicalTransitState({
+    published: item.state,
+    contacts: [item.exactAt, item.previousExactAt, item.nextExactAt],
+    nowMs,
+    timezone
+  });
+  // El resumen del sobre termina en la frase de su etapa publicada. Si el canon
+  // la corrigió, se pone al día: si no, la fila diría `ACERCÁNDOSE` arriba y
+  // "está en su momento de mayor exactitud" tres renglones abajo.
+  const resumen = summaryWithCanonicalState(item.summary, estado.state);
   const glifo = glyphSize();
   const voz = [
     `${rank}. ${headline}.`,
-    `${TRANSIT_STATE_LABEL[item.state]}.`,
+    `${estado.label}.`,
     `A ${formatOrb(item.orbDegrees)} del punto exacto.`,
     yesterdayOrb !== null ? `Ayer estaba a ${formatOrb(yesterdayOrb)}.` : null,
     motivo ? `${motivo}.` : null,
-    item.summary,
+    resumen,
     house
   ]
     .filter((linea): linea is string => Boolean(linea))
@@ -114,6 +143,11 @@ export function TransitRow({
         <Mono style={styles.orb}>{formatOrb(item.orbDegrees)}</Mono>
       </View>
 
+      {/* El título corto va DEBAJO de la notación, no al lado: en el renglón de
+          arriba tendría que compartir ancho con el ordinal y el orbe, y es
+          justo el reparto que rompía la cabecera con Dynamic Type. */}
+      <Body style={styles.titulo}>{titulo}</Body>
+
       <View style={styles.meterRow}>
         <View style={styles.meterCell}>
           <MeterBar
@@ -125,7 +159,7 @@ export function TransitRow({
       </View>
 
       <View style={styles.metaLine}>
-        <StateChip label={TRANSIT_STATE_CHIP[item.state]} />
+        <StateChip label={estado.chip} />
         <MetaRow
           items={[
             motivo ? motivo.toLocaleUpperCase("es") : null,
@@ -134,7 +168,7 @@ export function TransitRow({
         />
       </View>
 
-      <Body style={styles.summary}>{item.summary}</Body>
+      <Body style={styles.summary}>{resumen}</Body>
     </Touchable>
   );
 }
@@ -278,5 +312,12 @@ const styles = StyleSheet.create({
    * necesitar más de una es el respaldo textual, y para eso `mark` se angosta.
    */
   shorthand: { alignItems: "center", flex: 1, flexDirection: "row", gap: v492.space.sm },
-  summary: { marginTop: v492.space.md }
+  summary: { marginTop: v492.space.md },
+  /**
+   * El título corto de QA22-008. Renglón propio, ancho completo y sin
+   * `numberOfLines`: con Dynamic Type al máximo puede necesitar dos líneas y es
+   * preferible que baje de renglón antes que recortar el nombre del punto natal,
+   * que es exactamente el dato que la fila vino a hacer legible.
+   */
+  titulo: { color: v492.colors.text, marginTop: v492.space.sm }
 });

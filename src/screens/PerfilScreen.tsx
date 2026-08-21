@@ -167,7 +167,6 @@ function CuerpoAdministrativo({
               ) : null}
             </View>
           )}
-          {auth?.isSignedIn ? <ManageSubscriptionBlock /> : null}
           <Divider />
           <Eyebrow>LEGAL</Eyebrow>
           <Pressable
@@ -354,6 +353,15 @@ function AccountSignedIn({
       ) : isAuthLoading ? (
         <Note>Sincronizando con tu cielo…</Note>
       ) : null}
+      {/* La suscripción es parte de la identidad de la cuenta —qué plan tenés,
+          dónde se gestiona—, así que se lee junto al email y ANTES de las
+          acciones. Montado acá adentro sólo existe con sesión: es el mismo
+          `auth.isSignedIn` que decide montar `AccountSignedIn`. */}
+      <ManageSubscriptionBlock />
+      {/* Corte editorial: lo de arriba es información; lo de abajo, acciones
+          sobre la cuenta —cerrar sesión y, al final de todo, eliminarla. */}
+      <Divider />
+      <Eyebrow>ACCIONES DE CUENTA</Eyebrow>
       {logoutError ? (
         <Note>
           No pudimos cerrar sesión de forma segura. Tus datos siguen acá; probá de nuevo.

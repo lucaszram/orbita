@@ -4,7 +4,6 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { Card, ModuleHeader } from "@/components/v492/Module";
 import { DetailLayerScreen, Section } from "@/components/v492/Screen";
-import { LimitationList } from "@/components/v492/Status";
 import { Touchable } from "@/components/v492/Touchable";
 import {
   EmptyBlock,
@@ -22,11 +21,18 @@ import {
   findRelationshipProfile,
   RELATIONSHIP_LEVEL_FORM,
   RELATIONSHIP_LEVEL_LABEL,
+  RELATIONSHIP_READING_LIMITS_LABEL,
   RELATIONSHIP_SIGNS,
+  RELATIONSHIP_WHAT_YOU_SEE_LABEL,
+  relationshipDataLevelLine,
   relationshipDraftBlock,
   relationshipDraftFromProfile,
+  relationshipLevelFromDraft,
   relationshipSaveArgs,
+  relationshipSavedHref,
   relationshipSaveSignature,
+  VINCULOS_FORM_ROUTE,
+  VINCULOS_ROUTE,
   type RelationshipDraft,
   type RelationshipSaveIntent,
   type RelationshipSignKey
@@ -45,19 +51,24 @@ import {
  * Vínculos · cargar los datos de una persona (`/vinculos/conectar`).
  *
  * La misma pantalla hace el alta y la edición, porque son la misma decisión:
- * QUÉ se va a poder comparar. Con `?profileId=` abre los datos ya guardados de
- * esa persona —validados contra la lista autorizada de la cuenta, nunca contra
- * la URL— y guarda SOBRE ella; sin parámetro, da de alta a alguien nuevo. Es lo
- * que evita que "completar sus datos" termine creando una segunda copia de la
- * misma persona.
+ * QUÉ datos hay de esa persona. Con `?profileId=` abre los datos ya guardados
+ * —validados contra la lista autorizada de la cuenta, nunca contra la URL— y
+ * guarda SOBRE ella; sin parámetro, da de alta a alguien nuevo. Es lo que evita
+ * que "completar sus datos" termine creando una segunda copia de la misma
+ * persona.
  *
- * Los tres niveles del contrato están a la vista desde el principio —signo,
- * fecha, carta completa— con lo que cada uno agrega y, sobre todo, con lo que no
- * puede leer. Nadie elige "signo" creyendo que va a recibir una lectura personal
- * de esa persona.
+ * **El nivel no se elige dos veces (QA22-018).** El nivel de comparación es una
+ * CONSECUENCIA de la precisión de los datos, no una preferencia: se deriva con
+ * `relationshipLevelFromDraft` y la pantalla lo ANUNCIA. Por eso "Completar sus
+ * datos" y "Editar datos de …" entran directo al formulario precompletado, con
+ * todos los campos a la vista y sin volver a pasar por el selector de modalidad.
  *
- * Cada nivel pide EXACTAMENTE los datos que puede sostener y guarda EXACTAMENTE
- * esos:
+ * En el ALTA el selector sigue existiendo, porque ahí cumple otra función: no
+ * guarda un nivel, decide QUÉ datos se van a pedir. Elegir una modalidad no
+ * navega por sí solo y no esconde el CTA — `CONTINUAR` queda inmediatamente
+ * debajo de las tres opciones y siempre accionable (QA22-013).
+ *
+ * Cada dato se guarda por lo que es, sin completar lo que falta:
  * - **Signo**: uno de los doce, elegido a mano. Se guarda el signo y nada más;
  *   no se inventa una fecha ni una hora para completar el perfil.
  * - **Fecha**: el día. `birthTimePrecision` queda en `unknown` —no hay hora que
@@ -71,8 +82,13 @@ import {
  *   nada: la zona del teléfono es la equivocada para alguien nacido en otra, y
  *   una carta calculada en la zona equivocada no es la carta de nadie.
  *
- * Cero maqueta: la persona guardada sale de `relationships.savePerson` y su
- * comparación se abre con el `profileId` que devolvió el backend.
+ * **Guardar no es calcular (QA22-016).** Al terminar se vuelve a la raíz de
+ * Vínculos con la persona a la vista y una confirmación de que quedó guardada;
+ * la comparación se prepara en SU fila, no reemplazando la pantalla, y abrir la
+ * lectura es una acción explícita (QA22-015).
+ *
+ * Cero maqueta: la persona guardada sale de `relationships.savePerson` y el id
+ * que se confirma es el que devolvió el backend.
  */
 
 /** Los tres niveles del contrato, del que menos pide al que más lee. */
@@ -127,8 +143,8 @@ export function VinculosConnectScreen() {
 function Shell({ children, editando }: { children: ReactNode; editando: boolean }) {
   return (
     <DetailLayerScreen
-      eyebrow={editando ? "VÍNCULOS · COMPLETAR SUS DATOS" : "VÍNCULOS · AGREGAR PERSONA"}
-      fallbackHref="/vinculos"
+      eyebrow={editando ? "VÍNCULOS · SUS DATOS" : "VÍNCULOS · AGREGAR PERSONA"}
+      fallbackHref={VINCULOS_ROUTE}
       keyboardAware
     >
       {children}
@@ -172,7 +188,7 @@ function ConnectFlow({ pedido }: { pedido: string | null }) {
             <PrimaryButton
               label="AGREGAR UNA PERSONA NUEVA"
               accessibilityLabel="Agregar una persona nueva"
-              onPress={() => router.replace("/vinculos/conectar" as never)}
+              onPress={() => router.replace(VINCULOS_FORM_ROUTE as never)}
             />
           </View>
         </Section>
@@ -199,23 +215,39 @@ function ConnectForm({ persona }: { persona: RelationshipProfile | null }) {
   const [placeError, setPlaceError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  const editando = Boolean(persona);
   /**
-   * El alta es un FLUJO: 1 nombre → 2 qué comparar → 3 los datos de ese nivel.
+   * El ALTA es un FLUJO: 1 nombre → 2 qué comparar → 3 los datos de ese nivel.
    *
    * La pantalla única pedía decidir todo a la vez y la consecuencia de elegir
-   * el nivel quedaba fuera de la vista (decisión de producto, 2026-08-19).
-   * Editar entra directo a "datos" y muestra TODOS los bloques: ahí el contexto
-   * ya se conoce y saltar de paso en paso sería un peaje.
+   * quedaba fuera de la vista (decisión de producto, 2026-08-19).
+   *
+   * La EDICIÓN entra directo a los datos, con TODOS los campos precompletados y
+   * SIN el selector de modalidad: ahí el nivel ya no es una decisión, es lo que
+   * los datos permiten, y volver a preguntarlo era pedir dos veces lo mismo
+   * (QA22-018).
    */
   const [paso, setPaso] = useState<"nombre" | "nivel" | "datos">(persona ? "datos" : "nombre");
-  const editando = Boolean(persona);
-  const visible = (bloque: "nombre" | "nivel" | "datos") => editando || paso === bloque;
+  /**
+   * Qué datos dijo que iba a cargar, SÓLO en el alta. Es intención de pantalla
+   * —decide qué campos se piden— y no se guarda en ningún lado: lo que queda
+   * persistido es el nivel derivado de los datos.
+   */
+  const [objetivo, setObjetivo] = useState<ComparisonLevel>("sign_to_sign");
+  const intencion = editando ? null : objetivo;
+  const visible = (bloque: "nombre" | "nivel" | "datos") =>
+    editando ? bloque !== "nivel" : paso === bloque;
 
   // El guardado en vuelo vive en un ref y no en `saving`: `saving` recién
   // existe en el render SIGUIENTE, así que dos toques en el mismo tick entran
   // los dos al handler y guardan dos veces. El ref cierra la puerta en el
   // mismo tick; `saving` sigue siendo sólo lo que se ve en pantalla.
   const enVuelo = useRef(false);
+  // Y una vez que el backend confirmó, la puerta queda cerrada: entre la
+  // respuesta y el desmonte de la pantalla hay varios frames, y un segundo
+  // toque ahí mandaría un pedido más sobre una persona que ya existe.
+  const guardado = useRef(false);
   // El último pedido que salió: su huella y la clave con la que salió. Es lo
   // que permite reconocer un reintento del MISMO pedido —y reusar su clave— sin
   // reusarla cuando se cambió un dato, que sería otro pedido con la marca del
@@ -227,10 +259,22 @@ function ConnectForm({ persona }: { persona: RelationshipProfile | null }) {
     []
   );
 
-  // La ciudad entra en los dos niveles que pueden usarla: obligatoria en carta
-  // completa —de ahí salen las casas— y opcional en fecha, donde sólo acota la
-  // franja del día. En signo no hay lugar que valga.
-  const admiteCiudad = draft.level !== "sign_to_sign";
+  /**
+   * El nivel que permiten los datos cargados: la ÚNICA derivación, la misma que
+   * se va a guardar y la misma que el backend publica sobre el perfil.
+   */
+  const nivelDerivado = relationshipLevelFromDraft(draft);
+  const conFecha = nivelDerivado !== "sign_to_sign";
+
+  // Qué campos pide esta pantalla. Al editar los deciden los DATOS —el signo
+  // sólo mientras no haya fecha, la hora y la ciudad sólo cuando sí—; en el alta
+  // los decide la modalidad elegida, que es justamente lo que esa elección hace.
+  const pideSigno = editando ? !conFecha : objetivo === "sign_to_sign";
+  const pideFecha = editando || objetivo !== "sign_to_sign";
+  const pideHora = editando ? conFecha : objetivo === "chart_to_chart";
+  // La ciudad entra en los dos casos que pueden usarla: con hora exacta —de ahí
+  // salen las casas— y con la fecha sola, donde acota la franja del día.
+  const admiteCiudad = editando ? conFecha : objetivo !== "sign_to_sign";
 
   // Buscador de ciudades real, con debounce y cancelación — el mismo Photon del
   // alta y del editor de datos propios.
@@ -291,9 +335,21 @@ function ConnectForm({ persona }: { persona: RelationshipProfile | null }) {
     Keyboard.dismiss();
   };
 
-  const block = relationshipDraftBlock(draft);
+  /**
+   * Quitar la fecha se lleva la hora y la ciudad con ella.
+   *
+   * Sin fecha esos dos datos no se guardan, y dejarlos escritos en pantalla
+   * mostraría como cargado algo que el guardado va a descartar. Bajar de nivel
+   * tiene que ser tan explícito como subirlo (QA22-023).
+   */
+  const quitarFecha = () => patch({ birthDate: null, birthTime: null, place: null });
+
+  const block = relationshipDraftBlock(draft, intencion);
 
   const save = async () => {
+    // Dos puertas, cada una para un momento distinto: lo que YA se guardó no se
+    // vuelve a mandar, y lo que está saliendo —o todavía no puede salir— tampoco.
+    if (guardado.current) return;
     if (enVuelo.current || block !== null) return;
     enVuelo.current = true;
     setSaving(true);
@@ -302,8 +358,10 @@ function ConnectForm({ persona }: { persona: RelationshipProfile | null }) {
       // Fallar cerrado: la zona se resuelve ANTES de escribir. Si el backend no
       // la devuelve, no se guarda la persona a medias ni se cae a la zona del
       // dispositivo — se dice el problema y los datos cargados quedan intactos.
+      // Sólo se pide para la ciudad que efectivamente se va a guardar: con el
+      // nivel derivado en signo, el lugar no viaja.
       let timezone: string | null = null;
-      if (admiteCiudad && draft.place) {
+      if (conFecha && draft.place) {
         const resolved = await resolveTimezone({
           latitude: draft.place.latitude,
           longitude: draft.place.longitude
@@ -311,7 +369,7 @@ function ConnectForm({ persona }: { persona: RelationshipProfile | null }) {
         timezone = resolved ? resolved.timezone.trim() : null;
         if (!timezone) {
           setSaveError(
-            draft.level === "chart_to_chart"
+            nivelDerivado === "chart_to_chart"
               ? "No pudimos resolver la zona horaria de esa ciudad. Sin ella la carta se calcularía en la hora equivocada, así que no guardamos nada: probá de nuevo o elegí otra ciudad."
               : "No pudimos resolver la zona horaria de esa ciudad. Sin ella no podríamos acotar la franja del día, así que no guardamos nada: probá de nuevo, elegí otra ciudad o quitala y guardá sólo la fecha."
           );
@@ -342,9 +400,13 @@ function ConnectForm({ persona }: { persona: RelationshipProfile | null }) {
       // Recién acá queda anotado el intento: es la clave que efectivamente sale.
       intento.current = { signature: firma, idempotencyKey };
       const saved = await savePerson(args);
-      // Se abre la comparación de la persona PERSISTIDA, con el id que devolvió
-      // el backend. Reemplaza al formulario: volver lleva a la lista.
-      router.replace(`/vinculos/${saved.profileId}` as never);
+      // Guardar no es calcular. Se vuelve a la RAÍZ de Vínculos con el id que
+      // devolvió el backend, para confirmar el alta con la persona a la vista;
+      // la comparación se prepara en su fila y su lectura se abre a mano.
+      guardado.current = true;
+      router.dismissTo(
+        relationshipSavedHref(saved.profileId, persona ? "edicion" : "alta") as never
+      );
     } catch {
       setSaveError(
         persona
@@ -357,8 +419,12 @@ function ConnectForm({ persona }: { persona: RelationshipProfile | null }) {
     }
   };
 
-  const nivel = RELATIONSHIP_LEVEL_FORM[draft.level];
-  const nivelLabel = RELATIONSHIP_LEVEL_LABEL[draft.level].toLowerCase();
+  // El paso 2 describe la MODALIDAD elegida —lo hace `QueVasAVer`, que toma el
+  // nivel y busca su propia forma—; el de los campos, el nivel que los datos ya
+  // permiten.
+  const formaCampos = RELATIONSHIP_LEVEL_FORM[editando ? nivelDerivado : objetivo];
+  const objetivoLabel = RELATIONSHIP_LEVEL_LABEL[objetivo];
+  const nivelLabel = RELATIONSHIP_LEVEL_LABEL[nivelDerivado].toLowerCase();
 
   return (
     <Shell editando={Boolean(persona)}>
@@ -368,7 +434,7 @@ function ConnectForm({ persona }: { persona: RelationshipProfile | null }) {
           cadence={persona ? "se recalcula al guardar" : "se guarda en tu cuenta"}
           intro={
             persona
-              ? "Estos son los datos que ya cargaste de esta persona. Elegí hasta dónde querés comparar y completá lo que ese nivel necesita: se guarda sobre la misma persona, no se crea otra."
+              ? "Estos son los datos que ya cargaste de esta persona. Completá o corregí lo que quieras: el nivel de la comparación sale de estos datos, no hay que elegirlo. Se guarda sobre la misma persona, no se crea otra."
               : paso === "nombre"
                 ? "Primero, cómo la llamás. Después elegís qué querés comparar, y recién ahí cargás los datos que ese nivel necesita."
                 : paso === "nivel"
@@ -426,38 +492,67 @@ function ConnectForm({ persona }: { persona: RelationshipProfile | null }) {
               <LevelOption
                 key={level}
                 level={level}
-                selected={level === draft.level}
-                onSelect={() => patch({ level })}
+                selected={level === objetivo}
+                // Elegir NO navega: sólo elige. La pantalla no decide por vos
+                // apenas tocás una opción (QA22-013).
+                onSelect={() => setObjetivo(level)}
               />
             ))}
           </View>
-          {/* El límite del nivel elegido, con el mismo rótulo con el que las
-              capas declaran los suyos. Va acá y no al final: se lee ANTES de
-              cargar los datos, que es cuando todavía se puede cambiar de idea. */}
-          <LimitationList limitations={[nivel.cannot]} />
-          {!editando ? (
-            <>
-              <View style={styles.cta}>
-                <PrimaryButton
-                  label="CONTINUAR"
-                  accessibilityLabel={`Continuar y cargar los datos para comparar ${nivelLabel}`}
-                  onPress={() => setPaso("datos")}
-                />
-              </View>
-              <Pressable
-                onPress={() => setPaso("nombre")}
-                accessibilityRole="button"
-                hitSlop={8}
-                style={styles.pasoBack}
-              >
-                <Note>VOLVER AL PASO ANTERIOR</Note>
-              </Pressable>
-            </>
-          ) : null}
+          {/* Elegir tiene que acusar recibo. Sin esta línea la selección cambiaba
+              un borde y nada más, y con el CTA fuera de la vista parecía que la
+              elección no había habilitado nada (QA22-013). VoiceOver la anuncia
+              sin que haya que ir a buscarla. */}
+          <View style={styles.eleccion} accessibilityLiveRegion="polite">
+            <Note>{`Elegiste ${objetivoLabel.toLocaleLowerCase("es")}. CONTINUAR, acá abajo, carga los datos que ese nivel necesita.`}</Note>
+          </View>
+          {/* El CTA va PEGADO a las opciones y nunca se apaga: hay una modalidad
+              elegida desde el primer render, así que siempre hay algo que
+              continuar. El límite del nivel queda debajo —se sigue leyendo antes
+              de cargar ningún dato— en vez de empujar la acción fuera de la
+              pantalla, que era el defecto exacto. */}
+          <View style={styles.cta}>
+            <PrimaryButton
+              label="CONTINUAR"
+              accessibilityLabel={`Continuar y cargar los datos para comparar ${objetivoLabel.toLocaleLowerCase("es")}`}
+              onPress={() => setPaso("datos")}
+            />
+          </View>
+          <QueVasAVer level={objetivo} />
+          <Pressable
+            onPress={() => setPaso("nombre")}
+            accessibilityRole="button"
+            hitSlop={8}
+            style={styles.pasoBack}
+          >
+            <Note>VOLVER AL PASO ANTERIOR</Note>
+          </Pressable>
         </View>
         ) : null}
 
-        {visible("datos") && draft.level === "sign_to_sign" ? (
+        {visible("datos") && pideFecha ? (
+          <View style={styles.field}>
+            <BirthDateField
+              value={draft.birthDate}
+              onChange={(birthDate) => patch({ birthDate })}
+              label="Fecha de nacimiento"
+            />
+            {editando && draft.birthDate ? (
+              <Touchable
+                onPress={quitarFecha}
+                accessibilityRole="button"
+                accessibilityLabel="Quitar la fecha de nacimiento de esta persona"
+                accessibilityHint="También se quitan la hora y la ciudad, y la comparación vuelve a signo con signo"
+                style={styles.quitar}
+                pressedStyle={styles.pressed}
+              >
+                <Label style={styles.quitarTexto}>QUITAR LA FECHA</Label>
+              </Touchable>
+            ) : null}
+          </View>
+        ) : null}
+
+        {visible("datos") && pideSigno ? (
           <View style={styles.field}>
             <Label>SIGNO</Label>
             <SignPicker
@@ -470,24 +565,14 @@ function ConnectForm({ persona }: { persona: RelationshipProfile | null }) {
           </View>
         ) : null}
 
-        {visible("datos") && draft.level !== "sign_to_sign" ? (
-          <View style={styles.field}>
-            <BirthDateField
-              value={draft.birthDate}
-              onChange={(birthDate) => patch({ birthDate })}
-              label="Fecha de nacimiento"
-            />
-          </View>
-        ) : null}
-
-        {visible("datos") && draft.level === "date_to_date" ? (
+        {visible("datos") && nivelDerivado === "date_to_date" ? (
           <Note style={styles.hint}>
             Guardamos el día y, si la cargás, la ciudad. No deducimos el signo desde la fecha ni
             suponemos una hora: lo que no cargaste no queda guardado como si lo hubieras cargado.
           </Note>
         ) : null}
 
-        {visible("datos") && draft.level === "chart_to_chart" ? (
+        {visible("datos") && pideHora ? (
           <View style={styles.field}>
             <Label>HORA EXACTA</Label>
             <BirthTimeField
@@ -499,15 +584,25 @@ function ConnectForm({ persona }: { persona: RelationshipProfile | null }) {
               Tiene que ser la hora real de nacimiento. Una hora aproximada mueve las casas y el
               Ascendente, que son justo lo que este nivel agrega.
             </Note>
+            {editando && draft.birthTime ? (
+              <Touchable
+                onPress={() => patch({ birthTime: null })}
+                accessibilityRole="button"
+                accessibilityLabel="Quitar la hora de nacimiento de esta persona"
+                accessibilityHint="La comparación baja a fecha con fecha: sin hora no hay casas ni Ascendente"
+                style={styles.quitar}
+                pressedStyle={styles.pressed}
+              >
+                <Label style={styles.quitarTexto}>QUITAR LA HORA</Label>
+              </Touchable>
+            ) : null}
           </View>
         ) : null}
 
         {visible("datos") && admiteCiudad ? (
           <View style={styles.field}>
             <Label>
-              {draft.level === "date_to_date"
-                ? "CIUDAD DE NACIMIENTO (OPCIONAL)"
-                : "CIUDAD DE NACIMIENTO"}
+              {draft.birthTime ? "CIUDAD DE NACIMIENTO" : "CIUDAD DE NACIMIENTO (OPCIONAL)"}
             </Label>
             <PlaceField
               chosen={draft.place ? draft.place.label : null}
@@ -515,15 +610,31 @@ function ConnectForm({ persona }: { persona: RelationshipProfile | null }) {
               hits={placeHits}
               searching={placeSearching}
               problem={placeError}
-              clearLabel={draft.level === "date_to_date" ? "QUITAR O CAMBIAR" : "ELEGIR OTRA"}
+              clearLabel={draft.birthTime ? "ELEGIR OTRA" : "QUITAR O CAMBIAR"}
               onQuery={setPlaceQuery}
               onChoose={choosePlace}
               onClear={() => patch({ place: null })}
             />
             <Note style={styles.hint}>
-              {nivel.optional ??
+              {formaCampos.optional ??
                 "La zona horaria sale de las coordenadas de esa ciudad y la resolvemos al guardar. Nunca usamos la zona de tu teléfono: para alguien nacido en otra, sería la equivocada."}
             </Note>
+          </View>
+        ) : null}
+
+        {/* El nivel que estos datos permiten, DICHO y no pedido. Es el mismo
+            cálculo que se va a guardar, así que la pantalla no puede prometer un
+            escalón que el perfil persistido no dé (QA22-018).
+
+            En el alta aparece recién cuando los datos del nivel elegido están
+            completos: con el formulario todavía vacío diría "signo con signo"
+            —que es cierto de la nada cargada— y se leería como si la modalidad
+            elegida se hubiera ignorado. */}
+        {visible("datos") && (editando || block === null) ? (
+          <View style={styles.nivel} accessibilityLiveRegion="polite">
+            <Label style={styles.nivelLabel}>NIVEL QUE PERMITEN ESTOS DATOS</Label>
+            <Mono style={styles.nivelValor}>{RELATIONSHIP_LEVEL_LABEL[nivelDerivado]}</Mono>
+            <Note style={styles.hint}>{relationshipDataLevelLine(nivelDerivado)}</Note>
           </View>
         ) : null}
 
@@ -576,6 +687,45 @@ function ConnectForm({ persona }: { persona: RelationshipProfile | null }) {
         ) : null}
       </Section>
     </Shell>
+  );
+}
+
+/**
+ * Qué va a ver, y —a un toque— qué esta lectura no puede afirmar (QA22-014).
+ *
+ * En el build 22 acá había un bloque titulado `LO QUE ESTE CÁLCULO NO DICE`, en
+ * medio del alta y sin relación visible con la decisión de arriba: no se
+ * entendía si explicaba qué compara la lectura, una limitación del cálculo o una
+ * advertencia legal. Ahora son dos piezas con jerarquía:
+ *
+ * 1. **`QUÉ VAS A VER`** — siempre visible, y es lo primero: qué información usa
+ *    esta lectura, en la voz del nivel elegido.
+ * 2. **`LÍMITES DE ESTA LECTURA`** — detrás de un toque, porque es lo que hay
+ *    que poder consultar sin que interrumpa la acción principal. Está cerrado
+ *    por omisión, pero el rótulo se ve siempre: nunca es una letra chica.
+ *
+ * Los dos rótulos son copy literal y viven en el dominio; acá sólo se muestran.
+ */
+function QueVasAVer({ level }: { level: ComparisonLevel }) {
+  const [abierto, setAbierto] = useState(false);
+  const form = RELATIONSHIP_LEVEL_FORM[level];
+  return (
+    <View style={styles.queVasAVer}>
+      <Label style={styles.queVasAVerLabel}>{RELATIONSHIP_WHAT_YOU_SEE_LABEL}</Label>
+      <Note style={styles.queVasAVerTexto}>{form.adds}</Note>
+      <Touchable
+        onPress={() => setAbierto((valor) => !valor)}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: abierto }}
+        accessibilityLabel={RELATIONSHIP_READING_LIMITS_LABEL.toLocaleLowerCase("es")}
+        accessibilityHint={abierto ? "Toca para ocultarlos" : "Toca para leer qué no puede afirmar esta lectura"}
+        style={styles.limites}
+        pressedStyle={styles.pressed}
+      >
+        <Label style={styles.limitesTexto}>{RELATIONSHIP_READING_LIMITS_LABEL}</Label>
+      </Touchable>
+      {abierto ? <Note style={styles.queVasAVerTexto}>{form.cannot}</Note> : null}
+    </View>
   );
 }
 
@@ -734,6 +884,7 @@ const styles = StyleSheet.create({
   },
   alertText: { color: v492.colors.copperSoft },
   cta: { marginTop: v492.space.xl },
+  eleccion: { marginTop: v492.space.md },
   field: { marginTop: v492.space.xxl },
   hint: { marginTop: v492.space.md },
   hit: {
@@ -766,6 +917,9 @@ const styles = StyleSheet.create({
   levelAsks: { marginTop: v492.space.xs },
   levelOn: { backgroundColor: v492.colors.surfaceRaised, borderColor: v492.colors.copper },
   levels: { gap: v492.space.md, marginTop: v492.space.md },
+  nivel: { marginTop: v492.space.xxl },
+  nivelLabel: { color: v492.colors.copperSoft },
+  nivelValor: { color: v492.colors.text, marginTop: v492.space.xs },
   placeCard: { marginTop: v492.space.md },
   placeChange: {
     alignSelf: "flex-start",
@@ -778,6 +932,25 @@ const styles = StyleSheet.create({
   placeProblem: { color: v492.colors.copperSoft, marginTop: v492.space.md },
   placeSearching: { alignItems: "flex-start", paddingVertical: v492.space.md },
   pressed: { opacity: 0.7 },
+  queVasAVer: { marginTop: v492.space.xl },
+  queVasAVerLabel: { color: v492.colors.copperSoft },
+  queVasAVerTexto: { marginTop: v492.space.sm },
+  limites: {
+    alignSelf: "flex-start",
+    justifyContent: "center",
+    marginTop: v492.space.md,
+    minHeight: v492.touch,
+    minWidth: v492.touch
+  },
+  limitesTexto: { color: v492.colors.textMuted },
+  quitar: {
+    alignSelf: "flex-start",
+    justifyContent: "center",
+    marginTop: v492.space.md,
+    minHeight: v492.touch,
+    minWidth: v492.touch
+  },
+  quitarTexto: { color: v492.colors.textDim },
   sign: {
     alignItems: "center",
     borderColor: v492.colors.line,

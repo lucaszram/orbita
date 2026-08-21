@@ -13,6 +13,7 @@ import { TraceAccordion } from "@/components/v492/Trace";
 import { TransitRow } from "@/components/v492/TransitCard";
 import { Body, Label, Mono, Note, Subtitle, Title } from "@/components/v492/typography";
 import { v492 } from "@/components/v492/tokens";
+import { layerDetailHref, withDetailOrigin } from "@/domain/detailOrigin";
 import { envelopesFreshness } from "@/domain/layerFreshness";
 import {
   anyDataReady,
@@ -31,6 +32,7 @@ import {
   windowProgress
 } from "@/domain/layers";
 import { ACTION_HEADING, seasonMeaning, yearMeaning } from "@/domain/layerMeaning";
+import { SEASON_TRACE, YEAR_TRACE } from "@/domain/layerReading";
 import { useLayers } from "@/hooks/useLayers";
 import type {
   AnalysisEnvelope,
@@ -39,6 +41,7 @@ import type {
   LayerBundle,
   ProgressedLunationData,
   TemporalMandalaData,
+  TemporalMandalaRing,
   TransitRankingData
 } from "@/services/layersApi";
 
@@ -372,6 +375,20 @@ const CRITERIOS = [
  * El mandala no lleva ese bloque. Debajo del dibujo van sus cuatro líneas —una
  * por ritmo— y después la trazabilidad: qué es cada anillo lo dice el acordeón,
  * y un `Metodo` en el medio era la tercera explicación del mismo dibujo.
+ *
+ * ## De cada ritmo se puede salir a su lectura
+ *
+ * Los CUATRO ritmos tienen detalle canónico y lo abren desde su propia línea
+ * (QA22-024), con el rótulo exacto de cada uno: `VER TU ESTACIÓN`, `VER TU AÑO`,
+ * `VER CICLO LUNAR` y `VER TRÁNSITO`.
+ *
+ * Lo abren DENTRO de esta sección: `Tu momento` vive en el stack de Tránsitos,
+ * así que un detalle apilado en el stack de Hoy cambiaba de pestaña y "volver"
+ * caía en Hoy (QA22-027). Acá el `pop` devuelve a esta pantalla, que nunca se
+ * desmontó y conserva su punto de lectura.
+ *
+ * El enlace aparece sólo cuando ese ritmo se puede calcular hoy: una lectura que
+ * va a abrir "no pudimos calcular esto" no es una salida.
  */
 function MomentoView({
   bundle,
@@ -384,6 +401,38 @@ function MomentoView({
 }) {
   const { progressedLunation, annualProfection, temporalMandala } = bundle.moment;
   const sinHora = annualProfection.status === "needs_birth_time";
+  // El arco activo del día es el que dibuja el anillo de tránsito del mandala, y
+  // su detalle se pide por `arcId`: sin ese dato no hay destino que ofrecer, y
+  // un enlace a la lista no sería el detalle que la línea promete.
+  const arcId = bundle.today.transitArc.data?.arcId ?? null;
+  const destinos: RitmoDestinos = {
+    progressed_lunation: {
+      label: "VER TU ESTACIÓN",
+      accessibilityLabel: "Ver el detalle de tu estación vital",
+      href: layerDetailHref("estacion")
+    },
+    annual_profection: {
+      label: "VER TU AÑO",
+      accessibilityLabel: "Ver el detalle del tema de tu año",
+      href: layerDetailHref("ano")
+    },
+    cumpleluna: {
+      label: "VER CICLO LUNAR",
+      accessibilityLabel: "Ver tu ciclo lunar personal",
+      href: layerDetailHref("cumpleluna")
+    },
+    ...(arcId
+      ? {
+          transit_arc: {
+            label: "VER TRÁNSITO",
+            accessibilityLabel: "Ver el detalle del tránsito activo",
+            // El detalle del arco lo comparten tres superficies, así que declara
+            // de cuál viene: es lo único que le permite volver acá sin historial.
+            href: withDetailOrigin(`/transitos/arco/${encodeURIComponent(arcId)}`, "momento")
+          }
+        }
+      : {})
+  };
   return (
     <Section>
       {sinHora ? (
@@ -410,11 +459,15 @@ function MomentoView({
         Tu estación vital se basa en la relación progresada entre el Sol y la Luna. Recorre ocho fases en un
         ciclo de unos 30 años; cada fase dura alrededor de 3,7 años.
       </Metodo>
+      {/* El mismo texto que monta el detalle de esta capa: qué se calculó y con
+          qué regla se lee es una propiedad del ANÁLISIS, no de la pantalla.
+          Escrito en los dos lados, corregir uno y no el otro dejaría al producto
+          explicando el mismo cálculo de dos maneras. */}
       <TraceAccordion
         envelope={progressedLunation}
         timezone={timezone}
-        calculatedDatum="El ángulo entre el Sol y la Luna progresados a tu edad de hoy, la fase del ciclo en la que cae ese ángulo, y cuándo empieza y cuándo termina esa fase."
-        interpretiveRule="El ciclo entre el Sol y la Luna se divide en ocho fases iguales y cada una se lee como una etapa del mismo proceso largo. La fase describe el tramo del recorrido en el que estás; no fija un plazo ni anticipa un hecho."
+        calculatedDatum={SEASON_TRACE.calculatedDatum}
+        interpretiveRule={SEASON_TRACE.interpretiveRule}
       />
 
       <SectionHeader index="02" title="TEMA DE TU AÑO" cadence="DE CUMPLEAÑOS A CUMPLEAÑOS" />
@@ -441,13 +494,17 @@ function MomentoView({
       <TraceAccordion
         envelope={annualProfection}
         timezone={timezone}
-        calculatedDatum="Qué casa de tu carta le toca a tu edad actual, en qué signo empieza esa casa, qué planeta la rige y entre qué fechas corre el año que va de un cumpleaños al siguiente."
-        interpretiveRule="El recorrido arranca en tu Ascendente, avanza una casa por año y vuelve a empezar cada doce años. La casa del año indica en qué área se concentra la lectura; no afirma que algo vaya a ocurrir en esa área."
+        calculatedDatum={YEAR_TRACE.calculatedDatum}
+        interpretiveRule={YEAR_TRACE.interpretiveRule}
       />
 
       <SectionHeader index="03" title="TUS CUATRO RITMOS" cadence="MULTICAPA · DE DIARIO A MULTIANUAL" />
       {temporalMandala.data ? (
-        <Mandala data={temporalMandala.data} precision={temporalMandala.precision} />
+        <Mandala
+          data={temporalMandala.data}
+          precision={temporalMandala.precision}
+          destinos={destinos}
+        />
       ) : (
         <Falta envelope={temporalMandala} />
       )}
@@ -708,33 +765,74 @@ function TemaDelAno({
  * El avance tampoco se repite en texto: lo dibuja el anillo y lo dice la
  * etiqueta accesible del dibujo, que es donde el modo (`point`, `range`,
  * `unavailable`) significa algo.
+ *
+ * ## La salida de cada ritmo
+ *
+ * Debajo de la línea, y sólo cuando ese ritmo tiene un detalle Y hoy se puede
+ * calcular: un enlace a una lectura que va a abrir "no pudimos calcular esto"
+ * no es una salida. El enlace va FUERA del renglón, que es un solo elemento
+ * accesible: adentro, VoiceOver lo absorbería y no habría cómo tocarlo.
  */
-function Mandala({ data, precision }: { data: TemporalMandalaData; precision: AnalysisPrecision }) {
+function Mandala({
+  data,
+  precision,
+  destinos
+}: {
+  data: TemporalMandalaData;
+  precision: AnalysisPrecision;
+  /** El detalle canónico de cada ritmo que ya lo tiene. */
+  destinos: RitmoDestinos;
+}) {
   return (
     <View>
       <View style={styles.mandala}>
         <TemporalMandalaDial rings={data.rings} precision={precision} size={MANDALA_SIZE} />
       </View>
 
-      {data.rings.map((ring) => (
-        <View
-          key={ring.key}
-          style={styles.ring}
-          accessible
-          accessibilityRole="text"
-          accessibilityLabel={`${ring.label}: ${ring.available ? ring.state : ring.detail}`}
-        >
-          <Label style={styles.ringLabel}>{`${ring.label.toLocaleUpperCase("es")} ·`}</Label>
-          {ring.available ? (
-            <Body style={styles.ringState}>{ring.state}</Body>
-          ) : (
-            <Note style={styles.ringState}>{ring.detail}</Note>
-          )}
-        </View>
-      ))}
+      {data.rings.map((ring) => {
+        const destino = ring.available ? destinos[ring.key] : undefined;
+        return (
+          <View key={ring.key}>
+            <View
+              style={styles.ring}
+              accessible
+              accessibilityRole="text"
+              accessibilityLabel={`${ring.label}: ${ring.available ? ring.state : ring.detail}`}
+            >
+              <Label style={styles.ringLabel}>{`${ring.label.toLocaleUpperCase("es")} ·`}</Label>
+              {ring.available ? (
+                <Body style={styles.ringState}>{ring.state}</Body>
+              ) : (
+                <Note style={styles.ringState}>{ring.detail}</Note>
+              )}
+            </View>
+            {destino ? (
+              <LinkRow
+                label={destino.label}
+                accessibilityLabel={destino.accessibilityLabel}
+                onPress={() => router.push(destino.href as never)}
+              />
+            ) : null}
+          </View>
+        );
+      })}
     </View>
   );
 }
+
+/** Un destino de lectura: qué dice el enlace y adónde va. */
+type RitmoDestino = { label: string; accessibilityLabel: string; href: string };
+
+/**
+ * Los detalles canónicos de los ritmos, por la clave del anillo del contrato.
+ *
+ * Es parcial por dos razones, no por falta de pantallas: el anillo del tránsito
+ * necesita un `arcId` que puede no existir hoy, y el contrato conserva la clave
+ * `current_lunation` para leer mandalas v1 ya persistidos, que el ensamblador
+ * actual no vuelve a emitir. La ausencia de una clave es exactamente "no hay a
+ * dónde ir con este dato".
+ */
+type RitmoDestinos = Partial<Record<TemporalMandalaRing["key"], RitmoDestino>>;
 
 const styles = StyleSheet.create({
   accion: { marginTop: v492.space.xs },

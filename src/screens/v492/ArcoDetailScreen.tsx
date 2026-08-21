@@ -19,8 +19,7 @@ import {
   latestObservedAt,
   missingReasons,
   transitArcPending,
-  transitHeadline,
-  TRANSIT_STATE_CHIP
+  transitHeadline
 } from "@/domain/layers";
 import {
   ACTION_HEADING,
@@ -31,7 +30,12 @@ import {
   WHY_HEADING,
   transitMeaning
 } from "@/domain/layerMeaning";
-import { transitDetailExtras } from "@/domain/transitDetail";
+import {
+  transitDetailExtras,
+  transitPreviewFromRanking,
+  type TransitPreview
+} from "@/domain/transitDetail";
+import { canonicalTransitState, contactWorthNaming, summaryWithCanonicalState } from "@/domain/transitState";
 import { useLayers } from "@/hooks/useLayers";
 import { useTransitArc } from "@/hooks/useTransitArc";
 import type { AnalysisEnvelope, LayerBundle, TransitArcData } from "@/services/layersApi";
@@ -81,6 +85,18 @@ import type { AnalysisEnvelope, LayerBundle, TransitArcData } from "@/services/l
  * prestados del ranking, que publica su propia casa y sus propias razones: con la
  * trazabilidad del tránsito abajo, eso sería afirmar con un método lo que calculó
  * otro.
+ *
+ * **La etapa es una derivación, no una copia (QA22-009).** `ORB-TRN-001` decide
+ * `state` por tiempo (±6 h del pico) y `ORB-TRN-002` por orbe (≤ 0,1°), así que
+ * el mismo tránsito podía decir `EXACTO` acá y `ACERCÁNDOSE` en la lista. El chip,
+ * el significado, la acción y el resumen salen de `canonicalTransitState`, que es
+ * la misma función que usa la fila. El campo crudo del sobre queda como respaldo.
+ *
+ * **Y la pantalla se lee antes de que llegue el cálculo (QA22-011).** El título,
+ * la etapa, el significado y la acción no dependen de la cronología: se dibujan
+ * con lo que la fila tocada ya trae (`transitPreviewFromRanking`) y la línea de
+ * tiempo es la única sección que muestra su carga o su fallo. Ese adelanto no
+ * aporta fechas ni trazabilidad.
  *
  * Qué se AFIRMA depende de la precisión del sobre, no de la estética: con
  * `exact` las tres fechas son contactos verificados y el bloque se titula
@@ -150,6 +166,13 @@ export function ArcoDetailScreen({
  * el bundle: pedirlo de nuevo sería recalcular lo mismo. Cualquier otro se lee y
  * se calcula por su propio alcance. `useTransitArc` se llama siempre —con `null`
  * cuando no hace falta— para que el orden de hooks no dependa de los datos.
+ *
+ * Acá también se arma el ADELANTO (QA22-011). La fila que se acaba de tocar ya
+ * trae planeta, punto natal, aspecto, etapa y casa, que es todo lo que necesitan
+ * el título, el chip, el significado y la acción: no hay nada que esperar para
+ * dibujarlos. Lo que sí depende del cálculo es la cronología, y sólo ella muestra
+ * su carga. El adelanto NO aporta fechas, ventanas, pasadas ni trazabilidad: eso
+ * lo afirma `ORB-TRN-001` con su propio método.
  */
 function ArcoResolver({
   bundle,
@@ -176,6 +199,13 @@ function ArcoResolver({
   const esPrincipal = !arcId || principal.data?.arcId === arcId;
   const especifico = useTransitArc(esPrincipal ? null : arcId ?? null);
 
+  // El arco abierto, tal como lo describe la lista de hoy. Es la única lectura del
+  // ranking de toda la pantalla y sirve para UNA cosa: el adelanto.
+  const idAbierto = arcId ?? principal.data?.arcId ?? null;
+  const enRanking =
+    bundle.today.transitRanking.data?.items.find((item) => item.arcId === idAbierto) ?? null;
+  const adelanto = enRanking ? transitPreviewFromRanking(enRanking, nowMs, timezone) : null;
+
   if (esPrincipal) {
     return (
       <ArcoContent
@@ -187,18 +217,29 @@ function ArcoResolver({
         refreshing={refreshing}
         refreshFailed={refreshFailed}
         onRefresh={onRefreshBundle}
-        // El nombre del tránsito de respaldo sólo aplica al camino con `arcId`.
-        nombreDeRespaldo={null}
+        adelanto={adelanto}
       />
     );
   }
 
-  // Mientras el cálculo específico no llegó, el ranking del día alcanza para
-  // nombrar el tránsito que se abrió —es un dato suyo, no una cronología— y la
-  // pantalla dice que la línea de tiempo se está calculando.
-  const enRanking = bundle.today.transitRanking.data?.items.find((item) => item.arcId === arcId) ?? null;
-  const nombreDeRespaldo = enRanking ? transitHeadline(enRanking) : null;
+  // La lectura del sobre todavía viaja. Si la lista describe este arco, la
+  // pantalla ya se puede leer entera menos la cronología; es el caso de la
+  // PRIMERA apertura, que era el que reemplazaba todo por un spinner.
+  if (especifico.envelope === null && especifico.loading && adelanto) {
+    return (
+      <DetailLayerScreen eyebrow={TRANSIT_DETAIL_EYEBROW} fallbackHref={fallbackHref}>
+        <AdelantoDelTransito
+          preview={adelanto}
+          cronologia="calculando"
+          refreshing={especifico.refreshing}
+          onRefresh={especifico.refresh}
+        />
+      </DetailLayerScreen>
+    );
+  }
 
+  // Sin nada que adelantar —una entrada directa, un enlace profundo— queda el
+  // estado de siempre.
   if (especifico.envelope === null) {
     return (
       <DetailLayerScreen eyebrow={TRANSIT_DETAIL_EYEBROW} fallbackHref={fallbackHref}>
@@ -217,7 +258,7 @@ function ArcoResolver({
       refreshing={especifico.refreshing}
       refreshFailed={especifico.refreshFailed}
       onRefresh={especifico.refresh}
-      nombreDeRespaldo={nombreDeRespaldo}
+      adelanto={adelanto}
     />
   );
 }
@@ -231,7 +272,7 @@ function ArcoContent({
   refreshing,
   refreshFailed,
   onRefresh,
-  nombreDeRespaldo
+  adelanto
 }: {
   /** El único sobre del que sale todo lo que se afirma: `ORB-TRN-001`. */
   envelope: AnalysisEnvelope & { data: TransitArcData | null };
@@ -244,10 +285,11 @@ function ArcoContent({
   refreshFailed: boolean;
   onRefresh: () => void;
   /**
-   * El nombre del tránsito según la lista de hoy, para no dejar la pantalla sin
-   * titular mientras su cálculo específico viaja. Nunca aporta fechas.
+   * Lo que la lista de hoy ya sabe de este tránsito —título, etapa, significado y
+   * acción— para que la pantalla no espere al cálculo para poder leerse. Nunca
+   * aporta fechas, ventanas ni trazabilidad.
    */
-  nombreDeRespaldo: string | null;
+  adelanto: TransitPreview | null;
 }) {
   const arco = envelope.data;
 
@@ -263,10 +305,24 @@ function ArcoContent({
     // honesto es decir que está en curso; el texto de fallo aparece sólo cuando
     // falló de verdad.
     const esperando = calculando && !refreshFailed;
+    // Con el adelanto, la falta de cronología es una sección y no la pantalla
+    // entera: título, etapa, significado y acción ya se pueden leer (QA22-011).
+    if (adelanto) {
+      return (
+        <DetailLayerScreen eyebrow={TRANSIT_DETAIL_EYEBROW} fallbackHref={fallbackHref}>
+          <AdelantoDelTransito
+            preview={adelanto}
+            cronologia={esperando ? "calculando" : fueraDeLaLista ? "fuera" : "fallo"}
+            razones={missingReasons(envelope)}
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+          />
+        </DetailLayerScreen>
+      );
+    }
     return (
       <DetailLayerScreen eyebrow={TRANSIT_DETAIL_EYEBROW} fallbackHref={fallbackHref}>
         <Section>
-          {nombreDeRespaldo ? <Title style={styles.tituloEspera}>{nombreDeRespaldo}</Title> : null}
           {esperando ? (
             <View style={styles.bloque}>
               <LoadingBlock message="Calculando la línea de tiempo de este tránsito…" />
@@ -285,7 +341,7 @@ function ArcoContent({
             </View>
           ) : (
             // El único bloque de error grande de esta pantalla, y está donde
-            // corresponde: no hay ningún cálculo que leer.
+            // corresponde: no hay ningún cálculo que leer NI nada que adelantar.
             <View style={styles.bloque}>
               {calculando ? <Body>Todavía no pudimos calcular este tránsito.</Body> : null}
               {missingReasons(envelope).map((razon) => (
@@ -327,6 +383,20 @@ function ArcoContent({
     extra.previousExactAt,
     extra.nextExactAt
   ].filter((at): at is number => typeof at === "number");
+  // La etapa CANÓNICA, derivada de los instantes del propio sobre. `arco.state`
+  // se calcula con una regla (±6 h del pico) y el `state` de la lista con otra
+  // (orbe ≤ 0,1°), así que el mismo tránsito decía `EXACTO` acá y `ACERCÁNDOSE`
+  // allá (QA22-009). Lo que se muestra es la derivación única; el campo crudo
+  // entra como respaldo cuando no hay ningún instante con el que derivar.
+  const estado = canonicalTransitState({
+    published: arco.state,
+    contacts: [pico, ...contactos],
+    nowMs,
+    timezone
+  });
+  // El resumen del sobre termina en la frase de su etapa publicada: si el canon la
+  // corrigió, se pone al día. Lo factual —planeta, punto, ángulo— no se toca.
+  const resumen = summaryWithCanonicalState(arco.summary, estado.state);
   // El significado se compone con lo que ESTE sobre publica: el planeta que se
   // mueve, el punto natal que toca, el aspecto, la etapa y la casa activada. Esta
   // pantalla no toma datos prestados de otro sobre: si la casa no está —un sobre
@@ -336,9 +406,17 @@ function ArcoContent({
     transitPlanet: arco.transitPlanet,
     natalPoint: arco.natalPoint,
     aspect: arco.aspect,
-    state: arco.state,
+    state: estado.state,
     natalHouse: extra.natalHouse
   });
+  // Un contacto de HOY ya está dicho por la etapa y por la línea de tiempo: acá
+  // sólo entran los que caen otro día.
+  const contactoAnterior = contactWorthNaming(extra.previousExactAt, nowMs, timezone)
+    ? extra.previousExactAt
+    : null;
+  const contactoProximo = contactWorthNaming(extra.nextExactAt, nowMs, timezone)
+    ? extra.nextExactAt
+    : null;
 
   return (
     <DetailLayerScreen eyebrow={TRANSIT_DETAIL_EYEBROW} fallbackHref={fallbackHref}>
@@ -357,7 +435,7 @@ function ArcoContent({
         />
 
         <View style={styles.chipTop}>
-          <StateChip label={TRANSIT_STATE_CHIP[arco.state]} />
+          <StateChip label={estado.chip} />
         </View>
         <Title>{transitHeadline(arco)}</Title>
 
@@ -405,22 +483,27 @@ function ArcoContent({
         </Body>
         {/* Las dos repeticiones exactas alrededor de hoy, cuando el sobre las
             trae. La línea de tiempo ya las marca; esta línea las FECHA en
-            palabras, que es lo que hace falta para agendar algo. */}
-        {extra.previousExactAt !== null || extra.nextExactAt !== null ? (
+            palabras, que es lo que hace falta para agendar algo.
+
+            Un contacto que cae HOY no entra acá (QA22-009): la pantalla decía
+            `Próximo contacto exacto: 20 de agosto` mientras el chip, la etapa y
+            la línea de tiempo ya lo trataban como el contacto de hoy. Es el mismo
+            momento dicho como si fuera otro. */}
+        {contactoAnterior !== null || contactoProximo !== null ? (
           <Note style={styles.spaced}>
             {[
-              extra.previousExactAt !== null
-                ? `Contacto exacto anterior: ${formatFullDate(extra.previousExactAt, timezone)}.`
+              contactoAnterior !== null
+                ? `Contacto exacto anterior: ${formatFullDate(contactoAnterior, timezone)}.`
                 : null,
-              extra.nextExactAt !== null
-                ? `Próximo contacto exacto: ${formatFullDate(extra.nextExactAt, timezone)}.`
+              contactoProximo !== null
+                ? `Próximo contacto exacto: ${formatFullDate(contactoProximo, timezone)}.`
                 : null
             ]
               .filter((linea): linea is string => Boolean(linea))
               .join(" ")}
           </Note>
         ) : null}
-        <Body style={styles.spaced}>{arco.summary}</Body>
+        <Body style={styles.spaced}>{resumen}</Body>
 
         {/* Por qué este tránsito aparece en tu lista. Sale del propio sobre
             —nunca de las razones del ranking, que es otro análisis— y por eso el
@@ -491,6 +574,89 @@ function ArcoContent({
   );
 }
 
+/**
+ * La pantalla mientras el `ORB-TRN-001` de este arco todavía no está (QA22-011).
+ *
+ * El defecto: la primera apertura de un tránsito reemplazaba TODO por “Calculando
+ * la línea de tiempo de este tránsito…”, aunque el título, la etapa, el
+ * significado y la acción no dependían de ese cálculo. Acá se dibujan enseguida,
+ * con la misma composición y el mismo orden que la pantalla completa, y la
+ * cronología es lo ÚNICO que muestra su estado —cargando, fuera de la lista o
+ * fallado— dentro de su propio bloque.
+ *
+ * Lo que este bloque no tiene es tan importante como lo que tiene: ninguna fecha,
+ * ninguna ventana, ninguna pasada y ningún acordeón de trazabilidad. Todo eso lo
+ * afirma el sobre del arco con su propio método, y adelantarlo con los números de
+ * la lista sería exactamente lo que la pantalla tiene prohibido.
+ */
+function AdelantoDelTransito({
+  preview,
+  cronologia,
+  razones = [],
+  refreshing,
+  onRefresh
+}: {
+  preview: TransitPreview;
+  /** En qué está el cálculo de la cronología. */
+  cronologia: "calculando" | "fuera" | "fallo";
+  /** Por qué no se pudo calcular, dicho por el sobre. Sólo con `fallo`. */
+  razones?: readonly string[];
+  refreshing: boolean;
+  onRefresh: () => void;
+}) {
+  return (
+    <Section>
+      <View style={styles.chipTop}>
+        <StateChip label={preview.chip} />
+      </View>
+      <Title>{preview.headline}</Title>
+
+      <SectionHeader title={TRANSIT_MEANING_HEADING} />
+      <Body style={styles.spaced}>{preview.meaning}</Body>
+
+      <SectionHeader title={ACTION_HEADING} />
+      <Body style={styles.spaced}>{preview.action}</Body>
+
+      <SectionHeader title={TRANSIT_TIMING_HEADING} />
+      {cronologia === "calculando" ? (
+        <View style={styles.bloque}>
+          <LoadingBlock message="Calculando la línea de tiempo de este tránsito…" />
+          <Note style={styles.centrado}>
+            Órbita busca cuándo entró en el margen que usa para considerarlo activo, cuándo llega a su
+            punto más exacto y hasta cuándo sigue. El resto del tránsito ya se puede leer.
+          </Note>
+        </View>
+      ) : cronologia === "fuera" ? (
+        <View style={styles.bloque}>
+          <Body>Ese tránsito ya no está entre los activos de hoy.</Body>
+          <Note style={styles.spaced}>
+            La lista se rehace cada vez que se actualizan los datos: cuando un contacto sale del margen
+            que Órbita usa para considerarlo activo, deja de aparecer.
+          </Note>
+        </View>
+      ) : (
+        <View style={styles.bloque}>
+          <Body>No pudimos calcular la línea de tiempo de este tránsito.</Body>
+          {razones.map((razon) => (
+            <Note key={razon} style={styles.spaced}>
+              {razon}
+            </Note>
+          ))}
+          <View style={styles.reintento}>
+            <PrimaryButton
+              label={refreshing ? "CALCULANDO…" : "PROBAR DE NUEVO"}
+              accessibilityLabel="Volver a calcular la línea de tiempo de este tránsito"
+              onPress={onRefresh}
+              disabled={refreshing}
+              align="start"
+            />
+          </View>
+        </View>
+      )}
+    </Section>
+  );
+}
+
 /** `LOS TRES CONTACTOS` cuando son tres; si no, el número real, sin redondear. */
 function tituloContactos(cantidad: number, exacto: boolean): string {
   const palabras: Record<number, string> = { 1: "EL CONTACTO", 2: "LOS DOS CONTACTOS", 3: "LOS TRES CONTACTOS" };
@@ -515,6 +681,5 @@ const styles = StyleSheet.create({
   retro: { color: v492.colors.copper },
   spaced: { marginTop: v492.space.md },
   timeline: { marginTop: v492.space.lg },
-  tituloEspera: { marginTop: v492.space.lg },
   trace: { marginTop: v492.space.md }
 });

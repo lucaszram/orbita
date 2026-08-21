@@ -140,6 +140,27 @@ test("Tu momento y cada arco tienen destinos no ambiguos dentro del stack de Tr�
   );
 });
 
+test("los detalles de capa de Tránsitos resuelven dentro de su stack, sin disputar otra vista", () => {
+  // QA22-027: un detalle abierto desde `Tu momento` tiene que apilarse en ESTE
+  // stack, o "volver" no puede devolver a `Tu momento`. El prefijo `capa/` es lo
+  // que evita que un dinámico suelto se quede además con `/transitos/momento`.
+  assert.equal(destino("/transitos/capa/cumpleluna"), "(tabs) > transitos > capa/[layer]");
+  assert.equal(destino("/transitos/capa/luna"), "(tabs) > transitos > capa/[layer]");
+  // Y los dos detalles que nacen en esta sección (QA22-024), con el slug sin
+  // acentos con el que viajan en la URL.
+  assert.equal(destino("/transitos/capa/estacion"), "(tabs) > transitos > capa/[layer]");
+  assert.equal(destino("/transitos/capa/ano"), "(tabs) > transitos > capa/[layer]");
+
+  // Y las rutas que ya existían siguen resolviendo donde estaban.
+  assert.equal(destino("/transitos/momento"), "(tabs) > transitos > momento");
+  assert.equal(destino("/transitos"), "(tabs) > transitos > index");
+
+  // La misma pantalla sigue teniendo su ruta en el stack de Hoy: no se movió el
+  // detalle, se le agregó el lugar del que cuelga cuando lo abre la otra sección.
+  assert.equal(destino("/hoy/cumpleluna"), "(tabs) > hoy > cumpleluna");
+  assert.equal(destino("/hoy/luna"), "(tabs) > hoy > luna");
+});
+
 test("/vacio conserva el deep link histórico y redirige a la ruta canónica existente", () => {
   assert.equal(destino("/vacio"), "(tabs) > vacio");
 

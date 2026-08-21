@@ -636,7 +636,17 @@ export const proposedApi = {
   // void.today(): cupo del día para el contador (reactivo).
   voidToday: anyApi.void.today as FunctionReference<"query", "public", Empty, VoidTodayPayload | null>,
   // void.suggestedQuestions(): preguntas sugeridas personalizadas por categoría.
+  // ACTION: en la carga fría genera el set con un LLM. Se dispara UNA vez, y sólo
+  // si `voidSuggestedToday` contestó que el día todavía no tiene set.
   voidSuggested: anyApi.void.suggestedQuestions as FunctionReference<"action", "public", Empty, VoidSuggestedPayload>,
+  // void.suggestedToday(): el set del día YA cacheado, como query reactiva. No
+  // dispara la action ni el LLM; `null` = este día todavía no tiene set.
+  voidSuggestedToday: anyApi.void.suggestedToday as FunctionReference<
+    "query",
+    "public",
+    Empty,
+    VoidSuggestedPayload | null
+  >,
   // daily.getGuide(): guía diaria personalizada (action: genera+cachea 1/día/usuario).
   // daily.getTodayContext(): fecha canónica + zona, calculadas por el servidor
   // desde la timezone natal. Es una ACTION (no reactiva): se pide una vez por

@@ -6,18 +6,19 @@ import { DetailLayerScreen, Section } from "@/components/v492/Screen";
 import { FreshnessNotice, LimitationList, MissingBlock, StatusLine } from "@/components/v492/Status";
 import { EmptyBlock, ErrorBlock, GuestBlock, LoadingBlock } from "@/components/v492/States";
 import { TraceAccordion } from "@/components/v492/Trace";
-import { Body, Label, Mono, Title } from "@/components/v492/typography";
+import { Body, Mono, Note, Title } from "@/components/v492/typography";
 import { v492 } from "@/components/v492/tokens";
 import { envelopesFreshness } from "@/domain/layerFreshness";
 import { degreeInSign, formatDecimal, formatPercent, latestObservedAt } from "@/domain/layers";
+import { METHOD_HEADING, WHY_HEADING, moonWhy } from "@/domain/layerMeaning";
 import {
-  GUIDE_HEADING,
-  GUIDE_STEP_LABEL,
-  METHOD_HEADING,
-  WHY_HEADING,
-  moonGuide,
-  moonWhy
-} from "@/domain/layerMeaning";
+  MOON_TENSION_HEADING,
+  READING_NOW_HEADING,
+  READING_QUESTION_HEADING,
+  READING_THEME_HEADING,
+  READING_USE_HEADING,
+  moonReading
+} from "@/domain/layerReading";
 import { useLayers } from "@/hooks/useLayers";
 
 /**
@@ -29,10 +30,12 @@ import { useLayers } from "@/hooks/useLayers";
  *
  * ## Qué se lee y en qué orden
  *
- * Encabezado (el disco, el signo y la fase) → `TU GUÍA PARA HOY` → los datos
- * exactos → `POR QUÉ SE MUESTRA` → `MÉTODO`. Primero lo que se entiende sin
- * saber astrología, después el número que lo sostiene, y al final por qué esta
- * capa aparece y cómo se calculó.
+ * Encabezado (el disco, el signo y la fase) → la lectura del día —qué marca
+ * ahora, qué pone al frente, posibilidad y tensión, cómo usarlo, para observar—
+ * → los datos exactos → `POR QUÉ SE MUESTRA` → `MÉTODO`. Primero lo que se
+ * entiende sin saber astrología, después el número que lo sostiene, y al final
+ * por qué esta capa aparece y cómo se calculó. Es la misma jerarquía que los
+ * otros tres detalles de `Tu momento` (`domain/layerReading`).
  *
  * ## Una columna abierta, sin tarjetas
  *
@@ -42,47 +45,63 @@ import { useLayers } from "@/hooks/useLayers";
  * lado justo donde hay una tabla de datos. Ahora es una sola columna: rótulo,
  * dato, línea.
  *
- * ## La guía en tres pasos, y el área dicha UNA vez
+ * ## La casa se interpreta, no se repite (QA22-026)
  *
- * El defecto que cierra: la casa se decía TRES veces seguidas —el resumen del
- * cálculo ("Hoy la Luna pasa por tu casa 7, asociada a pareja, sociedades y
- * acuerdos"), las filas `CASA`/`TEMA` y la línea "Activa tu casa 7, asociada
- * a…"—, las tres con las mismas palabras. Y después dos párrafos, significado y
- * acción, que decían lo mismo en otro orden.
+ * El primer defecto que cerró esta pantalla: la casa se decía TRES veces
+ * seguidas —el resumen del cálculo, las filas `CASA`/`TEMA` y la línea "Activa
+ * tu casa 7, asociada a…"—, las tres con las mismas palabras.
  *
- * Ahora el área aparece una sola vez, en `PRIORIZÁ`; el número de la casa vive
- * entre los datos exactos, que es donde es un dato; y la guía son tres líneas
- * con tres trabajos distintos —qué priorizar, qué probar, qué observar— que se
- * recorren de un vistazo (`domain/layerMeaning`).
+ * El segundo, el que cierra esta pasada: lo que quedó en su lugar seguía siendo
+ * la ETIQUETA. `Priorizá: lo de tu casa 11: la gente y lo que viene` es el área
+ * tal como la nombra la tabla, sin decir nada más; `Probá` traía una sola acción
+ * y `Observá` juntaba ideas amplias sin explicar por qué esta Luna, esta fase y
+ * esta casa producen esa guía.
+ *
+ * Ahora las tres piezas del cálculo entran una vez cada una y con un trabajo
+ * distinto: signo y fase arman el clima, la casa dice dónde puede notarse, el
+ * signo aporta la posibilidad y la fase la tensión, la casa da el gesto y la
+ * fase la pregunta (`domain/layerReading`). El número de la casa se IMPRIME una
+ * sola vez, entre los datos exactos, que es donde es un dato.
  */
-export function LunaDetailScreen() {
+export function LunaDetailScreen({
+  fallbackHref = "/hoy"
+}: {
+  /**
+   * Destino de "volver" si no hay historial (entrada por deep link).
+   *
+   * Lo pone la RUTA, porque es la ruta la que decide de qué stack cuelga este
+   * detalle: `/hoy/luna` vuelve a Hoy y `/transitos/capa/luna` vuelve a `Tu
+   * momento` (QA22-027). La pantalla es la misma en los dos casos.
+   */
+  fallbackHref?: string;
+}) {
   const layers = useLayers();
   const { phase, bundle, localDate, timezone, refresh, refreshing, refreshFailed } = layers;
 
   if (phase === "cargando") {
     return (
-      <DetailLayerScreen eyebrow="La Luna en tu carta">
+      <DetailLayerScreen eyebrow="La Luna en tu carta" fallbackHref={fallbackHref}>
         <LoadingBlock />
       </DetailLayerScreen>
     );
   }
   if (phase === "error") {
     return (
-      <DetailLayerScreen eyebrow="La Luna en tu carta">
+      <DetailLayerScreen eyebrow="La Luna en tu carta" fallbackHref={fallbackHref}>
         <ErrorBlock onRetry={layers.retrySession} />
       </DetailLayerScreen>
     );
   }
   if (phase === "invitado") {
     return (
-      <DetailLayerScreen eyebrow="La Luna en tu carta">
+      <DetailLayerScreen eyebrow="La Luna en tu carta" fallbackHref={fallbackHref}>
         <GuestBlock />
       </DetailLayerScreen>
     );
   }
   if (phase === "vacio" || !bundle) {
     return (
-      <DetailLayerScreen eyebrow="La Luna en tu carta">
+      <DetailLayerScreen eyebrow="La Luna en tu carta" fallbackHref={fallbackHref}>
         <EmptyBlock />
       </DetailLayerScreen>
     );
@@ -90,15 +109,15 @@ export function LunaDetailScreen() {
 
   const envelope = bundle.today.moonOnChart;
   const data = envelope.data;
-  // La guía sale del MISMO dato que los números de abajo: signo, fase y —sólo si
-  // el cálculo la publicó— la casa. Sin casa el texto se apoya en el signo y la
-  // fase, y lo dice; nunca propone una casa probable.
-  const guia = data
-    ? moonGuide({ sign: data.sign, phaseKey: data.phaseKey, natalHouse: data.natalHouse })
+  // La lectura sale del MISMO dato que los números de abajo: signo, fase y
+  // —sólo si el cálculo la publicó— la casa. Sin casa el texto se apoya en el
+  // signo y la fase, y lo dice una vez; nunca propone una casa probable.
+  const lectura = data
+    ? moonReading({ sign: data.sign, phaseKey: data.phaseKey, natalHouse: data.natalHouse })
     : null;
 
   return (
-    <DetailLayerScreen eyebrow="La Luna en tu carta">
+    <DetailLayerScreen eyebrow="La Luna en tu carta" fallbackHref={fallbackHref}>
       <Section>
         {/* Qué tan de ahora es lo que se ve: una línea si el dato es de hoy y el
             aviso compacto si quedó el de un día anterior.
@@ -122,7 +141,7 @@ export function LunaDetailScreen() {
             retrying={refreshing}
           />
         ) : null}
-        {data && guia ? (
+        {data && lectura ? (
           <>
             <View style={styles.hero}>
               <MoonDial
@@ -141,12 +160,31 @@ export function LunaDetailScreen() {
 
             <StatusLine status={envelope.status} precision={envelope.precision} />
 
+            {/* La lectura del día, en la jerarquía canónica de `Tu momento`.
+                Cada bloque tiene un trabajo distinto y ninguno repite al otro:
+                el clima combina signo y fase, el frente lo pone la casa, la
+                tensión sale del signo y de la fase, el gesto de la casa y la
+                pregunta de la fase. */}
             <View style={styles.block}>
-              <SectionHeader title={GUIDE_HEADING} cadence="CAMBIA CADA 2–3 DÍAS" rule={false} />
-              <Paso label={GUIDE_STEP_LABEL.prioriza} text={guia.prioriza} />
-              <Paso label={GUIDE_STEP_LABEL.proba} text={guia.proba} />
-              <Paso label={GUIDE_STEP_LABEL.observa} text={guia.observa} />
+              <SectionHeader title={READING_NOW_HEADING} cadence="CAMBIA CADA 2–3 DÍAS" rule={false} />
+              <Body style={styles.spaced}>{lectura.now}</Body>
             </View>
+
+            <SectionHeader title={READING_THEME_HEADING} />
+            <Body style={styles.spaced}>{lectura.theme}</Body>
+
+            <SectionHeader title={MOON_TENSION_HEADING} />
+            <Body style={styles.spaced}>{lectura.tension}</Body>
+
+            <SectionHeader title={READING_USE_HEADING} />
+            <Body style={styles.spaced}>{lectura.use}</Body>
+
+            <SectionHeader title={READING_QUESTION_HEADING} />
+            <Body style={styles.spaced}>{lectura.question}</Body>
+
+            {/* El límite del dato, dicho UNA vez: sin hora exacta no hay casa
+                que recorrer y el texto de arriba no nombra ninguna. */}
+            {lectura.caveat ? <Note style={styles.limite}>{lectura.caveat}</Note> : null}
 
             <View style={styles.block}>
               <SectionHeader title="LOS DATOS EXACTOS" />
@@ -159,8 +197,9 @@ export function LunaDetailScreen() {
               />
               <DataRow label="FASE" value={<Mono>{data.phaseName}</Mono>} />
               <DataRow label="ILUMINACIÓN" value={<Mono>{formatPercent(data.illumination)}</Mono>} />
-              {/* El número de la casa vive acá y en ningún otro lado: es un
-                  dato, y arriba ya se dijo qué priorizar con él. */}
+              {/* El número de la casa se IMPRIME acá y en ningún otro lado: es
+                  un dato, y arriba ya se dijo qué se nota cuando la Luna pasa
+                  por él. */}
               {data.natalHouse !== null ? (
                 <DataRow label="CASA" value={<Mono>{`Casa ${data.natalHouse}`}</Mono>} />
               ) : null}
@@ -198,30 +237,11 @@ export function LunaDetailScreen() {
   );
 }
 
-/**
- * Un paso de la guía: el rótulo en cobre y su línea.
- *
- * Los tres pasos tienen el mismo peso tipográfico a propósito: no hay uno más
- * importante que otro, hay tres cosas distintas que hacer con el mismo dato. Es
- * un solo elemento para VoiceOver —`Priorizá: lo de tu casa 7…`— porque el
- * rótulo sin su línea no dice nada.
- */
-function Paso({ label, text }: { label: string; text: string }) {
-  return (
-    <View style={styles.paso} accessible accessibilityRole="text" accessibilityLabel={`${label}: ${text}`}>
-      <Label style={styles.pasoLabel}>{label}</Label>
-      <Body style={styles.pasoText}>{text}</Body>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   block: { marginTop: v492.space.xl },
   hero: { alignItems: "center", flexDirection: "row", gap: v492.space.lg, marginBottom: v492.space.xl },
   heroText: { flex: 1 },
+  limite: { marginTop: v492.space.lg },
   meta: { marginTop: v492.space.sm },
-  paso: { marginTop: v492.space.lg },
-  pasoLabel: { color: v492.colors.copper },
-  pasoText: { marginTop: v492.space.xs },
   spaced: { marginTop: v492.space.md }
 });

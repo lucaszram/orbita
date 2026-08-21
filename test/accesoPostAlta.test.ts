@@ -293,10 +293,36 @@ test("una cuenta Plus conserva la gestión de suscripción y el camino de soport
     ["web", PLAN_BLOCK_WEB],
     ["nativo", PLAN_BLOCK_NATIVE]
   ] as const) {
-    assert.match(bloque, /useQuery\(appApi\.subscriptions\.getCurrent, isLive \? \{\} : "skip"\)/, plataforma);
     assert.match(bloque, /GESTIONAR SUSCRIPCIÓN/, plataforma);
     assert.match(bloque, /SUPPORT_URL/, plataforma);
   }
+  // La AUTORIDAD también es la misma —lo que el backend confirmó para el dueño
+  // vigente—, pero ya no se pide igual. Web conserva su consulta con el `skip`
+  // de sesión; nativo la lee del provider central, que es la ÚNICA
+  // `subscriptions.getCurrent` de la app. Una copia propia acá era una tercera
+  // versión de la misma verdad, con su propia ventana en la que el plan de A
+  // quedaba publicado bajo la sesión de B.
+  assert.match(PLAN_BLOCK_WEB, /useQuery\(appApi\.subscriptions\.getCurrent, isLive \? \{\} : "skip"\)/);
+  assert.match(PLAN_BLOCK_NATIVE, /import \{ useEntitlement \} from "@\/hooks\/useLiveApp"/);
+  assert.match(
+    PLAN_BLOCK_NATIVE,
+    /const \{ remote: entitlement, owner: clerkOwner \} = useEntitlement\(\)/,
+    "el bloque nativo decide con el REMOTO y con el dueño de Clerk"
+  );
+  assert.doesNotMatch(
+    PLAN_BLOCK_NATIVE,
+    /useQuery|subscriptions\.getCurrent/,
+    "el bloque nativo no puede volver a montar su propia consulta del plan"
+  );
+  // Y las salidas se derivan de ese remoto: `effective` es la vista para
+  // PRESENTAR —puede venir del snapshot local— y no autoriza abrir un portal de
+  // facturación ni restaurar una compra.
+  assert.match(PLAN_BLOCK_NATIVE, /nativeSubscriptionManagement\(entitlement\)/);
+  assert.doesNotMatch(
+    PLAN_BLOCK_NATIVE,
+    /effective/,
+    "un snapshot local no puede habilitar una salida que toca plata"
+  );
   // Web: el portal de Stripe sigue siendo la gestión, y el modo comercio
   // apagado degrada a soporte en vez de abrir un portal que tiraría.
   assert.match(PLAN_BLOCK_WEB, /manageSubscription\(\{ entitlement, commerceEnabled \}\)/);
@@ -316,6 +342,11 @@ test("una cuenta Plus conserva la gestión de suscripción y el camino de soport
   assert.match(PLAN_BLOCK_NATIVE, /presentCustomerCenter\(\)/);
   assert.match(PLAN_BLOCK_NATIVE, /management\.showStripePortal/);
   assert.match(PLAN_BLOCK_NATIVE, /createPortal\(\{\}\)/);
+  // Y una salida que la web no tiene: restaurar una compra YA hecha. Va en su
+  // propio grupo justamente porque no contrata nada; pegada al CTA comercial,
+  // la confusión entre las dos terminaba en un segundo cargo.
+  assert.match(PLAN_BLOCK_NATIVE, /<ActionGroup label="RESTAURAR">/);
+  assert.match(PLAN_BLOCK_NATIVE, /revenueCat\.restore\(\)/);
 });
 
 test("Perfil nativo ofrece la compra de la tienda y nunca el checkout web", () => {
@@ -324,8 +355,28 @@ test("Perfil nativo ofrece la compra de la tienda y nunca el checkout web", () =
   // llevar a alguien ahí desde la app es lo que Apple rechaza. Ahora `/paywall`
   // se resuelve por plataforma y en nativo ES la compra con RevenueCat, así
   // que ofrecerla desde el Perfil es el camino correcto —y el único—.
-  assert.match(PLAN_BLOCK_NATIVE, /useQuery\(appApi\.subscriptions\.getCurrent, isLive \? \{\} : "skip"\)/);
-  assert.match(PLAN_BLOCK_NATIVE, /<Pill label="ACTIVAR ÓRBITA PLUS" onPress=\{\(\) => router\.push\("\/paywall"\)\} \/>/);
+
+  // El plan sale del provider central; el bloque no vuelve a preguntarlo.
+  assert.match(PLAN_BLOCK_NATIVE, /const \{ remote: entitlement, owner: clerkOwner \} = useEntitlement\(\)/);
+  assert.doesNotMatch(PLAN_BLOCK_NATIVE, /useQuery|subscriptions\.getCurrent/);
+  // El CTA es el primario del sistema V4.9.2 —la `Pill` es del bloque web— y
+  // sigue apuntando a `/paywall`, que en nativo ES la compra de la tienda.
+  assert.match(
+    PLAN_BLOCK_NATIVE,
+    /<PrimaryButton\s+label="ACTIVAR ÓRBITA PLUS"[^<]*onPress=\{\(\) => router\.push\("\/paywall"\)\}[^<]*\/>/
+  );
+  // Y vive SÓLO en la rama Free: quien ya paga nunca ve una invitación a
+  // contratar de nuevo.
+  const bloqueFree = PLAN_BLOCK_NATIVE.slice(
+    PLAN_BLOCK_NATIVE.indexOf('if (view === "free")'),
+    PLAN_BLOCK_NATIVE.indexOf('const lifetime = view === "lifetime"')
+  );
+  assert.match(bloqueFree, /ACTIVAR ÓRBITA PLUS/);
+  assert.equal(
+    (PLAN_BLOCK_NATIVE.match(/ACTIVAR ÓRBITA PLUS/g) ?? []).length,
+    1,
+    "el CTA comercial no puede repetirse fuera de la rama Free"
+  );
   assert.equal(
     resolveEntryForPlatform("app/paywall.tsx", "native"),
     join(process.cwd(), "src/routes/v492/paywall.tsx"),

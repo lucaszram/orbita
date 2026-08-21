@@ -45,6 +45,39 @@ const CLIENT = readFileSync(join(ROOT, "src/services/revenuecat/client.ts"), "ut
 const PROVIDER = readFileSync(join(ROOT, "src/services/revenuecat/RevenueCatProvider.tsx"), "utf8");
 const MANAGE_NATIVE = readFileSync(join(ROOT, "src/components/orbita/ManageSubscription.tsx"), "utf8");
 const MANAGE_WEB = readFileSync(join(ROOT, "src/components/orbita/ManageSubscription.web.tsx"), "utf8");
+/**
+ * El provider central del plan.
+ *
+ * `EntitlementProvider` (en `useLiveApp`) monta la ÚNICA
+ * `subscriptions.getCurrent` de la UI nativa, la correlaciona con el dueño de
+ * Clerk y publica `owner` / `remote` / `resolved` / `effective`. Las pantallas
+ * de comercio consumen `useEntitlement()` y no tienen query propia.
+ */
+const PLAN_PROVIDER = readFileSync(join(ROOT, "src/hooks/useLiveApp.tsx"), "utf8");
+
+/** Una regla se comprueba sobre el CÓDIGO, no sobre lo que los comentarios cuentan de él. */
+const sinComentarios = (source: string) =>
+  source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
+/** El paywall sin prosa: lo que se dibuja se cuenta sobre el código. */
+const PAYWALL_CODIGO = sinComentarios(PAYWALL_SCREEN);
+
+/**
+ * El bloque JSX de una fase de activación: desde su condición hasta el marcador
+ * que la cierra.
+ *
+ * Se ancla a la PRIMERA aparición, que es la del render —la de `primaryLabel`
+ * vive al final del archivo—, y tolera el formato: los operandos pueden partirse
+ * en varias líneas sin que la regla deje de aplicarse.
+ */
+function bloqueDeActivacion(fase: string, hasta: RegExp): string {
+  const inicio = new RegExp(`activation\\s*===\\s*"${fase}"`).exec(PAYWALL_CODIGO);
+  if (!inicio) throw new Error(`el paywall no renderiza la fase \`${fase}\``);
+  const resto = PAYWALL_CODIGO.slice(inicio.index);
+  const fin = hasta.exec(resto);
+  if (!fin) throw new Error(`no encontré el cierre del bloque \`${fase}\``);
+  return resto.slice(0, fin.index);
+}
 
 describe("corte web/nativo — Stripe no carga el SDK de la tienda", () => {
   it("ningún módulo del bundle web importa react-native-purchases", () => {
@@ -450,10 +483,62 @@ describe("paywall — salidas, honestidad y doble cobro", () => {
     assert.ok(acciones.length >= 4, `todas las acciones deben tomar el candado (vi ${acciones.length})`);
   });
 
-  it("la espera del backend se nombra y no se confunde con acceso", () => {
+  it("la espera del backend se nombra, y sólo la vencida ofrece salidas", () => {
+    // La afirmación es la misma en las dos fases —la tienda cobró, Convex
+    // todavía no lo refleja— y ninguna de las dos abre nada.
     assert.match(PAYWALL_SCREEN, /Tu compra está confirmada/);
     assert.match(PAYWALL_SCREEN, /Estamos activando tu acceso/);
-    assert.match(PAYWALL_SCREEN, /COMPROBAR DE NUEVO/);
+
+    // El enlace de la espera SIN FINAL se retiró: no nombraba ninguna salida y
+    // dejaba la fase clavada en "activando" para siempre, que es el escenario en
+    // el que alguien vuelve a la tienda y paga dos veces.
+    assert.equal(
+      /COMPROBAR DE NUEVO/.test(PAYWALL_SCREEN),
+      false,
+      "la espera vencida ofrece dos salidas nombradas, no un enlace que no promete nada"
+    );
+
+    // Espera JOVEN: se nombra y NO se ofrece nada. Poner acá los botones sería
+    // empujar a tocar la tienda mientras el webhook viene en camino.
+    const activando = bloqueDeActivacion("activating", /activation\s*===\s*"recoverable"/);
+    assert.match(activando, /Tu compra está confirmada/);
+    assert.match(activando, /Estamos activando tu acceso/);
+    assert.equal(
+      (activando.match(/<Pressable\b/g) ?? []).length,
+      0,
+      "la espera joven no ofrece ninguna acción"
+    );
+    assert.equal(/REINTENTAR ACTIVACIÓN|RESTAURAR COMPRA/.test(activando), false);
+
+    // Espera VENCIDA: exactamente las DOS salidas que reparan sin volver a
+    // cobrar, con estos literales y no con tres nombres del mismo circuito.
+    const recuperable = bloqueDeActivacion("recoverable", /\{notice\s*\?/);
+    assert.match(recuperable, /REINTENTAR ACTIVACIÓN/);
+    assert.match(recuperable, /RESTAURAR COMPRA/);
+    assert.match(recuperable, /No vuelvas a comprar/);
+    assert.equal(
+      (recuperable.match(/<Pressable\b/g) ?? []).length,
+      2,
+      "el estado recuperable ofrece exactamente dos acciones"
+    );
+    assert.match(recuperable, /onPress=\{\s*\(\)\s*=>\s*void retryActivation\(\)\s*\}/);
+    assert.match(recuperable, /onPress=\{\s*\(\)\s*=>\s*void restore\(\)\s*\}/);
+    assert.equal(
+      /purchase\(/.test(recuperable),
+      false,
+      "reparar una activación no puede ser volver a cobrar"
+    );
+
+    // Y el primario deja de prometer un final inminente que ya se incumplió:
+    // dice lo único cierto, deshabilitado.
+    assert.match(
+      PAYWALL_CODIGO,
+      /if\s*\(activation\s*===\s*"recoverable"\)\s*return\s*"ACTIVACIÓN PENDIENTE";/
+    );
+    assert.match(
+      PAYWALL_CODIGO,
+      /if\s*\(activation\s*===\s*"activating"\)\s*return\s*"ACTIVANDO ÓRBITA PLUS…";/
+    );
   });
 
   it("no promete estados terminales como si fueran una espera", () => {
@@ -463,8 +548,19 @@ describe("paywall — salidas, honestidad y doble cobro", () => {
   });
 
   it("el acceso lo decide Convex: la pantalla no escribe entitlement", () => {
-    // El entitlement se LEE, y sólo de la query autoritativa.
-    assert.match(PAYWALL_SCREEN, /useQuery\(appApi\.subscriptions\.getCurrent/);
+    // El entitlement se LEE, y de una sola autoridad: el provider central, que
+    // monta la query correlacionada con el dueño de Clerk. La pantalla no tiene
+    // ninguna query propia —ni de plan ni de nada— y toma el REMOTO, que es lo
+    // único que el backend confirmó para esta cuenta.
+    assert.match(
+      PAYWALL_SCREEN,
+      /const \{ remote: entitlement, resolved: entitlementResuelto \} = useEntitlement\(\);/
+    );
+    assert.equal(/useQuery\(/.test(PAYWALL_SCREEN), false, "la pantalla no monta su propia query");
+    assert.match(
+      PLAN_PROVIDER,
+      /useQuery\(appApi\.subscriptions\.getCurrent, isLive \? \{\} : "skip"\)/
+    );
     assert.equal(/setEntitlement|grantPro|setIsPro|writeEntitlement/.test(PAYWALL_SCREEN), false);
 
     // La invariancia real no es "cero mutations" —desde P1 8 la pantalla usa
@@ -545,13 +641,73 @@ describe("Perfil — plan, gestión y restauración por el canal correcto", () =
 
   it("el Perfil no afirma un plan mientras el entitlement no resolvió", () => {
     assert.match(MANAGE_NATIVE, /if \(view === "loading"\)/);
-    assert.match(MANAGE_NATIVE, /useQuery\(appApi\.subscriptions\.getCurrent/);
+    // El plan lo publica el provider central y acá se toma el REMOTO: es lo
+    // único que el backend confirmó para ESTA cuenta. `undefined` es "validando"
+    // y `view` responde `loading`, así que no se dibuja ninguna salida todavía.
+    assert.match(
+      MANAGE_NATIVE,
+      /const \{ remote: entitlement, owner: clerkOwner \} = useEntitlement\(\);/
+    );
+    assert.equal(
+      /useQuery\(/.test(MANAGE_NATIVE),
+      false,
+      "el Perfil no monta su propia query de plan: era una tercera copia de la misma verdad"
+    );
+    // Y la vista EFECTIVA —remoto o snapshot cacheado— no gobierna ninguna
+    // gestión: un snapshot local no puede abrir un portal de facturación ni
+    // autorizar una restauración.
+    const gestion = sinComentarios(MANAGE_NATIVE);
+    assert.equal(
+      /\beffective\b|EntitlementSnapshot|labelReady/.test(gestion),
+      false,
+      "la gestión se decide con el remoto, nunca con la vista cacheada"
+    );
+    // La ÚNICA `subscriptions.getCurrent` de la UI nativa vive en el provider,
+    // con `skip` sin sesión viva y correlacionada con el dueño de Clerk antes de
+    // publicarse.
+    assert.equal(
+      (PLAN_PROVIDER.match(/useQuery\(appApi\.subscriptions\.getCurrent/g) ?? []).length,
+      1,
+      "una segunda `getCurrent` reabre la ventana en la que el plan de A vale para B"
+    );
+    assert.match(
+      PLAN_PROVIDER,
+      /useQuery\(appApi\.subscriptions\.getCurrent, isLive \? \{\} : "skip"\)/
+    );
+    assert.equal(
+      (PLAN_PROVIDER.match(/safeEntitlement\(/g) ?? []).length,
+      1,
+      "la correlación con el dueño se hace UNA vez, sobre la única query"
+    );
+    assert.match(
+      PLAN_PROVIDER,
+      /safeEntitlement\(raw as NativeSubscriptionSnapshot \| null \| undefined, owner\)/
+    );
   });
 
   it("REPRO: el portal de Stripe NO depende de la identidad de RevenueCat", () => {
     // Atado a `revenueCat.identifiedUserId`, una suscripción de Stripe viva se
     // quedaba sin forma de cancelarse en cuanto el SDK estaba `unavailable`.
-    assert.match(MANAGE_NATIVE, /const clerkOwner = auth\?\.isSignedIn \? auth\.userId \?\? null : null;/);
+    //
+    // La cuenta de Órbita ya no se vuelve a derivar acá: sale del mismo provider
+    // que publica el plan, así que el dueño y el entitlement que se le atribuye
+    // no pueden desalinearse ni por un render.
+    assert.match(
+      MANAGE_NATIVE,
+      /const \{ remote: entitlement, owner: clerkOwner \} = useEntitlement\(\);/
+    );
+    assert.equal(
+      /useOrbitaAuth|auth\?\.(isSignedIn|userId)/.test(MANAGE_NATIVE),
+      false,
+      "una segunda derivación del dueño es una segunda ventana A → B"
+    );
+    // Y esa derivación única vive en el provider, atada a Clerk y a nada más.
+    assert.match(PLAN_PROVIDER, /const owner = auth\?\.isSignedIn \? auth\.userId \?\? null : null;/);
+    assert.equal(
+      /identifiedUserId|[rR]evenueCat/.test(sinComentarios(PLAN_PROVIDER)),
+      false,
+      "el dueño del plan es el de Clerk: la tienda no participa de esa decisión"
+    );
     assert.match(MANAGE_NATIVE, /const storeOwner = revenueCat\.identifiedUserId;/);
 
     const portal = MANAGE_NATIVE.indexOf("const openStripePortal =");

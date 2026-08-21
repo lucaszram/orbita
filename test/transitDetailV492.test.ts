@@ -7,8 +7,9 @@
  * 1. **`transitTimeline`** — qué marcas tiene la ventana, dónde caen, cómo se
  *    rotulan y qué se anuncia. Lo que se fija es lo que la certificación
  *    reclamaba: los bordes como contexto, cada contacto exacto dibujado, HOY
- *    ubicado, la coincidencia `HOY · EXACTO` resuelta en UNA marca, el año cuando
- *    la ventana lo cruza y UN solo anuncio para VoiceOver.
+ *    ubicado en el instante actual, HOY y EXACTO como DOS hitos aunque compartan
+ *    fecha (QA22-010), el año cuando la ventana lo cruza y UN solo anuncio para
+ *    VoiceOver.
  * 2. **`transitDetailExtras`** — los cinco campos que `ORB-TRN-001` publica
  *    además de la ventana (`previousExactAt`, `nextExactAt`, `rankingWindow`,
  *    `rankingReason`, `natalHouse`), leídos como OPCIONALES y validados aunque el
@@ -146,25 +147,59 @@ test("HOY no se dibuja fuera de la ventana: no hay dónde ponerlo sin mentir", (
   }
 });
 
-test("cuando hoy ES el contacto exacto, la marca es UNA y lo dice", () => {
+test("hoy y el contacto exacto del mismo día son DOS hitos, no uno (QA22-010)", () => {
+  // El defecto: cuando Hoy y Exacto caían la misma fecha, la línea los fusionaba
+  // en un punto naranja rotulado `HOY · EXACTO`. Justo en el caso más relevante
+  // —un tránsito exacto hoy— se perdía la distinción que la línea promete: no se
+  // podía saber si el punto era el día o el pico, ni si el pico ya había pasado.
+  const ahora = Date.UTC(2026, 8, 20, 23, 0);
   const linea = transitTimeline({
     startsAt: INICIO,
     peakAt: PICO,
     endsAt: CIERRE,
-    nowMs: Date.UTC(2026, 8, 20, 23, 0),
+    nowMs: ahora,
     timezone: UTC
   });
 
-  assert.deepEqual(tipos(linea.marks), ["start", "today", "end"], "no hay dos puntos superpuestos");
-  assert.equal(linea.todayIsContact, true);
-  const hoy = linea.marks[1];
-  assert.equal(hoy.label, TIMELINE_LABEL.todayContact);
-  assert.equal(hoy.label, "HOY · EXACTO");
-  assert.equal(hoy.isTodayContact, true);
-  // La marca queda en el INSTANTE del contacto, no en el de "ahora": la escala
-  // dibuja el contacto, y hoy es el mismo día.
-  assert.equal(hoy.atMs, PICO);
-  assert.match(linea.voice, /es el contacto exacto/);
+  assert.deepEqual(tipos(linea.marks), ["start", "contact", "today", "end"], "dos hitos, no uno");
+  assert.equal(linea.todayIsContact, true, "el contacto sigue siendo de hoy");
+
+  const contacto = linea.marks[1];
+  const hoy = linea.marks[2];
+  // Cada uno en SU instante: el pico donde el cálculo lo puso, HOY donde estás.
+  assert.equal(contacto.atMs, PICO);
+  assert.equal(hoy.atMs, ahora);
+  assert.ok(contacto.ratio < hoy.ratio, "el pico de las 12 va antes que las 23");
+
+  // Y el rótulo del contacto lleva la HORA, que es lo que los vuelve inequívocos.
+  assert.equal(contacto.label, `${TIMELINE_LABEL.contact} 12:00`);
+  assert.equal(contacto.isTodayContact, true);
+  assert.equal(hoy.label, TIMELINE_LABEL.today);
+  assert.equal(hoy.label, "HOY");
+  assert.equal(hoy.isTodayContact, false);
+  assert.ok(!linea.marks.some((mark) => mark.label.includes("·")), "el rótulo fusionado no vuelve");
+
+  // El anuncio también los separa, y en orden cronológico.
+  const posiciones = [
+    linea.voice.indexOf("el contacto exacto es hoy a las 12:00"),
+    linea.voice.indexOf("hoy es el 20 de septiembre")
+  ];
+  for (const posicion of posiciones) assert.ok(posicion >= 0, linea.voice);
+  assert.ok(posiciones[0] < posiciones[1], "primero el pico, después dónde estás");
+});
+
+test("un contacto de otro día no lleva hora: la hora sólo desambigua a HOY", () => {
+  const linea = transitTimeline({
+    startsAt: INICIO,
+    peakAt: PICO,
+    endsAt: CIERRE,
+    nowMs: Date.UTC(2026, 8, 22, 10, 0),
+    timezone: UTC
+  });
+  const contacto = linea.marks[1];
+  assert.equal(contacto.label, "EXACTO");
+  assert.equal(contacto.isTodayContact, false);
+  assert.match(linea.voice, /contacto exacto el 20 de septiembre/);
 });
 
 test("la coincidencia se decide por día civil y en la zona del aparato", () => {
@@ -299,8 +334,10 @@ test("el modelo es determinístico y aguanta una ventana degenerada", () => {
   for (const mark of puntual.marks) {
     assert.ok(Number.isFinite(mark.ratio) && mark.ratio >= 0 && mark.ratio <= 1, mark.label);
   }
-  assert.equal(puntual.todayIsContact, true, "el contacto es hoy: una sola marca");
-  assert.deepEqual(tipos(puntual.marks), ["start", "today", "end"]);
+  assert.equal(puntual.todayIsContact, true, "el contacto es hoy");
+  // Con la misma posición, el contacto va antes que HOY: es el orden en que se
+  // leen y el mismo que anuncia VoiceOver.
+  assert.deepEqual(tipos(puntual.marks), ["start", "contact", "today", "end"]);
 });
 
 // ---------------------------------------------------------------------------
@@ -420,12 +457,15 @@ test("la pantalla lee los opcionales del sobre del tránsito, nunca del ranking"
   assert.match(cuerpo, /const extra = transitDetailExtras\(arco\)/, "los opcionales salen del arco");
   assert.match(cuerpo, /natalHouse: extra\.natalHouse/, "la casa del significado sale del mismo sobre");
   // El ranking publica `natalHouse` y `reasons`, y tomarlos prestados haría que
-  // el detalle afirme con una trazabilidad lo que calculó otro análisis.
+  // el detalle afirme con una trazabilidad lo que calculó otro análisis. El
+  // adelanto de QA22-011 no es una excepción: llega ya resuelto como
+  // `TransitPreview` —título, etapa, significado y acción— y el cuerpo no ve la
+  // fila del ranking ni sus fechas.
   for (const prohibido of ["transitRanking", "item.natalHouse", "item.reasons", "reasonLabel"]) {
     assert.ok(!cuerpo.includes(prohibido), `el detalle no puede usar «${prohibido}»`);
   }
   // Cada bloque que depende de un opcional se dibuja SÓLO si el campo existe.
-  assert.match(cuerpo, /extra\.previousExactAt !== null \|\| extra\.nextExactAt !== null \?/);
+  assert.match(cuerpo, /contactoAnterior !== null \|\| contactoProximo !== null \?/);
   assert.match(cuerpo, /extra\.rankingReason \|\| extra\.rankingWindow \?/);
   // Y los contactos de la línea de tiempo son las pasadas más los opcionales.
   assert.match(cuerpo, /\.\.\.arco\.passes\.map\(\(pass\) => pass\.exactAt\)/);
@@ -437,7 +477,10 @@ test("el dibujo toma el modelo y colorea por tipo de marca", () => {
   const linea = layout.slice(layout.indexOf("export function ArcTimeline"), layout.indexOf("export function AspectGlyph"));
 
   assert.match(linea, /transitTimeline\(\{/, "las marcas no se calculan en la pantalla");
-  assert.ok(!/formatShortDayMonth|formatDayMonth/.test(linea), "las fechas ya vienen escritas del modelo");
+  assert.ok(
+    !/formatShortDayMonth|formatDayMonth|formatLocalTime/.test(linea),
+    "las fechas y las horas ya vienen escritas del modelo"
+  );
 
   // Bordes: gris y HUECOS. Contacto: hueso. Hoy: cobre.
   const marca = layout.slice(layout.indexOf("function Marca("), layout.indexOf("function etiquetaColor("));
@@ -453,4 +496,17 @@ test("el dibujo toma el modelo y colorea por tipo de marca", () => {
   assert.match(linea, /accessibilityLabel=\{timeline\.voice\}/);
   assert.equal((linea.match(/accessibilityLabel=/g) ?? []).length, 1, "un anuncio, no seis fragmentos");
   assert.match(linea, /accessibilityElementsHidden[\s\S]{0,80}no-hide-descendants/);
+
+  // Y los rótulos son una LISTA vertical, no una fila que se repliega: con tres
+  // contactos, el reflujo devolvía las últimas etiquetas al margen izquierdo y
+  // rompía la correspondencia con sus marcas (QA22-012).
+  assert.match(linea, /styles\.timelineList/, "los hitos van en una lista, uno por renglón");
+  assert.ok(!/styles\.timelineLabels\b/.test(linea), "la fila con reflujo no vuelve");
+  const lista = /timelineList:\s*\{([^}]*)\}/s.exec(layout)?.[1] ?? "";
+  assert.ok(lista, "no se encontró el estilo de la lista de hitos");
+  assert.doesNotMatch(lista, /flexWrap/, "una lista que se repliega vuelve a desordenar los hitos");
+  assert.doesNotMatch(lista, /flexDirection:\s*["']row["']/, "la lista es vertical");
+  // Cada renglón lleva su punto con el MISMO color que su marca, que es lo que
+  // permite emparejar la lista con el dibujo.
+  assert.match(linea, /puntoColor\(mark\)/);
 });

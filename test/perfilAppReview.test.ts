@@ -223,7 +223,63 @@ describe("Perfil — el plan se ofrece por el bloque autoritativo, sin precios",
   });
 
   it("con sesión monta el bloque de plan, que decide con el entitlement", () => {
-    assert.match(PERFIL, /\{auth\?\.isSignedIn \? <ManageSubscriptionBlock \/> : null\}/);
+    // La decisión del plan NO vive en el Perfil: la pantalla delega en el
+    // bloque autoritativo —que Metro resuelve por plataforma— y no lee el
+    // entitlement por su cuenta para dibujar nada.
+    assert.match(PERFIL, /import \{ ManageSubscriptionBlock \} from "@\/components\/orbita\/ManageSubscription"/);
+    assert.equal(
+      /subscriptions\.getCurrent|plusActivation|isPro/.test(PERFIL),
+      false,
+      "el Perfil no puede decidir el plan por su cuenta"
+    );
+
+    // El bloque cuelga de `AccountSignedIn`, y `AccountSignedIn` sólo se monta
+    // con la sesión firmada: sin eso, el bloque quedaba pidiendo el plan de
+    // nadie (o el de la cuenta anterior) fuera de sesión.
+    const cuerpo = PERFIL.slice(
+      PERFIL.indexOf("function CuerpoAdministrativo({"),
+      PERFIL.indexOf("export function PerfilAjustesBody()")
+    );
+    const guarda = cuerpo.search(/\{auth\?\.isSignedIn \?/);
+    const montaje = cuerpo.indexOf("<AccountSignedIn");
+    assert.equal(
+      (cuerpo.match(/<AccountSignedIn\b/g) ?? []).length,
+      1,
+      "un solo montaje: cualquier otro se saltearía la guarda"
+    );
+    assert.ok(guarda !== -1 && guarda < montaje, "el montaje va DETRÁS de `auth?.isSignedIn`");
+    assert.ok(
+      montaje < cuerpo.indexOf("Modo invitado"),
+      "el invitado es la rama ALTERNATIVA, no el mismo camino"
+    );
+
+    // Y dentro hay exactamente un bloque de plan: dos serían dos lecturas del
+    // mismo entitlement, con sus dos salidas a la gestión.
+    const cuenta = PERFIL.slice(
+      PERFIL.indexOf("function AccountSignedIn({"),
+      PERFIL.indexOf("const styles = StyleSheet.create(")
+    );
+    assert.equal((PERFIL.match(/<ManageSubscriptionBlock\b/g) ?? []).length, 1);
+    assert.equal((cuenta.match(/<ManageSubscriptionBlock\b/g) ?? []).length, 1);
+
+    // El orden de lectura de la cuenta: primero quién sos y cómo está esa
+    // cuenta, después qué plan tenés —la suscripción es parte de la identidad,
+    // no una acción—, y recién al final las acciones, con la destructiva última.
+    const render = cuenta.slice(cuenta.indexOf("<Body bone>{auth.name"));
+    let previo = -1;
+    for (const marca of [
+      '{auth.name ?? auth.email ?? "Tu cuenta"}',
+      "Sincronizando con tu cielo…",
+      "<ManageSubscriptionBlock />",
+      "ACCIONES DE CUENTA",
+      "Cerrar sesión",
+      "Eliminar mi cuenta"
+    ]) {
+      const donde = render.indexOf(marca);
+      assert.ok(donde !== -1, `falta "${marca}" en AccountSignedIn`);
+      assert.ok(donde > previo, `"${marca}" quedó fuera de orden en AccountSignedIn`);
+      previo = donde;
+    }
   });
 
   it("/reading/plus redirige sin mostrar planes ni precios", () => {

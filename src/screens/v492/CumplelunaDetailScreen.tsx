@@ -22,6 +22,14 @@ import {
   cumplelunaTransition,
   type CumplelunaStage
 } from "@/domain/layerMeaning";
+import {
+  READING_NOW_HEADING,
+  READING_QUESTION_HEADING,
+  READING_THEME_HEADING,
+  READING_USE_HEADING,
+  cumplelunaReading,
+  type LayerReading
+} from "@/domain/layerReading";
 import { useLayers, useNatalBase } from "@/hooks/useLayers";
 
 /**
@@ -40,16 +48,24 @@ import { useLayers, useNatalBase } from "@/hooks/useLayers";
  *
  * ## Qué se lee y en qué orden
  *
- * El tramo del ciclo —en qué etapa estás, qué significa, el gesto y la
- * pregunta— → el día y el avance, con el próximo cumpleluna → los números →
- * `MÉTODO`.
+ * La lectura del ciclo —qué marca ahora, qué pone al frente, cómo usarlo y una
+ * pregunta para observar— → el día y el avance, con el próximo cumpleluna → los
+ * números → `MÉTODO`. Es la misma jerarquía que los otros tres detalles de `Tu
+ * momento` (`domain/layerReading`).
  *
- * La etapa va PRIMERO porque es lo único de esta pantalla que se entiende sin
+ * La lectura va PRIMERO porque es lo único de esta pantalla que se entiende sin
  * saber qué es el ángulo Sol–Luna. Abría con el anillo y el resumen del
  * cálculo: dos formas del mismo número —"día 12 de 29,5"— antes de decir qué
  * significa estar ahí, y un párrafo que explicaba cómo se llegó a ese número.
  * El número sigue estando, ahora debajo de su lectura; la explicación del
  * cálculo vive entera en `MÉTODO`, al pie.
+ *
+ * ## La apertura dice los dos números, y sólo cuando son seguros (QA22-025)
+ *
+ * `Estás en desarrollo, día 12,4 de 29,5.` es la síntesis que faltaba: el tramo
+ * y el avance en la misma frase, en vez de una etiqueta arriba y dos números
+ * sueltos abajo. Sin raíz exacta esos números son ventanas y la apertura no los
+ * escribe: nombra el tramo —que sí se sostiene— y el límite se declara una vez.
  *
  * ## Una columna abierta y cuatro tramos
  *
@@ -73,35 +89,46 @@ import { useLayers, useNatalBase } from "@/hooks/useLayers";
 const SIN_RAIZ_EXACTA =
   "Cada valor se dice como un intervalo porque falta el dato de partida exacto: son los bordes que el cálculo sí sostiene, no un día ni un número confirmado.";
 
-export function CumplelunaDetailScreen() {
+export function CumplelunaDetailScreen({
+  fallbackHref = "/hoy"
+}: {
+  /**
+   * Destino de "volver" si no hay historial (entrada por deep link).
+   *
+   * Lo pone la RUTA, porque es la ruta la que decide de qué stack cuelga este
+   * detalle: `/hoy/cumpleluna` vuelve a Hoy y `/transitos/capa/cumpleluna`
+   * vuelve a `Tu momento` (QA22-027). La pantalla es la misma en los dos casos.
+   */
+  fallbackHref?: string;
+}) {
   const layers = useLayers();
   const natal = useNatalBase();
   const { phase, bundle, nowMs, localDate, timezone, refresh, refreshing, refreshFailed } = layers;
 
   if (phase === "cargando") {
     return (
-      <DetailLayerScreen eyebrow="Cumpleluna">
+      <DetailLayerScreen eyebrow="Cumpleluna" fallbackHref={fallbackHref}>
         <LoadingBlock />
       </DetailLayerScreen>
     );
   }
   if (phase === "error") {
     return (
-      <DetailLayerScreen eyebrow="Cumpleluna">
+      <DetailLayerScreen eyebrow="Cumpleluna" fallbackHref={fallbackHref}>
         <ErrorBlock onRetry={layers.retrySession} />
       </DetailLayerScreen>
     );
   }
   if (phase === "invitado") {
     return (
-      <DetailLayerScreen eyebrow="Cumpleluna">
+      <DetailLayerScreen eyebrow="Cumpleluna" fallbackHref={fallbackHref}>
         <GuestBlock />
       </DetailLayerScreen>
     );
   }
   if (phase === "vacio" || !bundle) {
     return (
-      <DetailLayerScreen eyebrow="Cumpleluna">
+      <DetailLayerScreen eyebrow="Cumpleluna" fallbackHref={fallbackHref}>
         <EmptyBlock />
       </DetailLayerScreen>
     );
@@ -131,6 +158,20 @@ export function CumplelunaDetailScreen() {
   // acotar.
   const avanceDelTramo = data ? (franja ? (franja.from + franja.to) / 2 : data.progress) : null;
   const tramo = avanceDelTramo === null ? null : cumplelunaStage(avanceDelTramo);
+  // La lectura del ciclo: la misma jerarquía que los otros tres detalles de `Tu
+  // momento`. Los dos números de la apertura son los del sobre y sólo se
+  // escriben con raíz exacta; el tipo lunar de nacimiento viene de la base natal
+  // y es opcional, así que el texto sabe pasar sin él.
+  const lectura =
+    data && avanceDelTramo !== null
+      ? cumplelunaReading({
+          progress: avanceDelTramo,
+          cycleDay: data.cycleDay,
+          cycleLength: data.cycleLengthDays,
+          exact: exacto,
+          lunarType: tipoLunar?.name ?? null
+        })
+      : null;
   // Cuándo entrás en el tramo siguiente. Sólo con raíz exacta: es una frontera
   // derivada de las dos repeticiones del ángulo, y sin hora exacta esas dos son
   // ventanas. En el tramo de cierre no hay transición que decir —lo que viene es
@@ -145,7 +186,7 @@ export function CumplelunaDetailScreen() {
       : null;
 
   return (
-    <DetailLayerScreen eyebrow="Cumpleluna">
+    <DetailLayerScreen eyebrow="Cumpleluna" fallbackHref={fallbackHref}>
       <Section>
         {/* El aviso de frescura, sólo cuando HAY dato: sin cálculo, lo que
             corresponde no es "no pudimos calcular, probá de nuevo" —sin hora
@@ -179,7 +220,14 @@ export function CumplelunaDetailScreen() {
                 tramos —inicio, desarrollo, revisión y cierre—, uno por cuarto de
                 recorrido, y un solo gesto: el ciclo dura unos 29 días y una lista
                 de tareas no se sostiene tanto tiempo. */}
-            {tramo ? <Tramo tramo={tramo} transicion={transicion} timezone={timezone} /> : null}
+            {tramo && lectura ? (
+              <Lectura
+                tramo={tramo}
+                lectura={lectura}
+                transicion={transicion}
+                timezone={timezone}
+              />
+            ) : null}
 
             {/* Y recién ahora el número: en qué día del ciclo cae eso que acabás
                 de leer y cuándo vuelve a empezar. Sin el resumen del cálculo al
@@ -250,20 +298,23 @@ export function CumplelunaDetailScreen() {
 }
 
 /**
- * El tramo del ciclo: su rótulo con las fronteras, de qué se trata, el gesto y
- * la pregunta.
+ * La lectura del ciclo, en la jerarquía canónica de `Tu momento`: qué marca
+ * ahora → qué pone al frente → cómo usarlo → para observar.
  *
- * Las fronteras se imprimen (`50–75 % DEL CICLO`) porque son lo que convierte el
- * rótulo en un dato: sin ellas, "REVISIÓN" es una palabra elegida por alguien. El
- * porcentaje que se afirma es el del TRAMO, no el avance de la persona, que se
- * dice debajo con la precisión que el sobre sostenga.
+ * El rótulo del tramo y sus fronteras (`50–75 % DEL CICLO`) encabezan el bloque
+ * porque son lo que convierte "REVISIÓN" en un dato y no en una palabra elegida
+ * por alguien. El porcentaje que se afirma ahí es el del TRAMO, no el avance de
+ * la persona, que se dice debajo con la precisión que el sobre sostenga.
  */
-function Tramo({
+function Lectura({
   tramo,
+  lectura,
   transicion,
   timezone
 }: {
   tramo: CumplelunaStage;
+  /** El texto determinístico del ciclo, ya compuesto por el dominio. */
+  lectura: LayerReading;
   /** El cambio de tramo, sólo cuando el cálculo tiene raíz exacta. */
   transicion: ReturnType<typeof cumplelunaTransition>;
   timezone: string;
@@ -276,13 +327,22 @@ function Tramo({
           {`${tramo.range.fromPercent}–${tramo.range.toPercent} % DEL CICLO`}
         </Label>
       </View>
-      <Body style={styles.spaced}>{tramo.focus}</Body>
 
-      <Label style={styles.tramoRotulo}>PARA BAJARLO A TIERRA</Label>
-      <Body style={styles.spaced}>{tramo.action}</Body>
+      <Label style={styles.tramoRotulo}>{READING_NOW_HEADING}</Label>
+      <Body style={styles.spaced}>{lectura.now}</Body>
 
-      <Label style={styles.tramoRotulo}>PARA PREGUNTARTE HOY</Label>
-      <Body style={styles.spaced}>{tramo.question}</Body>
+      <Label style={styles.tramoRotulo}>{READING_THEME_HEADING}</Label>
+      <Body style={styles.spaced}>{lectura.theme}</Body>
+
+      <Label style={styles.tramoRotulo}>{READING_USE_HEADING}</Label>
+      <Body style={styles.spaced}>{lectura.use}</Body>
+
+      <Label style={styles.tramoRotulo}>{READING_QUESTION_HEADING}</Label>
+      <Body style={styles.spaced}>{lectura.question}</Body>
+
+      {/* El límite del dato, una sola vez y donde cambia lo que se afirma: sin
+          raíz exacta el tramo se sostiene y el día del ciclo no. */}
+      {lectura.caveat ? <Note style={styles.spaced}>{lectura.caveat}</Note> : null}
 
       {transicion ? (
         <Note style={styles.spaced}>

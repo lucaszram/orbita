@@ -1,25 +1,26 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useAction, useMutation } from "convex/react";
 import { router } from "expo-router";
-import { ActivityIndicator, Linking, Pressable, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Linking, StyleSheet, View } from "react-native";
 
-import { Body, Divider, Eyebrow, Note, Pill } from "@/components/orbita/kit";
+import { PrimaryButton } from "@/components/v492/States";
+import { Touchable } from "@/components/v492/Touchable";
+import { v492 } from "@/components/v492/tokens";
+import { Body, Divider, Eyebrow, Label, Note } from "@/components/v492/typography";
 import { createOwnerGates, runExclusive } from "@/domain/exclusive";
 import {
   backendConfirmsStorePurchase,
   entitlementBelongsTo,
-  safeEntitlement,
   nativeSubscriptionManagement,
   ownedValue,
   publishOwnedValue,
   readOwnedValue,
   type OwnedValue
 } from "@/domain/nativeCommerce";
-import { useLiveApp } from "@/hooks/useLiveApp";
+import { useEntitlement } from "@/hooks/useLiveApp";
 import { clearPurchaseGuard, storePurchaseGuard } from "@/services/purchaseGuard";
 import { appApi, proposedApi } from "@/services/appRefs";
 import { useRevenueCat } from "@/services/revenuecat/RevenueCatProvider";
-import { orbita } from "@/theme/orbita";
 
 const SUPPORT_URL = "https://orbitaastrologia.xyz/support";
 
@@ -29,18 +30,29 @@ const MENSAJE_ACTIVANDO =
 type CommerceState = { checkoutEnabled: boolean };
 type UiState = "idle" | "opening" | "restoring" | "error";
 
-/** Plan y gestión en la app nativa. La variante web hermana conserva Stripe. */
+/**
+ * Plan y gestión en la app nativa. La variante web hermana conserva Stripe.
+ *
+ * La presentación es la del sistema V4.9.2 —tipografías, tokens y botones de
+ * `components/v492`—, y las acciones viven AGRUPADAS por lo que deciden:
+ * activar contrata, gestionar toca una suscripción que ya se paga y restaurar
+ * recupera una compra hecha. Mezcladas en una sola columna, la que se tocaba
+ * por error era siempre la comercial.
+ */
 export function ManageSubscriptionBlock() {
-  const { auth, isLive } = useLiveApp();
   /**
-   * El entitlement se pide SÓLO con la sesión viva.
+   * El plan y su dueño salen del provider central.
    *
-   * Sin el `skip`, el resultado montado con la sesión de A seguía publicado
-   * durante la ventana A → B: el bloque de plan mostraba el plan de A, y el
-   * efecto que limpia el marcador de compra podía borrar el guard de B con una
-   * confirmación que era de A.
+   * Este bloque tenía su propia `subscriptions.getCurrent` y repetía la
+   * correlación con Clerk: una tercera copia de la misma verdad, con su propia
+   * ventana en la que el plan de A quedaba publicado bajo la sesión de B.
+   *
+   * Se usa el REMOTO: acá se abre el portal de facturación y se restauran
+   * compras. Un snapshot local no puede ofrecer ninguna de las dos cosas —
+   * `undefined` es "validando" y `view` responde `loading`, así que no se
+   * dibuja ninguna salida hasta que el backend confirme para esta cuenta.
    */
-  const rawEntitlement = useQuery(appApi.subscriptions.getCurrent, isLive ? {} : "skip");
+  const { remote: entitlement, owner: clerkOwner } = useEntitlement();
   const getWebOffer = useAction(proposedApi.getWebOffer);
   const createPortal = useAction(proposedApi.createPortalSession);
   // Mutation, no action: deja el trabajo de reparación escrito en la misma
@@ -48,17 +60,6 @@ export function ManageSubscriptionBlock() {
   // morir antes de crear nada.
   const reconcile = useMutation(appApi.subscriptions.requestStoreReconcile);
   const revenueCat = useRevenueCat();
-  const clerkOwner = auth?.isSignedIn ? auth.userId ?? null : null;
-  /**
-   * El entitlement CORRELACIONADO con el dueño de Clerk.
-   *
-   * El `skip` no alcanza: Convex conserva el último valor mientras la nueva
-   * suscripción resuelve, así que el plan de A sigue publicado durante uno o
-   * varios renders de B. Sin esto, B veía el plan de A y —peor— podía abrir el
-   * portal o restaurar sobre esa lectura. `undefined` = validando, y `view`
-   * responde `loading`: ninguna salida se ofrece.
-   */
-  const entitlement = safeEntitlement(rawEntitlement, clerkOwner);
   const management = nativeSubscriptionManagement(entitlement);
   const view = management.view;
   /**
@@ -285,7 +286,7 @@ export function ManageSubscriptionBlock() {
   if (view === "loading") {
     return (
       <PlanBlock>
-        <ActivityIndicator color={orbita.colors.copper} />
+        <PlanLoading label="Estamos comprobando tu plan…" />
       </PlanBlock>
     );
   }
@@ -293,12 +294,23 @@ export function ManageSubscriptionBlock() {
 
   if (view === "free") {
     return (
-      <PlanBlock eyebrow="TU PLAN">
-        <Body bone>Estás en Órbita Free.</Body>
+      <PlanBlock>
+        <Body style={styles.lead}>Estás en Órbita Free.</Body>
         <Note>Tenés Hoy, Tránsitos, Vínculos, tu carta base y tres preguntas por día en El Umbral.</Note>
-        <View style={styles.actionGap} />
-        <Pill label="ACTIVAR ÓRBITA PLUS" onPress={() => router.push("/paywall")} />
-        <RestoreLink state={state} ready={storeOwner !== null} onPress={() => void restore()} />
+        <ActionGroup label="ACTIVAR">
+          <PrimaryButton
+            label="ACTIVAR ÓRBITA PLUS"
+            align="start"
+            accessibilityHint="Abre las opciones de Órbita Plus"
+            onPress={() => router.push("/paywall")}
+          />
+        </ActionGroup>
+        {/* Restaurar es su propio grupo: recupera una compra YA hecha y no
+            contrata nada. Pegado al CTA comercial, la confusión entre las dos
+            terminaba en un segundo cargo. */}
+        <ActionGroup label="RESTAURAR">
+          <RestoreAction state={state} ready={storeOwner !== null} onPress={() => void restore()} />
+        </ActionGroup>
         <Message text={message} />
       </PlanBlock>
     );
@@ -316,10 +328,13 @@ export function ManageSubscriptionBlock() {
   const lifetime = view === "lifetime";
   const esperandoComercioWeb = management.showStripePortal && commerceEnabled === undefined;
   const sinSalidaReal = !management.showStoreCenter && !management.showStripePortal;
+  const hayGestion = management.showStoreCenter || management.showStripePortal;
 
   return (
     <PlanBlock>
-      <Body bone>{lifetime ? "Tenés Órbita Plus de por vida." : "Tenés Órbita Plus activo."}</Body>
+      <Body style={styles.lead}>
+        {lifetime ? "Tenés Órbita Plus de por vida." : "Tenés Órbita Plus activo."}
+      </Body>
       <Note>
         {management.dual
           ? // El caso que dejaba un cobro corriendo a ciegas: dos compras vivas
@@ -334,95 +349,175 @@ export function ManageSubscriptionBlock() {
                 : "Si necesitás revisar este acceso, escribinos y lo resolvemos."}
       </Note>
 
-      {management.showStoreCenter ? (
-        <>
-          <View style={styles.actionGap} />
-          <Pill
-            label={state === "opening" ? "ABRIENDO…" : management.dual ? "GESTIONAR EN LA TIENDA" : "GESTIONAR SUSCRIPCIÓN"}
-            disabled={busy}
-            onPress={() => void openCustomerCenter()}
-          />
-        </>
-      ) : null}
-
-      {management.showStripePortal ? (
-        <>
-          <View style={styles.actionGap} />
-          {esperandoComercioWeb ? (
-            <ActivityIndicator color={orbita.colors.copper} />
-          ) : (
-            <Pill
-              label={
-                state === "opening"
-                  ? "ABRIENDO…"
-                  : management.showStoreCenter
-                    ? "GESTIONAR LA SUSCRIPCIÓN WEB"
-                    : "GESTIONAR SUSCRIPCIÓN"
-              }
-              // Con el comercio apagado el portal tiraría: el botón queda
-              // bloqueado y al lado se explica por dónde seguir.
-              disabled={busy || commerceEnabled !== true}
-              onPress={() => void openStripePortal()}
+      {/* GESTIONAR agrupa TODAS las salidas reales: con dos cobros vivos son
+          dos botones, uno por canal, y ninguno se esconde detrás del otro. */}
+      {hayGestion ? (
+        <ActionGroup label="GESTIONAR">
+          {management.showStoreCenter ? (
+            <PrimaryButton
+              label={state === "opening" ? "ABRIENDO…" : management.dual ? "GESTIONAR EN LA TIENDA" : "GESTIONAR SUSCRIPCIÓN"}
+              align="start"
+              accessibilityHint="Abre la gestión de tu suscripción en la tienda"
+              disabled={busy}
+              onPress={() => void openCustomerCenter()}
             />
-          )}
-          {commerceEnabled === false ? (
-            <Pressable onPress={() => Linking.openURL(SUPPORT_URL)} accessibilityRole="link" hitSlop={8}>
-              <Note>La gestión online no está disponible en este momento. Escribinos y lo resolvemos.</Note>
-            </Pressable>
           ) : null}
-        </>
+
+          {management.showStripePortal ? (
+            <>
+              {esperandoComercioWeb ? (
+                <PlanLoading label="Estamos comprobando la gestión web…" />
+              ) : (
+                <PrimaryButton
+                  label={
+                    state === "opening"
+                      ? "ABRIENDO…"
+                      : management.showStoreCenter
+                        ? "GESTIONAR LA SUSCRIPCIÓN WEB"
+                        : "GESTIONAR SUSCRIPCIÓN"
+                  }
+                  align="start"
+                  accessibilityHint="Abre el portal de facturación web"
+                  // Con el comercio apagado el portal tiraría: el botón queda
+                  // bloqueado y al lado se explica por dónde seguir.
+                  disabled={busy || commerceEnabled !== true}
+                  onPress={() => void openStripePortal()}
+                />
+              )}
+              {commerceEnabled === false ? (
+                <SupportLink text="La gestión online no está disponible en este momento. Escribinos y lo resolvemos." />
+              ) : null}
+            </>
+          ) : null}
+        </ActionGroup>
       ) : null}
 
       {sinSalidaReal ? (
-        <Pressable onPress={() => Linking.openURL(SUPPORT_URL)} accessibilityRole="link" hitSlop={8}>
-          <Note>Si necesitás revisar este acceso, escribinos y lo resolvemos.</Note>
-        </Pressable>
+        <SupportLink text="Si necesitás revisar este acceso, escribinos y lo resolvemos." />
       ) : null}
 
-      <RestoreLink state={state} ready={storeOwner !== null} onPress={() => void restore()} />
+      {/* Restaurar no gestiona nada: vuelve a leer la tienda. Por eso queda
+          fuera de GESTIONAR aunque el acceso ya esté activo. */}
+      <ActionGroup label="RESTAURAR">
+        <RestoreAction state={state} ready={storeOwner !== null} onPress={() => void restore()} />
+      </ActionGroup>
       <Message text={message} />
     </PlanBlock>
   );
 }
 
-function PlanBlock({ eyebrow = "SUSCRIPCIÓN", children }: { eyebrow?: string; children: ReactNode }) {
+/** Bloque del plan: filete, rótulo de sección y su contenido. */
+function PlanBlock({ children }: { children: ReactNode }) {
   return (
     <View style={styles.block}>
-      <Divider />
-      <Eyebrow>{eyebrow}</Eyebrow>
+      <Divider style={styles.rule} />
+      <Eyebrow>TU PLAN</Eyebrow>
       {children}
     </View>
   );
 }
 
-function RestoreLink({ state, ready, onPress }: { state: UiState; ready: boolean; onPress: () => void }) {
-  const disabled = !ready || state === "restoring" || state === "opening";
+/**
+ * Grupo de acciones con su rótulo mono.
+ *
+ * Activar, gestionar y restaurar son tres decisiones distintas —una contrata,
+ * otra toca un cobro vivo y la tercera recupera algo ya pagado—, y en una sola
+ * columna sin rótulos la que se tocaba por error era siempre la comercial.
+ */
+function ActionGroup({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <Pressable
+    <View style={styles.group}>
+      <Label>{label}</Label>
+      {children}
+    </View>
+  );
+}
+
+/**
+ * Espera del sistema V4.9.2: rueda cobre y una línea que dice qué se espera.
+ *
+ * Mismo contrato de accesibilidad que el `LoadingBlock` de las pantallas de
+ * capas —rol `progressbar` y etiqueta hablada—, sin su caja centrada de
+ * pantalla completa: acá es un renglón dentro de una sección del Perfil.
+ */
+function PlanLoading({ label }: { label: string }) {
+  return (
+    <View style={styles.loading} accessibilityRole="progressbar" accessibilityLabel={label}>
+      <ActivityIndicator color={v492.colors.copper} />
+      <Note>{label}</Note>
+    </View>
+  );
+}
+
+/**
+ * Acción secundaria del sistema: rótulo mono en cobre suave, sin píldora.
+ *
+ * Bloqueada se ANUNCIA bloqueada y baja a texto apagado, como el primario: un
+ * botón que existe y no responde, sin decirlo, es una trampa con lector de
+ * pantalla. El objetivo táctil nunca baja de 44.
+ */
+function RestoreAction({ state, ready, onPress }: { state: UiState; ready: boolean; onPress: () => void }) {
+  const disabled = !ready || state === "restoring" || state === "opening";
+  const label =
+    state === "restoring" ? "Restaurando compras…" : ready ? "Restaurar compras" : "Preparando restauración…";
+  return (
+    <Touchable
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityHint="Vuelve a leer las compras de esta cuenta de la tienda"
       accessibilityState={{ disabled }}
       hitSlop={8}
-      style={[styles.restore, disabled && styles.restoreDisabled]}
+      style={styles.secondary}
+      pressedStyle={styles.pressed}
     >
-      <Note>{state === "restoring" ? "Restaurando compras…" : ready ? "Restaurar compras" : "Preparando restauración…"}</Note>
-    </Pressable>
+      <Label style={disabled ? styles.secondaryTextOff : styles.secondaryText}>{label}</Label>
+    </Touchable>
+  );
+}
+
+/** Salida a soporte cuando no hay una gestión que ofrecer. */
+function SupportLink({ text }: { text: string }) {
+  return (
+    <Touchable
+      onPress={() => Linking.openURL(SUPPORT_URL)}
+      accessibilityRole="link"
+      accessibilityLabel={text}
+      hitSlop={8}
+      style={styles.supportLink}
+      pressedStyle={styles.pressed}
+    >
+      <Note style={styles.supportText}>{text}</Note>
+    </Touchable>
   );
 }
 
 function Message({ text }: { text: string | null }) {
   if (!text) return null;
   return (
-    <View accessibilityLiveRegion="polite" accessibilityRole="alert">
+    <View accessibilityLiveRegion="polite" accessibilityRole="alert" style={styles.message}>
       <Note>{text}</Note>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  block: { gap: orbita.spacing.sm },
-  actionGap: { height: orbita.spacing.sm },
-  restore: { alignSelf: "flex-start", justifyContent: "center", minHeight: 44 },
-  restoreDisabled: { opacity: 0.5 }
+  block: { gap: v492.space.sm, marginTop: v492.space.xl },
+  group: { gap: v492.space.md, marginTop: v492.space.lg },
+  lead: { color: v492.colors.text },
+  loading: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: v492.space.md,
+    minHeight: v492.touch
+  },
+  message: { marginTop: v492.space.sm },
+  pressed: { opacity: 0.6 },
+  rule: { marginBottom: v492.space.lg },
+  secondary: { alignSelf: "flex-start", justifyContent: "center", minHeight: v492.touch },
+  secondaryText: { color: v492.colors.copperSoft },
+  secondaryTextOff: { color: v492.colors.textDim },
+  supportLink: { alignSelf: "flex-start", justifyContent: "center", minHeight: v492.touch },
+  supportText: { color: v492.colors.copperSoft, textDecorationLine: "underline" }
 });

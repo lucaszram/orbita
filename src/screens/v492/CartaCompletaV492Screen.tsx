@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Children, Fragment, type ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import { useQuery } from "convex/react";
@@ -9,7 +9,7 @@ import { Card, DataRow, ModuleHeader } from "@/components/v492/Module";
 import { DetailLayerScreen, Section } from "@/components/v492/Screen";
 import { LimitationList } from "@/components/v492/Status";
 import { EmptyBlock, ErrorBlock, GuestBlock, LoadingBlock, PrimaryButton } from "@/components/v492/States";
-import { Body, Eyebrow, Label, Mono, Note, Subtitle, Title } from "@/components/v492/typography";
+import { Body, Divider, Eyebrow, Label, Mono, Note, Subtitle, Title } from "@/components/v492/typography";
 import { v492 } from "@/components/v492/tokens";
 import { bodySymbol, RETROGRADE_CODE } from "@/domain/astroSymbols";
 import { resolveBirthInfo } from "@/domain/birthInfo";
@@ -64,6 +64,21 @@ import { layersApi, type NatalChartBase } from "@/services/layersApi";
  * Dos cosas se dicen distinto y no se confunden: lo que falta porque el cálculo
  * no lo permite —sin hora exacta no hay grados, ni ejes, ni casas— y lo que está
  * cerrado por acceso, que se abre con Órbita Plus y se ofrece como tal.
+ *
+ * ## La forma: una columna editorial, no una pila de tarjetas (QA22-030)
+ *
+ * Lo NORMAL de esta pantalla —los datos natales, los ejes, las diez posiciones,
+ * los contactos, las doce casas y cómo se calculó— vive en una columna de
+ * títulos, pares rótulo/valor y filetes: es el canon V4.9.2, que no encajona los
+ * datos (ver `@/components/v492/Layout`). Metida en una `Card`, cada tabla se
+ * leía como un objeto aparte y la carta entera quedaba como una pila de cajas
+ * grises en vez de un texto que se recorre de arriba abajo. Los capítulos de "Tu
+ * carta, explicada" ya eran editoriales y por eso nunca se envolvieron.
+ *
+ * La `Card` queda para lo EXCEPCIONAL, que es justamente lo que tiene que
+ * despegarse de la columna: el cálculo en curso, el que no se pudo publicar, la
+ * parte que falta, lo cerrado por plan y las ramas sin dato —sin hora, pendiente,
+ * sin resultado— con su explicación y, cuando corresponde, su botón.
  */
 export function CartaCompletaV492Screen() {
   const live = useLiveApp();
@@ -323,6 +338,57 @@ function FaltaCalculo({
   );
 }
 
+/**
+ * Lista editorial: una columna de filas separadas por un filete de verdad.
+ *
+ * Es la forma que reemplaza a la `Card` en todo lo normal de la carta. El
+ * separador es un `Divider` —el mismo hairline del sistema— y no un margen: un
+ * margen deja de leerse como retícula apenas dos filas miden distinto, y acá
+ * miden distinto todo el tiempo (una casa trae su tema debajo, una posición
+ * puede traer su etiqueta, un contacto puede no traer orbe).
+ *
+ * Los hijos nulos se caen solos, así que una fila condicional no deja un filete
+ * colgando ni abre la lista con una línea suelta.
+ */
+function EditorialList({ children }: { children: ReactNode }) {
+  const filas = Children.toArray(children);
+  if (filas.length === 0) return null;
+  return (
+    <View>
+      {filas.map((fila, index) => (
+        <Fragment key={index}>
+          {index > 0 ? <Divider /> : null}
+          <View style={styles.editorialItem}>{fila}</View>
+        </Fragment>
+      ))}
+    </View>
+  );
+}
+
+/**
+ * La misma columna, para pares rótulo/valor (`DataRow`).
+ *
+ * Se separa de `EditorialList` por el ritmo vertical y por nada más: `DataRow`
+ * ya trae su propio aire arriba, así que el renglón sólo agrega el de abajo. Con
+ * el `paddingVertical` de `EditorialList` el par quedaría con el doble de aire
+ * arriba que abajo, y una tabla de datos con el ritmo torcido se lee peor que
+ * una caja.
+ */
+function EditorialRows({ children }: { children: ReactNode }) {
+  const filas = Children.toArray(children);
+  if (filas.length === 0) return null;
+  return (
+    <View>
+      {filas.map((fila, index) => (
+        <Fragment key={index}>
+          {index > 0 ? <Divider /> : null}
+          <View style={styles.editorialPair}>{fila}</View>
+        </Fragment>
+      ))}
+    </View>
+  );
+}
+
 function CartaCompletaContent({
   chart,
   timezone,
@@ -426,7 +492,7 @@ function CartaCompletaContent({
             cadence="natal · no cambia"
             intro="La precisión de una carta depende de un solo dato: qué tan exacta es la hora de nacimiento con la que se calculó."
           />
-          <Card>
+          <EditorialRows>
             {birth.status === "complete" ? (
               <DataRow label="DATOS" value={<Mono>{birth.line}</Mono>} />
             ) : null}
@@ -438,13 +504,15 @@ function CartaCompletaContent({
               <DataRow label="SE CALCULÓ CON" value={<Mono>{origenDeCalculo(chart)}</Mono>} />
             ) : null}
             {calculada ? <DataRow label="ÚLTIMO CÁLCULO" value={<Mono>{calculada}</Mono>} /> : null}
-            <Note style={styles.spaced}>
-              {hasExactBirthTime(chart)
-                ? "Con tu hora, las posiciones son las del instante exacto y se pueden trazar los ejes y las casas."
-                : "El Sol, la Luna y los planetas se comprueban sobre todo el día: se conserva lo que no cambia en esas horas y se retira lo que sí. El Ascendente cambia cada dos horas, y por eso no aparece."}
-            </Note>
-            {notaDeHora ? <Note style={styles.spaced}>{notaDeHora}</Note> : null}
-          </Card>
+          </EditorialRows>
+          {/* Lo que explica la tabla queda al pie de la tabla, en la columna: es
+              texto sobre los datos de arriba, no otra fila de datos. */}
+          <Note style={styles.spaced}>
+            {hasExactBirthTime(chart)
+              ? "Con tu hora, las posiciones son las del instante exacto y se pueden trazar los ejes y las casas."
+              : "El Sol, la Luna y los planetas se comprueban sobre todo el día: se conserva lo que no cambia en esas horas y se retira lo que sí. El Ascendente cambia cada dos horas, y por eso no aparece."}
+          </Note>
+          {notaDeHora ? <Note style={styles.spaced}>{notaDeHora}</Note> : null}
           {/* La misma condición que el hub: la hora se ofrece cuando falta, y
               también cuando el dominio declara que completarla es LA salida de
               este estado. */}
@@ -463,25 +531,23 @@ function CartaCompletaContent({
             <View style={{ height: v492.space.md }} />
             {chart.access.angles ? (
               <>
-                <Card>
-                  {chart.angles.map((angle, index) => {
+                <EditorialList>
+                  {chart.angles.map((angle) => {
                     const view = angleView(angle);
                     return (
                       <View
                         key={angle.key}
-                        style={index === 0 ? undefined : styles.rowSpaced}
+                        style={styles.row}
                         accessible
                         accessibilityRole="text"
                         accessibilityLabel={view.voice}
                       >
-                        <View style={styles.row}>
-                          <Body style={styles.rowName}>{view.label}</Body>
-                          <Mono style={styles.rowValue}>{view.value}</Mono>
-                        </View>
+                        <Body style={styles.rowName}>{view.label}</Body>
+                        <Mono style={styles.rowValue}>{view.value}</Mono>
                       </View>
                     );
                   })}
-                </Card>
+                </EditorialList>
                 <Note style={styles.spaced}>
                   El Ascendente es el grado que asomaba por el horizonte en tu lugar y a tu hora; el Medio
                   Cielo, el punto más alto del cielo en ese mismo instante. Los dos dependen de la hora.
@@ -503,11 +569,11 @@ function CartaCompletaContent({
             cadence="natal · no cambia"
             intro={`Del Sol a Plutón: ${chart.positions.length} posiciones, con lo que cada una permite afirmar. El Ascendente y el Medio Cielo no están acá porque son ejes, no planetas.`}
           />
-          <Card>
-            {posiciones.map((view, index) => (
+          <EditorialList>
+            {posiciones.map((view) => (
               <View
                 key={view.key}
-                style={[styles.row, index === 0 ? undefined : styles.rowSpaced]}
+                style={styles.row}
                 accessible
                 accessibilityRole="text"
                 accessibilityLabel={view.voice}
@@ -526,7 +592,7 @@ function CartaCompletaContent({
                 </View>
               </View>
             ))}
-          </Card>
+          </EditorialList>
           <Note style={styles.spaced}>
             {hasExactBirthTime(chart)
               ? `Cada signo mide 30°, así que el número es la posición dentro del signo: "Leo 12°" es doce grados adentro de Leo.`
@@ -591,11 +657,11 @@ function CartaCompletaContent({
             </Card>
           ) : contactos.length > 0 ? (
             <>
-              <Card>
-                {contactos.map((view, index) => (
+              <EditorialList>
+                {contactos.map((view) => (
                   <View
                     key={view.key}
-                    style={[styles.row, index === 0 ? undefined : styles.rowSpaced]}
+                    style={styles.row}
                     accessible
                     accessibilityRole="text"
                     accessibilityLabel={view.voice}
@@ -604,7 +670,7 @@ function CartaCompletaContent({
                     {view.orb ? <Mono style={styles.rowValue}>{view.orb}</Mono> : null}
                   </View>
                 ))}
-              </Card>
+              </EditorialList>
               <Note style={styles.spaced}>
                 El orbe es cuánto le falta a ese ángulo para ser exacto: 0° sería exacto, y cuanto más chico,
                 más ajustado el contacto. Están ordenados del más ajustado al menos ajustado.
@@ -639,11 +705,11 @@ function CartaCompletaContent({
           />
           {chart.access.houses ? (
             <>
-              <Card>
-                {chart.houses.map((house, index) => {
+              <EditorialList>
+                {chart.houses.map((house) => {
                   const view = houseView(house);
                   return (
-                    <View key={house.house} style={index === 0 ? undefined : styles.rowSpaced}>
+                    <View key={house.house}>
                       <View
                         style={styles.row}
                         accessible
@@ -657,7 +723,7 @@ function CartaCompletaContent({
                     </View>
                   );
                 })}
-              </Card>
+              </EditorialList>
               <Note style={styles.spaced}>
                 Cada línea es el comienzo de una casa: el signo y el grado donde arranca. Los puntos de tu
                 carta caen adentro de la casa que empieza antes que ellos.
@@ -694,16 +760,16 @@ function CartaCompletaContent({
             cadence="natal · no cambia"
             intro="Tu carta se calcula con la fecha, la hora y el lugar que guardaste. No cambia con el día ni con lo que pase en el cielo: si corregís esos datos, se calcula de nuevo entera."
           />
-          <Card>
+          <EditorialRows>
             <DataRow label="A PARTIR DE" value={<Mono>Tus datos de nacimiento guardados</Mono>} />
             <DataRow label="POSICIONES" value={<Mono>Del Sol a Plutón, medidas sobre la banda de signos</Mono>} />
             <DataRow label="VERSIÓN DEL MÉTODO" value={<Mono>{chart.methodVersion}</Mono>} />
-            <Note style={styles.spaced}>
-              La versión del método identifica con qué reglas se calculó esta carta: sirve para saber si dos
-              cartas se calcularon igual. Todo lo de arriba, salvo los capítulos, son las posiciones y los
-              ángulos que salen del cálculo: no hay nada estimado ni redondeado en el medio.
-            </Note>
-          </Card>
+          </EditorialRows>
+          <Note style={styles.spaced}>
+            La versión del método identifica con qué reglas se calculó esta carta: sirve para saber si dos
+            cartas se calcularon igual. Todo lo de arriba, salvo los capítulos, son las posiciones y los
+            ángulos que salen del cálculo: no hay nada estimado ni redondeado en el medio.
+          </Note>
           <LimitationList limitations={chart.limitations} />
         </View>
       </Section>
@@ -955,6 +1021,12 @@ const styles = StyleSheet.create({
     marginTop: v492.space.lg,
     paddingTop: v492.space.lg
   },
+  // El renglón de `EditorialList`: el aire de arriba y el de abajo son suyos,
+  // porque sus filas no traen margen propio.
+  editorialItem: { paddingVertical: v492.space.md },
+  // El renglón de `EditorialRows` sólo pone el aire de ABAJO: el de arriba ya lo
+  // trae `DataRow`. Ver la nota del helper.
+  editorialPair: { paddingBottom: v492.space.md },
   intro: { marginBottom: v492.space.xl, marginTop: v492.space.lg },
   introMeta: { marginTop: v492.space.md },
   module: { marginTop: v492.space.xxl },

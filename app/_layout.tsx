@@ -13,7 +13,7 @@ import { PendingDeletionBoundary } from "@/components/PendingDeletionBoundary";
 import { AccountBootstrapProvider } from "@/hooks/useAccountBootstrap";
 import { AppStateProvider } from "@/hooks/useAppState";
 import { DailyContextProvider } from "@/hooks/useDailyContext";
-import { OrbitaSessionProvider } from "@/hooks/useLiveApp";
+import { EntitlementProvider, OrbitaSessionProvider } from "@/hooks/useLiveApp";
 import { BackendProviders, backendConfig } from "@/services/backendProviders";
 import { InstallPing } from "@/components/InstallPing";
 import { RevenueCatProvider } from "@/services/revenuecat/RevenueCatProvider";
@@ -32,6 +32,11 @@ export default function RootLayout() {
         {/* Sesión central (hotfix build 11): un solo estado Clerk/Convex
             compartido; antes cada pantalla resolvía la sesión por su cuenta. */}
         <OrbitaSessionProvider>
+          {/* Plan de la cuenta: UNA sola `subscriptions.getCurrent` para toda la
+              UI nativa, correlacionada con el dueño de Clerk y con el snapshot
+              local que evita el "Órbita Free" del arranque en frío. No depende
+              de RevenueCat: la tienda dice qué cobró, no qué acceso concede. */}
+          <EntitlementProvider>
           {/* Nativo: identifica RevenueCat recién cuando Clerk + fila Convex
               están listos. Web resuelve un provider vacío y conserva Stripe. */}
           <RevenueCatProvider>
@@ -65,6 +70,7 @@ export default function RootLayout() {
           </AppStateProvider>
           </DailyContextProvider>
           </RevenueCatProvider>
+          </EntitlementProvider>
         </OrbitaSessionProvider>
         </PendingDeletionBoundary>
       </BackendProviders>

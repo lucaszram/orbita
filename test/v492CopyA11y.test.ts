@@ -10,7 +10,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { test } from "node:test";
 
-import { transitHeadline } from "../src/domain/layers";
+import { transitHeadline, transitShortTitle } from "../src/domain/layers";
 import { ROOT } from "./moduleGraph";
 
 const leer = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
@@ -38,6 +38,9 @@ const SUPERFICIES_V492 = [
   // La capa editorial escribe texto que se lee en pantalla, así que entra al
   // mismo gate que las pantallas: es donde vive el copy, no una utilidad.
   "src/domain/layerMeaning.ts",
+  // Y la jerarquía de lectura de los cuatro ritmos de `Tu momento`, por lo
+  // mismo: es el texto de cuatro detalles enteros.
+  "src/domain/layerReading.ts",
   // Y lo mismo los dos modelos que escriben texto visible: el aviso de frescura
   // y los rótulos y el anuncio de la línea de tiempo.
   "src/domain/layerFreshness.ts",
@@ -205,23 +208,38 @@ test("la cabecera del tránsito es simbólica y los nombres siguen enteros en la
   assert.match(cabecera, /<AspectGlyph aspect=\{item\.aspect\}/);
   assert.match(cabecera, /<Mono style=\{styles\.orb\}>\{formatOrb\(item\.orbDegrees\)\}<\/Mono>/, "el orbe se queda");
 
+  // Y junto a los símbolos, el título corto legible de QA22-008: la cabecera
+  // simbólica sola no dejaba elegir un tránsito sin conocer los glifos.
+  assert.match(cabecera, /<Body style=\{styles\.titulo\}>\{titulo\}<\/Body>/, "falta el título corto");
+  assert.match(card, /const titulo = transitShortTitle\(item\);/, "y se compone en el dominio");
+
   // VoiceOver: la etiqueta de la fila abre con el titular COMPLETO, que es el
   // que nombra planeta, aspecto y punto natal.
   const voz = /const voz = \[[\s\S]*?\.join\(" "\);/.exec(card)?.[0] ?? "";
   assert.ok(voz, "no se encontró la etiqueta accesible de la fila");
   assert.match(card, /const headline = transitHeadline\(item\);/);
   assert.match(voz, /\$\{headline\}/, "la voz dice el titular completo, no un resumen");
-  assert.match(voz, /item\.summary/, "y también la frase del cálculo, que vuelve a nombrarlos");
+  assert.match(voz, /resumen/, "y también la frase del cálculo, que vuelve a nombrarlos");
   assert.match(card, /accessibilityLabel=\{voz\}/);
+  // El título corto NO entra en la voz: la etiqueta ya abre con el titular
+  // completo y repetir la forma corta sería decir dos veces lo mismo.
+  assert.ok(!voz.includes("titulo"), "la forma corta no se repite en la voz");
 
-  // El titular sigue construyéndose con los nombres reales.
+  // El titular sigue construyéndose con los nombres reales, y la forma corta es
+  // el mismo dato sin la preposición ni el conector.
   assert.equal(
     transitHeadline({ transitPlanet: "Mercurio", aspect: "square", natalPoint: "Saturno" }),
     "Mercurio en cuadratura con tu Saturno"
   );
+  assert.equal(
+    transitShortTitle({ transitPlanet: "Mercurio", aspect: "square", natalPoint: "Saturno" }),
+    "Mercurio cuadratura tu Saturno"
+  );
 
-  // Y la frase del cálculo —el otro portador visible del nombre— no se toca.
-  assert.match(card, /<Body style=\{styles\.summary\}>\{item\.summary\}<\/Body>/);
+  // Y la frase del cálculo —el otro portador visible del nombre— sigue saliendo
+  // del sobre: `summaryWithCanonicalState` sólo pone al día su frase de etapa.
+  assert.match(card, /const resumen = summaryWithCanonicalState\(item\.summary, estado\.state\);/);
+  assert.match(card, /<Body style=\{styles\.summary\}>\{resumen\}<\/Body>/);
 });
 
 test("la fila del tránsito dice el criterio del cálculo, y nunca dos etiquetas que se contradigan", () => {

@@ -624,39 +624,50 @@ test("la capa es determinística y no tiene reloj, azar ni backend adentro", () 
 // Regresiones de pantalla
 // ---------------------------------------------------------------------------
 
-test("el detalle de la Luna es una columna abierta con la guía de tres pasos y el área una sola vez", () => {
+test("el detalle de la Luna es una columna abierta con la lectura del día y el área una sola vez", () => {
+  // La guía de tres pasos (`moonGuide`, arriba) sigue siendo la forma corta de
+  // la Luna y se prueba entera como dominio. Lo que esta pantalla monta desde
+  // QA22-026 es la forma LARGA —`moonReading`—, con la misma jerarquía que los
+  // otros tres detalles de `Tu momento`.
   const pantalla = sinComentarios(leer("src/screens/v492/LunaDetailScreen.tsx"));
 
   // La repetición que se cierra: el resumen del cálculo, las filas CASA/TEMA y
   // la línea "Activa tu casa N, asociada a…" decían lo mismo, seguido.
   assert.doesNotMatch(pantalla, /houseLine/, "la línea «Activa tu casa N» ya no se dibuja acá");
-  assert.doesNotMatch(pantalla, /data\.summary/, "el resumen del cálculo repetía casa y área: lo dice la guía");
-  assert.doesNotMatch(pantalla, /houseTheme|data\.houseTheme/, "el área viaja dentro de la guía, no en una fila propia");
+  assert.doesNotMatch(pantalla, /data\.summary/, "el resumen del cálculo repetía casa y área: lo dice la lectura");
+  assert.doesNotMatch(pantalla, /houseTheme|data\.houseTheme/, "el área viaja dentro de la lectura, no en una fila propia");
 
   // Columna abierta: sin tarjetas dentro de una pantalla que ya es una columna.
   assert.doesNotMatch(pantalla, /<Card>|\bCard\b/, "el detalle de la Luna no usa tarjetas");
 
-  assert.match(pantalla, /moonGuide\(\{\s*sign: data\.sign,\s*phaseKey: data\.phaseKey,\s*natalHouse: data\.natalHouse\s*\}\)/);
+  // La lectura sale del MISMO dato que los números de abajo: signo, fase y —sólo
+  // si el cálculo la publicó— la casa. Ni un cuarto campo ni un texto propio.
+  assert.match(pantalla, /moonReading\(\{\s*sign: data\.sign,\s*phaseKey: data\.phaseKey,\s*natalHouse: data\.natalHouse\s*\}\)/);
   // Desde el cuerpo del componente: en la línea del import los rótulos aparecen
   // en orden alfabético y eso no dice nada del orden en pantalla.
   const cuerpo = pantalla.slice(pantalla.indexOf("export function LunaDetailScreen"));
-  const guia = cuerpo.indexOf("GUIDE_HEADING");
-  const prioriza = cuerpo.indexOf("GUIDE_STEP_LABEL.prioriza");
-  const proba = cuerpo.indexOf("GUIDE_STEP_LABEL.proba");
-  const observa = cuerpo.indexOf("GUIDE_STEP_LABEL.observa");
+  const ahora = cuerpo.indexOf("READING_NOW_HEADING");
+  const tema = cuerpo.indexOf("READING_THEME_HEADING");
+  const tension = cuerpo.indexOf("MOON_TENSION_HEADING");
+  const uso = cuerpo.indexOf("READING_USE_HEADING");
+  const pregunta = cuerpo.indexOf("READING_QUESTION_HEADING");
+  const limite = cuerpo.indexOf("lectura.caveat");
   const datos = cuerpo.indexOf("LOS DATOS EXACTOS");
   const porQue = cuerpo.indexOf("WHY_HEADING");
   const metodo = cuerpo.indexOf("METHOD_HEADING");
   const traza = cuerpo.indexOf("<TraceAccordion");
-  assert.ok(guia > 0, "la pantalla abre con la guía del día");
-  assert.ok(prioriza > guia && proba > prioriza && observa > proba, "los tres pasos, en su orden");
-  assert.ok(datos > observa, "los datos exactos van después de la guía");
+  assert.ok(ahora > 0, "la pantalla abre con qué marca ahora");
+  assert.ok(tema > ahora, "y sigue con qué pone al frente");
+  assert.ok(tension > tema, "la posibilidad y la tensión, después del tema");
+  assert.ok(uso > tension && pregunta > uso, "cómo usarlo y la pregunta cierran la lectura");
+  assert.ok(limite > pregunta, "el límite del dato se dice al pie de la lectura, no antes");
+  assert.ok(datos > limite, "los datos exactos van después de la lectura");
   assert.ok(porQue > datos, "y por qué se muestra, después del dato");
   assert.ok(metodo > porQue && traza > metodo, "el método cierra la pantalla");
 
   // El número de la casa se IMPRIME una sola vez, entre los datos exactos. El
-  // campo se lee cuatro veces —la guía, el criterio, la condición de la fila y la
-  // fila— pero sólo una de ellas escribe `Casa N` en pantalla.
+  // campo se lee cuatro veces —la lectura, la condición de la fila, la fila y el
+  // criterio— pero sólo una de ellas escribe `Casa N` en pantalla.
   assert.equal((cuerpo.match(/`Casa \$\{data\.natalHouse\}`/g) ?? []).length, 1);
   assert.equal((cuerpo.match(/data\.natalHouse/g) ?? []).length, 4);
 });
@@ -678,7 +689,11 @@ test("el detalle del tránsito explica antes de fechar y no repite la línea en 
   // contacto que el titular ya dice en notación.
   assert.doesNotMatch(cuerpo, /QUÉ ESTÁ PASANDO/);
   assert.doesNotMatch(cuerpo, /LA VENTANA DE HOY/);
-  assert.equal((cuerpo.match(/\{arco\.summary\}/g) ?? []).length, 1);
+  // El resumen del arco se dibuja UNA vez. Desde QA22-009 pasa por
+  // `summaryWithCanonicalState`, que sólo pone al día su frase de etapa: sigue
+  // siendo el texto del sobre y sigue apareciendo una sola vez.
+  assert.equal((cuerpo.match(/summaryWithCanonicalState\(arco\.summary/g) ?? []).length, 1);
+  assert.equal((cuerpo.match(/\{resumen\}/g) ?? []).length, 1);
 
   // Y no vuelve la tabla de tres celdas: repetía, en mono, las mismas fechas que
   // la línea de tiempo ya rotula debajo de cada marca.
@@ -774,24 +789,54 @@ test("Tu momento pone significado y acción antes de las fechas, y el método al
 
 test("el cumpleluna dice en qué tramo estás, con foco, acción y pregunta", () => {
   const pantalla = sinComentarios(leer("src/screens/v492/CumplelunaDetailScreen.tsx"));
+  // El tramo se sigue eligiendo acá —`cumplelunaStage`, con sus fronteras—, pero
+  // desde QA22-025 lo que la pantalla dibuja es la LECTURA del ciclo: el foco, el
+  // gesto y la pregunta del tramo entran ya compuestos por `cumplelunaReading`,
+  // con la misma jerarquía que los otros tres detalles de `Tu momento`.
   assert.match(pantalla, /cumplelunaStage\(/);
+  assert.match(pantalla, /cumplelunaReading\(\{/);
   assert.match(pantalla, /tramo\.label/);
-  assert.match(pantalla, /tramo\.focus/);
-  assert.match(pantalla, /tramo\.action/);
-  assert.match(pantalla, /tramo\.question/);
   // Las fronteras se imprimen al lado del rótulo: son lo que convierte
   // «REVISIÓN» en un dato y no en una palabra elegida por alguien.
   assert.match(pantalla, /tramo\.range\.fromPercent/);
   assert.match(pantalla, /tramo\.range\.toPercent/);
+  // Y los tres textos del tramo no se dibujan ADEMÁS sueltos: `lectura.theme` ya
+  // lleva el foco adentro, y `use` y `question` SON los del tramo. Imprimirlos
+  // por su cuenta sería la misma frase dos veces.
+  for (const suelto of [/tramo\.focus/, /tramo\.action/, /tramo\.question/]) {
+    assert.doesNotMatch(pantalla, suelto, "los textos del tramo viajan dentro de la lectura");
+  }
   // El tramo se elige con el avance del sobre, y con la franja se usa su centro
   // SIN afirmarlo como número: es una etiqueta cualitativa.
   assert.match(pantalla, /franja \? \(franja\.from \+ franja\.to\) \/ 2 : data\.progress/);
-  // El bloque del tramo se monta antes que la tabla de números; sus tres textos
-  // viven en el componente `Tramo`, más abajo en el archivo.
-  assert.ok(
-    pantalla.indexOf("<Tramo") < pantalla.indexOf("LOS NÚMEROS DEL CICLO"),
-    "el tramo va antes de la tabla de números"
-  );
+
+  // La jerarquía nueva, entera y en orden, dentro del bloque que la dibuja: cada
+  // rótulo con su texto debajo —qué marca ahora → qué pone al frente → cómo
+  // usarlo → para observar— y el límite del dato al pie.
+  const inicio = pantalla.indexOf("function Lectura(");
+  assert.ok(inicio > 0, "los textos del ciclo viven en el componente `Lectura`");
+  const bloque = pantalla.slice(inicio);
+  let anterior = -1;
+  for (const [rotulo, campo] of [
+    ["READING_NOW_HEADING", "lectura.now"],
+    ["READING_THEME_HEADING", "lectura.theme"],
+    ["READING_USE_HEADING", "lectura.use"],
+    ["READING_QUESTION_HEADING", "lectura.question"]
+  ] as const) {
+    const posRotulo = bloque.indexOf(rotulo);
+    const posCampo = bloque.indexOf(campo);
+    assert.ok(posRotulo > anterior, `${rotulo}: falta o quedó fuera de orden`);
+    assert.ok(posCampo > posRotulo, `${campo}: el texto va debajo de su rótulo`);
+    anterior = posCampo;
+  }
+  const limite = bloque.indexOf("lectura.caveat");
+  assert.ok(limite > anterior, "el límite del dato se dice al pie de la lectura, no antes");
+
+  // Y el bloque entero se monta antes que la tabla de números.
+  const montaLectura = pantalla.indexOf("<Lectura");
+  const tablaDeNumeros = pantalla.indexOf("LOS NÚMEROS DEL CICLO");
+  assert.ok(montaLectura > 0, "la pantalla monta la lectura del ciclo");
+  assert.ok(montaLectura < tablaDeNumeros, "la lectura del tramo va antes de la tabla de números");
 });
 
 test("la transición de tramo del cumpleluna sólo se afirma con raíz exacta", () => {
@@ -835,24 +880,25 @@ test("el cumpleluna abre con la etapa del ciclo y el número va debajo de su lec
   assert.doesNotMatch(pantalla, /<Card>|\bCard\b/, "el ciclo lunar tampoco usa tarjetas");
 
   // El orden aprobado, leído sobre el render y no sobre el comentario que lo
-  // describe: etapa actual (con su significado, su gesto y su pregunta) → día y
-  // avance del ciclo, con el próximo → los números → el método.
-  const tramo = cuerpo.indexOf("<Tramo");
+  // describe: la lectura de la etapa —qué marca ahora, qué pone al frente, cómo
+  // usarlo y la pregunta— → día y avance del ciclo, con el próximo → los números
+  // → el método.
+  const lectura = cuerpo.indexOf("<Lectura");
   const anillo = cuerpo.indexOf("<CycleRing");
   const numeros = cuerpo.indexOf("LOS NÚMEROS DEL CICLO");
   const traza = cuerpo.indexOf("<TraceAccordion");
-  assert.ok(tramo > 0, "la pantalla conserva el tramo del ciclo");
-  assert.ok(tramo < anillo, "la etapa se lee ANTES que el número que la produjo");
+  assert.ok(lectura > 0, "la pantalla conserva la lectura del tramo del ciclo");
+  assert.ok(lectura < anillo, "la etapa se lee ANTES que el número que la produjo");
   assert.ok(anillo < numeros, "y el día del ciclo, antes de la tabla de números");
   assert.ok(numeros < traza, "y la trazabilidad al final de todo");
 
-  // Entre el título y la etapa no puede aparecer prosa de ningún tipo: sólo el
+  // Entre el título y la lectura no puede aparecer prosa de ningún tipo: sólo el
   // estado del sobre, que es una línea y no un párrafo.
-  const antesDelTramo = cuerpo.slice(0, tramo);
+  const antesDeLaLectura = cuerpo.slice(0, lectura);
   for (const prosa of [/<Body/, /<Note/, /<Subtitle/]) {
-    assert.doesNotMatch(antesDelTramo, prosa, "arriba de la etapa no va un párrafo");
+    assert.doesNotMatch(antesDeLaLectura, prosa, "arriba de la etapa no va un párrafo");
   }
-  assert.match(antesDelTramo, /<StatusLine/, "el estado del sobre sí abre, en una línea");
+  assert.match(antesDeLaLectura, /<StatusLine/, "el estado del sobre sí abre, en una línea");
 
   // Lo que la reordenación NO puede haberse llevado puesto: los rangos del
   // camino sin raíz exacta y la fecha de la transición al tramo siguiente.

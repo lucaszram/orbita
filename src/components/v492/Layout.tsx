@@ -160,7 +160,7 @@ export function StateChip({ label }: { label: string }) {
 
 /**
  * La ventana de un tránsito: una línea fina con una marca por momento y, debajo,
- * cada momento con su fecha.
+ * la misma secuencia como lista cronológica.
  *
  * Qué dice el dibujo, y por qué así:
  *
@@ -170,18 +170,30 @@ export function StateChip({ label }: { label: string }) {
  * - **cada contacto exacto**, lleno y en hueso. Son todos: un tránsito
  *   retrógrado pasa dos o tres veces por el mismo punto y dibujar sólo el "pico"
  *   borraba los otros;
- * - **HOY**, lleno y en cobre. Sin esta marca no había forma de ver de un vistazo
- *   si el contacto ya pasó o todavía falta. Cuando hoy ES el día del contacto, la
- *   marca es UNA y dice `HOY · EXACTO`: dos puntos superpuestos se leían como un
- *   error de dibujo.
+ * - **HOY**, lleno y en cobre, en la posición del instante actual. Sin esta marca
+ *   no había forma de ver de un vistazo si el contacto ya pasó o todavía falta.
+ *
+ * ## Por qué los rótulos son una lista y no una fila (QA22-012)
+ *
+ * Estaban debajo de la línea, en una fila con `flexWrap`. Con tres contactos
+ * —Saturno–Júpiter tiene tres— los seis hitos no entraban en un renglón: `INICIO`,
+ * dos `EXACTO` y `HOY` quedaban arriba, y el tercer `EXACTO` y `CIERRE` saltaban a
+ * una segunda fila **empezando desde la izquierda**, aunque sus marcas estuvieran
+ * casi al final de la línea. El orden espacial de los rótulos contradecía al de
+ * los puntos y las fechas dejaban de poder asociarse con seguridad.
+ *
+ * La línea proporcional se conserva —es la que muestra las distancias reales— y
+ * los rótulos pasan a una lista vertical, un hito por renglón y en orden
+ * cronológico. Una lista no puede reordenarse sola al envolver: es el mismo orden
+ * que el anuncio de VoiceOver y que el modelo.
  *
  * El año aparece en todas las fechas cuando la ventana cruza un cambio de año, y
  * en ninguna cuando no lo cruza.
  *
  * Es un dibujo estático —no hay animación que "Reducir movimiento" deba apagar—
- * y para VoiceOver es UNA sola imagen con la ventana dicha en palabras: los
- * rótulos de abajo quedan ocultos para el lector, así que no se leen seis
- * fragmentos sueltos (`INICIO`, `12 SEP`, `PICO`…) sin decir de qué son.
+ * y para VoiceOver es UNA sola imagen con la ventana dicha en palabras, en orden
+ * cronológico: la lista de abajo queda oculta para el lector, así que no se leen
+ * doce fragmentos sueltos (`INICIO`, `12 SEP`, `EXACTO`…) sin decir de qué son.
  *
  * `estimated` cambia lo que se AFIRMA, no sólo el dibujo: con una cronología
  * estimada la línea va punteada y el anuncio lo dice. Si el cálculo verificó las
@@ -245,13 +257,14 @@ export function ArcTimeline({
         </Svg>
       </View>
       <View
-        style={styles.timelineLabels}
+        style={styles.timelineList}
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
       >
         {timeline.marks.map((mark) => (
-          <View key={`${mark.kind}-${mark.atMs}`} style={styles.timelineCell}>
-            <Label style={etiquetaColor(mark)}>{mark.label}</Label>
+          <View key={`${mark.kind}-${mark.atMs}`} style={styles.timelineItem}>
+            <View style={[styles.timelineBullet, puntoColor(mark)]} />
+            <Label style={[styles.timelineItemLabel, etiquetaColor(mark)]}>{mark.label}</Label>
             <Mono style={fechaColor(mark)}>{mark.dateLabel}</Mono>
           </View>
         ))}
@@ -284,6 +297,17 @@ function etiquetaColor(mark: TimelineMark) {
   if (mark.kind === "today") return styles.timelineLabelToday;
   if (mark.kind === "contact") return styles.timelineLabelContact;
   return styles.timelineLabel;
+}
+
+/**
+ * El punto de la lista, con la MISMA jerarquía de color que la marca de la línea:
+ * es lo que permite emparejar cada renglón con su punto sobre el dibujo, que es
+ * exactamente lo que la fila con reflujo había roto.
+ */
+function puntoColor(mark: TimelineMark) {
+  if (mark.kind === "today") return styles.timelineBulletToday;
+  if (mark.kind === "contact") return styles.timelineBulletContact;
+  return styles.timelineBulletEdge;
 }
 
 function fechaColor(mark: TimelineMark) {
@@ -400,21 +424,28 @@ const styles = StyleSheet.create({
     paddingVertical: 3
   },
   stateChipText: { color: v492.colors.copperSoft },
-  // La fila se repliega: las marcas son entre tres y cinco —una ventana
-  // retrógrada tiene tres contactos— y tres celdas de ancho fijo las partían.
-  timelineCell: { gap: 2 },
+  /** El punto de cada renglón: el mismo tamaño para todos, distinto color. */
+  timelineBullet: { borderRadius: 3, height: 6, marginTop: 5, width: 6 },
+  timelineBulletContact: { backgroundColor: v492.colors.text },
+  timelineBulletEdge: { backgroundColor: v492.colors.textDim },
+  timelineBulletToday: { backgroundColor: v492.colors.copper },
   timelineDate: { color: v492.colors.textDim },
   timelineDateContact: { color: v492.colors.text },
   timelineDateToday: { color: v492.colors.text },
   timelineDraw: { width: "100%" },
+  timelineItem: { flexDirection: "row", gap: v492.space.md },
+  /**
+   * El rótulo toma el ancho libre y empuja la fecha contra el borde derecho, así
+   * que las fechas quedan en columna y se pueden comparar de un vistazo.
+   */
+  timelineItemLabel: { flex: 1 },
   timelineLabel: { color: v492.colors.textDim },
   timelineLabelContact: { color: v492.colors.textMuted },
   timelineLabelToday: { color: v492.colors.copper },
-  timelineLabels: {
-    columnGap: v492.space.lg,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginTop: v492.space.sm,
-    rowGap: v492.space.sm
-  }
+  /**
+   * Vertical y sin `flexWrap`: un hito por renglón, en orden cronológico. La fila
+   * que se repliega es justo lo que QA22-012 registró rompiéndose con tres
+   * contactos.
+   */
+  timelineList: { marginTop: v492.space.md, rowGap: v492.space.sm }
 });

@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import { router, useFocusEffect } from "expo-router";
 import { Linking, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import { Text } from "@/components/ui/text";
 import { createOwnerGates, runExclusive } from "@/domain/exclusive";
-import { useLiveApp } from "@/hooks/useLiveApp";
+import { useEntitlement } from "@/hooks/useLiveApp";
 import {
   defaultNativePlan,
   applyStoreAnswer,
   backendConfirmsStorePurchase,
   emptyPurchaseSession,
   entitlementBelongsTo,
-  safeEntitlement,
+  NATIVE_ACTIVATION_RECOVERY_MS,
   nativeActivationPhase,
   nativePrimaryAction,
   nativeSubscriptionManagement,
@@ -41,33 +41,25 @@ import { font, GUTTER, orbita } from "@/onboarding/theme";
 
 const PRIVACY_URL = "https://orbitaastrologia.xyz/privacy";
 const TERMS_URL = "https://orbitaastrologia.xyz/terminos";
-const BACKEND_ACTIVATION_WAIT_MS = 20_000;
 
 type ActionPhase = "idle" | "purchasing" | "restoring" | "checking";
 
 /** Paywall nativo propio: la oferta y todos sus importes llegan de la tienda. */
 export function PlusPaywallScreen() {
-  const { isLive, auth } = useLiveApp();
   /**
-   * El entitlement se pide SÓLO con la sesión viva…
+   * El entitlement viene del provider central, no de una query propia.
    *
-   * Sin el `skip`, la query se montaba con la sesión de A y su resultado seguía
-   * publicado durante la ventana A → B.
-   */
-  const rawEntitlement = useQuery(appApi.subscriptions.getCurrent, isLive ? {} : "skip");
-  /**
-   * …y además se CORRELACIONA con el dueño de Clerk.
+   * Antes esta pantalla montaba su `subscriptions.getCurrent` y repetía la
+   * correlación con el dueño de Clerk. Era una copia de la misma verdad —con su
+   * propia ventana de espera— en la pantalla donde equivocarse cuesta plata.
    *
-   * El `skip` no alcanza: Convex conserva el último valor mientras la nueva
-   * suscripción resuelve, así que el plan de A sigue publicado durante uno o
-   * varios renders de B. Todo lo que decide plata en esta pantalla —el botón
-   * primario, Restaurar, la oferta, la impresión y el marcador de compra— sale
-   * de `entitlement`, que es `undefined` (o sea: validando) mientras no se pueda
-   * afirmar que el resultado es de ESTA cuenta.
+   * Se usa el REMOTO, nunca la vista efectiva: todo lo que decide plata acá —el
+   * botón primario, Restaurar, la oferta, la impresión y el marcador de compra—
+   * exige una respuesta confirmada del backend para ESTA cuenta. `undefined` es
+   * "validando", y `resolved` sólo lo levanta el remoto: un snapshot local
+   * puede poner una etiqueta, jamás abrir una compra.
    */
-  const clerkOwner = auth?.isSignedIn ? auth.userId ?? null : null;
-  const entitlement = safeEntitlement(rawEntitlement, clerkOwner);
-  const entitlementResuelto = entitlement !== undefined;
+  const { remote: entitlement, resolved: entitlementResuelto } = useEntitlement();
   const revenueCat = useRevenueCat();
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   /**
@@ -83,8 +75,16 @@ export function PlusPaywallScreen() {
   const [noticeSlot, setNoticeSlot] = useState<OwnedValue<string | null>>(() =>
     ownedValue(null, null)
   );
-  const [activationDelayed, setActivationDelayed] = useState<OwnedValue<boolean>>(() =>
-    ownedValue(null, false)
+  /**
+   * Cuánto lleva esperando el webhook, en milisegundos y CON DUEÑO.
+   *
+   * No es un cronómetro: guarda `0` mientras la espera es joven y el umbral de
+   * reparación cuando el timer venció. Alcanza porque la decisión es una sola
+   * frontera, y un reloj que corriera de verdad obligaría a re-renderizar la
+   * pantalla varias veces por segundo para no decidir nada distinto.
+   */
+  const [activationWaitSlot, setActivationWaitSlot] = useState<OwnedValue<number>>(() =>
+    ownedValue(null, 0)
   );
   /**
    * Estado de compra CON DUEÑO.
@@ -145,7 +145,7 @@ export function PlusPaywallScreen() {
   const owned = purchaseSessionForOwner(session, identifiedUserId);
   const action = readOwnedValue(actionSlot, identifiedUserId, "idle");
   const notice = readOwnedValue(noticeSlot, identifiedUserId, null);
-  const delayed = readOwnedValue(activationDelayed, identifiedUserId, false);
+  const activationWaitMs = readOwnedValue(activationWaitSlot, identifiedUserId, 0);
   /**
    * Dueño VIGENTE, en una ref.
    *
@@ -260,7 +260,20 @@ export function PlusPaywallScreen() {
   // ocurrir acá, o el `CustomerInfo` que el SDK ya tenía (reinstalación,
   // remonte de la pantalla, listener de RevenueCat).
   const storeConfirmed = owned.purchaseReceived || revenueCat.storeIsPro;
-  const activation = nativeActivationPhase({ backendIsPro, storeConfirmed });
+  /**
+   * La espera del webhook: la tienda ya confirmó y Convex todavía no.
+   *
+   * Es la ENTRADA del reloj, no la fase derivada. Si el timer dependiera de
+   * `activation`, publicar el vencimiento cambiaría la fase, el efecto volvería
+   * a correr, reiniciaría su propio plazo y la pantalla oscilaría entre
+   * "activando" y la reparación para siempre.
+   */
+  const waitingForBackend = storeConfirmed && backendIsPro !== true;
+  const activation = nativeActivationPhase({
+    backendIsPro,
+    storeConfirmed,
+    elapsedMs: activationWaitMs
+  });
 
   /**
    * Impresión del paywall: UNA por vista enfocada, dueño y oferta.
@@ -273,9 +286,10 @@ export function PlusPaywallScreen() {
    * Y no alcanza con que la pantalla esté montada: la oferta se dibuja SÓLO con
    * el entitlement correlacionado y `activation === "idle"`. Con el acceso
    * confirmado se muestra "Órbita Plus está activo"; con una compra ya aceptada
-   * por la tienda, la tarjeta de activación. Contar cualquiera de esas dos como
-   * impresión de paywall infla la métrica con gente que ya pagó — y contarla
-   * mientras el plan todavía se valida la infla con vistas que no ocurrieron.
+   * por la tienda, la tarjeta de activación —la que espera o la que repara—.
+   * Contar cualquiera de ésas como impresión de paywall infla la métrica con
+   * gente que ya pagó — y contarla mientras el plan todavía se valida la infla
+   * con vistas que no ocurrieron.
    */
   const paywallOwner = revenueCat.identifiedUserId;
   const paywallOfferingId = revenueCat.offeringId;
@@ -332,20 +346,31 @@ export function PlusPaywallScreen() {
     };
   }, [entitlement, identifiedUserId]);
 
+  /**
+   * El único reloj de la pantalla, con dueño y sin bucle.
+   *
+   * Cuando vence, la fase real pasa a `recoverable`: no hay un segundo estado
+   * "demorado" pegado a la tarjeta, así que el botón primario, la oferta y el
+   * copy leen todos la misma verdad. El timer se rearma sólo cuando cambia la
+   * ESPERA —o la cuenta—, nunca cuando cambia la fase que él mismo produjo.
+   *
+   * Y el dueño viaja con el valor publicado: un plazo armado para A no puede
+   * abrirle a B una tarjeta de reparación que no le corresponde.
+   */
   useEffect(() => {
-    // El timer también tiene dueño: uno armado para A no puede pintar el aviso
-    // demorado en la pantalla de B.
     const owner = identifiedUserId;
-    const publicar = (valor: boolean) =>
-      setActivationDelayed((previous) => publishOwnedValue(previous, owner, ownerRef.current, valor));
-    if (activation !== "activating") {
-      publicar(false);
-      return;
-    }
-    publicar(false);
-    const timeout = setTimeout(() => publicar(true), BACKEND_ACTIVATION_WAIT_MS);
+    const publicar = (ms: number) =>
+      setActivationWaitSlot((previous) =>
+        publishOwnedValue(previous, owner, ownerRef.current, ms)
+      );
+    publicar(0);
+    if (!waitingForBackend) return;
+    const timeout = setTimeout(
+      () => publicar(NATIVE_ACTIVATION_RECOVERY_MS),
+      NATIVE_ACTIVATION_RECOVERY_MS
+    );
     return () => clearTimeout(timeout);
-  }, [activation, identifiedUserId]);
+  }, [waitingForBackend, identifiedUserId]);
 
   const busy = action !== "idle";
   // Restaurar toca la tienda y puede revelar una compra: exige la identidad de
@@ -503,8 +528,9 @@ export function PlusPaywallScreen() {
       setNotice(userId, null);
       setAction(userId, "checking");
       try {
-        // La comprobación demorada empieza por el backend: si el webhook se
+        // El reintento de activación empieza por el backend: si el webhook se
         // perdió, la lectura REST lo repara sin depender de la tienda local.
+        // Recién después se le pregunta al SDK, que puede contestar del caché.
         await askBackendToReconcile();
         const active = await revenueCat.refreshCustomerInfo();
         if (!active) {
@@ -600,27 +626,54 @@ export function PlusPaywallScreen() {
           <Benefit text="Las doce casas de tu carta natal." />
           <Benefit text="Los aspectos entre los puntos de tu carta." />
           <Benefit text="Cinco preguntas por día en El Umbral, en vez de tres." />
+          <Benefit text="7 capítulos personalizados de Tu carta, explicada" />
         </View>
 
+        {/* Espera joven: se nombra y no se ofrece nada. Todavía no hay nada que
+            reparar, y poner acá los botones sería empujar a tocar la tienda
+            mientras el webhook viene en camino. */}
         {activation === "activating" ? (
           <View style={styles.syncCard} accessibilityRole="alert" accessibilityLiveRegion="polite">
             <Text style={styles.syncTitle}>Tu compra está confirmada.</Text>
             <Caption style={styles.syncCopy}>
-              {delayed
-                ? "Todavía estamos activando el acceso en Órbita. No vuelvas a comprar: podés comprobarlo de nuevo o seguir con Free mientras sincroniza."
-                : "Estamos activando tu acceso en Órbita. Puede demorar unos segundos."}
+              Estamos activando tu acceso en Órbita. Puede demorar unos segundos.
             </Caption>
-            {delayed ? (
-              <Pressable
-                onPress={() => void retryActivation()}
-                disabled={busy}
-                accessibilityRole="button"
-                accessibilityState={{ disabled: busy }}
-                style={styles.inlineAction}
-              >
-                <Text style={[styles.inlineActionText, busy && styles.dimmed]}>COMPROBAR DE NUEVO</Text>
-              </Pressable>
-            ) : null}
+          </View>
+        ) : null}
+
+        {/* La espera duró demasiado. La afirmación no cambia —la tienda cobró,
+            Convex todavía no lo refleja— y el acceso sigue cerrado; lo que se
+            agrega son las DOS salidas que reparan sin volver a cobrar. */}
+        {activation === "recoverable" ? (
+          <View style={styles.syncCard} accessibilityRole="alert" accessibilityLiveRegion="polite">
+            <Text style={styles.syncTitle}>Tu compra está confirmada.</Text>
+            <Caption style={styles.syncCopy}>
+              La activación en Órbita está tardando más de lo habitual. No vuelvas a comprar: tu
+              compra sigue registrada en la tienda. Podés reintentar la activación, restaurar la
+              compra o seguir con Free mientras sincroniza.
+            </Caption>
+            <Pressable
+              onPress={() => void retryActivation()}
+              disabled={busy}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: busy }}
+              style={styles.inlineAction}
+            >
+              <Text style={[styles.inlineActionText, busy && styles.dimmed]}>
+                REINTENTAR ACTIVACIÓN
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => void restore()}
+              disabled={busy || !restoreReady}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: busy || !restoreReady }}
+              style={styles.inlineAction}
+            >
+              <Text style={[styles.inlineActionText, (busy || !restoreReady) && styles.dimmed]}>
+                RESTAURAR COMPRA
+              </Text>
+            </Pressable>
           </View>
         ) : null}
 
@@ -773,6 +826,12 @@ function Benefit({ text }: { text: string }) {
  * "PREPARANDO LA OFERTA…" sólo se dice mientras algo se está preparando de
  * verdad. Con la tienda apagada, sin Offering o con un error de carga, la
  * espera no termina nunca y anunciarla como preparación es mentir.
+ *
+ * Con la compra ya cobrada y la activación vencida pasa lo mismo al revés:
+ * "ACTIVANDO ÓRBITA PLUS…" prometía un final inminente que ya se incumplió, así
+ * que el primario queda deshabilitado diciendo lo único cierto —la activación
+ * está pendiente—. Ofrecer comprar ahí sería el camino al cargo duplicado; las
+ * salidas reales viven en la tarjeta, que sí puede reparar.
  */
 function primaryLabel({
   action,
@@ -801,6 +860,7 @@ function primaryLabel({
     return trial ? `EMPEZAR ${trial.label.toUpperCase()}` : "DESBLOQUEAR ÓRBITA PLUS";
   }
 
+  if (activation === "recoverable") return "ACTIVACIÓN PENDIENTE";
   if (activation === "activating") return "ACTIVANDO ÓRBITA PLUS…";
   if (!entitlementResolved) return "CARGANDO TU PLAN…";
   if (phase === "unavailable") return "COMPRAS NO DISPONIBLES";

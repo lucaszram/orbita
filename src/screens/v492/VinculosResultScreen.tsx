@@ -20,6 +20,7 @@ import { Body, Label, Mono, Note } from "@/components/v492/typography";
 import { v492 } from "@/components/v492/tokens";
 import { createExclusiveGate, runExclusive } from "@/domain/exclusive";
 import { formatDateTime, latestObservedAt, uniqueLines } from "@/domain/layers";
+import { relationshipCalcKey, relationshipNeedsCalculation } from "@/domain/relationshipCalc";
 import {
   findRelationshipProfile,
   RELATIONSHIP_DATE_UNLOCKS,
@@ -35,15 +36,11 @@ import {
   RELATIONSHIP_UNLOCK_LABEL,
   relationshipBirthLine,
   relationshipDimensionsLock,
-  relationshipComparisonSummary,
-  relationshipDimensionTone,
-  relationshipSummaryLine,
   relationshipDisclaimer,
-  relationshipDriverShare,
+  relationshipEditHref,
   relationshipGaps,
   relationshipGapsBlameOther,
   relationshipGapsBlameOwn,
-  relationshipGeneralOnlyShare,
   relationshipHeadline,
   relationshipLevelBadge,
   relationshipLevelSentence,
@@ -53,17 +50,28 @@ import {
   relationshipModeIsGeneral,
   relationshipResultMode,
   relationshipSignLabel,
-  relationshipToneVoice,
-  type RelationshipDimensionTone,
   type RelationshipGap
 } from "@/domain/relationships";
+import {
+  relationshipBalanceWord,
+  relationshipContactRole,
+  relationshipContactsCollapseLabel,
+  relationshipContactsCount,
+  relationshipContactsLine,
+  relationshipContactsToggleLabel,
+  relationshipContactsToggleVoice,
+  relationshipDimensionRowVoice,
+  relationshipDynamicRole,
+  relationshipDynamicsLead,
+  relationshipReading,
+  type RelationshipDimensionReading,
+  type RelationshipReading
+} from "@/domain/relationshipReading";
 import { useLayers } from "@/hooks/useLayers";
 import {
   relationshipsApi,
   type ComparisonLevel,
   type RelationshipComparisonData,
-  type RelationshipComparisonResult,
-  type RelationshipDimension,
   type RelationshipProfile
 } from "@/services/relationshipsApi";
 
@@ -87,22 +95,27 @@ import {
  * 2. **El resultado es el del backend.** `relationships.getComparison` es
  *    reactiva y `relationships.refreshComparison` es la única que recalcula. La
  *    pantalla no deriva, no promedia ni completa.
- * 3. **Contar contactos no es medir compatibilidad.** No hay puntaje global ni
- *    porcentaje: las barras comparan CUÁNTOS contactos reunió cada dimensión
- *    frente a la que más reunió, que es exactamente lo que dice la leyenda del
- *    frame, y eso es todo lo que dicen.
+ * 3. **Contar contactos no es medir compatibilidad.** No hay puntaje global, no
+ *    hay porcentaje y —desde QA22-020— tampoco hay barra: cada dimensión dice EN
+ *    TEXTO cuántos contactos reunió y hacia dónde se inclinan. Un riel con
+ *    largos distintos se leía como una nota del vínculo por más que la leyenda
+ *    lo negara, y el color solo no le decía nada a quien no lo distingue.
  *
  * **De dónde sale el texto de cada dimensión.** Del contacto real, no del
  * resumen. `dimension.summary` es una plantilla del backend por tono —"En cómo
  * se hablan aparecen más recursos de fluidez…"— y las cinco dimensiones la
  * repetían cambiando el nombre: la certificación lo registró como texto
- * genérico. `dimension.drivers` viene ordenado por peso y cada entrada YA es la
- * oración del contacto ("Mercurio de … y Mercurio de … forman un contacto de
- * 120° llamado trígono; a 0°06′ del punto exacto. …"). Se muestra ese texto tal
- * cual, sin reescribirlo: cualquier arreglo de strings sobre una oración
- * astrológica corre el riesgo de afirmar algo que el cálculo no dijo. El
- * `summary` queda para el único caso donde ES el dato: cuando no hay ningún
- * contacto que mostrar.
+ * genérico. Ahora cada dimensión declara TRES cosas —qué se facilita, qué puede
+ * tensarse y una acción o una pregunta—, armadas en
+ * `src/domain/relationshipReading.ts` sobre la evidencia real que publica
+ * `driverDetails`: qué contactos apoyan, cuáles tensan y cuánto pesa cada uno.
+ * Las oraciones de los contactos se muestran tal cual, sin reescribirlas:
+ * cualquier arreglo de strings sobre una oración astrológica corre el riesgo de
+ * afirmar algo que el cálculo no dijo.
+ *
+ * **Los sobres del build 22 siguen abriendo.** `driverDetails` es aditivo y
+ * opcional: si no está, la lectura no inventa calidad, peso ni precisión —lo
+ * dice— y muestra los contactos igual, con el orden que el sobre ya traía.
  *
  * Nada de esto es de hoy: una comparación no cambia con el día, cambia cuando
  * cambian los datos guardados o la versión del método. Por eso el pie no habla
@@ -205,33 +218,6 @@ function VinculosResultLive({ profileId, timezone }: { profileId: string; timezo
   );
 }
 
-/**
- * Los estados del sobre en los que volver a pedir el cálculo puede cambiar algo.
- *
- * `needs_birth_time` queda deliberadamente afuera: ahí no falta una corrida,
- * falta un dato, y reintentar contra el proveedor devolvería exactamente lo
- * mismo. Para eso está el botón que lleva a completar los datos.
- */
-const ESTADOS_A_RECALCULAR: readonly RelationshipComparisonResult["status"][] = [
-  "partial",
-  "stale",
-  "unavailable",
-  "error"
-];
-
-/**
- * ¿Hay que volver a pedirle el cálculo al backend?
- *
- * Es puro a propósito: la condición que dispara el recálculo automático, la que
- * muestra el botón de reintento y la que lo esconde cuando el cálculo está listo
- * tienen que ser el MISMO hecho. Cuando el sobre está `ready` y con datos no hay
- * nada que recalcular, y ofrecerlo igual haría creer que lo visible es viejo.
- */
-function necesitaRecalculo(comparison: RelationshipComparisonResult): boolean {
-  if (!comparison.data) return true;
-  return ESTADOS_A_RECALCULAR.includes(comparison.status);
-}
-
 function ComparisonScreen({
   persona,
   timezone,
@@ -289,8 +275,12 @@ function ComparisonScreen({
 
   useEffect(() => {
     if (comparison === undefined) return;
-    if (!necesitaRecalculo(comparison)) return;
-    const clave = `${persona.profileId}|${persona.availableLevel}|${comparison.inputHash}`;
+    if (!relationshipNeedsCalculation(comparison)) return;
+    const clave = relationshipCalcKey({
+      profileId: persona.profileId,
+      level: persona.availableLevel,
+      inputHash: comparison.inputHash
+    });
     if (pedidoAutomatico.current === clave) return;
     pedidoAutomatico.current = clave;
     void recalcular();
@@ -332,8 +322,14 @@ function ComparisonScreen({
     });
   };
 
-  const completarDatos = () =>
-    router.push(`/vinculos/conectar?profileId=${persona.profileId}` as never);
+  /**
+   * Los datos de ESTA persona, precompletados.
+   *
+   * Es el mismo destino para "Completar sus datos" y para "Editar datos de …":
+   * son la misma pantalla y la misma persona, y el formulario ya no vuelve a
+   * preguntar qué comparar (QA22-018).
+   */
+  const completarDatos = () => router.push(relationshipEditHref(persona.profileId) as never);
 
   /** Cuando el dato que falta es TUYO, la salida es tu editor, no el de ella. */
   const completarMisDatos = () => router.push("/editar-datos" as never);
@@ -364,7 +360,8 @@ function ComparisonScreen({
   // El botón sólo existe mientras haya algo que reintentar. Con el cálculo listo
   // desaparece: ofrecer "recalcular" sobre un resultado vigente sugiere que lo
   // que se está viendo quedó viejo.
-  const puedeRecalcular = recalculando || recalculoFallido || necesitaRecalculo(comparison);
+  const puedeRecalcular =
+    recalculando || recalculoFallido || relationshipNeedsCalculation(comparison);
   // El modo sale del NIVEL guardado y de si hubo cálculo, no sólo de
   // `data.generalOnly`: sin cálculo ese campo no existe y un nivel 01 caía en la
   // rama de las cinco dimensiones, con cinco barras en cero y la leyenda de las
@@ -372,6 +369,10 @@ function ComparisonScreen({
   const modo = relationshipResultMode({ level: nivel, data });
   const soloGeneral = relationshipModeIsGeneral(modo);
   const calculado = relationshipModeHasCalculation(modo);
+  // La lectura entera —dinámicas principales, las tres explicaciones por
+  // dimensión y la reutilización de un contacto— se arma una sola vez, en el
+  // dominio. `null` cuando no hay dimensiones que leer.
+  const lectura = data ? relationshipReading(data) : null;
   // Las causas reales, con DE QUIÉN es cada dato que falta. Se calculan una sola
   // vez: las lee el cuerpo sin cálculo y también el botón de completar datos.
   const huecos = calculado ? [] : relationshipGaps(comparison, persona);
@@ -412,20 +413,24 @@ function ComparisonScreen({
             igual al frame y sólo aparece cuando hay algo real que declarar. */}
         <StatusLine status={comparison.status} precision={comparison.precision} />
 
-        {/* La lectura GENERAL antes del detalle (2026-08-19): cuántos contactos
-            hay, qué pesa más y dónde está el material. Es factual a propósito —
-            un resumen con nota sería el puntaje global que este producto
-            prohíbe—, y por eso sale del dominio, no de un copy suelto. */}
-        {(() => {
-          const resumen = data ? relationshipComparisonSummary(data) : null;
-          if (!resumen) return null;
-          return (
-            <>
-              <SectionHeader title="EN RESUMEN" bullet={false} tone="accent" />
-              <Body>{relationshipSummaryLine(resumen)}</Body>
-            </>
-          );
-        })()}
+        {/* La síntesis abre con las DINÁMICAS reales: dos o tres contactos del
+            cálculo, elegidos por fuerza, calidad y precisión. No es un veredicto
+            —no hay nota ni puntaje— y no es una estadística: cada dinámica es un
+            contacto con su propia oración y sus dimensiones nombradas
+            (QA22-017). */}
+        {lectura && lectura.dynamics.length > 0 ? (
+          <>
+            <SectionHeader title="EN RESUMEN" bullet={false} tone="accent" />
+            <Body>{relationshipDynamicsLead(lectura)}</Body>
+            {lectura.dynamics.map((dinamica) => (
+              <View key={dinamica.id} style={styles.dinamica}>
+                <Body>{dinamica.text}</Body>
+                <Note style={styles.dinamicaPapel}>{relationshipDynamicRole(dinamica)}</Note>
+              </View>
+            ))}
+            <Note style={styles.resumenCuenta}>{relationshipContactsLine(lectura)}</Note>
+          </>
+        ) : null}
 
         <SectionHeader title="POR DIMENSIÓN" bullet={false} tone="accent" />
         <Body>
@@ -433,18 +438,27 @@ function ComparisonScreen({
             ? relationshipLockedDimensionsNote()
             : "No hay un puntaje único. Un vínculo puede fluir en un plano y trabarse en otro."}
         </Body>
-        {/* La leyenda sólo describe una barra que EXISTE. Sin cálculo no hay
-            barras, y decir qué muestran sería describir algo que no está. */}
+        {/* La leyenda describe lo que la fila DICE, no una barra: cuántos
+            contactos reunió la dimensión y hacia dónde se inclinan, escrito.
+            Sin cálculo no hay filas, y describirlas sería describir algo que no
+            está. */}
         {calculado ? (
           <Legend>
             {soloGeneral
-              ? "LA BARRA MUESTRA CUÁNTO SE PUEDE LEER CON UN SIGNO · NO ES UN PORCENTAJE DE COMPATIBILIDAD"
-              : "LAS BARRAS CUENTAN CONTACTOS REALES ENTRE LAS DOS CARTAS · NO SON UN PORCENTAJE DE COMPATIBILIDAD · EL COLOR DICE SI PESAN MÁS LOS CONTACTOS FLUIDOS O LOS DE TENSIÓN"}
+              ? `CON UN SIGNO SOLO HAY UNA LECTURA POSIBLE DE ${RELATIONSHIP_READABLE_COUNT} · NO ES UN PORCENTAJE DE COMPATIBILIDAD`
+              : "CADA DIMENSIÓN DICE CUÁNTOS CONTACTOS REÚNE Y HACIA DÓNDE SE INCLINAN · NO ES UN PORCENTAJE DE COMPATIBILIDAD · NO HAY PUNTAJE"}
           </Legend>
         ) : null}
 
+        {/* Las advertencias de precisión, UNA vez y no cinco.
+            Repetidas dimensión por dimensión —"alguno de estos contactos se
+            apoya en una posición que puede moverse dentro del día"— ocupaban más
+            lugar que la lectura misma (QA22-017). El dato no se pierde: la
+            oración de cada contacto sigue diciendo su rango cuando lo tiene. */}
+        {lectura ? <NotaDePrecision lectura={lectura} /> : null}
+
         {data ? (
-          <CuerpoComparacion data={data} />
+          <CuerpoComparacion data={data} lectura={lectura} />
         ) : (
           <SinComparacion
             nivel={nivel}
@@ -530,6 +544,22 @@ function ComparisonScreen({
           </Label>
         </View>
 
+        {/* Editar SIEMPRE, no sólo cuando falta un dato (QA22-023).
+            `COMPLETAR SUS DATOS` desaparecía en cuanto el nivel llegaba a 03, y
+            desde adentro sólo quedaba borrar: una hora mal cargada —que es
+            justo lo que mueve las casas y el Ascendente— no se podía corregir
+            sin eliminar a la persona y volver a crearla. Abre el MISMO
+            formulario precompletado y guarda sobre la misma persona. */}
+        <View style={styles.cta}>
+          <PrimaryButton
+            label={`EDITAR DATOS DE ${(persona.name || "ESTA PERSONA").toLocaleUpperCase("es")}`}
+            accessibilityLabel={`Editar datos de ${persona.name || "esta persona"}`}
+            accessibilityHint="Abre su formulario con los datos que ya cargaste. El nivel de la comparación sale de esos datos."
+            onPress={completarDatos}
+            align="start"
+          />
+        </View>
+
         <View style={styles.estado} accessibilityLiveRegion="polite">
           {borrando ? <Note>Borrando a esta persona…</Note> : null}
           {!borrando && errorBorrado !== null ? (
@@ -604,170 +634,166 @@ function datoCalculado(level: ComparisonLevel): string {
 }
 
 /**
+ * Las advertencias de precisión de TODA la comparación, dichas una vez.
+ *
+ * Antes cada dimensión repetía la suya y el bloque de advertencias terminaba
+ * pesando más que la lectura (QA22-017). Se agrupan por la peor precisión
+ * presente: si algún contacto se apoya en un rango, eso es lo que hay que decir,
+ * y decirlo cinco veces no lo vuelve más cierto.
+ */
+function NotaDePrecision({ lectura }: { lectura: RelationshipReading }) {
+  const precisiones = lectura.dimensions.map((dimension) => dimension.precision);
+  if (precisiones.includes("range")) {
+    return (
+      <Note style={styles.precision}>
+        Algunos de estos contactos se apoyan en posiciones que pueden moverse dentro del día: se
+        acotan a un rango, no a un valor único. Cada contacto dice el suyo cuando lo abrís.
+      </Note>
+    );
+  }
+  if (precisiones.includes("estimated")) {
+    return (
+      <Note style={styles.precision}>
+        Algunos de estos contactos salen de posiciones estimadas, no de datos exactos.
+      </Note>
+    );
+  }
+  return null;
+}
+
+/**
  * El cuerpo del resultado. Dos formas, porque son dos cosas distintas: una
  * lectura general de dos signos —una sola fila, `Estilo general`— o las cinco
  * dimensiones con los contactos reales entre dos cartas.
  */
-function CuerpoComparacion({ data }: { data: RelationshipComparisonData }) {
-  if (data.generalOnly || data.dimensions.length === 0) {
+function CuerpoComparacion({
+  data,
+  lectura
+}: {
+  data: RelationshipComparisonData;
+  lectura: RelationshipReading | null;
+}) {
+  if (!lectura || data.generalOnly || data.dimensions.length === 0) {
     return (
-      <FilaDimension
-        nombre="Estilo general"
-        // Lo único legible de cinco: la barra dice ESO y la leyenda de arriba lo
-        // escribe. No es un puntaje del vínculo ni una medida de afinidad.
-        proporcion={relationshipGeneralOnlyShare()}
-        // Tono "fluido" (cobre, la marca): este riel no cuenta contactos —no hay
-        // ninguno con un signo solo—, marca cuánto de la escalera se puede leer.
-        // El azul acero queda para la evidencia de tensión de una dimensión real
-        // (mapeo invertido el 2026-08-19: cálido = fluye, frío = tensión).
-        tono="fluido"
-        texto={data.summary}
-        accessibilityLabel={`Estilo general: la única lectura disponible de ${RELATIONSHIP_READABLE_COUNT} con el signo solo.`}
-      />
+      <View style={styles.fila}>
+        <View style={styles.filaHead}>
+          <Body style={styles.filaNombre}>Estilo general</Body>
+        </View>
+        {/* Lo único legible de cinco, dicho como cuenta y no como riel: con un
+            signo solo no hay ningún contacto que contar, y una barra ahí se leía
+            como una medida de afinidad. */}
+        <View
+          accessible
+          style={styles.filaDato}
+          accessibilityLabel={`Estilo general: la única lectura disponible de ${RELATIONSHIP_READABLE_COUNT} con el signo solo.`}
+        >
+          <Mono style={styles.filaConteo}>{`1 LECTURA DE ${RELATIONSHIP_READABLE_COUNT}`}</Mono>
+        </View>
+        <Note style={styles.filaTexto}>{data.summary}</Note>
+      </View>
     );
   }
 
-  const maximo = data.dimensions.reduce(
-    (mayor, dimension) => Math.max(mayor, dimension.drivers.length),
-    0
-  );
   return (
     <>
-      {data.dimensions.map((dimension) => (
-        <DimensionConContactos key={dimension.key} dimension={dimension} maximo={maximo} />
+      {lectura.dimensions.map((dimension) => (
+        <DimensionLeida key={dimension.key} dimension={dimension} />
       ))}
     </>
   );
 }
 
-/** "3 contactos" — el recuento real que produce la barra. */
-function contactosLabel(total: number): string {
-  if (total === 0) return "sin contactos principales";
-  return total === 1 ? "1 contacto" : `${total} contactos`;
-}
-
 /**
- * Una dimensión con sus contactos reales: el rótulo y la barra en el mismo
- * renglón —como el frame—, y debajo el contacto que más pesa, dicho con sus
- * nombres y su distancia al punto exacto.
+ * Una dimensión leída: el rótulo, la fila textual con su cantidad y su balance,
+ * las tres cosas que tiene que explicar —qué se facilita, qué puede tensarse y
+ * una acción o una pregunta— y, detrás de una acción inequívoca, los contactos
+ * que la forman.
  *
- * Cuando hay más de uno, el resto se abre a pedido en vez de estirar la
- * pantalla: están todos, no se esconde ninguno, pero la lectura de arriba no se
- * convierte en una lista técnica de veinte líneas.
+ * Tres decisiones del registro físico viven acá:
+ *
+ * - **Sin barra (QA22-020).** La cantidad y el balance van escritos. El color
+ *   acompaña la palabra del balance, nunca la reemplaza: quien no lo distingue
+ *   lee exactamente lo mismo.
+ * - **La divulgación se nombra (QA22-019).** `+ 1 CONTACTO MÁS` no decía a qué
+ *   dimensión pertenecía lo plegado ni cuántos había en total. Ahora el control
+ *   dice los dos: `VER LOS 2 CONTACTOS QUE FORMAN DESEO`.
+ * - **Un contacto reutilizado se explica (QA22-021).** Si el mismo id alimenta
+ *   otra dimensión, se dice ahí mismo. No se duplica el detalle como si fueran
+ *   dos contactos distintos, y tampoco se borra de una de las dos.
  */
-function DimensionConContactos({
-  dimension,
-  maximo
-}: {
-  dimension: RelationshipDimension;
-  maximo: number;
-}) {
+function DimensionLeida({ dimension }: { dimension: RelationshipDimensionReading }) {
   const [abierto, setAbierto] = useState(false);
-  const contactos = dimension.drivers.length;
-  const principal = dimension.drivers[0];
-  const resto = dimension.drivers.slice(1);
-  // El color sale del balance apoyo/tensión de ESTA dimensión (`dimension.value`
-  // del sobre), no de un puntaje global ni de un tono fijo. El largo sigue
-  // contando contactos: son dos hechos distintos y cada uno se dice.
-  const tono = relationshipDimensionTone(dimension.value);
 
   return (
-    <FilaDimension
-      nombre={dimension.label}
-      proporcion={relationshipDriverShare(contactos, maximo)}
-      tono={tono}
-      // Sin un solo contacto el `summary` del backend SÍ es el dato: dice que no
-      // aparece un contacto principal y que eso no equivale a ausencia de
-      // vínculo. Con contactos, el dato es el contacto.
-      texto={principal ?? dimension.summary}
-      accessibilityLabel={`${dimension.label}: ${contactosLabel(
-        contactos
-      )}, sobre un máximo de ${maximo} en esta comparación.${
-        contactos > 0 ? ` ${relationshipToneVoice(tono)}.` : ""
-      }`}
-      precision={dimension.precision}
-    >
-      {resto.length > 0 ? (
+    <View style={styles.fila}>
+      <View style={styles.filaHead}>
+        <Body style={styles.filaNombre}>{dimension.label}</Body>
+      </View>
+      {/* La fila del dato, sin riel: la cantidad y el balance en palabras. El
+          color va SÓLO sobre la palabra del balance y nunca solo — quien no lo
+          distingue lee el mismo texto (QA22-020). */}
+      <View
+        accessible
+        style={styles.filaDato}
+        accessibilityLabel={relationshipDimensionRowVoice(dimension)}
+      >
+        <Mono style={styles.filaConteo}>
+          {relationshipContactsCount(dimension.contacts).toLocaleUpperCase("es")}
+        </Mono>
+        {relationshipBalanceWord(dimension) ? (
+          <Mono
+            style={[
+              styles.filaBalance,
+              dimension.balance === "mas_fluido"
+                ? styles.balanceFluido
+                : dimension.balance === "mas_exigente"
+                  ? styles.balanceExigente
+                  : undefined
+            ]}
+          >
+            {`· ${relationshipBalanceWord(dimension)!.toLocaleUpperCase("es")}`}
+          </Mono>
+        ) : null}
+      </View>
+
+      <Note style={styles.filaTexto}>{dimension.facilitates}</Note>
+      <Note style={styles.filaTexto}>{dimension.strains}</Note>
+      <Note style={styles.invitacion}>{dimension.invitation}</Note>
+
+      {dimension.contacts > 0 ? (
         <>
           <Touchable
             onPress={() => setAbierto((valor) => !valor)}
             accessibilityState={{ expanded: abierto }}
-            accessibilityLabel={`${resto.length === 1 ? "Otro contacto" : `Otros ${resto.length} contactos`} de ${dimension.label}`}
-            accessibilityHint={abierto ? "Toca para ocultarlos" : "Toca para verlos"}
+            accessibilityLabel={relationshipContactsToggleVoice(dimension)}
+            accessibilityHint={
+              abierto
+                ? "Toca para plegarlos otra vez"
+                : "Toca para verlos, ordenados por cuánto pesan"
+            }
             style={styles.masContactos}
             pressedStyle={styles.pressed}
           >
             <Label style={styles.masContactosTexto}>
               {abierto
-                ? "OCULTAR LOS OTROS CONTACTOS"
-                : `+ ${resto.length} ${resto.length === 1 ? "CONTACTO MÁS" : "CONTACTOS MÁS"}`}
+                ? relationshipContactsCollapseLabel(dimension)
+                : relationshipContactsToggleLabel(dimension)}
             </Label>
           </Touchable>
           {abierto
-            ? resto.map((contacto) => (
-                <Note key={contacto} style={styles.contactoExtra}>
-                  · {contacto}
-                </Note>
-              ))
+            ? dimension.contactsList.map((contacto) => {
+                // Qué aporta acá y —si es el mismo id— dónde más cuenta.
+                const papel = relationshipContactRole(contacto);
+                return (
+                  <View key={contacto.id} style={styles.contactoExtra}>
+                    <Note>· {contacto.text}</Note>
+                    {papel ? <Note style={styles.contactoPapel}>{papel}</Note> : null}
+                  </View>
+                );
+              })
             : null}
         </>
       ) : null}
-    </FilaDimension>
-  );
-}
-
-/**
- * La fila del canon: nombre a la izquierda, barra a la derecha en el MISMO
- * renglón, y el texto debajo en el gris de lectura secundaria.
- *
- * La barra ocupa poco más de la mitad del ancho, como en el frame, y nunca
- * empuja al nombre fuera de la pantalla: el nombre encoge y envuelve antes que
- * la barra, así que con Dynamic Type grande la fila crece hacia abajo en vez de
- * recortarse.
- */
-function FilaDimension({
-  nombre,
-  proporcion,
-  tono,
-  texto,
-  accessibilityLabel,
-  precision,
-  children
-}: {
-  nombre: string;
-  proporcion: number;
-  /** El tono de la barra, derivado de la evidencia de esta dimensión. */
-  tono: RelationshipDimensionTone;
-  texto: string;
-  accessibilityLabel: string;
-  precision?: RelationshipDimension["precision"];
-  children?: ReactNode;
-}) {
-  return (
-    <View style={styles.fila}>
-      <View style={styles.filaHead}>
-        <Body style={styles.filaNombre}>{nombre}</Body>
-        <View style={styles.filaBarra}>
-          <MeterBar
-            value={proporcion}
-            tone={tono === "fluido" ? "copper" : "harmony"}
-            accessibilityLabel={accessibilityLabel}
-          />
-        </View>
-      </View>
-      <Note style={styles.filaTexto}>{texto}</Note>
-      {precision === "range" ? (
-        <Note style={styles.filaTexto}>
-          Alguno de estos contactos se apoya en una posición que puede moverse dentro del día: se
-          acota a un rango, no a un valor único.
-        </Note>
-      ) : null}
-      {precision === "estimated" ? (
-        <Note style={styles.filaTexto}>
-          Alguno de estos contactos sale de una posición estimada, no de un dato exacto.
-        </Note>
-      ) : null}
-      {children}
     </View>
   );
 }
@@ -908,6 +934,10 @@ function SinComparacion({
 
 const styles = StyleSheet.create({
   alerta: { color: v492.colors.copperSoft },
+  // El color ACOMPAÑA a la palabra del balance; la palabra ya está escrita, así
+  // que quien no distingue cobre de azul lee exactamente lo mismo (QA22-020).
+  balanceExigente: { color: v492.colors.harmony },
+  balanceFluido: { color: v492.colors.copperSoft },
   blockTop: { marginTop: v492.space.lg },
   borrar: {
     alignSelf: "flex-start",
@@ -917,22 +947,36 @@ const styles = StyleSheet.create({
     minWidth: v492.touch
   },
   borrarTexto: { color: v492.colors.textDim },
-  contactoExtra: { marginTop: v492.space.sm },
+  contactoExtra: { marginTop: v492.space.md },
+  contactoPapel: { color: v492.colors.textDim, marginTop: v492.space.xs },
   corto: { color: v492.colors.copperSoft, marginTop: v492.space.md },
   cta: { marginTop: v492.space.lg },
   datos: { color: v492.colors.textDim, marginTop: v492.space.sm },
+  dinamica: { marginTop: v492.space.lg },
+  dinamicaPapel: { color: v492.colors.textDim, marginTop: v492.space.sm },
   estado: { marginTop: v492.space.md },
   falta: { marginTop: v492.space.xl },
   faltaItem: { marginTop: v492.space.sm },
   faltaLabel: { color: v492.colors.textMuted },
   faltaLabelSiguiente: { marginTop: v492.space.lg },
   fila: { marginTop: v492.space.xl },
-  // La barra es del ancho del frame (179 de 345 en 393 pt) y se expresa en
-  // proporción para que sea el mismo bloque en 375 y en 440.
-  filaBarra: { flexGrow: 0, flexShrink: 0, maxWidth: 179, width: "52%" },
+  // La fila del dato: cantidad y balance en texto, en el renglón siguiente al
+  // rótulo. Sin riel, así que con Dynamic Type grande envuelve hacia abajo y
+  // nada compite por el ancho.
+  filaBalance: { color: v492.colors.text },
+  filaConteo: { color: v492.colors.text },
+  filaDato: {
+    columnGap: v492.space.sm,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: v492.space.sm
+  },
   // Una fila SIN cálculo respira menos que una con texto: es un nombre y una
   // marca, no una lectura.
   filaPendiente: { marginTop: v492.space.lg },
+  invitacion: { color: v492.colors.copperSoft, marginTop: v492.space.md },
+  precision: { color: v492.colors.textDim, marginTop: v492.space.md },
+  resumenCuenta: { marginTop: v492.space.lg },
   sinCalcular: { color: v492.colors.textDim, flexShrink: 0, textAlign: "right" },
   filaHead: {
     alignItems: "center",

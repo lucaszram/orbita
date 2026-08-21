@@ -6,7 +6,9 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  View
+  View,
+  type StyleProp,
+  type TextStyle
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { router } from "expo-router";
@@ -15,7 +17,83 @@ import { ContentCanvas } from "@/components/orbita/ContentCanvas";
 import { Touchable } from "@/components/v492/Touchable";
 import { Body, Eyebrow, Mono } from "@/components/v492/typography";
 import { v492 } from "@/components/v492/tokens";
+import { PLAN_FREE_LABEL, PLAN_PLUS_LABEL, planLabel } from "@/domain/entitlement";
+import { useEntitlement } from "@/hooks/useLiveApp";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
+
+/**
+ * Tracking del chip del plan.
+ *
+ * Vive acá y no sólo en la hoja de estilos porque el hueco que la barra de
+ * detalle le reserva se calcula con él: si el chip se destraquea, la reserva
+ * tiene que moverse con él.
+ */
+const PLAN_BADGE_TRACKING = 1;
+
+/** Avance por glifo de Roboto Mono, en ems. Es fijo: la familia es monoespaciada. */
+const MONO_ADVANCE = 0.6;
+
+/**
+ * Ancho del chip con el label más largo, en puntos.
+ *
+ * Al ser mono no hace falta medirlo en pantalla: glifos × (cuerpo × avance +
+ * tracking), más el padding y el borde de cada lado. Los dos nombres —"Órbita
+ * Free" y "Órbita Plus"— tienen el mismo largo, así que cambiar de plan no
+ * mueve ni un punto de esta reserva.
+ */
+const PLAN_BADGE_WIDTH = Math.ceil(
+  Math.max(PLAN_FREE_LABEL.length, PLAN_PLUS_LABEL.length) *
+    (v492.type.label.size * MONO_ADVANCE + PLAN_BADGE_TRACKING) +
+    v492.space.sm * 2 +
+    2
+);
+
+/**
+ * Ancho común de los DOS extremos de la barra de detalle.
+ *
+ * El rótulo del medio se centra con `flex: 1`, y eso lo deja en el eje de la
+ * pantalla SÓLO si a izquierda y derecha sobra exactamente lo mismo. Con el
+ * chip midiendo su propio texto —el nombre entero del plan— el rótulo quedaba
+ * corrido hacia el "volver". Se reserva de una vez el ancho del chip más ancho,
+ * y nunca menos que el toque mínimo de 44.
+ */
+const DETAIL_EDGE = Math.max(v492.touch, PLAN_BADGE_WIDTH);
+
+/**
+ * Chip del plan de la cuenta: una línea, discreto y en el mismo lugar siempre.
+ *
+ * Está acá —en la pantalla base y no en cada pestaña— porque la pregunta "¿este
+ * bloque vacío es un error o es Plus?" aparece en TODAS, y contestarla de un
+ * vistazo es lo que evita que un recorte del backend se lea como una falla.
+ *
+ * Tres reglas:
+ *
+ * - **No especula.** Mientras el provider no pueda nombrar el plan sin inventar
+ *   —arranque en frío, sesión resolviendo, snapshot sin leer— no dibuja nada.
+ *   Un "Free" parpadeando en la cara de alguien que paga es peor que un hueco.
+ * - **No concede.** La etiqueta puede venir del snapshot local; el acceso no.
+ *   Los gates siguen leyendo el remoto (`resolved`), y comprar también.
+ * - **Se lee entero.** En pantalla dice el nombre completo del plan —"Órbita
+ *   Plus", "Órbita Free"—, el mismo que anuncia VoiceOver. La marca corta
+ *   (`PLUS` / `FREE`) ahorraba dos palabras a cambio de pedir que ya se supiera
+ *   qué es "PLUS" acá adentro, que es justo lo que este chip viene a contestar.
+ */
+export function PlanBadge({ style }: { style?: StyleProp<TextStyle> }) {
+  const { effective, labelReady } = useEntitlement();
+  if (!labelReady) return null;
+  const label = planLabel(effective);
+  const plus = label === PLAN_PLUS_LABEL;
+  return (
+    <Text
+      accessibilityLabel={`Tu plan: ${label}`}
+      numberOfLines={1}
+      maxFontSizeMultiplier={v492.type.label.maxScale}
+      style={[styles.planBadge, plus ? styles.planBadgePlus : styles.planBadgeFree, style]}
+    >
+      {label}
+    </Text>
+  );
+}
 
 /**
  * Pantalla oscura del sistema V4.9.2.
@@ -148,13 +226,19 @@ export function LayerScreen({
         <ContentCanvas variant="reading">
           <View style={styles.header}>
             <View style={styles.brandRow}>
-              <Text
-                style={styles.brand}
-                accessibilityLabel={`Órbita · ${title}`}
-                maxFontSizeMultiplier={v492.type.subtitle.maxScale}
-              >
-                Órbita
-              </Text>
+              {/* La marca y el plan viajan juntos a la izquierda: el chip no le
+                  saca el lugar ni a la fecha ni al engranaje, que siguen siendo
+                  el otro extremo de la fila. */}
+              <View style={styles.brandGroup}>
+                <Text
+                  style={styles.brand}
+                  accessibilityLabel={`Órbita · ${title}`}
+                  maxFontSizeMultiplier={v492.type.subtitle.maxScale}
+                >
+                  Órbita
+                </Text>
+                <PlanBadge />
+              </View>
               {action ? (
                 <View style={styles.headerAction}>{action}</View>
               ) : meta ? (
@@ -229,21 +313,29 @@ export function DetailLayerScreen({
       <StatusBar style="light" />
       <ContentCanvas variant="reading">
         <View style={[styles.detailBar, { paddingTop: insets.top + v492.space.sm }]}>
-          <Touchable
-            onPress={() => (router.canGoBack() ? router.back() : router.replace(fallbackHref as never))}
-            accessibilityLabel="Volver"
-            hitSlop={8}
-            style={styles.back}
-            pressedStyle={styles.pressed}
-          >
-            <Text style={styles.backGlyph} allowFontScaling={false}>
-              ←
-            </Text>
-          </Touchable>
+          {/* Los dos extremos miden lo MISMO (`DETAIL_EDGE`), así que el rótulo
+              del medio queda centrado en la pantalla y no en lo que sobra:
+              tenga chip o no —y diga Free o Plus—, no se corre un punto. El
+              toque de "volver" sigue siendo de 44×44 adentro de su slot. */}
+          <View style={styles.detailBack}>
+            <Touchable
+              onPress={() => (router.canGoBack() ? router.back() : router.replace(fallbackHref as never))}
+              accessibilityLabel="Volver"
+              hitSlop={8}
+              style={styles.back}
+              pressedStyle={styles.pressed}
+            >
+              <Text style={styles.backGlyph} allowFontScaling={false}>
+                ←
+              </Text>
+            </Touchable>
+          </View>
           <Eyebrow style={styles.detailEyebrow} numberOfLines={eyebrowLines}>
             {eyebrow}
           </Eyebrow>
-          <View style={styles.backSpacer} />
+          <View style={styles.detailBadge}>
+            <PlanBadge style={styles.detailBadgeText} />
+          </View>
         </View>
       </ContentCanvas>
       {keyboardAware ? (
@@ -273,12 +365,21 @@ const styles = StyleSheet.create({
     width: v492.touch
   },
   backGlyph: { color: v492.colors.text, fontFamily: v492.fonts.body, fontSize: 24 },
-  backSpacer: { width: v492.touch },
   brand: {
     color: v492.colors.text,
     fontFamily: v492.fonts.serif,
     fontSize: v492.type.subtitle.size,
     lineHeight: v492.type.subtitle.line
+  },
+  // Marca + chip del plan, alineados por la misma línea de escritura que usa la
+  // fila entera. NO se encoge: quien cede ancho sigue siendo la meta de la
+  // derecha (`headerMeta`), como antes de que el chip existiera. Encogiendo acá,
+  // "Órbita" se partiría en dos líneas con una fecha larga.
+  brandGroup: {
+    alignItems: "baseline",
+    flexDirection: "row",
+    flexShrink: 0,
+    gap: v492.space.sm
   },
   // `baseline` alinea la marca serif con la fecha mono por su línea de escritura
   // y no por su caja, que es lo que hace que se lean como una sola línea.
@@ -296,6 +397,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: v492.space.gutter
   },
   capas: { color: v492.colors.textDim, flexShrink: 0, textAlign: "right" },
+  // Extremos simétricos de la barra: el mismo ancho fijo de los dos lados. Fijo
+  // y no `minWidth`, porque un mínimo vuelve a dejar que el lado del chip crezca
+  // solo y descentre el rótulo.
+  detailBack: { alignItems: "flex-start", justifyContent: "center", width: DETAIL_EDGE },
+  detailBadge: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    width: DETAIL_EDGE
+  },
+  // Con Dynamic Type al tope el nombre del plan pasa la reserva: encoge y se
+  // recorta con puntos suspensivos antes que invadir el rótulo. VoiceOver
+  // sigue anunciando el plan entero.
+  detailBadgeText: { flexShrink: 1 },
   detailEyebrow: { flex: 1, textAlign: "center" },
   eyebrowRow: {
     alignItems: "flex-start",
@@ -318,6 +433,21 @@ const styles = StyleSheet.create({
   },
   headerMeta: { flexShrink: 1, textAlign: "right" },
   intro: { marginTop: v492.space.md },
+  // Chip de una línea: borde fino, mono y el mismo tope de Dynamic Type que los
+  // demás rótulos. `overflow` recorta el texto contra el borde redondeado.
+  planBadge: {
+    borderRadius: v492.radius.pill,
+    borderWidth: 1,
+    fontFamily: v492.fonts.monoMedium,
+    fontSize: v492.type.label.size,
+    letterSpacing: PLAN_BADGE_TRACKING,
+    lineHeight: v492.type.label.line,
+    overflow: "hidden",
+    paddingHorizontal: v492.space.sm,
+    paddingVertical: 1
+  },
+  planBadgeFree: { borderColor: v492.colors.line, color: v492.colors.textDim },
+  planBadgePlus: { borderColor: v492.colors.copper, color: v492.colors.copperSoft },
   pillsRow: { marginTop: v492.space.lg },
   pressed: { opacity: 0.6 },
   screen: { backgroundColor: v492.colors.background, flex: 1 },

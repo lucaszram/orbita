@@ -237,15 +237,6 @@ export function relationshipLockedDimensionsNote(): string {
   return `Con el signo solo se puede una dimensión. Las otras ${palabras[n] ?? String(n)} necesitan la fecha completa.`;
 }
 
-/**
- * Cuánto ocupa la barra del estilo general: una lectura sobre las cinco
- * superficies de la escalera. Es cuánto se puede LEER con un signo, no cuánto
- * compatibilizan.
- */
-export function relationshipGeneralOnlyShare(): number {
-  return 1 / RELATIONSHIP_READABLE_COUNT;
-}
-
 export const RELATIONSHIP_DIMENSION_LABEL: Record<RelationshipDimensionKey, string> = {
   communication: "Cómo se hablan",
   care: "Cómo se cuidan",
@@ -269,59 +260,26 @@ export function relationshipDimensionsLock(level: ComparisonLevel): string {
   return "Esta comparación todavía no se pudo calcular, así que las cinco dimensiones quedan sin material. No son resultados en cero: son lecturas que faltan.";
 }
 
-/**
- * Cuánto ocupa la barra de una dimensión: su cantidad de contactos contra la
- * mayor cantidad VISIBLE en esta misma comparación.
- *
- * Es una proporción entre las cinco dimensiones de la pantalla, no una medida
- * absoluta: la más llena es la que más contactos reunió. Sin contactos en
- * ninguna, todas quedan en cero y se ve el riel vacío.
- */
-export function relationshipDriverShare(count: number, max: number): number {
-  if (!Number.isFinite(count) || !Number.isFinite(max) || max <= 0) return 0;
-  return Math.max(0, Math.min(1, count / max));
-}
-
 // ---------------------------------------------------------------------------
-// El color de cada dimensión
+// Qué vas a ver, y qué no (QA22-014)
 // ---------------------------------------------------------------------------
 
 /**
- * De qué tono se pinta la barra de una dimensión.
+ * El descargo del alta, con jerarquía progresiva.
  *
- * `fluido` = en esa dimensión pesan más los contactos de apoyo; `tenso` = pesan
- * más los de tensión, o los dos pesan igual. El frame canónico pinta de azul
- * `Cómo se hablan` y `Proyecto en común` de su fixture y de cobre las otras
- * tres: no es un color decorativo ni un color fijo, es la evidencia de cada
- * dimensión.
+ * En el build 22 el bloque se titulaba `LO QUE ESTE CÁLCULO NO DICE` en medio
+ * del alta y no se entendía si explicaba qué compara la lectura, una limitación
+ * del cálculo o una advertencia legal (QA22-014). Ahora son DOS piezas con dos
+ * funciones distintas y en ese orden: primero qué información usa esta lectura,
+ * y detrás —a un toque— qué no puede afirmar.
+ *
+ * Los dos rótulos viven acá y no en la pantalla porque son copy exigido y
+ * literal: si se escribieran sueltos, cualquier pasada podría reescribirlos sin
+ * que nada lo note.
  */
-export type RelationshipDimensionTone = "fluido" | "tenso";
+export const RELATIONSHIP_WHAT_YOU_SEE_LABEL = "QUÉ VAS A VER";
 
-/**
- * El tono de una dimensión, derivado de SU propia evidencia.
- *
- * El backend publica `dimension.value` como el balance del sobre:
- * `0,5 + (apoyo − tensión) / (2 · total)`. Por encima de 0,5 pesan más los
- * contactos de apoyo; por debajo, los de tensión; exactamente 0,5 es empate —o
- * una dimensión sin pesos— y va al mismo tono que la tensión, porque el canon
- * usa el azul sólo para lo francamente fluido y el cobre para tensión y
- * ambivalencia.
- *
- * **No es un puntaje del vínculo.** El LARGO de la barra sigue contando
- * contactos, que es lo que dice la leyenda; el color dice de qué clase son esos
- * contactos. Cada barra lo declara en su etiqueta accesible, y por eso el color
- * no agrega una lectura escondida.
- */
-export function relationshipDimensionTone(value: number | null | undefined): RelationshipDimensionTone {
-  return typeof value === "number" && Number.isFinite(value) && value > 0.5 ? "fluido" : "tenso";
-}
-
-/** El tono dicho en palabras, para la etiqueta que lee un lector de pantalla. */
-export function relationshipToneVoice(tone: RelationshipDimensionTone): string {
-  return tone === "fluido"
-    ? "Pesan más los contactos fluidos que los de tensión"
-    : "Pesan tanto o más los contactos de tensión que los fluidos";
-}
+export const RELATIONSHIP_READING_LIMITS_LABEL = "LÍMITES DE ESTA LECTURA";
 
 // ---------------------------------------------------------------------------
 // Qué mostrar cuando el cálculo no llegó
@@ -650,6 +608,66 @@ export function relationshipBirthLine(profile: RelationshipProfile): string | nu
 }
 
 // ---------------------------------------------------------------------------
+// Rutas de Vínculos: dónde termina un guardado y dónde se editan los datos
+// ---------------------------------------------------------------------------
+
+/** La raíz de la sección. Es a donde vuelve todo guardado (QA22-015). */
+export const VINCULOS_ROUTE = "/vinculos";
+
+/** El formulario de datos de una persona. Sin id, es un alta. */
+export const VINCULOS_FORM_ROUTE = "/vinculos/conectar";
+
+/** Qué persona se acaba de guardar, para confirmarlo en la raíz. */
+export const RELATIONSHIP_SAVED_PARAM = "guardada";
+
+/** Si ese guardado fue un alta o una edición: cambian la confirmación. */
+export const RELATIONSHIP_SAVED_MODE_PARAM = "modo";
+
+export type RelationshipSaveMode = "alta" | "edicion";
+
+/**
+ * El formulario de ESA persona, precompletado (QA22-018 / QA22-023).
+ *
+ * Es el único destino de "Completar sus datos" y de "Editar datos de …": los dos
+ * abren lo mismo, porque son lo mismo. El id viaja como parámetro y la pantalla
+ * lo valida contra la lista autorizada de la cuenta antes de abrir nada.
+ */
+export function relationshipEditHref(profileId: string): string {
+  return `${VINCULOS_FORM_ROUTE}?profileId=${profileId}`;
+}
+
+/**
+ * La raíz de Vínculos, declarando qué persona se acaba de guardar.
+ *
+ * El alta no abre la lectura (QA22-015): vuelve acá, con la persona a la vista y
+ * una confirmación de que quedó guardada. Abrir su comparación pasa a ser una
+ * acción explícita, que es lo que permite verificar que el alta terminó.
+ */
+export function relationshipSavedHref(profileId: string, modo: RelationshipSaveMode): string {
+  return `${VINCULOS_ROUTE}?${RELATIONSHIP_SAVED_PARAM}=${profileId}&${RELATIONSHIP_SAVED_MODE_PARAM}=${modo}`;
+}
+
+/** El modo declarado en la URL, o `null` si no vino o no es uno de los dos. */
+export function relationshipSavedMode(raw: unknown): RelationshipSaveMode | null {
+  if (raw === "alta" || raw === "edicion") return raw;
+  return null;
+}
+
+/**
+ * La confirmación del guardado, con el nombre de la persona.
+ *
+ * Dice lo que PASÓ y dónde quedó: sin esta frase, volver a una lista con una
+ * fila más no alcanza para saber que el alta terminó bien —fue exactamente lo
+ * que quedó registrado en QA22-015—.
+ */
+export function relationshipSavedConfirmation(name: string, modo: RelationshipSaveMode): string {
+  const quien = name.trim() || "esta persona";
+  return modo === "alta"
+    ? `Guardamos a ${quien} en tu cuenta. Ya está en tu lista: tocala para abrir su comparación.`
+    : `Guardamos los datos de ${quien}. Su comparación se rehace con los datos nuevos.`;
+}
+
+// ---------------------------------------------------------------------------
 // Alta de una persona: del borrador de pantalla a los argumentos del contrato
 // ---------------------------------------------------------------------------
 
@@ -666,11 +684,17 @@ export type RelationshipPlaceChoice = {
 /**
  * Lo que la persona cargó en pantalla. Cada campo puede estar vacío: el
  * borrador describe el estado del formulario, no una persona guardable.
+ *
+ * **No lleva `level` (QA22-018).** El nivel de comparación no es una
+ * preferencia que se pueda guardar al lado de los datos: es una CONSECUENCIA de
+ * qué datos hay. Cuando el borrador tenía su propio `level`, el formulario podía
+ * decir "carta con carta" con una persona que sólo tenía el signo, y al guardar
+ * el backend devolvía otro nivel. Ahora hay una sola derivación
+ * —`relationshipLevelFromDraft`— y nada que la pueda contradecir.
  */
 export type RelationshipDraft = {
-  level: ComparisonLevel;
   name: string;
-  /** Nivel signo: una de las doce claves canónicas, elegida a mano. */
+  /** Sin fecha, uno de los doce signos elegido a mano. */
   zodiacSign: RelationshipSignKey | null;
   /** `YYYY-MM-DD` */
   birthDate: string | null;
@@ -682,7 +706,6 @@ export type RelationshipDraft = {
 /** Un borrador vacío: el punto de partida del alta, sin nada preseleccionado. */
 export function emptyRelationshipDraft(): RelationshipDraft {
   return {
-    level: "sign_to_sign",
     name: "",
     zodiacSign: null,
     birthDate: null,
@@ -692,20 +715,61 @@ export function emptyRelationshipDraft(): RelationshipDraft {
 }
 
 /**
+ * El nivel que permiten estos datos. **Única derivación del front** (QA22-018).
+ *
+ * Es la misma regla que aplica el backend en `relationshipAvailableLevel` sobre
+ * el perfil ya guardado —día + hora exacta + coordenadas + zona ⇒ carta; sólo el
+ * día ⇒ fecha; nada de eso ⇒ signo—, escrita acá sobre el borrador para que el
+ * formulario pueda ANUNCIAR el nivel antes de guardar sin inventar uno propio.
+ * Si las dos divergieran, la pantalla prometería una lectura que el perfil
+ * persistido no da.
+ *
+ * La zona horaria no entra como parámetro a propósito: se resuelve al guardar, a
+ * partir de las coordenadas de la ciudad elegida, y si no se resuelve no se
+ * guarda nada (`relationshipSavePayload` devuelve `null`). Por eso acá alcanza
+ * con que HAYA una ciudad elegida.
+ */
+export function relationshipLevelFromDraft(draft: RelationshipDraft): ComparisonLevel {
+  const fecha = draft.birthDate ? parseDateInput(draft.birthDate) : null;
+  if (!fecha) return "sign_to_sign";
+  const hora = draft.birthTime ? parseTimeInput(draft.birthTime) : null;
+  return hora && draft.place ? "chart_to_chart" : "date_to_date";
+}
+
+/**
+ * El nivel derivado, dicho en el formulario: hasta dónde llega la comparación
+ * con lo que hay cargado y qué haría falta para el escalón siguiente.
+ *
+ * Explica el resultado; no lo pide como decisión. Es exactamente lo que separa
+ * este texto del selector de modalidad que la edición ya no muestra.
+ */
+export function relationshipDataLevelLine(level: ComparisonLevel): string {
+  if (level === "sign_to_sign") {
+    return "Con estos datos la comparación llega a signo con signo: el estilo general de los dos signos. Cargá la fecha de nacimiento para que entren las posiciones de ese día.";
+  }
+  if (level === "date_to_date") {
+    return "Con estos datos la comparación llega a fecha con fecha: los contactos que se mantienen durante toda la franja de ese día. Sumá la hora exacta y la ciudad para que entren las casas y los Ascendentes.";
+  }
+  return "Con estos datos la comparación llega a carta con carta: entran además las casas, los dos Ascendentes y las superposiciones.";
+}
+
+/**
  * El borrador que corresponde a una persona YA guardada, para editarla o para
  * subirle el nivel sin cargar todo de nuevo.
  *
- * Muestra exactamente lo guardado y nada más: el nivel que esos datos permiten
- * —no el que se querría alcanzar—, el signo sólo si es una de las doce claves
- * del selector, y la ciudad sólo si además de coordenadas tiene una etiqueta
- * que mostrar. Un lugar sin etiqueta se deja vacío para que se vuelva a elegir:
- * una tarjeta de ciudad en blanco no es un dato, es un hueco.
+ * Muestra exactamente lo guardado y nada más: el signo sólo si es una de las
+ * doce claves del selector, y la ciudad sólo si además de coordenadas tiene una
+ * etiqueta que mostrar. Un lugar sin etiqueta se deja vacío para que se vuelva a
+ * elegir: una tarjeta de ciudad en blanco no es un dato, es un hueco.
+ *
+ * No copia `availableLevel`: el nivel se vuelve a derivar de estos mismos datos
+ * (`relationshipLevelFromDraft`), así que el formulario no puede quedar
+ * afirmando un escalón que los campos que muestra ya no sostienen.
  */
 export function relationshipDraftFromProfile(profile: RelationshipProfile): RelationshipDraft {
   const label = profile.birthPlaceLabel?.trim() ?? "";
   const { latitude, longitude } = profile;
   return {
-    level: profile.availableLevel,
     name: profile.name,
     zodiacSign: relationshipSignKey(profile.zodiacSign),
     birthDate: profile.birthDate,
@@ -718,30 +782,60 @@ export function relationshipDraftFromProfile(profile: RelationshipProfile): Rela
 }
 
 /**
- * Qué le falta al borrador para poder guardarse en el nivel elegido, dicho en
- * una línea. `null` significa que está completo.
+ * Qué le falta al borrador para poder guardarse, dicho en una línea. `null`
+ * significa que está completo.
  *
  * Es lo único que decide si Guardar se habilita, y por eso vive acá y no en la
  * pantalla: el mensaje que explica el bloqueo y la condición que lo produce
  * tienen que ser el MISMO hecho, o el botón queda apagado sin razón visible.
+ *
+ * Sin `objetivo` —la EDICIÓN— sólo se exige lo que hace falta para que haya algo
+ * que comparar: un nombre y, o bien una fecha válida, o bien un signo. Lo demás
+ * es opcional, y quitarlo baja el nivel en vez de bloquear (QA22-023).
+ *
+ * Con `objetivo` —el ALTA, donde la persona ya dijo qué iba a cargar— además se
+ * exige lo que ese escalón necesita: guardar "carta con carta" a medias sería
+ * prometer una lectura que no va a llegar. El objetivo es intención de pantalla
+ * y no se guarda en ningún lado: lo que queda persistido es el nivel derivado.
  */
-export function relationshipDraftBlock(draft: RelationshipDraft): string | null {
+export function relationshipDraftBlock(
+  draft: RelationshipDraft,
+  objetivo?: ComparisonLevel | null
+): string | null {
   if (!draft.name.trim()) return "Escribí un nombre para guardar a esta persona.";
 
-  if (draft.level === "sign_to_sign") {
-    return draft.zodiacSign ? null : "Elegí uno de los doce signos.";
+  const fecha = draft.birthDate ? parseDateInput(draft.birthDate) : null;
+  const hora = draft.birthTime ? parseTimeInput(draft.birthTime) : null;
+
+  // Un dato escrito mal se dice antes que cualquier otra cosa: todo lo demás se
+  // deriva de él, así que un "falta la ciudad" encima de una fecha inválida
+  // mandaría a corregir el campo equivocado.
+  if (draft.birthDate && !fecha) {
+    return "Revisá la fecha de nacimiento: ese día no existe en el calendario.";
+  }
+  if (draft.birthTime && !hora) {
+    return "Revisá la hora de nacimiento: tiene que ser una hora del reloj.";
+  }
+  // La hora sin ciudad no se puede ubicar en un instante, así que no se guarda.
+  // Se bloquea en vez de descartarla en silencio: la hora está escrita en
+  // pantalla y guardar sin ella se leería como que quedó guardada.
+  if (hora && !draft.place) {
+    return "Elegí la ciudad de nacimiento en el buscador: sin sus coordenadas esa hora no se puede ubicar en un instante y quedaría sin guardar.";
   }
 
-  if (!draft.birthDate || !parseDateInput(draft.birthDate)) {
+  if (objetivo === "sign_to_sign" && !draft.zodiacSign) return "Elegí uno de los doce signos.";
+  if ((objetivo === "date_to_date" || objetivo === "chart_to_chart") && !fecha) {
     return "Elegí la fecha de nacimiento de esa persona.";
   }
-  if (draft.level === "date_to_date") return null;
-
-  if (!draft.birthTime || !parseTimeInput(draft.birthTime)) {
+  if (objetivo === "chart_to_chart" && !hora) {
     return "Elegí la hora exacta de nacimiento: sin ella no hay casas ni Ascendente que comparar.";
   }
-  if (!draft.place) {
+  if (objetivo === "chart_to_chart" && !draft.place) {
     return "Elegí la ciudad de nacimiento en el buscador: de sus coordenadas sale la zona horaria del cálculo.";
+  }
+
+  if (!fecha && !draft.zodiacSign) {
+    return "Elegí la fecha de nacimiento de esa persona, o su signo si no la sabés.";
   }
   return null;
 }
@@ -753,7 +847,9 @@ type RelationshipSavePayload = Omit<SavePersonArgs, "idempotencyKey">;
  * El pedido que corresponde a este borrador, o `null` si no se puede guardar.
  *
  * Acá está la regla entera de honestidad del alta, en un solo lugar y sin
- * React de por medio:
+ * React de por medio. El escalón NO llega por parámetro: se deriva de los datos
+ * con `relationshipLevelFromDraft`, la misma regla que la pantalla anuncia y que
+ * el backend aplicará sobre el perfil persistido.
  *
  * - **Signo**: se guarda el signo elegido y NADA más. No hay fecha, hora, lugar
  *   ni precisión: `unknown` es la verdad.
@@ -784,6 +880,10 @@ function relationshipSavePayload(
   profileId: RelationshipProfileId | null
 ): RelationshipSavePayload | null {
   if (relationshipDraftBlock(draft) !== null) return null;
+  // El nivel sale de los datos, nunca de una elección guardada: es la MISMA
+  // derivación que el formulario muestra y que el backend va a aplicar sobre el
+  // perfil persistido.
+  const level = relationshipLevelFromDraft(draft);
 
   const sinDatos = {
     ...(profileId ? { profileId } : {}),
@@ -800,10 +900,10 @@ function relationshipSavePayload(
   const name = draft.name.trim();
   const timezone = (resolvedTimezone ?? "").trim();
 
-  if (draft.level === "sign_to_sign") {
+  if (level === "sign_to_sign") {
     return { ...sinDatos, name, birthTimePrecision: "unknown", zodiacSign: draft.zodiacSign };
   }
-  if (draft.level === "date_to_date") {
+  if (level === "date_to_date") {
     const soloFecha = {
       ...sinDatos,
       name,
@@ -910,16 +1010,8 @@ export function createRelationshipIdempotencyKey(random: () => number = Math.ran
 }
 
 // ---------------------------------------------------------------------------
-// El resumen general: hechos, nunca un puntaje
+// Cómo se nombra un contacto
 // ---------------------------------------------------------------------------
-
-/** La forma mínima que el resumen necesita: no importa de qué API venga. */
-export type RelationshipSummaryDimension = {
-  label: string;
-  value?: number | null;
-  /** Cada contacto YA es la frase del canon ("Su Venus forma un trígono con tu Sol, …"). */
-  drivers: ReadonlyArray<string>;
-};
 
 /**
  * Extrae el nombre corto de un contacto desde su frase canónica.
@@ -944,93 +1036,10 @@ export function relationshipDriverShortName(texto: string): string | null {
   return null;
 }
 
-export type RelationshipComparisonSummary = {
-  contactos: number;
-  fluidas: number;
-  tensas: number;
-  /** Hasta dos dimensiones, las que más contactos reúnen. */
-  destacadas: string[];
-  /**
-   * Los contactos que MÁS pesan entre estas dos cartas, ya nombrados con la voz
-   * del canon ("su Venus con tu Sol") y su dimensión. Es lo que vuelve el
-   * resumen puntual de ESTE vínculo en vez de una estadística genérica.
-   */
-  principales: { contacto: string; dimension: string }[];
-};
-
 /**
- * Qué hay entre las dos cartas, en números REALES: cuántos contactos, cuántas
- * dimensiones inclinan a lo fluido o a la tensión, y dónde se concentra el
- * material. Existe porque a la pantalla le faltaba una lectura general antes de
- * las cinco dimensiones (2026-08-19) — y es factual a propósito: un resumen con
- * nota sería el puntaje global de compatibilidad que este producto prohíbe.
- *
- * `null` cuando no hay nada que resumir: la lectura de un signo solo es una
- * única fila, y una comparación sin contactos ya lo dice fila por fila.
+ * La síntesis general —cuántos contactos hay, cuáles pesan y qué se concentra
+ * dónde— ya no vive acá: la arma `src/domain/relationshipReading.ts` sobre la
+ * evidencia real por contacto (`driverDetails`) en vez de sobre el recuento de
+ * oraciones. La diferencia no es de estilo: sumando filas, un contacto que
+ * alimenta dos dimensiones se contaba dos veces (QA22-021).
  */
-export function relationshipComparisonSummary(data: {
-  generalOnly?: boolean;
-  dimensions: ReadonlyArray<RelationshipSummaryDimension>;
-}): RelationshipComparisonSummary | null {
-  if (data.generalOnly) return null;
-  const conMaterial = data.dimensions.filter((dimension) => dimension.drivers.length > 0);
-  const contactos = conMaterial.reduce((total, dimension) => total + dimension.drivers.length, 0);
-  if (contactos === 0) return null;
-
-  let fluidas = 0;
-  let tensas = 0;
-  for (const dimension of conMaterial) {
-    if (relationshipDimensionTone(dimension.value) === "fluido") fluidas += 1;
-    else tensas += 1;
-  }
-  const destacadas = [...conMaterial]
-    .sort((a, b) => b.drivers.length - a.drivers.length)
-    .slice(0, 2)
-    .map((dimension) => dimension.label);
-
-  // El contacto PRINCIPAL de cada dimensión destacada, nombrado. Los drivers
-  // llegan ordenados por peso dentro de su dimensión, así que el primero es el
-  // que más pesa — el mismo que la pantalla muestra arriba.
-  const porMaterial = [...conMaterial].sort((a, b) => b.drivers.length - a.drivers.length);
-  const principales: { contacto: string; dimension: string }[] = [];
-  for (const dimension of porMaterial) {
-    if (principales.length === 2) break;
-    const nombre = relationshipDriverShortName(dimension.drivers[0] ?? "");
-    if (nombre) principales.push({ contacto: nombre, dimension: dimension.label });
-  }
-
-  return { contactos, fluidas, tensas, destacadas, principales };
-}
-
-/**
- * La frase del resumen: PUNTUAL de este vínculo, no genérica. Abre nombrando
- * los contactos que más pesan entre estas dos cartas y recién después dice el
- * balance. Sin nota, sin porcentaje, sin "compatibilidad".
- */
-export function relationshipSummaryLine(resumen: RelationshipComparisonSummary): string {
-  const balance =
-    resumen.fluidas > resumen.tensas
-      ? "pesan más los fluidos: las vías de encuentro aparecen con más fuerza que los roces"
-      : resumen.tensas > resumen.fluidas
-        ? "pesan más los de tensión: los puntos a tramitar aparecen con más fuerza que las vías de encuentro"
-        : "lo fluido y la tensión pesan parecido";
-  const cuenta =
-    resumen.contactos === 1
-      ? `Es el único contacto real entre las dos cartas.`
-      : `En total hay ${resumen.contactos} contactos reales y ${balance}.`;
-
-  if (resumen.principales.length === 0) {
-    // Sin labels para nombrar (no debería pasar con el contrato actual): la
-    // versión contable sigue siendo verdadera.
-    const foco =
-      resumen.destacadas.length === 2
-        ? `El material se concentra en ${resumen.destacadas[0]} y ${resumen.destacadas[1]}.`
-        : `El material se concentra en ${resumen.destacadas[0]}.`;
-    return `${cuenta} ${foco}`;
-  }
-
-  const nombres = resumen.principales
-    .map((item) => `${item.contacto}, en ${item.dimension}`)
-    .join(", y ");
-  return `Lo que más define este vínculo: ${nombres}. ${cuenta}`;
-}

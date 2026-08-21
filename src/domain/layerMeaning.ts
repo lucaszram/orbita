@@ -90,17 +90,57 @@ export function moonMeaning(input: {
 }
 
 /**
+ * Las cuatro piezas sueltas de la Luna, para quien componga con ellas.
+ *
+ * `moonMeaning` compone un párrafo cerrado, que es lo que necesita una tarjeta.
+ * La lectura del detalle (`domain/layerReading`) arma otra cosa —clima, dónde
+ * notarlo, posibilidad y tensión, gesto y pregunta— y para eso necesita las
+ * piezas por separado, no el párrafo ya cosido.
+ *
+ * Se exponen como accesores y no como tablas: quien compone elige el orden, no
+ * puede tocar el contenido, y una casa fuera de 1–12 devuelve `null` en vez de
+ * un texto inventado.
+ */
+
+/** El clima de una fase, en minúscula: entra a mitad de oración. */
+export function moonPhaseClimate(phaseKey: LunarPhaseKey): string {
+  return (MOON_PHASE[phaseKey] ?? MOON_PHASE.new).climate;
+}
+
+/** El gesto de una fase. Es el que sirve cuando no hay casa que nombrar. */
+export function moonPhaseAction(phaseKey: LunarPhaseKey): string {
+  return (MOON_PHASE[phaseKey] ?? MOON_PHASE.new).action;
+}
+
+/** Qué se nota cuando la Luna recorre una casa, o `null` fuera de 1–12. */
+export function moonHouseNotice(house: number | null | undefined): string | null {
+  const casa = houseNumber(house);
+  return casa === null ? null : MOON_HOUSE[casa].meaning;
+}
+
+/** El gesto de esa casa, o `null` fuera de 1–12. */
+export function moonHouseAction(house: number | null | undefined): string | null {
+  const casa = houseNumber(house);
+  return casa === null ? null : MOON_HOUSE[casa].action;
+}
+
+/**
  * La guía del día en tres pasos: qué priorizar, qué probar y qué observar.
  *
- * Es la forma en que la Luna se lee en pantalla. Un párrafo de significado y
- * otro de acción decían lo mismo dos veces —el segundo empezaba donde terminaba
- * el primero— y no se podía saltear: había que leer los dos para saber qué hacer
- * hoy. Tres líneas rotuladas se recorren en cinco segundos y cada una tiene un
- * trabajo distinto.
+ * Es la forma CORTA de la Luna, la que entra en una tarjeta. Un párrafo de
+ * significado y otro de acción decían lo mismo dos veces —el segundo empezaba
+ * donde terminaba el primero— y no se podía saltear: había que leer los dos para
+ * saber qué hacer hoy. Tres líneas rotuladas se recorren en cinco segundos y
+ * cada una tiene un trabajo distinto.
  *
  * **El área se dice UNA vez**, en `prioriza`. Ni `proba` ni `observa` la
  * repiten: la casa y su tema aparecían en el resumen del cálculo, en la fila de
  * datos y en el texto, tres veces seguidas con las mismas palabras.
+ *
+ * Convive con `moonReading` (`domain/layerReading`), que es la forma LARGA —la
+ * del detalle, con clima, tensión, gesto, pregunta y su límite—. Las dos
+ * componen las MISMAS piezas y ninguna copia el texto de la otra: por eso las
+ * tablas se leen por los accesores de arriba y no se duplican acá.
  */
 export type GuiaDelDia = {
   /** Qué poner adelante hoy: el área de tu carta, cuando se puede ubicar. */
@@ -132,24 +172,30 @@ export function moonGuide(input: {
   phaseKey: LunarPhaseKey;
   natalHouse: number | null;
 }): GuiaDelDia {
-  const fase = MOON_PHASE[input.phaseKey] ?? MOON_PHASE.new;
+  const clima = moonPhaseClimate(input.phaseKey);
   const casa = houseNumber(input.natalHouse);
-  if (casa === null) {
+  // Las tres piezas de la casa van juntas: o hay casa —y entonces hay área,
+  // nota y gesto— o no la hay y el día se lee con el signo y la fase. Se piden
+  // por separado para que el compilador exija las dos, no para que una pueda
+  // faltar.
+  const nota = moonHouseNotice(casa);
+  const gesto = moonHouseAction(casa);
+  if (casa === null || nota === null || gesto === null) {
     return {
       prioriza: `El clima del día: la Luna está en ${input.sign}. Sin tu hora exacta de nacimiento no podemos ubicar por qué área de tu carta pasa, así que esto no describe un área tuya.`,
-      proba: fase.action,
-      observa: capitalizar(fase.climate)
+      proba: moonPhaseAction(input.phaseKey),
+      observa: capitalizar(clima)
     };
   }
   const area = houseTheme(casa);
   return {
     prioriza: `Lo de tu casa ${casa}${area ? `: ${area}` : ""}.`,
-    proba: MOON_HOUSE[casa].action,
+    proba: gesto,
     // Dos frases, no una pegada con "Y": lo que se nota del área y, aparte, el
     // momento del ciclo. Leído en voz alta, «Suele notarse… Y aparece…» sonaba
     // a dos renglones cosidos; son dos cosas distintas para mirar y se dicen
     // como tales. El área NO se repite acá: ya la dijo `prioriza`.
-    observa: `${MOON_HOUSE[casa].meaning} Prestá atención también a que ${fase.climate}`
+    observa: `${nota} Prestá atención también a que ${clima}`
   };
 }
 

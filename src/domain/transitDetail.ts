@@ -1,21 +1,34 @@
-import { civilDateInTimezone, formatDayMonth, formatShortDayMonth, type InstantRange } from "@/domain/layers";
+import {
+  civilDateInTimezone,
+  formatDayMonth,
+  formatLocalTime,
+  formatShortDayMonth,
+  transitHeadline,
+  type InstantRange
+} from "@/domain/layers";
+import { transitMeaning } from "@/domain/layerMeaning";
+import { canonicalTransitState } from "@/domain/transitState";
+import type { TransitRankingItem } from "@/services/layersApi";
 
 /**
  * El modelo del **detalle del tránsito**: qué momentos tiene la ventana y cómo
  * se leen los campos del sobre sin dar por seguro que un cache viejo los traiga.
  *
- * Son dos cosas separadas y las dos son puras:
+ * Son tres cosas separadas y las tres son puras:
  *
  * 1. **`transitTimeline`** — la línea de tiempo como DATOS: una marca por
  *    momento, con su posición, su rótulo y su fecha. La pantalla dibuja lo que
- *    este modelo dice; no decide nada por su cuenta. Así se puede probar la
- *    coincidencia de `HOY` con un contacto exacto, el año que aparece cuando la
- *    ventana cruza diciembre y el único anuncio de VoiceOver, sin montar un
- *    componente.
+ *    este modelo dice; no decide nada por su cuenta. Así se puede probar que
+ *    `HOY` y un contacto exacto del mismo día siguen siendo DOS hitos, el año
+ *    que aparece cuando la ventana cruza diciembre y el único anuncio de
+ *    VoiceOver, sin montar un componente.
  * 2. **`transitDetailExtras`** — los cinco campos que `ORB-TRN-001` publica
  *    además de la ventana (`previousExactAt`, `nextExactAt`, `rankingWindow`,
  *    `rankingReason`, `natalHouse`), leídos como OPCIONALES aunque el contrato
  *    los declare obligatorios.
+ * 3. **`transitPreviewFromRanking`** — lo que la pantalla ya puede afirmar con
+ *    la fila que se acaba de tocar, mientras el `ORB-TRN-001` de ese arco viaja:
+ *    título, etapa, significado y acción. Ninguna fecha.
  *
  * ## Por qué se siguen leyendo como opcionales
  *
@@ -154,6 +167,69 @@ export function transitDetailExtras(data: unknown): TransitDetailExtras {
 }
 
 // ---------------------------------------------------------------------------
+// El adelanto: lo que ya se sabe antes de que llegue el `ORB-TRN-001`
+// ---------------------------------------------------------------------------
+
+/**
+ * Lo que el detalle puede dibujar apenas se toca una fila (QA22-011).
+ *
+ * El defecto: la primera apertura de un tránsito reemplazaba TODA la pantalla
+ * por “Calculando la línea de tiempo de este tránsito…”, aunque el título, la
+ * etapa, el significado y la acción no dependen de ese cálculo. Son función del
+ * planeta, el punto natal, el aspecto, la etapa y la casa —cinco datos que la
+ * fila que se acaba de tocar ya trae— y `transitMeaning` los compone sin pedir
+ * nada.
+ *
+ * Lo que NO entra acá es igual de importante: ninguna fecha, ninguna ventana,
+ * ninguna pasada y ninguna trazabilidad. Eso lo calcula `ORB-TRN-001` con su
+ * propio método, y afirmarlo con los números del ranking sería exactamente lo
+ * que la pantalla tiene prohibido. Mientras el cálculo viaja, la cronología es
+ * lo único que muestra su carga —o su fallo— y lo hace en su propio bloque.
+ */
+export type TransitPreview = {
+  /** `Saturno en cuadratura con tu Sol` — el titular completo, como con dato. */
+  headline: string;
+  /** El chip de la etapa canónica, el mismo que usa la lista. */
+  chip: string;
+  meaning: string;
+  action: string;
+};
+
+/**
+ * El adelanto de un tránsito a partir de su fila del ranking.
+ *
+ * La etapa se deriva con el canon (`canonicalTransitState`), no con el `state`
+ * crudo de la fila: si no, el adelanto podría decir una cosa y el detalle otra
+ * apenas llegara el sobre, que es el defecto que QA22-009 registró entre las dos
+ * pantallas.
+ */
+export function transitPreviewFromRanking(
+  item: TransitRankingItem,
+  nowMs: number,
+  timezone: string
+): TransitPreview {
+  const estado = canonicalTransitState({
+    published: item.state,
+    contacts: [item.exactAt, item.previousExactAt, item.nextExactAt],
+    nowMs,
+    timezone
+  });
+  const lectura = transitMeaning({
+    transitPlanet: item.transitPlanet,
+    natalPoint: item.natalPoint,
+    aspect: item.aspect,
+    state: estado.state,
+    natalHouse: item.natalHouse
+  });
+  return {
+    headline: transitHeadline(item),
+    chip: estado.chip,
+    meaning: lectura.meaning,
+    action: lectura.action
+  };
+}
+
+// ---------------------------------------------------------------------------
 // La línea de tiempo, como datos
 // ---------------------------------------------------------------------------
 
@@ -172,11 +248,11 @@ export type TimelineMark = {
   atMs: number;
   /** Posición sobre la ventana, 0–1. */
   ratio: number;
-  /** `INICIO` · `CIERRE` · `EXACTO` · `HOY` · `HOY · EXACTO`. */
+  /** `INICIO` · `CIERRE` · `EXACTO` · `EXACTO 14:20` · `HOY`. */
   label: string;
   /** `12 SEP`, y con año (`12 SEP 2027`) cuando la ventana cruza el año. */
   dateLabel: string;
-  /** Hoy cae en el mismo día civil que un contacto exacto. */
+  /** Este contacto exacto cae en el mismo día civil que hoy. */
   isTodayContact: boolean;
 };
 
@@ -199,9 +275,7 @@ export const TIMELINE_LABEL = {
   start: "INICIO",
   end: "CIERRE",
   contact: "EXACTO",
-  today: "HOY",
-  /** Hoy y el contacto exacto caen el mismo día: una marca, un rótulo. */
-  todayContact: "HOY · EXACTO"
+  today: "HOY"
 } as const;
 
 /**
@@ -215,10 +289,15 @@ export const TIMELINE_LABEL = {
  * - **HOY se dibuja.** Sin esa marca la línea era una ventana abstracta y no
  *   había forma de ver, de un vistazo, si el contacto ya pasó o todavía falta.
  *   Sólo se dibuja si hoy cae DENTRO de la ventana: fuera de ella no hay dónde
- *   ponerla sin mentir.
- * - **Coincidencia.** Si hoy es el día de un contacto exacto, las dos marcas se
- *   fusionan en una sola (`HOY · EXACTO`). Dos puntos superpuestos en el mismo
- *   milímetro se leían como un error de dibujo.
+ *   ponerla sin mentir. Su posición es la del INSTANTE actual (`nowMs`), no la
+ *   del día civil: es dónde estás parado, con la precisión que la línea tiene.
+ * - **HOY y EXACTO son dos hitos, aunque compartan fecha (QA22-010).** Antes se
+ *   fusionaban en una marca `HOY · EXACTO` cuando caían el mismo día, y ahí la
+ *   línea perdía justo la distinción que promete: la persona no podía saber si
+ *   el punto era el día o el pico, ni si el pico ya había pasado. Ahora HOY cae
+ *   en `nowMs` y el contacto en su instante exacto, y el contacto que es de hoy
+ *   lleva la HORA en el rótulo (`EXACTO 14:20`), que es lo que vuelve
+ *   inequívoco cuál es cuál.
  * - **El año aparece cuando hace falta.** `12 SEP` y `3 ENE` en la misma línea
  *   no dicen que hay catorce meses entre los dos. Si los bordes caen en años
  *   distintos, TODAS las fechas llevan el año: media línea con año y media sin
@@ -299,19 +378,23 @@ export function transitTimeline(input: {
 
   for (const at of contactos) {
     const esHoy = todayIsContact && at === contactoDeHoy;
+    // La hora sólo entra cuando el contacto es HOY: es el único caso en que dos
+    // hitos comparten fecha y hace falta separarlos. `formatLocalTime` devuelve
+    // `null` si el sistema no resuelve la zona, y ahí el rótulo queda sin hora
+    // en vez de mostrar una inventada.
+    const hora = esHoy ? formatLocalTime(at, timezone) : null;
     marks.push({
-      // Fusión: cuando hoy es el contacto, la marca es UNA y su tipo es `today`
-      // —el cobre gana— con el rótulo que dice las dos cosas.
-      kind: esHoy ? "today" : "contact",
+      kind: "contact",
       atMs: at,
       ratio: ratio(at),
-      label: esHoy ? TIMELINE_LABEL.todayContact : TIMELINE_LABEL.contact,
+      label: hora ? `${TIMELINE_LABEL.contact} ${hora}` : TIMELINE_LABEL.contact,
       dateLabel: fecha(at),
       isTodayContact: esHoy
     });
   }
 
-  if (todayInside && !todayIsContact) {
+  // HOY siempre que caiga dentro, comparta o no fecha con un contacto.
+  if (todayInside) {
     marks.push({
       kind: "today",
       atMs: input.nowMs,
@@ -369,8 +452,11 @@ function anuncio(input: {
   const partes = input.marks.map((mark) => {
     if (mark.kind === "start") return `empieza el ${fecha(mark)}`;
     if (mark.kind === "end") return `cierra el ${fecha(mark)}`;
-    if (mark.isTodayContact) return `hoy, ${fecha(mark)}, es el contacto exacto`;
     if (mark.kind === "today") return `hoy es el ${fecha(mark)}`;
+    if (mark.isTodayContact) {
+      const hora = formatLocalTime(mark.atMs, input.timezone);
+      return hora ? `el contacto exacto es hoy a las ${hora}` : "el contacto exacto es hoy";
+    }
     return `contacto exacto el ${fecha(mark)}`;
   });
   const cabeza = input.estimated

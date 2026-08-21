@@ -250,7 +250,10 @@ test("las cinco pestañas son stacks propios y conservan la barra al abrir detal
 test("las rutas nuevas de Tránsitos son wrappers resueltos por plataforma fuera de app", () => {
   const casos = [
     ["app/(tabs)/transitos/momento.tsx", "transitos-momento"],
-    ["app/(tabs)/transitos/arco/[arcId].tsx", "transitos-arco"]
+    ["app/(tabs)/transitos/arco/[arcId].tsx", "transitos-arco"],
+    // El detalle de una capa dentro de la sección: la misma pantalla que abre
+    // Hoy, apilada en este stack para que "volver" devuelva a `Tu momento`.
+    ["app/(tabs)/transitos/capa/[layer].tsx", "transitos-capa"]
   ] as const;
 
   for (const [ruta, modulo] of casos) {

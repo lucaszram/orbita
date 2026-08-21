@@ -528,20 +528,53 @@ export function publishOwnedValue<T>(
 }
 
 /**
+ * Cuánto puede durar la espera del webhook antes de ofrecer reparación.
+ *
+ * Vive acá, y no en la pantalla, porque es el mismo número para las dos cosas
+ * que tienen que coincidir: el umbral con el que se decide la fase y el plazo
+ * que la pantalla arma en su timer. Con una copia en cada lado, cambiar uno
+ * dejaba una franja en la que la fase decía una cosa y el reloj otra.
+ */
+export const NATIVE_ACTIVATION_RECOVERY_MS = 20_000;
+
+/**
  * ¿De dónde viene el acceso que la pantalla afirma?
  *
  * `activating` es el estado honesto entre una compra que la tienda ya aceptó y
- * el webhook que todavía no llegó a Convex. Se muestra, pero no abre nada: los
- * gates siguen leyendo `subscriptions.getCurrent`.
+ * el webhook que todavía no llegó a Convex. `recoverable` es ESA MISMA espera
+ * cuando ya duró más de `NATIVE_ACTIVATION_RECOVERY_MS`: no afirma nada nuevo
+ * —la compra sigue confirmada por la tienda y sin confirmar por Convex— pero
+ * deja de prometer que falta poco y habilita las salidas que reparan sin
+ * volver a cobrar.
+ *
+ * Ninguna de las dos abre nada: los gates siguen leyendo
+ * `subscriptions.getCurrent`.
  */
-export type NativeActivationPhase = "idle" | "activating" | "confirmed";
+export type NativeActivationPhase = "idle" | "activating" | "recoverable" | "confirmed";
 
+/**
+ * El tiempo entra como DATO, no como reloj interno.
+ *
+ * La función no mide nada: recibe cuánto lleva la espera y contesta. Así la
+ * frontera de los veinte segundos se prueba en node, sin timers falsos, y la
+ * pantalla queda como único lugar donde existe un `setTimeout`.
+ *
+ * `elapsedMs` es opcional a propósito: sin dato, la espera recién empieza. Un
+ * `NaN` o un valor negativo caen del mismo lado conservador —`activating`—,
+ * porque adelantar la reparación no es más seguro que atrasarla: sólo cambia
+ * qué se le ofrece a alguien cuyo cargo ya existe.
+ */
 export function nativeActivationPhase(input: {
   backendIsPro: boolean | undefined;
   storeConfirmed: boolean;
+  elapsedMs?: number;
 }): NativeActivationPhase {
   if (input.backendIsPro === true) return "confirmed";
-  return input.storeConfirmed ? "activating" : "idle";
+  if (!input.storeConfirmed) return "idle";
+  const elapsed = input.elapsedMs;
+  return typeof elapsed === "number" && elapsed >= NATIVE_ACTIVATION_RECOVERY_MS
+    ? "recoverable"
+    : "activating";
 }
 
 

@@ -17,20 +17,15 @@ import {
   RELATIONSHIP_LOCKED_DIMENSIONS,
   RELATIONSHIP_READABLE_COUNT,
   RELATIONSHIP_TIME_UNLOCK_DIMENSIONS,
-  relationshipComparisonSummary,
   relationshipDriverShortName,
-  relationshipDimensionTone,
-  relationshipSummaryLine,
   relationshipGaps,
   relationshipGapsBlameOther,
   relationshipGapsBlameOwn,
-  relationshipGeneralOnlyShare,
   relationshipHeadline,
   relationshipLockedDimensionsNote,
   relationshipModeHasCalculation,
   relationshipModeIsGeneral,
-  relationshipResultMode,
-  relationshipToneVoice
+  relationshipResultMode
 } from "../src/domain/relationships";
 import type { RelationshipProfile } from "../src/services/relationshipsApi";
 import {
@@ -50,6 +45,13 @@ const VINCULOS_ROUTES = [
   "app/(tabs)/vinculos/conectar.tsx",
   "app/(tabs)/vinculos/[profileId].tsx"
 ] as const;
+
+/**
+ * La pantalla del resultado. Se declara acá arriba porque desde 4B la miran dos
+ * grupos de pruebas: las del grafo —qué llega al bundle nativo— y las
+ * estructurales de los dos frames canónicos, más abajo.
+ */
+const RESULTADO = "src/screens/v492/VinculosResultScreen.tsx";
 
 function fuenteNativa(entry: (typeof VINCULOS_ROUTES)[number]) {
   return [...reachableFrom([entry], "native")]
@@ -137,7 +139,10 @@ test("Conectar ofrece signo, fecha y carta completa sin fabricar precisión", ()
   assert.match(source, /birthTimePrecision\b/);
   assert.match(source, /(?:searchPlaces|geocod|Photon)/i, "la carta completa debe resolver el lugar real");
   assert.match(source, /(?:placeTimezone|atCoordinates|withResolvedTimezone)/, "la carta completa debe resolver la zona del lugar");
-  assert.match(source, /saved\.profileId|profile\.profileId/, "al guardar se abre el perfil persistido");
+  // El id que se usa después de guardar es el que devolvió el backend, nunca uno
+  // armado en el front. Desde QA22-015 ese id no abre la lectura: confirma el
+  // alta en la raíz de Vínculos (ver `test/vinculosQA22.test.ts`).
+  assert.match(source, /saved\.profileId|profile\.profileId/, "se usa el perfil persistido");
 
   assert.doesNotMatch(
     source,
@@ -170,7 +175,16 @@ test("signo contra signo es general; fecha y carta muestran cinco dimensiones re
   assert.match(source, /data\.resolvedLevel\b/);
   assert.match(source, /data\.dimensions\.map\s*\(/);
   assert.match(source, /dimension\.label\b/);
-  assert.match(source, /dimension\.summary\b/);
+  // Lo que explica cada dimensión ya NO es `dimension.summary` —la plantilla por
+  // tono del backend, idéntica en las cinco salvo el nombre—: es la LECTURA
+  // armada en el dominio sobre la evidencia por contacto. Las cuatro piezas que
+  // esa lectura publica tienen que llegar a la pantalla, y los contactos con
+  // ellas.
+  assert.match(source, /relationshipReading\(data\)/);
+  assert.match(source, /dimension\.facilitates\b/);
+  assert.match(source, /dimension\.strains\b/);
+  assert.match(source, /dimension\.invitation\b/);
+  assert.match(source, /dimension\.contactsList\b/);
   assert.match(source, /dimension\.drivers\b/);
   assert.match(
     source,
@@ -243,7 +257,8 @@ test("Vínculos nativo no alcanza mocks ni la pantalla Próximamente anterior", 
 // genérico repetido; estos gates cubren exactamente esas diferencias.
 // ---------------------------------------------------------------------------
 
-const RESULTADO = "src/screens/v492/VinculosResultScreen.tsx";
+// `RESULTADO` ya está declarado arriba, junto a las rutas: desde 4B lo miran los
+// dos grupos de pruebas y una segunda declaración en el mismo módulo no compila.
 
 /** Perfil guardado mínimo, con los campos que la regla del encabezado mira. */
 const perfil = (over: Partial<RelationshipProfile> = {}): RelationshipProfile =>
@@ -320,78 +335,57 @@ test("el resultado arma el encabezado del canon: VOS Y … y el nivel con su bar
   assert.match(source, /relationshipBirthLine\(persona\)/);
 });
 
-test("POR DIMENSIÓN trae su leyenda y la leyenda dice qué mide la barra", () => {
+test("POR DIMENSIÓN trae su leyenda, y la leyenda ya no describe una barra", () => {
   const source = sinComentarios(leer(RESULTADO));
 
   assert.match(source, /POR DIMENSIÓN/);
+  // QA22-020: la barra se fue. La leyenda describe lo que la fila DICE —cuántos
+  // contactos y hacia dónde se inclinan—, y sigue negando el porcentaje.
   assert.match(
     source,
-    /LAS BARRAS CUENTAN CONTACTOS REALES ENTRE LAS DOS CARTAS · NO SON UN PORCENTAJE DE COMPATIBILIDAD/
+    /CADA DIMENSIÓN DICE CUÁNTOS CONTACTOS REÚNE Y HACIA DÓNDE SE INCLINAN · NO ES UN PORCENTAJE DE COMPATIBILIDAD · NO HAY PUNTAJE/
   );
-  assert.match(
-    source,
-    /LA BARRA MUESTRA CUÁNTO SE PUEDE LEER CON UN SIGNO · NO ES UN PORCENTAJE DE COMPATIBILIDAD/
-  );
-  // El LARGO de la barra cuenta contactos contra el máximo de la pantalla. Ese
-  // número no puede ser el balance fluido/tenso del backend: dibujado como
-  // largo, se lee como "cuánto compatibilizan", que es justo lo que la leyenda
-  // niega.
-  assert.match(source, /relationshipDriverShare\(contactos,\s*maximo\)/);
+  assert.match(source, /NO ES UN PORCENTAJE DE COMPATIBILIDAD`/);
+  assert.doesNotMatch(source, /LAS BARRAS CUENTAN CONTACTOS REALES/);
+  assert.doesNotMatch(source, /LA BARRA MUESTRA CUÁNTO SE PUEDE LEER/);
   assert.doesNotMatch(
     source,
-    /proporcion=\{[^}]*dimension\.value/,
-    "el balance del sobre no puede dibujarse como LARGO de la barra"
+    /EL COLOR DICE SI PESAN MÁS LOS CONTACTOS FLUIDOS O LOS DE TENSIÓN/,
+    "ya no hay un color que explicar: el balance está escrito"
   );
 });
 
-test("el color de cada barra sale de la evidencia de esa dimensión, y se dice", () => {
-  // El frame pinta de azul las dimensiones fluidas y de cobre las tensas; la app
-  // pintaba las cinco de cobre. El tono sale del balance apoyo/tensión que el
-  // backend publica en `dimension.value` (0,5 + (apoyo − tensión) / (2 · total)),
-  // no de un puntaje global ni de un color fijo.
-  assert.equal(relationshipDimensionTone(0.9), "fluido");
-  assert.equal(relationshipDimensionTone(0.51), "fluido");
-  // Empate y ambivalencia van al mismo tono que la tensión: el canon reserva el
-  // azul para lo francamente fluido.
-  assert.equal(relationshipDimensionTone(0.5), "tenso");
-  assert.equal(relationshipDimensionTone(0.2), "tenso");
-  // Un sobre viejo sin el campo no inventa un color "bueno".
-  assert.equal(relationshipDimensionTone(undefined), "tenso");
-  assert.equal(relationshipDimensionTone(Number.NaN), "tenso");
-
-  // Los dos tonos se dicen en palabras, así que el color no agrega una lectura
-  // que el texto no tenga.
-  assert.notEqual(relationshipToneVoice("fluido"), relationshipToneVoice("tenso"));
-  assert.match(relationshipToneVoice("fluido"), /fluidos/);
-  assert.match(relationshipToneVoice("tenso"), /tensión/);
-
-  const source = sinComentarios(leer(RESULTADO));
-  assert.match(source, /relationshipDimensionTone\(dimension\.value\)/);
-  // Mapeo invertido el 2026-08-19 (decisión de Lucas en iPhone): lo fluido va
-  // en el COBRE de la marca —cálido, es lo que más se llena— y la tensión en el
-  // azul acero. La semántica no cambia: el color sigue diciendo balance, nunca
-  // cantidad; un color por cantidad convertiría la barra en un puntaje.
-  assert.match(source, /tone=\{tono === "fluido" \? "copper" : "harmony"\}/);
-  assert.match(source, /relationshipToneVoice\(tono\)/, "el tono también se anuncia");
-  // Y la leyenda lo declara: un color sin explicar es un puntaje escondido.
-  assert.match(source, /EL COLOR DICE SI PESAN MÁS LOS CONTACTOS FLUIDOS O LOS DE TENSIÓN/);
-});
-
-test("cada dimensión se explica con su contacto real, no con la plantilla del sobre", () => {
+test("cada dimensión se explica con su evidencia real, no con la plantilla del sobre", () => {
   const source = sinComentarios(leer(RESULTADO));
 
   // Éste es el FAIL exacto de 09: "Cómo se hablan" y "Cómo se cuidan" traían la
   // MISMA frase cambiando el nombre, porque las dos venían de `dimension.summary`,
-  // que el backend arma por tono. El texto tiene que salir del contacto.
-  assert.match(source, /const principal = dimension\.drivers\[0\]/);
-  assert.match(
-    source,
-    /texto=\{principal \?\? dimension\.summary\}/,
-    "el resumen genérico sólo vale cuando NO hay ningún contacto que mostrar"
-  );
-  // Y los demás contactos siguen accesibles, no descartados.
-  assert.match(source, /dimension\.drivers\.slice\(1\)/);
-  assert.match(source, /CONTACTOS MÁS/);
+  // que el backend arma por tono. Desde 4B cada dimensión declara TRES cosas, y
+  // las tres salen de la evidencia por contacto.
+  assert.match(source, /dimension\.facilitates/);
+  assert.match(source, /dimension\.strains/);
+  assert.match(source, /dimension\.invitation/);
+  assert.doesNotMatch(source, /dimension\.summary/, "el resumen por tono ya no se muestra");
+  // Y los contactos siguen accesibles, ahora todos detrás de una acción que los
+  // nombra (QA22-019).
+  assert.match(source, /relationshipContactsToggleLabel\(dimension\)/);
+  assert.match(source, /dimension\.contactsList\.map/);
+  assert.doesNotMatch(source, /CONTACTOS MÁS/, "el control genérico se reemplazó por el copy exigido");
+
+  // Y la fila de una dimensión no vuelve a dibujar la barra ni a leer el valor
+  // del contrato. `dimension.value` sigue publicándose —es aditivo y los
+  // clientes viejos lo usan—, pero acá no entra: era el número que la barra
+  // convertía en un porcentaje de compatibilidad (QA22-020).
+  const fila = /function DimensionLeida\(\{[\s\S]*?\n\}\n/.exec(source)?.[0] ?? "";
+  assert.ok(fila, "no se encontró el cuerpo de DimensionLeida");
+  assert.doesNotMatch(fila, /MeterBar/, "la barra de la comparación se fue");
+  assert.doesNotMatch(fila, /dimension\.value/, "el valor del contrato no vuelve por la ventana");
+
+  // La otra barra sí se queda: `NIVEL DE DATOS` no mide el vínculo, dice en qué
+  // escalón de tres está el perfil guardado y lo anuncia como "N de 3".
+  const nivel = /function NivelDeDatos\(\{[\s\S]*?\n\}\n/.exec(source)?.[0] ?? "";
+  assert.ok(nivel, "no se encontró el cuerpo de NivelDeDatos");
+  assert.match(nivel, /<MeterBar/, "el escalón del nivel conserva su riel");
 });
 
 test("el nivel incompleto lista qué habilita cada dato y ofrece el botón real", () => {
@@ -403,7 +397,9 @@ test("el nivel incompleto lista qué habilita cada dato y ofrece el botón real"
   // `COMPLETAR SUS DATOS` era sólo texto; ahora es un botón que abre los datos
   // guardados de ESA persona —con su `profileId`— para editarlos sin duplicarla.
   assert.match(source, /label="COMPLETAR SUS DATOS"/);
-  assert.match(source, /\/vinculos\/conectar\?profileId=\$\{persona\.profileId\}/);
+  // El destino sale del dominio (`relationshipEditHref`), que es el mismo que usa
+  // "Editar datos de …": son la misma pantalla y la misma persona.
+  assert.match(source, /relationshipEditHref\(persona\.profileId\)/);
   assert.match(source, /align="start"/, "el botón se apoya en el margen, como el frame");
   // Y no aparece cuando no hay nada que completar.
   assert.match(source, /nivel !== "chart_to_chart" \? \(\s*<QueFalta/);
@@ -448,15 +444,13 @@ test("la escalera del nivel 01 es la canónica: una lectura de cinco, cuatro por
   assert.match(nota, /Las otras cuatro necesitan la fecha completa/);
   assert.doesNotMatch(nota, /otras cinco/);
 
-  // La barra del estilo general es 1 sobre las cinco superficies, no 1/6 y no
-  // un puntaje.
-  assert.ok(Math.abs(relationshipGeneralOnlyShare() - 1 / 5) < 1e-9);
-
   const pantalla = sinComentarios(leer(RESULTADO));
   assert.match(pantalla, /relationshipLockedDimensionsNote\(\)/);
-  assert.match(pantalla, /proporcion=\{relationshipGeneralOnlyShare\(\)\}/);
-  // El riel del estilo general respeta el azul canónico del frame.
-  assert.match(pantalla, /tono="fluido"/);
+  // La lectura del signo solo es 1 de las cinco superficies, dicha como CUENTA
+  // y no como riel: una barra ahí se leía como una medida de afinidad
+  // (QA22-020).
+  assert.match(pantalla, /1 LECTURA DE \$\{RELATIONSHIP_READABLE_COUNT\}/);
+  assert.doesNotMatch(pantalla, /relationshipGeneralOnlyShare/);
   // Y las listas se dibujan desde la escalera, no desde las cinco dimensiones.
   assert.match(pantalla, /RELATIONSHIP_DATE_UNLOCKS\.map/);
   assert.match(pantalla, /RELATIONSHIP_TIME_UNLOCK_DIMENSIONS\.map/);
@@ -612,58 +606,36 @@ test("agregar una persona es un flujo de tres pasos; editar sigue siendo una pan
   assert.match(form, /PASO 1 DE 3/, "el paso se anuncia");
   assert.match(form, /PASO 2 DE 3/);
   assert.match(form, /PASO 3 DE 3/);
-  assert.match(form, /editando \|\| paso === /, "al editar se ven todos los bloques");
+  // Al editar se ven todos los bloques MENOS el selector de modalidad: el nivel
+  // ahí no es una decisión, es lo que los datos permiten (QA22-018). El detalle
+  // de esa regla vive en `test/vinculosQA22.test.ts`.
+  assert.match(
+    form,
+    /editando \? bloque !== "nivel" : paso === bloque/,
+    "editar muestra los datos y no repite el selector de modalidad"
+  );
   assert.match(form, /label="CONTINUAR"/, "los pasos avanzan con un CTA explícito");
   assert.match(form, /VOLVER AL PASO ANTERIOR/, "y se puede volver sin perder lo cargado");
 });
 
-test("el resumen general dice hechos, nunca un puntaje", () => {
-  // Decisión de producto (Lucas, 2026-08-19): antes de las cinco dimensiones
-  // falta una lectura general. Es FACTUAL —cuántos contactos, qué pesa más,
-  // dónde está el material— porque un resumen con nota sería el puntaje global
-  // de compatibilidad que el canon prohíbe.
-  const d = (label: string, value: number, drivers: string[]) => ({ label, value, drivers });
-
-  const resumen = relationshipComparisonSummary({
-    generalOnly: false,
-    dimensions: [
-      d("Cómo se hablan", 0.8, []),
-      d("Deseo", 0.9, [
-        "Su Venus forma un trígono con tu Sol, un contacto de 120°; puede quedar entre 0,0° y 1,2° de su máxima precisión.",
-        "Su Marte forma un trígono con tu Marte, un contacto de 120°."
-      ]),
-      d("Fricción", 0.3, ["Su Marte forma un trígono con tu Marte, un contacto de 120°."]),
-      d("Proyecto en común", 0.7, ["Su Júpiter forma un trígono con tu Sol, un contacto de 120°."])
-    ]
-  });
-  assert.ok(resumen);
-  assert.equal(resumen.contactos, 4);
-  const frase = relationshipSummaryLine(resumen);
-  // PUNTUAL del vínculo: nombra el contacto que más pesa, no una estadística.
-  assert.match(frase, /su Venus con tu Sol/, "abre nombrando el contacto principal");
-  assert.match(frase, /Deseo/, "y su dimensión");
-  assert.match(frase, /4 contactos reales/);
-  assert.match(frase, /fluidos/i, "el balance se dice con el vocabulario del canon");
-  assert.doesNotMatch(frase, /puntaje|compatibilidad|%/i);
-
+test("un contacto se sabe nombrar corto, y una frase desconocida no se inventa", () => {
+  // El nombre corto es lo que vuelve puntual la síntesis ("su Venus con tu Sol")
+  // sin reescribir la oración astrológica del backend. La síntesis completa se
+  // prueba en `test/vinculosLecturaQA22.test.ts`, que es donde vive desde 4B.
+  assert.equal(
+    relationshipDriverShortName(
+      "Su Venus forma un trígono con tu Sol, un contacto de 120°; está a 0,4° de su máxima precisión."
+    ),
+    "su Venus con tu Sol"
+  );
   // Las superposiciones de casa también se saben nombrar.
   assert.equal(
     relationshipDriverShortName("Su Sol cae en tu casa 7, vinculada con pareja y asociaciones."),
     "su Sol en tu casa 7"
   );
-  // Una frase que no matchea NO inventa: cae a null y el resumen a su versión contable.
+  // Una frase que no matchea NO inventa: cae a null y la lectura usa su versión
+  // contable.
   assert.equal(relationshipDriverShortName("Texto inesperado del futuro."), null);
-
-  // Sin ningún contacto no hay nada que resumir: la fila general ya lo dice.
-  assert.equal(
-    relationshipComparisonSummary({ generalOnly: false, dimensions: [d("Deseo", 0.9, [])] }),
-    null
-  );
-  // La lectura de un signo solo tampoco lleva resumen: es una sola fila.
-  assert.equal(
-    relationshipComparisonSummary({ generalOnly: true, dimensions: [] }),
-    null
-  );
 });
 
 test("la pantalla monta el resumen antes de POR DIMENSIÓN", () => {

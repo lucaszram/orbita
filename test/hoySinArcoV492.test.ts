@@ -137,8 +137,14 @@ test("/hoy/arco queda sólo como compatibilidad: redirige al detalle canónico",
   // sería contestarle «no está» a alguien que pidió un detalle concreto.
   assert.match(ruta, /if \(phase === "cargando"\)[\s\S]{0,200}?<LoadingBlock \/>/);
 
-  // El detalle por `arcId` es la ruta canónica, en su sección, y vuelve a la lista.
+  // El detalle por `arcId` es la ruta canónica, en su sección, y vuelve a la
+  // lista. Desde QA22-027 el respaldo pasa por el origen declarado: sin origen
+  // —que es como llega desde acá y desde la lista— sigue siendo `/transitos`;
+  // con `?desde=momento` vuelve a `Tu momento` (ver `momentoNavegacionQA22`).
   const porArco = sinComentarios(leer("src/routes/v492/transitos-arco.tsx"));
-  assert.match(porArco, /<ArcoDetailScreen arcId=\{arcId\} fallbackHref="\/transitos" \/>/);
+  assert.match(
+    porArco,
+    /<ArcoDetailScreen arcId=\{arcId\} fallbackHref=\{detailFallbackHref\(desde, "\/transitos"\)\} \/>/
+  );
   assert.match(porArco, /<Redirect href="\/transitos" \/>/, "sin arcId no hay detalle que abrir");
 });

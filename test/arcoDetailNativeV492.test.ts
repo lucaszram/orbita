@@ -195,7 +195,7 @@ test("un arco sin cálculo se distingue de un arco que salió de la lista", () =
 
 test("el cuerpo del detalle y su trazabilidad salen del MISMO sobre ORB-TRN-001", () => {
   const source = sinComentarios(leer(ARCO));
-  const cuerpo = seccion(source, "function ArcoContent", "function tituloContactos");
+  const cuerpo = seccion(source, "function ArcoContent", "function AdelantoDelTransito");
 
   // El sobre entra por prop tipada como arco: pasar el ranking no compilaría.
   assert.match(
@@ -243,18 +243,26 @@ test("el cuerpo del detalle y su trazabilidad salen del MISMO sobre ORB-TRN-001"
     "la línea de tiempo dibuja la ventana del arco, no la del ranking"
   );
   assert.match(cuerpo, /arco\.passes\.map/, "las pasadas son las del arco calculado");
-  assert.match(cuerpo, /<Body[^>]*>\{arco\.summary\}<\/Body>/, "el resumen es el del arco calculado");
+  // El resumen sigue siendo el del arco calculado; lo único que se le pone al día
+  // es la frase de la etapa, para que no contradiga al chip (QA22-009).
+  assert.match(
+    cuerpo,
+    /const resumen = summaryWithCanonicalState\(arco\.summary, estado\.state\)/,
+    "el resumen sale del arco y se alinea con la etapa canónica"
+  );
+  assert.match(cuerpo, /<Body[^>]*>\{resumen\}<\/Body>/, "y es el que se dibuja");
 });
 
-test("el detalle pide el ORB-TRN-001 del arcId y sólo usa el ranking para nombrarlo", () => {
+test("el detalle pide el ORB-TRN-001 del arcId y sólo usa el ranking para el adelanto", () => {
   const source = sinComentarios(leer(ARCO));
 
   assert.match(source, /useTransitArc/, "un arcId que no es el principal necesita su propio sobre");
   const resolver = seccion(source, "function ArcoResolver", "function ArcoContent");
 
-  // El ranking aparece UNA vez y sólo para el titular de espera.
+  // El ranking aparece UNA vez y sólo para el adelanto de QA22-011: título,
+  // etapa, significado y acción mientras el cálculo del arco viaja.
   const usos = resolver.match(/transitRanking/g)?.length ?? 0;
-  assert.equal(usos, 1, "el ranking sólo puede dar el nombre del tránsito mientras se calcula");
+  assert.equal(usos, 1, "el ranking sólo puede alimentar el adelanto, y una sola vez");
   assert.match(
     resolver,
     /transitRanking\.data\?\.items\.find\([\s\S]{0,120}?\)/,
@@ -262,9 +270,17 @@ test("el detalle pide el ORB-TRN-001 del arcId y sólo usa el ranking para nombr
   );
   assert.match(
     resolver,
-    /nombreDeRespaldo = enRanking \? transitHeadline\(enRanking\) : null/,
-    "y de ese ítem se toma el titular, nada más"
+    /adelanto = enRanking \? transitPreviewFromRanking\(enRanking, nowMs, timezone\) : null/,
+    "y de ese ítem sale el adelanto, resuelto por el dominio"
   );
+  // El adelanto es una forma cerrada: la pantalla no puede sacarle una fecha a la
+  // fila del ranking por otro camino.
+  const adelanto = sinComentarios(leer("src/domain/transitDetail.ts"));
+  const tipo = /export type TransitPreview = \{[\s\S]*?\n\};/.exec(adelanto)?.[0] ?? "";
+  assert.ok(tipo, "no se encontró la forma del adelanto");
+  for (const prohibido of ["At", "starts", "ends", "window", "passes"]) {
+    assert.ok(!tipo.includes(prohibido), `el adelanto no puede publicar «${prohibido}»`);
+  }
 
   // El sobre específico es el que se le pasa al cuerpo.
   assert.match(resolver, /envelope=\{especifico\.envelope\}/);
@@ -274,12 +290,12 @@ test("el detalle pide el ORB-TRN-001 del arcId y sólo usa el ranking para nombr
     "reutilizar el sobre del bundle exige que el arco sea EL principal"
   );
 
-  // El titular de espera no puede convertirse en el titular del detalle: el cuerpo
-  // lo dibuja sólo en la rama sin dato.
-  const cuerpo = seccion(source, "function ArcoContent", "function tituloContactos");
+  // El adelanto no puede convertirse en el cuerpo del detalle: con el arco
+  // calculado, todo sale del arco.
+  const cuerpo = seccion(source, "function ArcoContent", "function AdelantoDelTransito");
   const conDato = cuerpo.slice(cuerpo.indexOf("const esExacto"));
   assert.ok(
-    !conDato.includes("nombreDeRespaldo"),
+    !conDato.includes("adelanto"),
     "con el arco calculado el titular sale del arco, no del ranking"
   );
   assert.match(conDato, /<Title>\{transitHeadline\(arco\)\}<\/Title>/);
