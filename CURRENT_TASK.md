@@ -70,6 +70,44 @@ actualizan dependencias dentro de este RC porque el build 23 archivó bien con l
 misma base y hacerlo ampliaría el riesgo. La revisión adicional de Claude se
 interrumpió al quedar sin salida ni cambios; no ejecutó acciones externas.
 
+### Promoción ejecutada · build 24 recibido por Apple
+
+- **Integración.** Los cambios se separaron en `6d7a190` (backend compatible),
+  `949f8b1` (cierre QA23 de cliente) y `8d81c35` (preparación del build 24). El
+  PR [#76](https://github.com/lucaszram/orbita/pull/76) pasó tests, typecheck,
+  export web y previews, y se integró en `release/1.0.0` mediante el merge
+  `536c337069ac5379d2e89d3db5c988b975d80270`. Ese es el commit exacto de
+  fuente usado para producir el binario; `qa22-fixes` permaneció intacto.
+- **Convex productivo.** Antes del deploy se exportó la copia completa con
+  storage `/private/tmp/orbita-convex-prod-pre-qa23-536c337.zip` (SHA-256
+  `1b5f15de8a49f7b31e232a1b011b35632ce7e6391267785703660d0aa5febcd4`).
+  El deploy aditivo terminó correctamente en `exciting-bat-311`; validó schema,
+  no eliminó índices y el smoke read-only `void:suggestedToday` terminó en
+  verde. El spec público posterior conserva 141 funciones y las superficies
+  compatibles requeridas (`layers`, `relationships`, borrado v2 y reconcile).
+- **Binario.** EAS local archivó y firmó `/private/tmp/orbita-1.0.0-24.ipa`
+  (49.234.862 bytes; SHA-256
+  `692279bcddf04e83db04797aafd7299bea8232532538c38e954fdcc5c6ceaca5`).
+  La inspección del IPA confirmó `1.0.0 (24)`, bundle
+  `com.lucasssram.orbita`, nombre `Órbita`, ejecutable arm64, entitlement
+  `get-task-allow=false`, beta reports activos y perfil vigente hasta
+  2027-07-08. El bundle contiene el host Convex productivo y ninguna referencia
+  al deployment de desarrollo.
+- **TestFlight.** Se reutilizó la clave de App Store Connect ya existente y se
+  la asoció al proyecto para EAS Submit; no se creó otra clave. Apple aceptó el
+  binario y EAS cerró la presentación
+  `e36afb92-0179-4bc9-ba5d-38c665cb54a6` como `finished` el 2026-08-21 a las
+  23:03 ART. Detalle: <https://expo.dev/accounts/lucasssram/projects/orbita/submissions/e36afb92-0179-4bc9-ba5d-38c665cb54a6>.
+  TestFlight: <https://appstoreconnect.apple.com/apps/6788918249/testflight/ios>.
+  Apple puede tardar unos minutos adicionales en completar el procesamiento y
+  mostrar el build a testers internos.
+- **Pendiente de Lucas.** QA física en TestFlight: onboarding de instalación
+  nueva y cuenta existente; aislamiento de borradores; compra sandbox,
+  cancelación, restore y reinicio; estados Free/Plus; offline, reconexión y
+  cambio de cuenta; perfil/comparación de Vínculos; cambio de día de
+  Cumpleluna; splash, deep links, atrás y restauración de scroll. App Review y
+  la salida pública requieren una autorización posterior explícita.
+
 ## Cierre de fuente QA23 · evidencia previa
 
 **Objetivo.** Cerrar en código los hallazgos de QA física del build 23 sobre la
