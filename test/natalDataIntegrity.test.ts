@@ -189,13 +189,14 @@ test("web y nativo rechazan una cuenta completa por el MISMO gate", () => {
   // Y la recuperación de una cuenta preexistente incompleta: al alta no vuelve.
   assert.ok(/EDIT_BIRTH_DATA_ROUTE/.test(puerta), "falta el destino de recuperación");
   const hook = readFileSync(join(ROOT, "src/hooks/useAccountDestination.tsx"), "utf8");
+  const sesion = readFileSync(join(ROOT, "src/hooks/useSessionResilience.tsx"), "utf8");
   assert.ok(
-    /appApi\.onboarding\.getCompletionStatus/.test(hook),
+    /appApi\.onboarding\.getCompletionStatus/.test(sesion),
     "la autoridad es el estado de completitud, no `birthData` suelto"
   );
-  assert.ok(!/birthData\.getCurrent/.test(hook), "existir birthData no prueba que haya carta");
+  assert.ok(!/birthData\.getCurrent/.test(hook + sesion), "existir birthData no prueba que haya carta");
   // No se afirma nada mientras resuelve: sin esto habría un salto visible.
-  assert.ok(/completion !== undefined/.test(hook));
+  assert.ok(/completion !== undefined/.test(sesion));
 });
 
 // --- Una sola ruta de persistencia ------------------------------------------
@@ -227,7 +228,7 @@ test("el cierre se espera dentro de submit, y la salida espera sólo los datos",
   for (const prohibido of ["await createProfile(", "clearDraft()", "router.replace("]) {
     assert.ok(!submit.includes(prohibido), `${prohibido} no puede depender del retorno de la escritura`);
   }
-  const salida = bloqueDesde(FLOW, "const enterApp = async () => {");
+  const salida = bloqueDesde(FLOW, "const abrirOrbita = async () => {");
   const perfil = salida.indexOf("await createProfile(");
   const limpiar = salida.indexOf("clearDraft()");
   const navegar = salida.indexOf("router.replace(");
@@ -249,8 +250,9 @@ test("si la persistencia falla no se crea perfil, no se limpia el borrador y no 
   assert.ok(/submitLock\.current = false/.test(catchBlock), "el lock se libera para poder reintentar");
   // El mismo estado de guardado muestra recuperación inline: no existe una
   // pantalla terminal por fallo del cálculo de la carta.
-  assert.match(FLOW, /<SavingBirthData[\s\S]*?error=\{submitError\}/);
-  assert.match(FLOW, /retrying \? "Guardando…" : "Reintentar guardado"/);
+  assert.match(FLOW, /<SavingBirthData[\s\S]*?: submitError/);
+  assert.match(FLOW, /retryLabel = "Reintentar guardado"/);
+  assert.match(FLOW, /retrying \? "Guardando…" : retryLabel/);
   assert.doesNotMatch(FLOW, /No pudimos guardar tu carta/);
 });
 

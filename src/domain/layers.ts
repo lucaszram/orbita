@@ -596,11 +596,22 @@ export type CumplelunaView = {
  * y acá cada uno se dice como lo que es. El punto medio de una ventana nunca se
  * imprime solo: es el número que el cálculo eligió para poder seguir operando,
  * no una afirmación sobre tu ciclo.
+ *
+ * ## El reloj es el del sobre, no el del aparato (QA23-003)
+ *
+ * `cycleDay`, `daysRemaining` y `progress` son escalares del snapshot: los
+ * calculó el backend en `observedAt` y no se recalculan mientras la pantalla
+ * está abierta. `nextWhen` es lo único que se deriva acá de un instante, así
+ * que ese instante tiene que ser **el mismo**: con `Date.now()` la misma vista
+ * mezclaba dos relojes y podía decir `en 0 días` —o `hoy`— sobre un `FALTAN`
+ * que el sobre había fijado en 1,2 días. Por eso el parámetro se llama
+ * `observedAtMs` y el llamador pasa el `observedAt` del sobre que aportó `data`.
  */
 export function cumplelunaView(
   data: CumplelunaData,
   precision: AnalysisPrecision,
-  nowMs: number,
+  /** `observedAt` del MISMO sobre que trajo `data`. Nunca `Date.now()`. */
+  observedAtMs: number,
   timezone: string
 ): CumplelunaView {
   const proximo = visibleRange(precision, data.nextExactAtRange);
@@ -619,7 +630,7 @@ export function cumplelunaView(
   return {
     nextWhen: proximo
       ? formatDayMonthRange(proximo, timezone)
-      : `${relativeDayLabel(data.nextExactAt, nowMs, timezone)} · ${formatDayMonth(
+      : `${relativeDayLabel(data.nextExactAt, observedAtMs, timezone)} · ${formatDayMonth(
           data.nextExactAt,
           timezone
         )}`,

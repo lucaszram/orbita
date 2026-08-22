@@ -12,10 +12,11 @@ export const unstable_settings = { anchor: "index" };
 /**
  * Stack de la pestaña Vínculos.
  *
- * Tres pantallas: la raíz con tu patrón relacional y tus personas guardadas,
- * el alta de una persona (`conectar`) y la comparación de cada una
- * (`[profileId]`). El segmento estático gana contra el dinámico, así que
- * "conectar" nunca se lee como el id de una persona.
+ * Cuatro pantallas: la raíz con tu patrón relacional y tus personas guardadas,
+ * el alta o edición de una persona (`conectar`), el perfil canónico de cada una
+ * (`[profileId]`) y su comparación, que cuelga del perfil
+ * (`[profileId]/comparacion`, QA23-005). El segmento estático gana contra el
+ * dinámico, así que "conectar" nunca se lee como el id de una persona.
  *
  * En web la ruta histórica sigue siendo `/vinculo`, y ahí se queda.
  */

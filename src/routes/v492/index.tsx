@@ -12,9 +12,10 @@ import {
 } from "@/domain/sessionStart";
 import { useAppState } from "@/hooks/useAppState";
 import { useLiveApp } from "@/hooks/useLiveApp";
+import { useSessionResilience } from "@/hooks/useSessionResilience";
 import { useSignInHydrate } from "@/onboarding/useAccount";
 import { backendConfig } from "@/services/backendProviders";
-import { theme } from "@/theme/theme";
+import { BOOT_ACCENT, BOOT_BACKGROUND, BOOT_TEXT, BOOT_TEXT_MUTED } from "@/theme/boot";
 
 const BACKEND_CONFIGURED = backendConfig.hasConvex && backendConfig.hasClerk;
 // Si Clerk no terminó de cargar en este plazo (p. ej. primera instalación sin
@@ -48,6 +49,14 @@ export default function IndexRoute() {
   // TODO esto. Acá sólo se lee para no dibujar producto si algo lo esquivara.
   const { blocking: pendingDeletionBlocking } = usePendingDeletionGate();
   const { auth } = useLiveApp();
+  /**
+   * La confianza de sesión (QA23-007).
+   *
+   * `resolveStart` no cambia: sigue decidiendo con lo que Clerk dice. Esto se lee
+   * SÓLO para el caso `auth-timeout`, que es donde el arranque tapaba el producto
+   * entero de alguien cuya cuenta sí se puede probar en este teléfono.
+   */
+  const { confidence } = useSessionResilience();
   const hydrate = useSignInHydrate();
   const [recovery, setRecovery] = useState<RecoveryState>("idle");
   const [hasRemoteBirthData, setHasRemoteBirthData] = useState(false);
@@ -156,7 +165,7 @@ export default function IndexRoute() {
   if (surface === "pending-deletion") {
     return (
       <View style={styles.loading}>
-        <ActivityIndicator color={theme.colors.plum} />
+        <ActivityIndicator color={BOOT_ACCENT} />
       </View>
     );
   }
@@ -187,7 +196,20 @@ export default function IndexRoute() {
         />
       );
     case "auth-timeout":
-      // No destructivo: sin confirmación de Clerk no se toca NADA local.
+      // Clerk no confirmó, pero la identidad local puede estar PROBADA igual
+      // (QA23-007): con el último dueño confirmado en el llavero coincidiendo
+      // exactamente con el del perfil en disco, entrar al shell degradado es
+      // mejor que este bloqueo — son los últimos datos de ESA misma cuenta, con
+      // aviso arriba y sin autoridad para comprar, editar la carta ni escribir.
+      //
+      // Sin esta línea el resto del bloque no llegaba a verse: éste es el
+      // arranque en frío sin red, o sea el caso exacto que la identidad previa
+      // existe para cubrir, y acá se cortaba antes de que ningún gate opinara.
+      //
+      // Sin esa prueba —instalación nueva, perfil de invitado, perfil ajeno,
+      // llavero ilegible o web— el bloqueo se conserva tal cual, y sigue siendo
+      // no destructivo: sin confirmación de Clerk no se toca NADA local.
+      if (confidence === "degraded-local") return <Redirect href="/hoy" />;
       return (
         <AuthTimeout
           onRetry={() => {
@@ -201,7 +223,7 @@ export default function IndexRoute() {
     default:
       return (
         <View style={styles.loading}>
-          <ActivityIndicator color={theme.colors.plum} />
+          <ActivityIndicator color={BOOT_ACCENT} />
         </View>
       );
   }
@@ -233,28 +255,39 @@ function AuthTimeout({ onRetry }: { onRetry: () => void }) {
   );
 }
 
+/**
+ * El arranque es OSCURO (QA23-006).
+ *
+ * Estas tres superficies —la espera, el reintento de recuperación y el timeout
+ * de Clerk— pintaban `theme.colors.background`, el crema `#fff8f0` del MVP
+ * legado: eran los frames claros del arranque, y encima con el spinner en
+ * `plum`, que sobre el fondo de Órbita es casi invisible. Ahora es el mismo
+ * `#0A0B0E` del shell, así que entrar al producto no cambia el color de la
+ * pantalla, y el texto y las acciones vienen del mismo módulo que el fondo para
+ * que no puedan quedar oscuro sobre oscuro.
+ */
 const styles = StyleSheet.create({
   errorBody: {
-    color: theme.colors.muted,
+    color: BOOT_TEXT_MUTED,
     fontSize: 14,
     marginTop: 8,
     textAlign: "center"
   },
   errorTitle: {
-    color: theme.colors.ink,
+    color: BOOT_TEXT,
     fontSize: 17,
     fontWeight: "600",
     textAlign: "center"
   },
   loading: {
     alignItems: "center",
-    backgroundColor: theme.colors.background,
+    backgroundColor: BOOT_BACKGROUND,
     flex: 1,
     justifyContent: "center",
     paddingHorizontal: 32
   },
   retryBtn: {
-    borderColor: theme.colors.plum,
+    borderColor: BOOT_ACCENT,
     borderRadius: 999,
     borderWidth: 1,
     marginTop: 24,
@@ -262,7 +295,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10
   },
   retryText: {
-    color: theme.colors.plum,
+    color: BOOT_ACCENT,
     fontSize: 13,
     fontWeight: "600",
     letterSpacing: 1

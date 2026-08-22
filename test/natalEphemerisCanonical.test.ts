@@ -559,7 +559,11 @@ test("Cumpleluna sin hora evalúa todo el día natal y publica ventanas, no un m
       result.data!.nextExactAtRange!.earliest >= result.observedAt,
       "toda la ventana siguiente debe quedar después del snapshot",
     );
-    assert.equal(result.validUntil, result.data?.nextExactAtRange?.earliest);
+    assert.equal(
+      result.validUntil,
+      state.sky?.validUntil,
+      "los escalares vencen con el cielo antes que con la raíz del próximo ciclo",
+    );
     assert.ok(result.missingInputs.includes("exact_birth_time"));
     assert.match(result.data?.summary ?? "", /intervalo completo.*ventana/i);
     assert.doesNotMatch(result.limitations.join(" "), /elegimos el mediodía/i);

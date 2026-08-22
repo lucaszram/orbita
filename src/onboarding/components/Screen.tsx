@@ -93,10 +93,27 @@ export function Screen({ bg, bgOpacity = 1, wash = 0.55, scroll = false, childre
       ) : null}
       <SafeAreaView style={styles.safe}>
         {scroll ? (
+          /**
+           * Un toque con el teclado abierto TIENE que llegar al control
+           * (QA23-008).
+           *
+           * `keyboardShouldPersistTaps` por defecto es `"never"`: el primer
+           * toque fuera del campo cierra el teclado y **no se entrega al hijo**.
+           * El paso «¿Dónde naciste?» es exactamente eso —se tipea la ciudad y
+           * se toca un resultado de la lista, con el teclado arriba—, así que el
+           * primer toque no elegía nada y había que tocar dos veces. El editor
+           * natal ya lo declaraba por su cuenta; acá vive el shell que montan los
+           * pasos del alta, así que se declara una vez para todos.
+           *
+           * `"handled"` y no `"always"`: un toque en el fondo, en el título o en
+           * el CTA sigue cerrando el teclado como siempre. Sólo se conserva
+           * cuando el hijo de verdad atendió el toque.
+           */
           <ScrollView
             style={styles.safe}
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
           >
             {stage}
           </ScrollView>

@@ -9,7 +9,7 @@
 //
 // Falla (exit 1) si:
 //   · algún test falló;
-//   · pasaron menos de 2347 tests;
+//   · pasaron menos de 2542 tests;
 //   · la salida no tiene resumen (la corrida se cayó antes de terminar).
 //
 // El último punto es el que importa de verdad: sin él, una corrida que explota
@@ -22,7 +22,7 @@ import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 /** Piso de tests. Se sube cuando la suite crece; nunca se baja para tapar un borrado. */
-export const DEFAULT_MINIMUM = 2347;
+export const DEFAULT_MINIMUM = 2542;
 
 /**
  * Lee un contador del resumen final del runner de Node.

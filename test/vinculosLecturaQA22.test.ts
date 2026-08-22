@@ -502,7 +502,7 @@ test("el control de contactos usa el copy exigido, con el N único y la dimensi�
 
   assert.equal(
     relationshipContactsToggleLabel(deseo),
-    `VER LOS ${deseo.contacts} CONTACTOS QUE FORMAN DESEO`
+    `VER LOS ${deseo.contacts} CONTACTOS QUE FORMAN ENERGÍA COMPARTIDA`
   );
   assert.equal(
     relationshipContactsToggleLabel(comunicacion),
@@ -517,9 +517,12 @@ test("el control de contactos usa el copy exigido, con el N único y la dimensi�
   );
   assert.equal(
     relationshipContactsToggleVoice(deseo),
-    `Ver los ${deseo.contacts} contactos que forman Deseo`
+    `Ver los ${deseo.contacts} contactos que forman Energía compartida`
   );
-  assert.match(relationshipContactsCollapseLabel(deseo), /^OCULTAR LOS CONTACTOS QUE FORMAN DESEO$/);
+  assert.match(
+    relationshipContactsCollapseLabel(deseo),
+    /^OCULTAR LOS CONTACTOS QUE FORMAN ENERGÍA COMPARTIDA$/,
+  );
 
   // El N es de contactos ÚNICOS por id, no de filas.
   assert.equal(deseo.contacts, new Set(deseo.contactsList.map((c) => c.id)).size);
@@ -726,11 +729,15 @@ test("la lectura es pura: sin React, sin Convex y sin reloj propio", () => {
   assert.doesNotMatch(lectura, /Math\.random/);
 });
 
-test("las tres rutas de Vínculos y la superficie web quedan como estaban", () => {
+test("las cuatro rutas de Vínculos y la superficie web quedan como estaban", () => {
+  // La comparación pasó a colgar del perfil en QA23-005 (`[profileId]/comparacion`)
+  // y entra en la misma garantía que las otras tres: wrapper neutro, resolución
+  // por plataforma y web en `/vinculo`.
   const rutas = [
     "app/(tabs)/vinculos/index.tsx",
     "app/(tabs)/vinculos/conectar.tsx",
-    "app/(tabs)/vinculos/[profileId].tsx"
+    "app/(tabs)/vinculos/[profileId].tsx",
+    "app/(tabs)/vinculos/[profileId]/comparacion.tsx"
   ] as const;
 
   for (const entry of rutas) {

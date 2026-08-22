@@ -164,8 +164,18 @@ const comparacion = (dimensions: readonly RelationshipDimension[]) => ({
   dimensions: [...dimensions]
 });
 
+/**
+ * La lectura de este fixture, leída como un vínculo ROMÁNTICO declarado.
+ *
+ * Los sobres de acá arriba se arman con `RELATIONSHIP_DIMENSION_LABEL`, que es
+ * el vocabulario romántico —la quinta dimensión se llama `Deseo`—, así que el
+ * tipo se declara para que el rótulo del sobre y el de la lectura sean el
+ * mismo. Estas pruebas son sobre IDENTIDAD y ORDEN de contactos, no sobre el
+ * tipo de vínculo: el vocabulario neutral y su regla viven en
+ * `test/tipoVinculoFrontQA23.test.ts`.
+ */
 function lecturaDe(dimensions: readonly RelationshipDimension[]): RelationshipReading {
-  const lectura = relationshipReading(comparacion(dimensions));
+  const lectura = relationshipReading(comparacion(dimensions), "romantic");
   assert.ok(lectura, "el fixture tiene dimensiones: la lectura no puede ser null");
   return lectura;
 }

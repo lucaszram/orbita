@@ -215,7 +215,7 @@ function HoyContent({
           data={cumplelunaData}
           precision={cumpleluna.precision}
           hoy={cumplelunaHoyAt}
-          nowMs={nowMs}
+          observedAt={cumpleluna.observedAt}
           timezone={timezone}
         />
       ) : null,
@@ -259,7 +259,7 @@ function HoyContent({
           data={cumplelunaData}
           precision={cumpleluna.precision}
           hoy={null}
-          nowMs={nowMs}
+          observedAt={cumpleluna.observedAt}
           timezone={timezone}
         />
       ) : null
@@ -536,6 +536,16 @@ function LunaBloque({ data, yesterday }: { data: MoonOnChartData; yesterday: Moo
  * Los números del ciclo salen de `cumplelunaView`, que con una raíz estimada
  * dice la ventana entera en vez de su centro.
  *
+ * ## Un solo reloj adentro del bloque (QA23-003)
+ *
+ * El bloque combina el titular —`en 11 días`, derivado de un instante— con la
+ * barra y el reloj del ciclo, que son escalares que el backend fijó en
+ * `observedAt`. Los tres tienen que salir del MISMO reloj, así que la vista se
+ * arma con el `observedAt` del sobre del Cumpleluna y no con el `nowMs` de la
+ * pantalla. `nowMs` sigue siendo el de la sesión donde corresponde: decidir si
+ * hoy es el día (`cumplelunaToday`), fechar el encabezado y alimentar las otras
+ * capas, que sí cambian con el día civil.
+ *
  * ## Cada pieza anuncia lo suyo
  *
  * El bloque tiene tres cosas que decir —el resumen del cálculo, el evento y el
@@ -548,17 +558,18 @@ function CumplelunaBloque({
   data,
   precision,
   hoy,
-  nowMs,
+  observedAt,
   timezone
 }: {
   data: CumplelunaData;
   precision: AnalysisPrecision;
   /** El Cumpleluna de hoy con su certeza, o `null` si hoy no es su día. */
   hoy: CumplelunaToday | null;
-  nowMs: number;
+  /** `observedAt` del MISMO sobre que trajo `data`: el reloj del snapshot. */
+  observedAt: number;
   timezone: string;
 }) {
-  const view = cumplelunaView(data, precision, nowMs, timezone);
+  const view = cumplelunaView(data, precision, observedAt, timezone);
   const horaDeHoy =
     precision === "exact" && hoy?.certainty === "exact" ? formatLocalTime(hoy.at, timezone) : null;
   const titular = hoy ? cumplelunaCuando(hoy) : view.nextWhen;

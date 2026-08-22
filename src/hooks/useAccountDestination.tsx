@@ -1,36 +1,37 @@
-import { useQuery } from "convex/react";
 import {
   destinationAllows,
   resolveAccountDestination,
   type AccountDestination
 } from "@/domain/accountDestination";
-import { readClientDraftId } from "@/domain/onboardingDraft";
-import type { OnboardingCompletion } from "@/domain/onboardingReadiness";
+import { applySessionResilience, type SessionConfidence } from "@/domain/sessionResilience";
 import { useAppState } from "@/hooks/useAppState";
 import { useLiveApp } from "@/hooks/useLiveApp";
-import { appApi } from "@/services/appRefs";
+import { useSessionResilience } from "@/hooks/useSessionResilience";
 import { backendConfig } from "@/services/backendProviders";
 
 /**
  * Alimenta el resolver único con el estado real. Cada superficie de entrada usa
  * ESTE hook: si cada una armara su propio estado, volverían a divergir.
+ *
+ * El estado autoritativo de la cuenta (`onboarding.getCompletionStatus`) y el
+ * plazo de confirmación ya no viven acá: los publica `SessionResilienceProvider`
+ * (`@/hooks/useSessionResilience`), montado una sola vez en el layout raíz. Este
+ * hook se monta en CADA `AccountGate`, así que tener la consulta adentro
+ * significaba una suscripción y un `setTimeout` por gate — y con ellos, dos
+ * ideas distintas de "la cuenta ya resolvió" conviviendo en el mismo árbol.
  */
 export function useAccountDestination(): {
   destination: AccountDestination;
   /** Reintento tras un fallo de recuperación de la cuenta. */
   retry: () => void;
+  /** Qué se sabe de la sesión ahora mismo (QA23-007). */
+  confidence: SessionConfidence;
 } {
-  const { isLive, isAuthLoading, userError, retryUser, auth } = useLiveApp();
+  const { isLive, isAuthLoading, userError, auth } = useLiveApp();
   const { isReady, profile, profileOwner } = useAppState();
-  // Estado autoritativo persistido. Sólo se consulta con sesión confirmada.
-  // El `clientDraftId` distingue un alta iniciada en este flujo (vuelve al
-  // onboarding) de una cuenta preexistente incompleta (va al editor de datos).
-  const completion = useQuery(
-    appApi.onboarding.getCompletionStatus,
-    isLive ? { clientDraftId: readClientDraftId() ?? undefined } : "skip"
-  ) as OnboardingCompletion | undefined;
+  const { completion, confidence, retry } = useSessionResilience();
 
-  const destination = resolveAccountDestination({
+  const base = resolveAccountDestination({
     backendConfigured: backendConfig.isConfigured,
     // `isAuthLoading` cubre Clerk cargando, el handshake con Convex y la
     // creación de la fila `users`: todo eso es "todavía no se sabe".
@@ -55,7 +56,16 @@ export function useAccountDestination(): {
     recoveryFailed: userError
   });
 
-  return { destination, retry: retryUser };
+  /**
+   * La resiliencia se aplica DESPUÉS y sólo sobre un "todavía no sé".
+   *
+   * Un destino resuelto manda siempre: `sign-in` sigue mandando al login (Clerk
+   * confirmó que no hay sesión, y eso no es un fallo de red), `onboarding` al
+   * alta y `bootstrap` al aislamiento. Lo único que degrada son `loading` y
+   * `retry`, que es donde vivía el spinner infinito y la pantalla de error que
+   * tapaba la app entera con la sesión guardada en el llavero y sin red.
+   */
+  return { destination: applySessionResilience(base, confidence), retry, confidence };
 }
 
 export { destinationAllows };

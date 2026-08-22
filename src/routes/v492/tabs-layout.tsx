@@ -9,7 +9,7 @@ import { useAppState } from "@/hooks/useAppState";
 import { LayersProvider } from "@/hooks/useLayers";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { backendConfig } from "@/services/backendProviders";
-import { theme } from "@/theme/theme";
+import { BOOT_ACCENT, BOOT_BACKGROUND, BOOT_STATUS_BAR_STYLE } from "@/theme/boot";
 
 const BACKEND_CONFIGURED = backendConfig.hasConvex && backendConfig.hasClerk;
 const CLERK_LOAD_TIMEOUT_MS = 8000;
@@ -107,22 +107,23 @@ export default function TabsLayout() {
  * `/carta`) siguen existiendo fuera de la barra: son las que redirigen al
  * destino nuevo, así que ningún link viejo se rompe.
  *
- * El shell nativo es oscuro (`#0A0B0E`): la barra de estado va en `light`. El
- * default de la app es `dark` —lo pone el layout raíz, compartido con web— y
- * cada pantalla lo corregía por su cuenta, así que en los huecos sin pantalla
- * montada (carga de la pestaña, transición entre secciones) la hora y la señal
- * quedaban en negro sobre negro. Se declara acá, en el shell, y no en el layout
- * raíz: web no se toca, porque su chrome vive en `tabs-layout.web.tsx`.
+ * El shell nativo es oscuro (`#0A0B0E`) y la barra de estado va en `light`. El
+ * estilo se declaraba SÓLO acá porque el default del layout raíz era `dark`, y
+ * en los huecos sin pantalla montada —carga de la pestaña, transición entre
+ * secciones— la hora y la señal quedaban en negro sobre negro. Desde QA23-006
+ * el arranque también es oscuro y el raíz declara `light`, así que esta línea
+ * dejó de ser una corrección y pasó a ser lo que parece: el shell repitiendo el
+ * estilo que le corresponde, con el mismo token, sin poder divergir.
  *
  * El chrome de web vive en `tabs-layout.web.tsx` (`WebAppShell`), no acá.
  */
 function TabsChrome(): ReactNode {
   return (
     <>
-      <StatusBar style="light" />
+      <StatusBar style={BOOT_STATUS_BAR_STYLE} />
       <Tabs
         tabBar={(props) => <OrbitaTabBar {...props} />}
-        screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: "#0A0B0E" } }}
+        screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: BOOT_BACKGROUND } }}
       >
         <Tabs.Screen name="hoy" options={{ title: "Hoy" }} />
         <Tabs.Screen name="transitos" options={{ title: "Tránsitos" }} />
@@ -139,10 +140,18 @@ function TabsChrome(): ReactNode {
   );
 }
 
+/**
+ * La espera del gate de las tabs, con el color del shell que está por montar.
+ *
+ * Es la pantalla que más se ve al abrir la app con sesión: mientras
+ * `onboarding.getCompletionStatus` resuelve, esto ocupa el viewport entero.
+ * Pintaba el crema del MVP legado, así que el arranque de alguien que ya entró
+ * mil veces empezaba con un frame claro y terminaba en negro (QA23-006).
+ */
 function TabsLoading() {
   return (
     <View style={styles.loading}>
-      <ActivityIndicator color={theme.colors.plum} />
+      <ActivityIndicator color={BOOT_ACCENT} />
     </View>
   );
 }
@@ -150,7 +159,7 @@ function TabsLoading() {
 const styles = StyleSheet.create({
   loading: {
     alignItems: "center",
-    backgroundColor: theme.colors.background,
+    backgroundColor: BOOT_BACKGROUND,
     flex: 1,
     justifyContent: "center"
   }

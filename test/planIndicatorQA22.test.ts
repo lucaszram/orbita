@@ -18,12 +18,23 @@
  *    ningún plan: ilegible, sin dueño vigente o de otra cuenta se leen `null`.
  * 4. **Una sola fuente y un solo dibujante.** UNA `subscriptions.getCurrent` en
  *    el provider central, montado una vez en el layout raíz; las pantallas de
- *    plata leen el REMOTO y no montan query propia; el chip dibuja el nombre
- *    completo del plan y los dos extremos de la barra de detalle miden lo mismo.
+ *    plata leen el REMOTO y no montan query propia; el chip nombra el plan desde
+ *    el dominio y los dos extremos de la barra de detalle miden lo mismo.
  *
  * Las comprobaciones estructurales corren sobre el CÓDIGO, no sobre lo que los
  * comentarios cuentan de él: estos archivos documentan largo, y una regla que se
  * cumple sólo en un comentario no se cumple.
+ *
+ * ## Lo que QA23 movió, y lo que no
+ *
+ * Cuánto texto escribe el chip dejó de ser una constante y pasó a ser una
+ * `variant` obligatoria: la raíz de una pestaña dibuja la marca corta
+ * (`PLUS`/`FREE`) y la barra de un detalle el nombre entero (QA23-001). Las
+ * cuatro garantías de arriba no se tocan —el chip sigue sin especular, sigue
+ * anunciando el nombre COMPLETO por VoiceOver y sigue sacándolo del dominio—,
+ * así que acá lo que cambia es la forma que se exige, no la regla. La ventana en
+ * la que se publicaba `Free` sin saberlo, y su cierre, se prueban en
+ * `planIndicatorQA23.test.ts`.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -362,23 +373,31 @@ test("las dos pantallas de plata leen el REMOTO del provider y no montan query p
 // El chip: qué dibuja y dónde
 // ---------------------------------------------------------------------------
 
-test("el chip dibuja el nombre completo del plan, y no dibuja nada cuando no lo sabe", () => {
+test("el chip nombra el plan desde el dominio, y no dibuja nada cuando no lo sabe", () => {
   assert.match(BADGE, /const \{ effective, labelReady \} = useEntitlement\(\);/);
   // No especula: mientras el provider no pueda nombrar el plan sin inventarlo,
   // no hay chip. Un "Free" parpadeando encima de alguien que paga es peor que
   // un hueco.
   assert.match(BADGE, /if \(!labelReady\) return null;/);
+  // El nombre entero se resuelve SIEMPRE, sea cual sea la forma que se dibuje:
+  // es el que anuncia VoiceOver y del que se deriva la marca corta, así que las
+  // dos variantes no pueden llegar a nombrar planes distintos.
   assert.match(BADGE, /const label = planLabel\(effective\);/);
-  // Se lee entero, y es EL MISMO texto que anuncia VoiceOver.
-  assert.match(BADGE, />\s*\{label\}\s*<\/Text>/);
   assert.match(BADGE, /accessibilityLabel=\{`Tu plan: \$\{label\}`\}/);
-  // La marca corta (`PLUS` / `FREE`) ahorraba dos palabras a cambio de pedir que
-  // ya se supiera qué es "PLUS" acá adentro, que es lo que el chip contesta.
-  assert.equal(/planMark\(/.test(BADGE), false, "el chip no dibuja la marca corta");
+  // Y la forma corta también sale del dominio: `PLUS`/`FREE` escrito a mano acá
+  // sería un segundo lugar donde el producto decide cómo se llama un plan.
+  assert.match(BADGE, /\{variant === "mark" \? planMark\(effective\) : label\}/);
+  assert.equal(
+    /["'`](PLUS|FREE)["'`]/.test(BADGE),
+    false,
+    "la marca corta se deriva del dominio, no de un literal en el chip"
+  );
 
   // Un solo lugar de la pantalla nombra el plan, y ninguno lo escribe a mano.
   assert.equal(veces(SCREEN, /planLabel\(/g), 1);
+  assert.equal(veces(SCREEN, /planMark\(/g), 1);
   assert.match(SCREEN, /import \{[^}]*\bplanLabel\b[^}]*\} from "@\/domain\/entitlement";/);
+  assert.match(SCREEN, /import \{[^}]*\bplanMark\b[^}]*\} from "@\/domain\/entitlement";/);
   assert.equal(
     /["'`]Órbita (Plus|Free)["'`]/.test(SCREEN),
     false,
@@ -386,11 +405,24 @@ test("el chip dibuja el nombre completo del plan, y no dibuja nada cuando no lo 
   );
 });
 
-test("las dos pantallas base montan el chip, una sola vez cada una", () => {
+test("las dos pantallas base montan el chip, una sola vez cada una y con su forma", () => {
   assert.equal(veces(CAPA, /<PlanBadge\b/g), 1, "LayerScreen dibuja el plan");
   assert.equal(veces(DETALLE, /<PlanBadge\b/g), 1, "DetailLayerScreen también");
   assert.equal(veces(SCREEN, /<PlanBadge\b/g), 2, "no hay una tercera superficie dibujándolo");
-  assert.match(DETALLE, /<PlanBadge style=\{styles\.detailBadgeText\} \/>/);
+  // Cada superficie declara su variante: la raíz comparte renglón con la marca y
+  // la fecha —ahí el nombre entero empujaba a la meta contra el borde— y el
+  // detalle lleva el chip solo en su extremo, con la reserva ya hecha.
+  assert.match(CAPA, /<PlanBadge variant="mark" \/>/);
+  assert.match(DETALLE, /<PlanBadge variant="full" style=\{styles\.detailBadgeText\} \/>/);
+  // Sin default: una superficie nueva TIENE que elegir, y las dos que existen no
+  // pueden divergir por olvido.
+  assert.match(SCREEN, /export type PlanBadgeVariant = "mark" \| "full";/);
+  assert.match(BADGE, /variant: PlanBadgeVariant;/);
+  assert.equal(
+    /variant\s*=\s*"(mark|full)"/.test(BADGE),
+    false,
+    "un default volvería opcional la decisión que este chip obliga a tomar"
+  );
 });
 
 test("los dos extremos de la barra de detalle miden lo mismo: por eso el rótulo va centrado", () => {

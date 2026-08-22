@@ -57,7 +57,7 @@ test("la salida del alta navega a /recepcion, no a Home", () => {
 });
 
 test("la tríada REAL calculada por el alta viaja en los params", () => {
-  const salida = FLOW.slice(FLOW.indexOf("const enterApp = async () => {"));
+  const salida = FLOW.slice(FLOW.indexOf("const abrirOrbita = async () => {"));
   assert.match(salida, /sol: computed\.sun/);
   assert.match(salida, /luna: computed\.moon/);
   assert.match(salida, /asc: computed\.ascendant/);
@@ -66,12 +66,13 @@ test("la tríada REAL calculada por el alta viaja en los params", () => {
 });
 
 test("el cierre conserva perfil, limpieza del borrador y su lock de una sola salida", () => {
-  const salida = FLOW.slice(FLOW.indexOf("const enterApp = async () => {"));
+  const salida = FLOW.slice(FLOW.indexOf("const abrirOrbita = async () => {"));
   const perfil = salida.indexOf("await createProfile(");
   const limpiar = salida.indexOf("clearDraft()");
   const navegar = salida.indexOf("router.replace(");
   assert.ok(perfil !== -1 && limpiar > perfil && navegar > limpiar, "el orden de salida se conserva");
   assert.match(FLOW, /if \(enterLock\.current\) return;\s*enterLock\.current = true;/);
+  assert.match(FLOW, /try \{\s*await abrirOrbita\(\);\s*\} catch \{/);
   assert.match(FLOW, /if \(!isBirthDataReady\(completion\)\) return;\s*void enterApp\(\);/);
   assert.match(FLOW, /resolveProfileOwnerAtCreation\(\{/, "la adopción del perfil sigue igual");
 });

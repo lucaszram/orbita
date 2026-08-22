@@ -1,4 +1,9 @@
 import { relationshipDriverShortName, type RelationshipDimensionKey } from "@/domain/relationships";
+import {
+  relationshipTypeAllowsDesire,
+  RELATIONSHIP_NEUTRAL_DESIRE_LABEL,
+  type RelationshipTypeKey
+} from "@/domain/relationshipType";
 import type {
   RelationshipComparisonData,
   RelationshipDimension
@@ -29,6 +34,16 @@ import type {
  * sigue en pie —los contactos se muestran igual, en el orden que el sobre ya
  * trae— y lo que NO se puede afirmar se dice que no se puede afirmar. Nunca se
  * inventa una calidad, un peso ni una precisión por contacto.
+ *
+ * **El tipo de vínculo elige el vocabulario, no el cálculo (QA23-004).** Las
+ * cinco dimensiones se calculan siempre y con los mismos contactos; lo que
+ * cambia es cómo se escriben. Sólo un `romantic` DECLARADO puede nombrar `Deseo`
+ * y hablar de atracción; los otros seis tipos, `prefer_not_to_say` y el legacy
+ * `null` leen la misma dimensión como `Energía compartida`, en términos de
+ * iniciativa, expresión y ritmo. El motor ya publica el sobre en esa clave —el
+ * rótulo, los cierres de cada contacto y su resumen—, y este archivo escribe la
+ * mitad que es del cliente. La regla es fail-closed: sin tipo declarado, o con
+ * cualquier valor que no sea `romantic`, se escribe la versión neutral.
  */
 
 /** Una dimensión tal como la publica el contrato. */
@@ -159,6 +174,27 @@ const TENSA: Record<RelationshipDimensionKey, string> = {
 };
 
 /**
+ * La quinta dimensión, escrita para un vínculo que NO se declaró romántico.
+ *
+ * Los contactos son los mismos —Venus, Marte y el Sol de una carta tocando los
+ * de la otra— y el material también: lo que cambia es qué se puede decir de
+ * ellos. Venus y Marte no describen sólo el deseo; describen qué se disfruta y
+ * cómo se va hacia lo que se quiere, que es una lectura legítima entre una madre
+ * y un hijo, entre dos socios o entre dos amigas. El registro editorial ya lo
+ * declara: las cinco dimensiones de `ORB-REL-003` son módulos de Órbita, no
+ * categorías de la fuente (`convex/content/astrologySources.ts`), así que
+ * elegir en qué clave se escribe cada una es una decisión de producto y no un
+ * cambio del método.
+ *
+ * Ninguna de estas frases usa `deseo`, `atracción`, `intimidad`, `sexual` ni
+ * `romántic`: es la misma barra que el motor se pone a sí mismo cuando arma el
+ * sobre neutral, y una prueba la sostiene de este lado.
+ */
+const FACILITA_NEUTRAL = "que la iniciativa de cada uno encuentre un ritmo compartido";
+
+const TENSA_NEUTRAL = "que los impulsos no coincidan en el tiempo y haya que acordarlos";
+
+/**
  * La invitación de cada dimensión: una acción o una pregunta.
  *
  * Cuál de las dos se muestra lo decide el BALANCE, no un azar: donde el cálculo
@@ -196,6 +232,57 @@ const INVITACION: Record<RelationshipDimensionKey, { accion: string; pregunta: s
     pregunta: "¿Están de acuerdo en adónde van, o sólo en que quieren ir juntos?"
   }
 };
+
+/**
+ * La invitación de la quinta dimensión cuando el vínculo no se declaró
+ * romántico.
+ *
+ * La pregunta es la MISMA que la romántica —no nombra ningún plano, así que
+ * sirve igual entre dos socios que entre dos personas que se gustan— y la acción
+ * cambia: "un plan que los dos quieran" se lee como una cita, y acá no lo es.
+ */
+const INVITACION_NEUTRAL = {
+  accion:
+    "Propongan algo concreto para hacer juntos esta semana, elegido por los dos: lo compartido se sostiene más en lo común que en lo excepcional.",
+  pregunta: INVITACION.desire.pregunta
+} as const;
+
+/**
+ * El vocabulario de una dimensión para ESTE vínculo: la clave del cálculo entra,
+ * salen las tres piezas editoriales que la pantalla escribe.
+ *
+ * Es el único lugar donde se decide si se puede hablar de deseo, y decide por
+ * una sola condición: que el tipo declarado sea `romantic`. Cualquier otra cosa
+ * —incluido no haber declarado nada— cae en la versión neutral.
+ */
+function vocabulario(
+  key: RelationshipDimensionKey,
+  type: RelationshipTypeKey | null
+): { facilita: string; tensa: string; invitacion: { accion: string; pregunta: string } } {
+  if (key === "desire" && !relationshipTypeAllowsDesire(type)) {
+    return { facilita: FACILITA_NEUTRAL, tensa: TENSA_NEUTRAL, invitacion: INVITACION_NEUTRAL };
+  }
+  return { facilita: FACILITA[key], tensa: TENSA[key], invitacion: INVITACION[key] };
+}
+
+/**
+ * El rótulo con el que se muestra una dimensión.
+ *
+ * El sobre ya viene escrito en la clave del tipo declarado, así que su `label`
+ * es el bueno. La única corrección que este cliente se permite es hacia la
+ * NEUTRAL y nunca al revés: si por lo que sea llegara un sobre que dice `Deseo`
+ * para un vínculo que no se declaró romántico —un caché de otro tipo, un
+ * backend viejo—, acá se muestra `Energía compartida`. Al revés no: un sobre
+ * neutral no se puede "ascender" a `Deseo` desde el cliente, porque el texto de
+ * sus contactos también está escrito en neutral y el rótulo estaría prometiendo
+ * algo que la lectura de abajo no dice.
+ */
+function rotulo(dimension: ContractDimension, type: RelationshipTypeKey | null): string {
+  if (dimension.key === "desire" && !relationshipTypeAllowsDesire(type)) {
+    return RELATIONSHIP_NEUTRAL_DESIRE_LABEL;
+  }
+  return dimension.label;
+}
 
 // ---------------------------------------------------------------------------
 // Orden determinístico
@@ -395,46 +482,55 @@ function nombrar(contacts: readonly RelationshipReadingContact[], maximo: number
 
 function facilitatesText(
   key: RelationshipDimensionKey,
+  type: RelationshipTypeKey | null,
   detailed: boolean,
   contacts: readonly RelationshipReadingContact[]
 ): string {
+  const facilita = vocabulario(key, type).facilita;
   if (contacts.length === 0) {
-    return `Con estos datos no hay ningún contacto principal que facilite ${FACILITA[key]}. No es lo mismo que decir que no pasa: es que el cálculo no lo encuentra.`;
+    return `Con estos datos no hay ningún contacto principal que facilite ${facilita}. No es lo mismo que decir que no pasa: es que el cálculo no lo encuentra.`;
   }
   if (!detailed) {
-    return `Esta comparación se guardó sin el detalle de cada contacto, así que no podemos separar cuáles facilitan ${FACILITA[key]}. Los contactos están abajo, tal como se calcularon.`;
+    return `Esta comparación se guardó sin el detalle de cada contacto, así que no podemos separar cuáles facilitan ${facilita}. Los contactos están abajo, tal como se calcularon.`;
   }
   const apoyos = contacts.filter((contacto) => contacto.quality === "support");
   if (apoyos.length > 0) {
-    return `Se facilita ${FACILITA[key]}: ${nombrar(apoyos, 2)}.`;
+    return `Se facilita ${facilita}: ${nombrar(apoyos, 2)}.`;
   }
   const neutrales = contacts.filter((contacto) => contacto.quality === "neutral");
   if (neutrales.length > 0) {
-    return `Ningún contacto acá empuja hacia ${FACILITA[key]}: ${nombrar(neutrales, 2)} concentra el tema sin inclinarlo para ningún lado.`;
+    return `Ningún contacto acá empuja hacia ${facilita}: ${nombrar(neutrales, 2)} concentra el tema sin inclinarlo para ningún lado.`;
   }
-  return `Ningún contacto de esta dimensión facilita ${FACILITA[key]}: los que hay marcan diferencia, no encuentro.`;
+  return `Ningún contacto de esta dimensión facilita ${facilita}: los que hay marcan diferencia, no encuentro.`;
 }
 
 function strainsText(
   key: RelationshipDimensionKey,
+  type: RelationshipTypeKey | null,
   detailed: boolean,
   contacts: readonly RelationshipReadingContact[]
 ): string {
+  const tensa = vocabulario(key, type).tensa;
   if (contacts.length === 0) {
-    return `Tampoco aparece un contacto que tense ${TENSA[key]}. Esta dimensión queda sin material, no en cero.`;
+    return `Tampoco aparece un contacto que tense ${tensa}. Esta dimensión queda sin material, no en cero.`;
   }
   if (!detailed) {
-    return `Por lo mismo, tampoco podemos señalar cuáles tensan ${TENSA[key]}. Volvé a calcular la comparación para recuperar ese detalle.`;
+    return `Por lo mismo, tampoco podemos señalar cuáles tensan ${tensa}. Volvé a calcular la comparación para recuperar ese detalle.`;
   }
   const tensiones = contacts.filter((contacto) => contacto.quality === "tension");
   if (tensiones.length > 0) {
-    return `Puede tensarse ${TENSA[key]}: ${nombrar(tensiones, 2)}.`;
+    return `Puede tensarse ${tensa}: ${nombrar(tensiones, 2)}.`;
   }
-  return `No aparece un contacto que tense ${TENSA[key]}. Eso no vuelve fácil la dimensión: sólo dice que el roce no está en el cálculo.`;
+  return `No aparece un contacto que tense ${tensa}. Eso no vuelve fácil la dimensión: sólo dice que el roce no está en el cálculo.`;
 }
 
-function invitationText(key: RelationshipDimensionKey, balance: RelationshipBalance): string {
-  return balance === "mas_fluido" ? INVITACION[key].accion : INVITACION[key].pregunta;
+function invitationText(
+  key: RelationshipDimensionKey,
+  type: RelationshipTypeKey | null,
+  balance: RelationshipBalance
+): string {
+  const invitacion = vocabulario(key, type).invitacion;
+  return balance === "mas_fluido" ? invitacion.accion : invitacion.pregunta;
 }
 
 // ---------------------------------------------------------------------------
@@ -503,48 +599,55 @@ export function relationshipContactRole(contact: RelationshipReadingContact): st
  * La lectura de una comparación con dimensiones. `null` cuando no hay ninguna
  * que leer: la lectura de un signo solo es otra cosa y la resuelve la pantalla
  * con su propia fila.
+ *
+ * El segundo parámetro es el TIPO DE VÍNCULO DECLARADO, y su valor por omisión
+ * es `null` a propósito: quien no lo pasa obtiene la lectura neutral. Un
+ * olvido no puede terminar en lenguaje de deseo sobre un vínculo que nadie
+ * declaró romántico.
  */
 export function relationshipReading(
-  data: Pick<RelationshipComparisonData, "generalOnly" | "dimensions">
+  data: Pick<RelationshipComparisonData, "generalOnly" | "dimensions">,
+  type: RelationshipTypeKey | null = null
 ): RelationshipReading | null {
   if (data.generalOnly || data.dimensions.length === 0) return null;
 
   const porDimension = data.dimensions.map((dimension) => {
     const { contacts, detailed } = normalizeContacts(dimension);
-    return { dimension, contacts, detailed };
+    return { dimension, label: rotulo(dimension, type), contacts, detailed };
   });
 
   // Dónde aparece cada id. Es lo único que permite explicar la reutilización
-  // sin duplicar el contacto ni borrarlo de una de las dos dimensiones.
+  // sin duplicar el contacto ni borrarlo de una de las dos dimensiones. Se
+  // anota con el rótulo YA resuelto para este vínculo: si se guardara el del
+  // sobre, un contacto reutilizado diría "también cuenta en Deseo" dentro de una
+  // lectura que en ningún otro lugar nombra esa dimensión.
   const dimensionesPorId = new Map<string, string[]>();
-  for (const { dimension, contacts } of porDimension) {
+  for (const { label, contacts } of porDimension) {
     for (const contacto of contacts) {
       const donde = dimensionesPorId.get(contacto.id) ?? [];
-      if (!donde.includes(dimension.label)) donde.push(dimension.label);
+      if (!donde.includes(label)) donde.push(label);
       dimensionesPorId.set(contacto.id, donde);
     }
   }
 
   const dimensions: RelationshipDimensionReading[] = porDimension.map(
-    ({ dimension, contacts, detailed }) => {
+    ({ dimension, label, contacts, detailed }) => {
       const conReutilizacion = contacts
         .map((contacto) => ({
           ...contacto,
-          alsoIn: (dimensionesPorId.get(contacto.id) ?? []).filter(
-            (label) => label !== dimension.label
-          )
+          alsoIn: (dimensionesPorId.get(contacto.id) ?? []).filter((otra) => otra !== label)
         }))
         .sort(compareContacts);
       const balance = relationshipDimensionBalance({ detailed, contacts: conReutilizacion });
       return {
         key: dimension.key,
-        label: dimension.label,
+        label,
         contacts: conReutilizacion.length,
         balance,
         detailed,
-        facilitates: facilitatesText(dimension.key, detailed, conReutilizacion),
-        strains: strainsText(dimension.key, detailed, conReutilizacion),
-        invitation: invitationText(dimension.key, balance),
+        facilitates: facilitatesText(dimension.key, type, detailed, conReutilizacion),
+        strains: strainsText(dimension.key, type, detailed, conReutilizacion),
+        invitation: invitationText(dimension.key, type, balance),
         precision: dimension.precision,
         contactsList: conReutilizacion
       };
@@ -556,7 +659,7 @@ export function relationshipReading(
   // —el de la dimensión donde más importa— y nombra todas las dimensiones donde
   // cuenta, en el orden en que el contrato las publica.
   const unicos = new Map<string, RelationshipDynamic & { order: number }>();
-  for (const { dimension, contacts } of porDimension) {
+  for (const { label, contacts } of porDimension) {
     for (const contacto of contacts) {
       const previo = unicos.get(contacto.id);
       if (!previo) {
@@ -567,12 +670,12 @@ export function relationshipReading(
           quality: contacto.quality,
           precision: contacto.precision,
           weight: contacto.weight,
-          dimensions: [dimension.label],
+          dimensions: [label],
           order: contacto.order
         });
         continue;
       }
-      if (!previo.dimensions.includes(dimension.label)) previo.dimensions.push(dimension.label);
+      if (!previo.dimensions.includes(label)) previo.dimensions.push(label);
       const peso = typeof contacto.weight === "number" ? contacto.weight : null;
       if (peso !== null && (previo.weight === null || peso > previo.weight)) previo.weight = peso;
       previo.order = Math.min(previo.order, contacto.order);
@@ -627,6 +730,34 @@ export function relationshipDynamicRole(dynamic: RelationshipDynamic): string {
           ? "concentrando el tema sin inclinarlo"
           : null;
   return clase ? `${donde}, ${clase}.` : `${donde}.`;
+}
+
+/**
+ * La identidad de una lectura, del lado del cliente.
+ *
+ * `relationshipReading` es pura, pero la pantalla la memoriza para no rearmarla
+ * en cada render, y una lectura memorizada necesita saber cuándo dejó de valer.
+ * Vale mientras no cambien las cuatro cosas de las que depende: QUÉ persona, con
+ * qué ENTRADAS se calculó el sobre, CUÁNDO se calculó y —desde QA23-004— con qué
+ * TIPO DE VÍNCULO se está leyendo.
+ *
+ * El tipo entra por lo mismo que entra en `relationshipCalcKey`: es lo que elige
+ * el vocabulario. Sin él, cambiar `Amistad` por `Vínculo romántico` dejaría en
+ * pantalla una lectura escrita para el tipo anterior, que es exactamente el
+ * defecto que esta clave existe para evitar.
+ */
+export function relationshipReadingKey(args: {
+  profileId: string;
+  relationshipType: RelationshipTypeKey | null;
+  inputHash: string;
+  observedAt: number;
+}): string {
+  return [
+    args.profileId,
+    args.relationshipType ?? "sin_definir",
+    args.inputHash,
+    String(args.observedAt)
+  ].join("|");
 }
 
 /**

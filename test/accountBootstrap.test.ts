@@ -95,7 +95,9 @@ test("cuenta incompleta CON datos ajenos → primero aislar", () => {
 
 test("el gate no redirige en el estado bootstrap: muestra carga o reintento", () => {
   const gate = sinComentarios(readFileSync(join(ROOT, "src/components/orbita/AccountGate.tsx"), "utf8"));
-  const bloque = gate.slice(gate.indexOf('destination === "bootstrap"'), gate.indexOf('destination === "loading"'));
+  const inicio = gate.indexOf('if (destination === "bootstrap") {');
+  const fin = gate.indexOf('if (destination === "loading") {', inicio);
+  const bloque = gate.slice(inicio, fin);
   assert.ok(!/Redirect/.test(bloque), "redirigir acá sería justo el loop");
   assert.ok(/bootstrap\.state === "error"/.test(bloque), "un fallo tiene que ser visible");
   assert.ok(/mostrarError/.test(bloque), "con reintento");

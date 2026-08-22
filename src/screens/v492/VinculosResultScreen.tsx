@@ -24,7 +24,6 @@ import { relationshipCalcKey, relationshipNeedsCalculation } from "@/domain/rela
 import {
   findRelationshipProfile,
   RELATIONSHIP_DATE_UNLOCKS,
-  RELATIONSHIP_DIMENSION_LABEL,
   RELATIONSHIP_DIMENSION_ORDER,
   RELATIONSHIP_GENERAL_ONLY_DISCLAIMER,
   RELATIONSHIP_LEVEL_COUNT,
@@ -35,6 +34,7 @@ import {
   RELATIONSHIP_TIME_UNLOCKS,
   RELATIONSHIP_UNLOCK_LABEL,
   relationshipBirthLine,
+  relationshipDimensionLabel,
   relationshipDimensionsLock,
   relationshipDisclaimer,
   relationshipEditHref,
@@ -48,8 +48,10 @@ import {
   relationshipLevelShare,
   relationshipModeHasCalculation,
   relationshipModeIsGeneral,
+  relationshipProfileHref,
   relationshipResultMode,
   relationshipSignLabel,
+  VINCULOS_ROUTE,
   type RelationshipGap
 } from "@/domain/relationships";
 import {
@@ -64,10 +66,22 @@ import {
   relationshipDynamicRole,
   relationshipDynamicsLead,
   relationshipReading,
+  relationshipReadingKey,
   type RelationshipDimensionReading,
   type RelationshipReading
 } from "@/domain/relationshipReading";
+import {
+  readRelationshipType,
+  RELATIONSHIP_TYPE_DEFINE_CTA,
+  RELATIONSHIP_TYPE_DEFINE_HINT,
+  relationshipTypeDefineVoice,
+  relationshipTypeLine,
+  relationshipTypeNeedsDefinition,
+  type RelationshipTypeKey
+} from "@/domain/relationshipType";
+import { sensitiveOperationBlockMessage } from "@/domain/sessionResilience";
 import { useLayers } from "@/hooks/useLayers";
+import { useSensitiveOperation } from "@/hooks/useSessionResilience";
 import {
   relationshipsApi,
   type ComparisonLevel,
@@ -76,7 +90,13 @@ import {
 } from "@/services/relationshipsApi";
 
 /**
- * Vínculos · el resultado de una persona (`/vinculos/[profileId]`).
+ * Vínculos · la comparación con una persona
+ * (`/vinculos/[profileId]/comparacion`).
+ *
+ * Desde QA23-005 cuelga del PERFIL de esa persona y no de la raíz de la sección:
+ * es una de las cosas que se pueden hacer con alguien guardado, no la persona.
+ * Por eso `Atrás` —y el respaldo de un deep link— caen en su perfil, que es
+ * donde están sus datos y desde donde se abrió esto.
  *
  * Composición canónica V4.9.2 — frames `09 · carta contra carta` y
  * `10 · signo contra signo`. Los dos frames son la MISMA pantalla con distinto
@@ -125,31 +145,36 @@ export function VinculosResultScreen({ profileId }: { profileId: string }) {
   // Misma fase que el resto de Vínculos: sin sesión no hay lista autorizada y
   // sin carta propia no hay contra qué comparar a nadie.
   const { phase, timezone, retrySession } = useLayers();
+  // El respaldo sin historial es el PERFIL de esta persona (QA23-005): es de
+  // donde cuelga esta ruta. Se arma con el string crudo de la URL a propósito —un
+  // destino no publica ningún dato— y quien decide si ese id es de esta cuenta
+  // sigue siendo la lista autorizada, ya sea acá abajo o en el propio perfil.
+  const volverAlPerfil = relationshipProfileHref(profileId);
 
   if (phase === "cargando") {
     return (
-      <Shell>
+      <Shell fallbackHref={volverAlPerfil}>
         <LoadingBlock message="Buscando esta persona…" />
       </Shell>
     );
   }
   if (phase === "error") {
     return (
-      <Shell>
+      <Shell fallbackHref={volverAlPerfil}>
         <ErrorBlock onRetry={retrySession} />
       </Shell>
     );
   }
   if (phase === "invitado") {
     return (
-      <Shell>
+      <Shell fallbackHref={volverAlPerfil}>
         <GuestBlock />
       </Shell>
     );
   }
   if (phase === "vacio") {
     return (
-      <Shell>
+      <Shell fallbackHref={volverAlPerfil}>
         <EmptyBlock />
       </Shell>
     );
@@ -163,10 +188,21 @@ export function VinculosResultScreen({ profileId }: { profileId: string }) {
  * Va en una sola línea —partirlo en dos fue una de las diferencias registradas—
  * y un nombre largo se recorta con puntos suspensivos, no envuelve: el nombre
  * completo está entero en la línea de datos y en la confirmación de borrado.
+ *
+ * `fallbackHref` es obligatorio: con historial manda el `pop`, y sin él —un deep
+ * link a la comparación— el destino es el perfil del que esta ruta cuelga.
  */
-function Shell({ children, eyebrow = "VÍNCULOS · COMPARACIÓN" }: { children: ReactNode; eyebrow?: string }) {
+function Shell({
+  children,
+  eyebrow = "VÍNCULOS · COMPARACIÓN",
+  fallbackHref
+}: {
+  children: ReactNode;
+  eyebrow?: string;
+  fallbackHref: string;
+}) {
   return (
-    <DetailLayerScreen eyebrow={eyebrow} fallbackHref="/vinculos" eyebrowLines={1}>
+    <DetailLayerScreen eyebrow={eyebrow} fallbackHref={fallbackHref} eyebrowLines={1}>
       {children}
     </DetailLayerScreen>
   );
@@ -185,24 +221,27 @@ function VinculosResultLive({ profileId, timezone }: { profileId: string; timezo
   // lo que acaba de pasar.
   const [borrada, setBorrada] = useState(false);
   const persona = findRelationshipProfile(personas, profileId);
+  const volverAlPerfil = relationshipProfileHref(profileId);
 
   if (borrada) {
     return (
-      <Shell>
+      <Shell fallbackHref={VINCULOS_ROUTE}>
         <LoadingBlock message="Volviendo a tus personas…" />
       </Shell>
     );
   }
   if (persona === undefined) {
     return (
-      <Shell>
+      <Shell fallbackHref={volverAlPerfil}>
         <LoadingBlock message="Buscando esta persona…" />
       </Shell>
     );
   }
   if (persona === null) {
+    // Un id ajeno o borrado no publica NADA de esa persona, y tampoco vuelve a su
+    // perfil: ahí se leería el mismo hueco dos veces. La salida es la raíz.
     return (
-      <Shell>
+      <Shell fallbackHref={VINCULOS_ROUTE}>
         <Section>
           <Body style={styles.blockTop}>
             Este enlace no corresponde a ninguna persona guardada en tu cuenta. Puede haberse
@@ -233,6 +272,22 @@ function ComparisonScreen({
   const refreshComparison = useAction(relationshipsApi.refreshComparison);
   const removePerson = useMutation(relationshipsApi.removePerson);
   const confirm = useConfirm();
+  /**
+   * Recalcular y borrar ESCRIBEN en la cuenta (QA23-007).
+   *
+   * Recalcular no es una lectura: `relationships.refreshComparison` persiste un
+   * sobre nuevo sobre la comparación guardada. Borrar es destructivo. Los dos
+   * exigen sesión confirmada.
+   *
+   * `useLayers` normalmente desmonta este cuerpo al degradar, así que esto es
+   * defensa en profundidad — pero el handler no puede quedar autorizado por una
+   * implicación de render: acá hay un efecto que dispara solo, un `await` de
+   * confirmación en el medio del borrado y una pantalla que vive minutos. La
+   * autorización se pregunta en cada punto donde se escribe.
+   */
+  const escritura = useSensitiveOperation("account-write");
+  const escrituraRef = useRef(escritura.allowed);
+  escrituraRef.current = escritura.allowed;
 
   const [recalculando, setRecalculando] = useState(false);
   const [recalculoFallido, setRecalculoFallido] = useState(false);
@@ -257,6 +312,9 @@ function ComparisonScreen({
   const pedidoAutomatico = useRef<string | null>(null);
 
   const recalcular = useCallback(() => {
+    // Recalcular escribe: sin sesión confirmada no sale, ni por el botón ni por
+    // el efecto automático. No se marca fallido —no falló nada, no se intentó—.
+    if (!escrituraRef.current) return Promise.resolve();
     const enCurso = enVuelo.current;
     if (enCurso) return enCurso;
     setRecalculando(true);
@@ -273,18 +331,65 @@ function ComparisonScreen({
     return corrida;
   }, [persona.profileId, refreshComparison]);
 
+  /**
+   * El tipo de vínculo DECLARADO para esta persona (QA23-004).
+   *
+   * Sale del perfil —no del sobre, no del signo, no de la fecha— y se lee sin
+   * exigir que el contrato ya lo publique: un backend sin desplegar y una fila
+   * legacy son lo mismo, `null`, y `null` lee neutral. Es lo único que decide si
+   * esta pantalla puede nombrar `Deseo`.
+   */
+  const tipo = readRelationshipType(persona);
+
   useEffect(() => {
     if (comparison === undefined) return;
+    // Sin sesión confirmada el ciclo automático ni siquiera se abre: si marcara
+    // la clave como pedida, al reconectar no volvería a intentarlo solo.
+    if (!escritura.allowed) return;
     if (!relationshipNeedsCalculation(comparison)) return;
     const clave = relationshipCalcKey({
       profileId: persona.profileId,
       level: persona.availableLevel,
+      relationshipType: tipo,
       inputHash: comparison.inputHash
     });
     if (pedidoAutomatico.current === clave) return;
     pedidoAutomatico.current = clave;
     void recalcular();
-  }, [comparison, persona.profileId, persona.availableLevel, recalcular]);
+  }, [comparison, persona.profileId, persona.availableLevel, tipo, recalcular, escritura.allowed]);
+
+  /**
+   * La lectura entera —dinámicas principales, las tres explicaciones por
+   * dimensión y la reutilización de un contacto— se arma una sola vez por
+   * estado, en el dominio. `null` cuando no hay dimensiones que leer.
+   *
+   * La dependencia es la CLAVE y no el objeto, a propósito: `comparison` es una
+   * identidad nueva en cada emisión de la query reactiva —y emite también
+   * cuando cambia algo que la lectura no mira, como `status`—, así que
+   * depender del objeto sería no memorizar nada.
+   * `relationshipReadingKey` cambia exactamente cuando cambia algo de lo que la
+   * lectura depende —la persona, las entradas del cálculo, cuándo se calculó y
+   * el tipo declarado—, y ese último término es el que impide que quede en
+   * pantalla una lectura escrita para otro vínculo.
+   */
+  const datosComparacion = comparison?.data ?? null;
+  const claveLectura = relationshipReadingKey({
+    profileId: persona.profileId,
+    relationshipType: tipo,
+    inputHash: comparison?.inputHash ?? "sin-sobre",
+    observedAt: comparison?.observedAt ?? 0
+  });
+  const lecturaDelEstado = useRef<{ clave: string; valor: RelationshipReading | null }>({
+    clave: "",
+    valor: null
+  });
+  if (lecturaDelEstado.current.clave !== claveLectura) {
+    lecturaDelEstado.current = {
+      clave: claveLectura,
+      valor: datosComparacion ? relationshipReading(datosComparacion, tipo) : null
+    };
+  }
+  const lectura = lecturaDelEstado.current.valor;
 
   /**
    * Borrar es destructivo e irreversible, así que pasa por la confirmación del
@@ -298,6 +403,12 @@ function ComparisonScreen({
    */
   const borrar = async () => {
     if (borrando) return;
+    // La sesión, antes de abrir siquiera la confirmación: preguntar «¿borrar a
+    // X?» para después no poder borrar es peor que no ofrecerlo.
+    if (!escrituraRef.current) {
+      setErrorBorrado(sensitiveOperationBlockMessage("account-write"));
+      return;
+    }
     await runExclusive(borradoEnCurso, async () => {
       const confirmado = await confirm({
         title: `¿Borrar a ${persona.name}?`,
@@ -307,12 +418,21 @@ function ComparisonScreen({
         destructive: true
       });
       if (!confirmado) return;
+      // Y otra vez pegado a la mutation: la confirmación es un `await` que puede
+      // durar lo que la persona tarde en decidir, y en ese rato la sesión pudo
+      // dejar de estar confirmada. Todavía no se tocó nada.
+      if (!escrituraRef.current) {
+        setErrorBorrado(sensitiveOperationBlockMessage("account-write"));
+        return;
+      }
       setBorrando(true);
       setErrorBorrado(null);
       try {
         await removePerson({ profileId: persona.profileId });
         onRemoved();
-        router.replace("/vinculos");
+        // La persona ya no existe, así que su perfil tampoco: la salida es la
+        // raíz, con la lista sin ella.
+        router.replace(VINCULOS_ROUTE as never);
       } catch {
         setBorrando(false);
         setErrorBorrado(
@@ -335,10 +455,13 @@ function ComparisonScreen({
   const completarMisDatos = () => router.push("/editar-datos" as never);
 
   const eyebrow = relationshipHeadline(persona);
+  // Sin historial se vuelve al perfil de ESTA persona: es la ruta de la que
+  // cuelga la comparación, y la que ya validó que sea de esta cuenta.
+  const volverAlPerfil = relationshipProfileHref(persona.profileId);
 
   if (comparison === undefined) {
     return (
-      <Shell eyebrow={eyebrow}>
+      <Shell eyebrow={eyebrow} fallbackHref={volverAlPerfil}>
         <Section>
           <NivelDeDatos persona={persona} />
           <LoadingBlock message="Buscando la comparación…" />
@@ -369,29 +492,34 @@ function ComparisonScreen({
   const modo = relationshipResultMode({ level: nivel, data });
   const soloGeneral = relationshipModeIsGeneral(modo);
   const calculado = relationshipModeHasCalculation(modo);
-  // La lectura entera —dinámicas principales, las tres explicaciones por
-  // dimensión y la reutilización de un contacto— se arma una sola vez, en el
-  // dominio. `null` cuando no hay dimensiones que leer.
-  const lectura = data ? relationshipReading(data) : null;
   // Las causas reales, con DE QUIÉN es cada dato que falta. Se calculan una sola
   // vez: las lee el cuerpo sin cálculo y también el botón de completar datos.
   const huecos = calculado ? [] : relationshipGaps(comparison, persona);
 
   return (
-    <Shell eyebrow={eyebrow}>
+    <Shell eyebrow={eyebrow} fallbackHref={volverAlPerfil}>
       <Section>
         {viejo ? (
           <View style={styles.notice}>
             <StaleNotice
               observedAt={latestObservedAt([comparison])}
               timezone={timezone}
-              onRetry={recalculando ? undefined : recalcular}
+              // Sin sesión confirmada no se ofrece recalcular: el aviso sigue
+              // diciendo que esto quedó viejo, que es cierto igual.
+              onRetry={recalculando || !escritura.allowed ? undefined : recalcular}
               retrying={recalculando}
             />
           </View>
         ) : null}
 
         <NivelDeDatos persona={persona} />
+
+        {/* Qué vínculo se declaró, y qué implica para lo que sigue. Va junto al
+            nivel porque son las dos cosas que explican la lectura: el nivel dice
+            hasta dónde LLEGA el cálculo y el tipo, en qué CLAVE se escribe. Un
+            perfil legacy ofrece definirlo acá mismo y no bloquea nada: la
+            comparación de abajo está calculada y se lee igual (QA23-004). */}
+        <TipoDeclarado persona={persona} tipo={tipo} onDefinir={completarDatos} />
 
         {/* El cálculo llegó más abajo que el dato guardado. Va PEGADO al nivel,
             porque corrige lo que el rótulo de arriba acaba de afirmar: sin esto,
@@ -462,6 +590,7 @@ function ComparisonScreen({
         ) : (
           <SinComparacion
             nivel={nivel}
+            tipo={tipo}
             huecos={huecos}
             // El nivel 03 no dibuja la escalera de desbloqueo, así que si el
             // faltante es de esa persona el único lugar donde ofrecerlo es acá.
@@ -477,14 +606,20 @@ function ComparisonScreen({
         )}
 
         {nivel !== "chart_to_chart" ? (
-          <QueFalta nivel={nivel} soloGeneral={soloGeneral} onCompletar={completarDatos} persona={persona} />
+          <QueFalta
+            nivel={nivel}
+            tipo={tipo}
+            soloGeneral={soloGeneral}
+            onCompletar={completarDatos}
+            persona={persona}
+          />
         ) : null}
 
         <SectionHeader title="LO QUE ESTO NO DICE" bullet={false} tone="muted" />
         <Note>
           {soloGeneral
             ? RELATIONSHIP_GENERAL_ONLY_DISCLAIMER
-            : relationshipDisclaimer(data?.disclaimer)}
+            : relationshipDisclaimer(data?.disclaimer, tipo)}
         </Note>
         {/* Los límites que declaró ESTE cálculo van bajo el mismo rótulo, no en
             una caja aparte: dos títulos casi iguales ("lo que esto no dice" y
@@ -514,8 +649,13 @@ function ComparisonScreen({
             <PrimaryButton
               label={recalculando ? "RECALCULANDO…" : "RECALCULAR LA COMPARACIÓN"}
               accessibilityLabel={`Recalcular la comparación con ${persona.name}`}
+              // Recalcular escribe un sobre nuevo en la cuenta, así que sin
+              // sesión confirmada se apaga y dice por qué (QA23-007).
+              accessibilityHint={
+                escritura.allowed ? undefined : sensitiveOperationBlockMessage("account-write")
+              }
               onPress={recalcular}
-              disabled={recalculando}
+              disabled={recalculando || !escritura.allowed}
               align="start"
             />
           </View>
@@ -562,7 +702,16 @@ function ComparisonScreen({
 
         <View style={styles.estado} accessibilityLiveRegion="polite">
           {borrando ? <Note>Borrando a esta persona…</Note> : null}
-          {!borrando && errorBorrado !== null ? (
+          {/* La sesión dejó de estar confirmada con la pantalla abierta: explica
+              de una vez por qué recalcular y borrar están apagados. */}
+          {!borrando && !escritura.allowed ? (
+            <View accessibilityRole="alert">
+              <Note style={styles.alerta}>
+                {sensitiveOperationBlockMessage("account-write")}
+              </Note>
+            </View>
+          ) : null}
+          {!borrando && escritura.allowed && errorBorrado !== null ? (
             <View accessibilityRole="alert">
               <Note style={styles.alerta}>{errorBorrado}</Note>
             </View>
@@ -570,10 +719,14 @@ function ComparisonScreen({
         </View>
         <Touchable
           onPress={borrar}
-          disabled={borrando}
+          disabled={borrando || !escritura.allowed}
           accessibilityLabel={`Borrar a ${persona.name} de tus vínculos`}
-          accessibilityHint="Se borran sus datos y la comparación. No se puede deshacer."
-          accessibilityState={{ disabled: borrando }}
+          accessibilityHint={
+            escritura.allowed
+              ? "Se borran sus datos y la comparación. No se puede deshacer."
+              : sensitiveOperationBlockMessage("account-write")
+          }
+          accessibilityState={{ disabled: borrando || !escritura.allowed }}
           style={styles.borrar}
           pressedStyle={styles.pressed}
         >
@@ -618,6 +771,48 @@ function NivelDeDatos({ persona }: { persona: RelationshipProfile }) {
       </View>
       <Body>{relationshipLevelSentence(nivel, persona.name)}</Body>
       {datos ? <Mono style={styles.datos}>{datos}</Mono> : null}
+    </View>
+  );
+}
+
+/**
+ * Qué vínculo se declaró con esta persona, y qué implica (QA23-004).
+ *
+ * Tres estados, tres textos y una sola acción posible:
+ *
+ * - **Declarado** —los siete tipos con contenido— se dice y nada más. `romantic`
+ *   es el único que habilita nombrar `Deseo`; los demás leen neutral, y eso
+ *   también se dice para que no parezca un recorte silencioso.
+ * - **`Prefiero no decirlo`** es una respuesta: se muestra como tal y NO ofrece
+ *   definirlo, porque ya se definió.
+ * - **Sin definir** —legacy, o un alta que no contestó— es el único que ofrece
+ *   `DEFINIR TIPO DE VÍNCULO`. Es una invitación, no una puerta: todo lo que
+ *   sigue en esta pantalla ya está calculado y se lee igual.
+ */
+function TipoDeclarado({
+  persona,
+  tipo,
+  onDefinir
+}: {
+  persona: RelationshipProfile;
+  tipo: RelationshipTypeKey | null;
+  onDefinir: () => void;
+}) {
+  return (
+    <View style={styles.tipo}>
+      <Note>{relationshipTypeLine(tipo)}</Note>
+      {relationshipTypeNeedsDefinition(tipo) ? (
+        <Touchable
+          onPress={onDefinir}
+          accessibilityRole="button"
+          accessibilityLabel={relationshipTypeDefineVoice(persona.name)}
+          accessibilityHint={RELATIONSHIP_TYPE_DEFINE_HINT}
+          style={styles.tipoDefinir}
+          pressedStyle={styles.pressed}
+        >
+          <Label style={styles.tipoDefinirTexto}>{RELATIONSHIP_TYPE_DEFINE_CTA}</Label>
+        </Touchable>
+      ) : null}
     </View>
   );
 }
@@ -816,11 +1011,14 @@ function DimensionLeida({ dimension }: { dimension: RelationshipDimensionReading
  */
 function QueFalta({
   nivel,
+  tipo,
   soloGeneral,
   onCompletar,
   persona
 }: {
   nivel: ComparisonLevel;
+  /** El tipo declarado: decide cómo se NOMBRA la quinta dimensión (QA23-004). */
+  tipo: RelationshipTypeKey | null;
   soloGeneral: boolean;
   onCompletar: () => void;
   persona: RelationshipProfile;
@@ -831,9 +1029,13 @@ function QueFalta({
       {faltaFecha ? (
         <>
           <Label style={styles.faltaLabel}>{RELATIONSHIP_UNLOCK_LABEL.withDate}</Label>
+          {/* La escalera es la misma —tres dimensiones con la fecha, una con la
+              hora— y lo que cambia es cómo se llama cada una para este vínculo:
+              prometer `Deseo` en la lista de lo que se desbloquea sería
+              nombrarlo igual, sólo que antes de calcularlo. */}
           {RELATIONSHIP_DATE_UNLOCKS.map((clave) => (
             <Note key={clave} style={styles.faltaItem}>
-              {RELATIONSHIP_DIMENSION_LABEL[clave]}
+              {relationshipDimensionLabel(clave, tipo)}
             </Note>
           ))}
         </>
@@ -842,9 +1044,9 @@ function QueFalta({
         {RELATIONSHIP_UNLOCK_LABEL.withTime}
       </Label>
       <Note style={styles.faltaItem}>
-        {`${RELATIONSHIP_TIME_UNLOCK_DIMENSIONS.map((clave) => RELATIONSHIP_DIMENSION_LABEL[clave]).join(
-          " · "
-        )} · ${RELATIONSHIP_TIME_UNLOCKS.toLocaleLowerCase("es")}`}
+        {`${RELATIONSHIP_TIME_UNLOCK_DIMENSIONS.map((clave) =>
+          relationshipDimensionLabel(clave, tipo)
+        ).join(" · ")} · ${RELATIONSHIP_TIME_UNLOCKS.toLocaleLowerCase("es")}`}
       </Note>
       <View style={styles.cta}>
         <PrimaryButton
@@ -880,17 +1082,22 @@ function QueFalta({
  */
 function SinComparacion({
   nivel,
+  tipo,
   huecos,
   onCompletarSusDatos,
   onCompletarMisDatos
 }: {
   nivel: ComparisonLevel;
+  /** El tipo declarado: una dimensión pendiente se nombra en su clave. */
+  tipo: RelationshipTypeKey | null;
   huecos: readonly RelationshipGap[];
   onCompletarSusDatos?: () => void;
   onCompletarMisDatos?: () => void;
 }) {
   const pendientes =
-    nivel === "sign_to_sign" ? ["Estilo general"] : RELATIONSHIP_DIMENSION_ORDER.map((clave) => RELATIONSHIP_DIMENSION_LABEL[clave]);
+    nivel === "sign_to_sign"
+      ? ["Estilo general"]
+      : RELATIONSHIP_DIMENSION_ORDER.map((clave) => relationshipDimensionLabel(clave, tipo));
   return (
     <View>
       <Note style={styles.blockTop}>{relationshipDimensionsLock(nivel)}</Note>
@@ -1009,5 +1216,14 @@ const styles = StyleSheet.create({
   pie: { marginTop: v492.space.xl },
   pieLabel: { marginTop: v492.space.xs },
   pressed: { opacity: 0.6 },
+  tipo: { marginTop: v492.space.md },
+  tipoDefinir: {
+    alignSelf: "flex-start",
+    justifyContent: "center",
+    marginTop: v492.space.sm,
+    minHeight: v492.touch,
+    minWidth: v492.touch
+  },
+  tipoDefinirTexto: { color: v492.colors.copperSoft },
   trace: { marginTop: v492.space.xxl }
 });

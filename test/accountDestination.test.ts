@@ -180,12 +180,13 @@ test("`birthData` dejó de ser la autoridad de acceso", () => {
   assert.ok(/completion/.test(resolver));
 
   const hook = sinComentarios(readFileSync(join(ROOT, "src/hooks/useAccountDestination.tsx"), "utf8"));
+  const sesion = sinComentarios(readFileSync(join(ROOT, "src/hooks/useSessionResilience.tsx"), "utf8"));
   assert.ok(
-    /appApi\.onboarding\.getCompletionStatus/.test(hook),
+    /appApi\.onboarding\.getCompletionStatus/.test(sesion),
     "el hook tiene que alimentarse del estado autoritativo"
   );
-  assert.ok(!/birthData\.getCurrent/.test(hook), "y no de la query de datos natales");
-  assert.ok(/clientDraftId/.test(hook), "con el id del borrador, que distingue alta de recuperación");
+  assert.ok(!/birthData\.getCurrent/.test(hook + sesion), "y no de la query de datos natales");
+  assert.ok(/clientDraftId/.test(sesion), "con el id del borrador, que distingue alta de recuperación");
 });
 
 test("las tabs no tienen bypass de web: bloquean hasta datos natales persistidos", () => {

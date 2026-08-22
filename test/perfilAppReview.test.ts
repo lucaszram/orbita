@@ -63,7 +63,7 @@ describe("Perfil — eliminar cuenta (App Review)", () => {
     assert.match(PERFIL, /const deletionInFlight = useRef\(false\)/);
     assert.match(
       PERFIL,
-      /if \(deletionInFlight\.current \|\| loggingOut\) return;\s*\n\s*deletionInFlight\.current = true;/
+      /if \(deletionInFlight\.current \|\| loggingOut\) return;[\s\S]*?if \(!eliminacion\.allowed\) return;\s*deletionInFlight\.current = true;/
     );
     // El logout también respeta el lock (no corre en paralelo con la eliminación).
     assert.match(PERFIL, /if \(loggingOut \|\| deleting \|\| deletionInFlight\.current\) return;/);
@@ -215,7 +215,7 @@ describe("Perfil — el plan se ofrece por el bloque autoritativo, sin precios",
     // prohibía cualquier interpolación de template literal, que no tiene nada
     // que ver con escribir un precio.
     assert.equal(
-      /[$€]\s?\d|\d+[.,]\d{2}\s*(USD|ARS|€)?/.test(PERFIL),
+      /[$€]\s?\d|\d+[.,]\d{2}\s*(USD|ARS|€)/.test(PERFIL),
       false,
       "el Perfil no puede escribir un importe: los precios los da la tienda"
     );

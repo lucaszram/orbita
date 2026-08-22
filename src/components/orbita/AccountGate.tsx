@@ -1,10 +1,32 @@
 import { useEffect, useRef, type ReactNode } from "react";
+import { StyleSheet, View } from "react-native";
 import { Redirect } from "expo-router";
 import { destinationAllows, type AccountSurface } from "@/domain/accountDestination";
 import { EDIT_BIRTH_DATA_ROUTE, HOME_ROUTE, ONBOARDING_ROUTE, SIGN_IN_ROUTE } from "@/domain/appRoutes";
+import { surfaceOpensUnderConfidence, type SurfaceRequirement } from "@/domain/sessionResilience";
 import { useAccountBootstrap } from "@/hooks/useAccountBootstrap";
 import { useAccountDestination } from "@/hooks/useAccountDestination";
 import { ErrorState, MinimalLoading } from "@/components/orbita/states";
+import {
+  DegradedSessionBanner,
+  UnconfirmedSessionScreen
+} from "@/components/orbita/SessionNotice";
+import { BOOT_BACKGROUND } from "@/theme/boot";
+
+/**
+ * Superficie propia de los estados por defecto del gate (QA23-006).
+ *
+ * `MinimalLoading` y `ErrorState` son bloques de CONTENIDO —están escritos para
+ * caer dentro de un shell que ya puso el fondo—, y este gate los monta sin
+ * ninguno: `/onboarding` y `/iniciar-sesion` no le pasan un `loading` propio.
+ * Sin superficie, el color lo ponía lo que hubiera detrás, que en el arranque
+ * era el fondo claro del tema por defecto del navegador de rutas. Las
+ * superficies que SÍ traen el suyo —`WebLoading`, la espera de las tabs— no
+ * pasan por acá y no cambian.
+ */
+function BootSurface({ children }: { children: ReactNode }) {
+  return <View style={styles.bootSurface}>{children}</View>;
+}
 
 /**
  * Puerta compartida por landing, login, alta, onboarding y rutas de app.
@@ -19,13 +41,24 @@ export function AccountGate({
   children,
   loading,
   error,
-  sticky = false
+  sticky = false,
+  requires = "read"
 }: {
   surface: AccountSurface;
   children: ReactNode;
   /** Carga propia de la superficie (la web usa su spinner sobre fondo oscuro). */
   loading?: ReactNode;
   error?: (retry: () => void) => ReactNode;
+  /**
+   * Qué le exige ESTA ruta a la sesión (QA23-007).
+   *
+   * `read` —el default— abre con la sesión degradada: son los últimos datos de
+   * la propia cuenta. `confirmed-session` no abre nunca sin confirmación, y lo
+   * declara toda ruta cuya razón de ser es una operación sensible: el pago.
+   * Bloquear la ruta entera es más fuerte que bloquear su botón, porque también
+   * apaga el Offering, el restore y el Customer Center que viven adentro.
+   */
+  requires?: SurfaceRequirement;
   /**
    * La superficie tiene ESTADO PROPIO que no se puede perder: una vez montada,
    * un `loading` transitorio no la desmonta. Lo usa el alta.
@@ -43,7 +76,7 @@ export function AccountGate({
    */
   sticky?: boolean;
 }) {
-  const { destination, retry } = useAccountDestination();
+  const { destination, retry, confidence } = useAccountDestination();
   const bootstrap = useAccountBootstrap();
   // ¿Esta superficie llegó a renderizarse alguna vez? Escritura idempotente en
   // render: no dispara re-render y sobrevive al parpadeo de `loading`.
@@ -64,7 +97,78 @@ export function AccountGate({
   }, [destination, bootstrap.state]);
 
   const mostrarError = (onRetry: () => void) =>
-    error ? <>{error(onRetry)}</> : <ErrorState onRetry={onRetry} />;
+    error ? (
+      <>{error(onRetry)}</>
+    ) : (
+      <BootSurface>
+        <ErrorState onRetry={onRetry} />
+      </BootSurface>
+    );
+
+  const mostrarCarga = () => (
+    <>
+      {loading ?? (
+        <BootSurface>
+          <MinimalLoading />
+        </BootSurface>
+      )}
+    </>
+  );
+
+  /**
+   * La sesión no se pudo CONFIRMAR (QA23-007).
+   *
+   * Se decide antes que el resto porque es un estado de SESIÓN, no de dato: los
+   * reintentos de abajo asumen un backend que contesta, y acá justamente no lo
+   * hay. Nunca se redirige: mandar al login a alguien cuya sesión sigue viva en
+   * el llavero es exactamente el defecto que este bloque cierra.
+   *
+   * `sticky` manda igual que en `loading`, y por el mismo motivo: no poder
+   * confirmar es "todavía no se sabe", no un destino resuelto distinto. Sin
+   * esto, un corte de red durante el paso 13 del alta desmontaba el flujo entero
+   * —identidad, fecha, lugar y hora— con la cuenta recién creada.
+   */
+  const sesionSinConfirmar = destination === "degraded" || confidence === "transient-unavailable";
+  if (sesionSinConfirmar && sticky && montado.current) return <>{children}</>;
+
+  if (destination === "degraded") {
+    // Identidad local segura: se abre con los últimos datos de ESTA cuenta y el
+    // aviso arriba. Salvo que la ruta exista para cobrar (`requires`).
+    if (permitido && surfaceOpensUnderConfidence(requires, confidence)) {
+      return (
+        <>
+          <DegradedSessionBanner onRetry={retry} />
+          {children}
+        </>
+      );
+    }
+    return <UnconfirmedSessionScreen onRetry={retry} variant="confirmed-session" />;
+  }
+
+  /**
+   * Se agotó el plazo y NO hay identidad local segura: instalación nueva,
+   * perfil de invitado, perfil de otra cuenta o Clerk que ni siquiera cargó. El
+   * gate se conserva —no se publica un solo dato— y lo único que cambia es que
+   * deja de ser un spinner que no termina nunca.
+   *
+   * El motivo se dice distinto según qué esperaba la superficie: donde hace
+   * falta una cuenta (`app`, `edit-birth-data`) se explica que no se muestran
+   * datos que no se pueden verificar; en la landing, el login y el alta —donde
+   * todavía no hay cuenta— eso sería una acusación sin sujeto, así que se dice
+   * lo que de verdad pasó: no se pudo conectar.
+   */
+  if (
+    confidence === "transient-unavailable" &&
+    (destination === "loading" || destination === "retry")
+  ) {
+    const esperaCuenta = surface === "app" || surface === "edit-birth-data";
+    return (
+      <UnconfirmedSessionScreen
+        onRetry={retry}
+        variant={esperaCuenta ? "unattributable" : "confirmed-session"}
+      />
+    );
+  }
 
   if (destination === "retry") return mostrarError(retry);
   if (destination === "bootstrap") {
@@ -76,12 +180,12 @@ export function AccountGate({
         void bootstrap.run();
       });
     }
-    return <>{loading ?? <MinimalLoading />}</>;
+    return mostrarCarga();
   }
   if (destination === "loading") {
     // Ver `sticky`: el alta ya montada se sostiene, no se desmonta y se remonta.
     if (sticky && montado.current) return <>{children}</>;
-    return <>{loading ?? <MinimalLoading />}</>;
+    return mostrarCarga();
   }
   if (permitido) return <>{children}</>;
 
@@ -99,3 +203,7 @@ export function AccountGate({
       return <Redirect href={HOME_ROUTE as never} />;
   }
 }
+
+const styles = StyleSheet.create({
+  bootSurface: { backgroundColor: BOOT_BACKGROUND, flex: 1 }
+});

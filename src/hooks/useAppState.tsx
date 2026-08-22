@@ -317,7 +317,18 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         setPendingOwnerAdoption(!ownerUserId && adoptWhenSessionReady);
       }
     });
-    await scheduleDailyReminder(nextProfile.notificationTime);
+    // El recordatorio diario es un EFECTO LATERAL, no parte de la creación del
+    // perfil (QA23-008). `scheduleDailyReminder` sólo traga el error del
+    // permiso: `cancelAllScheduledNotificationsAsync` y `scheduleNotificationAsync`
+    // pueden tirar con el permiso ya concedido, y como esto se esperaba DESPUÉS
+    // de haber escrito perfil y dueño en disco, un fallo del módulo de
+    // notificaciones se propagaba como "no se pudo crear el perfil" a los cuatro
+    // llamadores: el cierre del alta quedaba en «Guardando tus datos…» sin
+    // salida, el editor natal decía «no cambiamos nada» habiendo escrito, y el
+    // bootstrap y la recuperación del arranque mostraban reintento sobre algo
+    // que ya estaba guardado. El perfil ya está persistido: acá no se puede
+    // fallar hacia atrás.
+    await scheduleDailyReminder(nextProfile.notificationTime).catch(() => false);
   }, []);
 
   const adoptLocalProfile = useCallback(
@@ -346,7 +357,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       await storeProfile(nextProfile);
 
       if (updates.notificationTime) {
-        await scheduleDailyReminder(updates.notificationTime);
+        // Mismo motivo que en `createProfile`: el perfil ya quedó en disco y un
+        // fallo del módulo de notificaciones no puede volver atrás y convertir
+        // una edición guardada en un error del editor (QA23-008).
+        await scheduleDailyReminder(updates.notificationTime).catch(() => false);
       }
     },
     [profile]

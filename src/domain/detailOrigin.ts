@@ -64,17 +64,19 @@ const DETAIL_ORIGIN_ROUTE: Record<DetailOrigin, string> = {
  * detalle sólo puede volver al stack en el que se apiló, así que cada sección
  * tiene que poder apilar el suyo.
  *
- * Las otras dos —`estacion` y `ano`— nacen acá y sólo acá: son los ritmos de
- * `Tu momento` que hasta el build 22 se quedaban en una frase en la portada y
- * no tenían a dónde profundizar (QA22-024). No se agregan al stack de Hoy
- * porque Hoy no los muestra.
+ * Las otras tres —`estacion`, `ano` y `mandala`— nacen acá y sólo acá: son los
+ * módulos de `Tu momento` que no tenían a dónde profundizar. Los dos primeros se
+ * quedaban en una frase en la portada (QA22-024); el tercero es el detalle
+ * integral del dibujo, que en el build 23 seguía sin lectura propia mientras
+ * repartía cuatro enlaces hacia los ritmos que ya se leen arriba (QA23-002). No
+ * se agregan al stack de Hoy porque Hoy no los muestra.
  *
  * El slug es el de la URL, así que va sin acentos ni eñes: `ano` es el año
  * personal. Nombrarlo `año` obligaría a escapar el segmento en cada enlace y a
  * decodificarlo para compararlo, que es exactamente donde se cuelan los
  * destinos que no resuelven.
  */
-export const SECTION_LAYER_DETAILS = ["estacion", "ano", "cumpleluna", "luna"] as const;
+export const SECTION_LAYER_DETAILS = ["estacion", "ano", "cumpleluna", "luna", "mandala"] as const;
 
 export type SectionLayerDetail = (typeof SECTION_LAYER_DETAILS)[number];
 

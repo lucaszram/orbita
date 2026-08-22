@@ -18,6 +18,17 @@
  * Lo que se prueba corriendo es la decisión pura —la derivación del nivel, qué
  * bloquea el guardado, a dónde vuelve y en qué fase está el cálculo—; lo
  * estructural sólo cubre el cableado que una prueba de dominio no puede ver.
+ *
+ * ## Actualizado por QA23-005
+ *
+ * El HECHO de QA22-015 y QA22-016 no cambió —guardar no abre la lectura, y
+ * guardar y calcular siguen siendo dos cosas—, pero el DESTINO sí: el guardado ya
+ * no vuelve a la raíz global con un `?guardada=`, aterriza en el perfil canónico
+ * de esa persona, y la raíz dejó de arrancar el cálculo de ninguna fila. Las
+ * pruebas que fijaban el destino y la fila se reescribieron para fijar el nuevo,
+ * que es una garantía más fuerte: la raíz no monta `getComparison` NI
+ * `refreshComparison` en ningún lado. La superficie propia del perfil vive en
+ * `test/vinculosPerfilQA23.test.ts`.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -35,11 +46,13 @@ import {
 } from "../src/domain/relationshipCalc";
 import {
   emptyRelationshipDraft,
+  relationshipComparisonHref,
   relationshipDataLevelLine,
   relationshipDraftBlock,
   relationshipDraftFromProfile,
   relationshipEditHref,
   relationshipLevelFromDraft,
+  relationshipProfileHref,
   relationshipSaveArgs,
   relationshipSavedConfirmation,
   relationshipSavedHref,
@@ -355,15 +368,26 @@ test("el pedido guarda exactamente los datos del nivel derivado, sin completar n
 });
 
 // ---------------------------------------------------------------------------
-// QA22-015 — dónde termina un guardado, y dónde se editan los datos
+// QA22-015 (actualizado por QA23-005) — dónde termina un guardado, y dónde se
+// editan los datos
 // ---------------------------------------------------------------------------
 
 test("los destinos de Vínculos se arman en el dominio y son unívocos", () => {
   assert.equal(relationshipEditHref("rp_1"), "/vinculos/conectar?profileId=rp_1");
-  assert.equal(relationshipSavedHref("rp_1", "alta"), "/vinculos?guardada=rp_1&modo=alta");
-  assert.equal(relationshipSavedHref("rp_1", "edicion"), "/vinculos?guardada=rp_1&modo=edicion");
-  // El destino del guardado es la RAÍZ de la sección, no la lectura.
-  assert.doesNotMatch(relationshipSavedHref("rp_1", "alta"), /^\/vinculos\/rp_1/);
+  assert.equal(relationshipProfileHref("rp_1"), "/vinculos/rp_1");
+  assert.equal(relationshipComparisonHref("rp_1"), "/vinculos/rp_1/comparacion");
+  assert.equal(relationshipSavedHref("rp_1", "alta"), "/vinculos/rp_1?modo=alta");
+  assert.equal(relationshipSavedHref("rp_1", "edicion"), "/vinculos/rp_1?modo=edicion");
+
+  // El destino del guardado es el PERFIL de esa persona (QA23-005): ni la raíz
+  // global —donde la persona es una fila más— ni la comparación, que sigue sin
+  // abrirse sola. La garantía de QA22-015 no cambió de hecho, cambió de lugar.
+  for (const modo of ["alta", "edicion"] as const) {
+    const destino = relationshipSavedHref("rp_1", modo);
+    assert.ok(destino.startsWith(relationshipProfileHref("rp_1")), modo);
+    assert.doesNotMatch(destino, /^\/vinculos\?/, `${modo}: el guardado ya no vuelve a la raíz`);
+    assert.ok(!destino.includes("/comparacion"), `${modo}: el guardado no abre la lectura`);
+  }
 
   assert.equal(relationshipSavedMode("alta"), "alta");
   assert.equal(relationshipSavedMode("edicion"), "edicion");
@@ -377,38 +401,48 @@ test("la confirmación nombra a la persona y dice dónde quedó", () => {
   const alta = relationshipSavedConfirmation("Martina QA", "alta");
   assert.match(alta, /Martina QA/);
   assert.match(alta, /list/i, "dice que quedó en la lista");
-  assert.match(alta, /tocala|toc[aá]/i, "y que abrir la comparación es una acción tuya");
+  assert.match(alta, /perfil/i, "y que esto que se está viendo es su perfil");
 
   const edicion = relationshipSavedConfirmation("Martina QA", "edicion");
   assert.match(edicion, /Martina QA/);
   assert.notEqual(edicion, alta, "actualizar no es lo mismo que dar de alta");
 
+  // Ninguna de las dos promete un cálculo en curso: guardar no arranca ninguna
+  // comparación, y decir que "se está preparando" sería describir algo que no
+  // está pasando (QA23-005).
+  for (const frase of [alta, edicion]) {
+    assert.match(frase, /cuando la abr[ií]s/i, "el cálculo empieza al abrir la comparación");
+    assert.doesNotMatch(frase, /prepar|calculando|en un momento/i);
+  }
+
   // Sin nombre guardado no se imprime un hueco.
   assert.match(relationshipSavedConfirmation("   ", "alta"), /esta persona/);
 });
 
-test("guardar vuelve a la raíz y NO abre la lectura", () => {
+test("guardar aterriza en el PERFIL de esa persona y NO abre la comparación", () => {
   const conectar = sinComentarios(leer(CONECTAR));
 
   assert.match(
     conectar,
-    /router\.dismissTo\(\s*relationshipSavedHref\(saved\.profileId, persona \? "edicion" : "alta"\)/,
-    "se vuelve a la raíz con el id que devolvió el backend"
+    /router\.replace\(destino as never\)/,
+    "el destino sale de `relationshipSavedHref`, con el id que devolvió el backend"
   );
-  // El defecto exacto: `router.replace(`/vinculos/${saved.profileId}`)`.
+  assert.match(
+    conectar,
+    /const destino = relationshipSavedHref\(saved\.profileId, persona \? "edicion" : "alta"\)/
+  );
+  // El defecto original: `router.replace(`/vinculos/${saved.profileId}`)` armado a
+  // mano en la pantalla. El destino vive en el dominio y la pantalla no lo escribe.
   assert.doesNotMatch(
     conectar,
     /router\.(?:replace|push|navigate|dismissTo)\(\s*`\/vinculos\/\$\{/,
-    "el alta no puede convertirse por sí sola en una lectura"
+    "la pantalla no arma destinos de Vínculos por su cuenta"
   );
-
-  const hub = sinComentarios(leer(HUB));
-  assert.match(hub, /relationshipSavedConfirmation\(/, "la raíz confirma el guardado");
-  assert.match(hub, /RECIÉN GUARDADA/, "y la persona queda señalada en la lista");
-  assert.match(
-    hub,
-    /findRelationshipProfile\(personas, guardada\)/,
-    "el id de la URL vale lo que valga en TU lista"
+  // Y el guardado no puede terminar en la comparación por ninguna vía.
+  assert.doesNotMatch(
+    conectar,
+    /relationshipComparisonHref|\/comparacion/,
+    "el alta no puede convertirse por sí sola en una lectura"
   );
 });
 
@@ -600,33 +634,33 @@ test("qué hace falta recalcular, y cuándo se gasta el intento automático", ()
   assert.equal(relationshipRowCanRetry(RELATIONSHIP_ROW_RETRY_LIMIT), false);
 });
 
-test("la raíz muestra a la persona antes del cálculo: el sobre se pide en su fila", () => {
-  const hub = leer(HUB);
+test("la raíz muestra a las personas y no arranca NINGÚN cálculo (QA23-005)", () => {
+  const hub = sinComentarios(leer(HUB));
 
-  // La lista se dibuja siempre; la comparación se consulta DENTRO de la fila de
-  // la persona recién guardada. Si la consulta viviera en el cuerpo de la raíz,
-  // su estado tomaría la pantalla entera — que es el defecto de QA22-016.
+  // QA22-016 pedía que guardar y calcular no se vieran como una sola espera, y
+  // lo resolvía anunciando el cálculo en la fila de la persona recién guardada.
+  // QA23-005 va un paso más allá y saca el cálculo de la raíz por completo: la
+  // fila abre el PERFIL, y la comparación —con su cálculo— es una acción de dos
+  // toques. La garantía pasa a ser de ausencia, que es la más fuerte posible.
+  assert.doesNotMatch(hub, /getComparison/, "la raíz no consulta ninguna comparación");
+  assert.doesNotMatch(hub, /refreshComparison/, "y no dispara ningún recálculo");
+  assert.doesNotMatch(hub, /useAction/, "una raíz que sólo lista no ejecuta acciones");
+  assert.doesNotMatch(hub, /function EstadoLectura/, "el estado del cálculo dejó de vivir acá");
+  assert.doesNotMatch(hub, /RECIÉN GUARDADA/, "la confirmación del guardado es del perfil");
+  assert.doesNotMatch(hub, /relationshipSavedConfirmation/);
+
+  // Lo que sí sigue estando: la lista real, dibujada sin esperar nada más.
   const live = /function VinculosHubLive\(\{[\s\S]*?\n\}\n/.exec(hub)?.[0] ?? "";
   assert.ok(live, "no se encontró el cuerpo de la raíz");
-  assert.doesNotMatch(live, /getComparison/, "la raíz no espera ninguna comparación para dibujarse");
-  assert.doesNotMatch(live, /refreshComparison/);
-  assert.match(live, /<PersonasBlock/, "la lista se dibuja igual");
+  assert.match(live, /useQuery\(relationshipsApi\.list, \{\}\)/);
+  assert.match(live, /<PersonasBlock personas=\{personas\} \/>/, "la lista se dibuja igual");
 
-  const fila = /function EstadoLectura\(\{[\s\S]*?\n\}\n/.exec(hub)?.[0] ?? "";
-  assert.ok(fila, "no se encontró el bloque de estado de la fila");
-  assert.match(fila, /useQuery\(relationshipsApi\.getComparison/);
-  assert.match(fila, /useAction\(relationshipsApi\.refreshComparison\)/);
-  assert.match(fila, /accessibilityLiveRegion="polite"/, "el estado se anuncia donde ocurre");
-  assert.match(fila, /REINTENTAR SU LECTURA/);
-  assert.match(fila, /relationshipRowCanRetry\(reintentos\)/, "el reintento manual está acotado");
+  // Y cada fila abre el perfil de SU persona, con el id que publicó el backend.
   assert.match(
-    fila,
-    /if \(automatico\.current === clave\) return;/,
-    "el automático es UNO por estado del sobre"
+    hub,
+    /router\.push\(relationshipProfileHref\(persona\.profileId\) as never\)/,
+    "la fila abre el perfil canónico de esa persona"
   );
-  // Y sólo se monta para la persona que se acaba de guardar: la raíz no abre una
-  // consulta por cada fila de la lista.
-  assert.match(hub, /\{reciente \? <EstadoLectura persona=\{persona\} \/> : null\}/);
 });
 
 test("la lectura y la fila comparten la misma regla de recálculo", () => {
@@ -658,7 +692,7 @@ test("dos toques en Guardar no guardan dos veces", () => {
     "la puerta se cierra en el mismo tick, y queda cerrada una vez confirmado"
   );
   assert.ok(
-    conectar.indexOf("guardado.current = true;") < conectar.indexOf("router.dismissTo("),
+    conectar.indexOf("guardado.current = true;") < conectar.indexOf("router.replace(destino"),
     "la puerta se cierra ANTES de navegar: entre la respuesta y el desmonte hay frames"
   );
 
@@ -683,11 +717,16 @@ test("dos toques en Guardar no guardan dos veces", () => {
   assert.equal(relationshipSaveSignature(borrador(), ZONA, null), null, "sin pedido no hay huella");
 });
 
-test("las tres rutas de Vínculos y la superficie web quedan como estaban", () => {
+test("las cuatro rutas de Vínculos y la superficie web quedan como estaban", () => {
+  // La cuarta es la comparación, que en QA23-005 pasó a colgar del perfil. La
+  // regla no cambió: wrapper neutro en `app/`, implementación resuelta por
+  // plataforma fuera de `app/`, y web sigue en `/vinculo` sin arrastrar la
+  // experiencia nativa al paquete.
   const rutas = [
     "app/(tabs)/vinculos/index.tsx",
     "app/(tabs)/vinculos/conectar.tsx",
-    "app/(tabs)/vinculos/[profileId].tsx"
+    "app/(tabs)/vinculos/[profileId].tsx",
+    "app/(tabs)/vinculos/[profileId]/comparacion.tsx"
   ] as const;
 
   for (const entry of rutas) {

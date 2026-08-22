@@ -16,8 +16,11 @@
  * 5. **La jerarquía es la misma en los cuatro detalles**, y en ese orden: qué
  *    marca ahora → qué pone al frente → cómo usarlo → para observar → los datos
  *    → método y trazabilidad.
- * 6. **Los cuatro ritmos ofrecen acceso** con el rótulo exacto, una sola vez, y
- *    sólo cuando ese ritmo se puede calcular.
+ * 6. **Cada módulo de `Tu momento` ofrece acceso** con el rótulo exacto, una
+ *    sola vez, y sólo cuando ese módulo se puede calcular. Desde QA23-002 los
+ *    módulos son tres —estación, año y el mandala entero— y el dibujo dejó de
+ *    repartir un enlace por anillo; el detalle del mandala se prueba en
+ *    `mandalaDetalleQA23.test.ts`.
  */
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
@@ -596,58 +599,70 @@ test("la capa de lectura es pura: tablas fijas, composición y nada más", () =>
 });
 
 // ---------------------------------------------------------------------------
-// Los cuatro accesos: rótulo exacto, una vez, y sólo con cálculo
+// Los accesos de `Tu momento`: rótulo exacto, una vez, y sólo con cálculo
 // ---------------------------------------------------------------------------
 
-test("los cuatro ritmos del mandala ofrecen acceso con el copy exacto del registro", () => {
+/**
+ * QA22-024 pedía que ningún ritmo se quedara en una frase sin a dónde
+ * profundizar, y esa garantía sigue entera; lo que QA23-002 cambió es POR DÓNDE
+ * se sale. Los cuatro enlaces repartidos anillo por anillo debajo del dibujo se
+ * reemplazaron por un acceso por MÓDULO —tres—, y el ciclo lunar y el tránsito
+ * activo se leen en su propia sección en vez de colgar del mandala.
+ */
+test("los tres módulos de Tu momento ofrecen acceso con el copy exacto del registro", () => {
   const momento = sinComentarios(leer(MOMENTO));
 
-  // Los cuatro rótulos, con el texto EXACTO que pide QA22-024, y cada uno una
-  // sola vez: dos entradas al mismo destino en la misma pantalla es la
-  // duplicación que el registro marca.
-  const ROTULOS = ["VER TU ESTACIÓN", "VER TU AÑO", "VER CICLO LUNAR", "VER TRÁNSITO"] as const;
+  // Los tres rótulos, con el texto EXACTO, y cada uno una sola vez: dos entradas
+  // al mismo destino en la misma pantalla es la duplicación que el registro
+  // marca.
+  const ROTULOS = ["VER TU ESTACIÓN", "VER TU AÑO", "VER TUS CUATRO RITMOS"] as const;
   for (const rotulo of ROTULOS) {
     const veces = momento.match(new RegExp(`label: "${rotulo}"`, "g"))?.length ?? 0;
     assert.equal(veces, 1, `«${rotulo}» tiene que aparecer una sola vez y aparece ${veces}`);
   }
 
-  // Y cada ritmo del contrato tiene su clave en la tabla de destinos: si el
-  // mandala publica un anillo sin destino, ese ritmo no tiene a dónde ir.
-  for (const clave of ["progressed_lunation", "annual_profection", "cumpleluna", "transit_arc"]) {
-    assert.match(momento, new RegExp(`${clave}: \\{`), `el ritmo ${clave} no tiene destino`);
-  }
-
-  // Los destinos de las dos capas nuevas salen del helper de rutas, no de un
-  // literal escrito a mano en la pantalla.
+  // Y los tres destinos salen del helper de rutas, no de un literal escrito a
+  // mano en la pantalla.
   assert.match(momento, /href: layerDetailHref\("estacion"\)/);
   assert.match(momento, /href: layerDetailHref\("ano"\)/);
-  assert.match(momento, /href: layerDetailHref\("cumpleluna"\)/);
-  assert.match(
-    momento,
-    /href: withDetailOrigin\(`\/transitos\/arco\/\$\{encodeURIComponent\(arcId\)\}`, "momento"\)/
-  );
+  assert.match(momento, /href: layerDetailHref\("mandala"\)/);
 
-  // El enlace aparece sólo cuando ese ritmo se puede calcular hoy.
-  assert.match(momento, /const destino = ring\.available \? destinos\[ring\.key\] : undefined;/);
-  // Y el tránsito, además, sólo cuando hay un arco que abrir.
-  assert.match(momento, /const arcId = bundle\.today\.transitArc\.data\?\.arcId \?\? null;/);
-  assert.match(momento, /\.\.\.\(arcId\s*\?/);
+  // Ya no hay tabla de destinos por clave de anillo: el dibujo dejó de ser un
+  // índice de análisis que la pantalla ya muestra arriba (QA23-002).
+  for (const clave of ["progressed_lunation", "annual_profection", "cumpleluna", "transit_arc"]) {
+    assert.ok(!momento.includes(`${clave}: {`), `el mandala no vuelve a repartir hacia ${clave}`);
+  }
+
+  // El acceso aparece sólo cuando ese módulo se puede calcular hoy: cuelga de la
+  // misma condición que dibuja el bloque, no de una bandera aparte.
+  for (const [sobre, destino] of [
+    ["progressedLunation", "DETALLES.estacion"],
+    ["annualProfection", "DETALLES.ano"],
+    ["temporalMandala", "DETALLES.mandala"]
+  ] as const) {
+    const bloque = momento.slice(momento.indexOf(`${sobre}.data ?`));
+    const acceso = bloque.indexOf(`<AccesoDetalle acceso={${destino}} />`);
+    assert.ok(acceso > 0, `${sobre}: falta el acceso de su módulo`);
+    assert.ok(acceso < bloque.indexOf("<Falta"), `${sobre}: el acceso está en la rama sin cálculo`);
+  }
 
   // Cada acceso se anuncia con su propia etiqueta accesible: `VER TU AÑO` en
   // mayúsculas no le dice a VoiceOver a dónde va.
   const accesibles = momento.match(/accessibilityLabel: "[^"]+"/g) ?? [];
-  assert.equal(accesibles.length, 4, "los cuatro accesos declaran su etiqueta accesible");
-  assert.equal(new Set(accesibles).size, 4, "y ninguna se repite");
+  assert.equal(accesibles.length, 3, "los tres accesos declaran su etiqueta accesible");
+  assert.equal(new Set(accesibles).size, 3, "y ninguna se repite");
 });
 
-test("las cuatro capas de la sección tienen ruta propia y pantalla propia", () => {
-  assert.deepEqual([...SECTION_LAYER_DETAILS], ["estacion", "ano", "cumpleluna", "luna"]);
+test("las capas de la sección tienen ruta propia y pantalla propia", () => {
+  assert.deepEqual([...SECTION_LAYER_DETAILS], ["estacion", "ano", "cumpleluna", "luna", "mandala"]);
   assert.equal(layerDetailHref("estacion"), "/transitos/capa/estacion");
   assert.equal(layerDetailHref("ano"), "/transitos/capa/ano");
+  assert.equal(layerDetailHref("mandala"), "/transitos/capa/mandala");
 
   const capa = sinComentarios(leer(RUTA_CAPA));
   assert.match(capa, /estacion: EstacionDetailScreen/);
   assert.match(capa, /ano: AnoDetailScreen/);
+  assert.match(capa, /mandala: MandalaDetailScreen/);
   assert.match(capa, /Record<SectionLayerDetail,/, "la tabla es exhaustiva por tipo");
 
   for (const rel of [ESTACION, ANO]) {

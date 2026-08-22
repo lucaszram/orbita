@@ -36,7 +36,7 @@ import {
   readPendingAccountDeletion,
   storePendingAccountDeletion
 } from "@/services/storage";
-import { theme } from "@/theme/theme";
+import { BOOT_ACCENT, BOOT_BACKGROUND, BOOT_TEXT, BOOT_TEXT_MUTED } from "@/theme/boot";
 
 const SUPPORT_URL = "https://orbitaastrologia.xyz/support";
 const IS_WEB = process.env.EXPO_OS === "web";
@@ -464,7 +464,7 @@ function BlockingScreen({
   if (loading) {
     return (
       <View style={styles.screen}>
-        <ActivityIndicator color={theme.colors.plum} />
+        <ActivityIndicator color={BOOT_ACCENT} />
       </View>
     );
   }
@@ -546,7 +546,7 @@ function BlockingScreen({
   return (
     <View style={styles.screen}>
       <Text style={styles.title}>Finalizando la eliminación…</Text>
-      <ActivityIndicator color={theme.colors.plum} style={{ marginTop: 16 }} />
+      <ActivityIndicator color={BOOT_ACCENT} style={{ marginTop: 16 }} />
     </View>
   );
 }
@@ -571,7 +571,7 @@ function OwnerSignIn({ onSignedIn }: { onSignedIn: () => void }) {
   if (!flow || !fontsLoaded) {
     return (
       <View style={styles.screen}>
-        <ActivityIndicator color={theme.colors.plum} />
+        <ActivityIndicator color={BOOT_ACCENT} />
       </View>
     );
   }
@@ -624,15 +624,26 @@ function Support() {
   );
 }
 
+/**
+ * El bloqueo es OSCURO (QA23-006).
+ *
+ * Este boundary es lo PRIMERO que se dibuja en cada arranque: mientras
+ * `inspectPendingAccountDeletion` lee el disco, `slot.kind === "loading"` tapa
+ * el producto entero. Pintaba el crema del MVP legado, así que la app abría con
+ * un frame claro incluso en el camino feliz —el marcador casi nunca existe— y
+ * recién después caía al negro del shell. Ahora es el mismo `#0A0B0E`, con el
+ * texto y las acciones del mismo módulo para que ninguna quede oscuro sobre
+ * oscuro.
+ */
 const styles = StyleSheet.create({
   body: {
-    color: theme.colors.muted,
+    color: BOOT_TEXT_MUTED,
     fontSize: 14,
     marginTop: 8,
     textAlign: "center"
   },
   button: {
-    borderColor: theme.colors.plum,
+    borderColor: BOOT_ACCENT,
     borderRadius: 999,
     borderWidth: 1,
     justifyContent: "center",
@@ -642,20 +653,20 @@ const styles = StyleSheet.create({
     paddingVertical: 10
   },
   buttonText: {
-    color: theme.colors.plum,
+    color: BOOT_ACCENT,
     fontSize: 13,
     fontWeight: "600",
     letterSpacing: 1
   },
   screen: {
     alignItems: "center",
-    backgroundColor: theme.colors.background,
+    backgroundColor: BOOT_BACKGROUND,
     flex: 1,
     justifyContent: "center",
     paddingHorizontal: 32
   },
   title: {
-    color: theme.colors.ink,
+    color: BOOT_TEXT,
     fontSize: 17,
     fontWeight: "600",
     textAlign: "center"

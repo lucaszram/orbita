@@ -40,11 +40,23 @@ const relativo = (absolute: string) => relative(ROOT, absolute);
 const sinComentarios = (source: string) =>
   source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
+/**
+ * Las cuatro rutas de la pestaña. Desde QA23-005 son cuatro: `[profileId]` es el
+ * PERFIL canónico de una persona guardada y su comparación cuelga de él, en
+ * `[profileId]/comparacion`.
+ */
 const VINCULOS_ROUTES = [
   "app/(tabs)/vinculos/index.tsx",
   "app/(tabs)/vinculos/conectar.tsx",
-  "app/(tabs)/vinculos/[profileId].tsx"
+  "app/(tabs)/vinculos/[profileId].tsx",
+  "app/(tabs)/vinculos/[profileId]/comparacion.tsx"
 ] as const;
+
+/** La ruta del perfil: quién es esa persona, sin ningún cálculo detrás. */
+const RUTA_PERFIL = "app/(tabs)/vinculos/[profileId].tsx";
+
+/** La ruta de la comparación, que es la que monta el cálculo. */
+const RUTA_COMPARACION = "app/(tabs)/vinculos/[profileId]/comparacion.tsx";
 
 /**
  * La pantalla del resultado. Se declara acá arriba porque desde 4B la miran dos
@@ -53,6 +65,9 @@ const VINCULOS_ROUTES = [
  */
 const RESULTADO = "src/screens/v492/VinculosResultScreen.tsx";
 
+/** La pantalla del perfil canónico (QA23-005). */
+const PERFIL = "src/screens/v492/VinculosProfileScreen.tsx";
+
 function fuenteNativa(entry: (typeof VINCULOS_ROUTES)[number]) {
   return [...reachableFrom([entry], "native")]
     .filter((rel) => /\.(?:ts|tsx|js|jsx)$/.test(rel))
@@ -60,7 +75,7 @@ function fuenteNativa(entry: (typeof VINCULOS_ROUTES)[number]) {
     .join("\n");
 }
 
-test("las tres rutas de Vínculos son wrappers nativo/web fuera de app", () => {
+test("las cuatro rutas de Vínculos son wrappers nativo/web fuera de app", () => {
   for (const entry of VINCULOS_ROUTES) {
     const wrapper = sinComentarios(leer(entry));
     assert.match(
@@ -151,8 +166,30 @@ test("Conectar ofrece signo, fecha y carta completa sin fabricar precisión", ()
   );
 });
 
-test("el resultado valida profileId y usa la comparación persistida", () => {
-  const source = fuenteNativa("app/(tabs)/vinculos/[profileId].tsx");
+test("el perfil valida profileId y no monta ningún cálculo (QA23-005)", () => {
+  const source = fuenteNativa(RUTA_PERFIL);
+
+  assert.match(source, /useLocalSearchParams\s*</);
+  assert.match(source, /relationshipsApi\.list\b/);
+  assert.match(source, /\.find\s*\(/, "el id del deep link debe resolverse contra la lista autorizada");
+  assert.doesNotMatch(
+    source,
+    /(?:params\.)?profileId\s+as\s+(?:Id<|RelationshipProfile)/,
+    "un string de URL no se puede convertir por cast en un id autorizado"
+  );
+
+  // El perfil es la superficie de la PERSONA, no de su cálculo: entrar acá —o
+  // aterrizar acá al guardar— no puede disparar una comparación. Se afirma sobre
+  // la pantalla y no sobre el grafo, que arrastra la biblioteca entera.
+  const pantalla = sinComentarios(leer(PERFIL));
+  assert.doesNotMatch(pantalla, /getComparison/);
+  assert.doesNotMatch(pantalla, /refreshComparison/);
+  assert.doesNotMatch(pantalla, /useAction/);
+  assert.doesNotMatch(pantalla, /savePerson|removePerson/, "el perfil lee, no escribe");
+});
+
+test("la comparación valida profileId y usa la comparación persistida", () => {
+  const source = fuenteNativa(RUTA_COMPARACION);
 
   assert.match(source, /useLocalSearchParams\s*</);
   assert.match(source, /relationshipsApi\.list\b/);
@@ -169,7 +206,7 @@ test("el resultado valida profileId y usa la comparación persistida", () => {
 });
 
 test("signo contra signo es general; fecha y carta muestran cinco dimensiones reales", () => {
-  const source = fuenteNativa("app/(tabs)/vinculos/[profileId].tsx");
+  const source = fuenteNativa(RUTA_COMPARACION);
 
   assert.match(source, /data\.generalOnly\b/);
   assert.match(source, /data\.resolvedLevel\b/);
@@ -180,7 +217,9 @@ test("signo contra signo es general; fecha y carta muestran cinco dimensiones re
   // armada en el dominio sobre la evidencia por contacto. Las cuatro piezas que
   // esa lectura publica tienen que llegar a la pantalla, y los contactos con
   // ellas.
-  assert.match(source, /relationshipReading\(data\)/);
+  // La lectura recibe el sobre Y el tipo declarado (QA23-004): sin el segundo,
+  // la quinta dimensión se escribiría en la clave romántica para cualquiera.
+  assert.match(source, /relationshipReading\(datosComparacion, tipo\)/);
   assert.match(source, /dimension\.facilitates\b/);
   assert.match(source, /dimension\.strains\b/);
   assert.match(source, /dimension\.invitation\b/);
@@ -197,7 +236,7 @@ test("signo contra signo es general; fecha y carta muestran cinco dimensiones re
 });
 
 test("comparaciones parciales, viejas o sin datos se explican y pueden reintentarse", () => {
-  const source = fuenteNativa("app/(tabs)/vinculos/[profileId].tsx");
+  const source = fuenteNativa(RUTA_COMPARACION);
 
   assert.match(source, /StatusLine\b/);
   assert.match(source, /StaleNotice\b/);

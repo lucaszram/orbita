@@ -27,29 +27,29 @@ const resumen = (pass: number, fail = 0) =>
     ""
   ].join("\n");
 
-test("el piso acompaña a la suite: 2347 tests", () => {
+test("el piso acompaña a la suite: 2542 tests", () => {
   // El brief original pedía 745; la suite creció con V4.9.2, identidad, comercio,
   // la reestructura de la pestaña 5, el bloque de frescura, Hoy sin arco, los
   // detalles editoriales y ahora el cierre de frescura —el resultado que resuelve
   // sin cielo, la ruta vieja del arco y el destino de la pestaña Tránsitos—. El
   // piso sube con ella —y queda en el conteo REAL de la corrida, no en un número
   // redondo—: bajar de acá significa que se borró o se debilitó una prueba.
-  assert.equal(DEFAULT_MINIMUM, 2347);
+  assert.equal(DEFAULT_MINIMUM, 2542);
 });
 
 test("una corrida completa por encima del piso pasa", () => {
-  const verdict = evaluateTestRun(resumen(2384));
+  const verdict = evaluateTestRun(resumen(2720));
   assert.equal(verdict.ok, true);
-  assert.equal(verdict.pass, 2384);
+  assert.equal(verdict.pass, 2720);
   assert.deepEqual(verdict.failures, []);
 });
 
-test("el piso incluye su propio número: exactamente 2347 pasa, 2346 falla", () => {
-  assert.equal(evaluateTestRun(resumen(2347)).ok, true);
+test("el piso incluye su propio número: exactamente 2542 pasa, 2541 falla", () => {
+  assert.equal(evaluateTestRun(resumen(2542)).ok, true);
 
-  const abajo = evaluateTestRun(resumen(2346));
+  const abajo = evaluateTestRun(resumen(2541));
   assert.equal(abajo.ok, false);
-  assert.match(abajo.failures[0], /2346/);
+  assert.match(abajo.failures[0], /2541/);
   assert.match(abajo.failures[0], /falta/);
 });
 
@@ -68,10 +68,10 @@ test("una corrida sin resumen NO pasa: la ausencia de `fail` no es `fail 0`", ()
 });
 
 test("el formato TAP del runner también se lee", () => {
-  const tap = ["# tests 2367", "# pass 2367", "# fail 0", ""].join("\n");
+  const tap = ["# tests 2567", "# pass 2567", "# fail 0", ""].join("\n");
   const verdict = evaluateTestRun(tap);
   assert.equal(verdict.ok, true);
-  assert.equal(verdict.pass, 2367);
+  assert.equal(verdict.pass, 2567);
 });
 
 test("un nombre de test que imita el resumen no le gana al resumen real", () => {
