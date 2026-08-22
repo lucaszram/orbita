@@ -377,7 +377,8 @@ test("persistRefresh rechaza una edición natal ocurrida mientras el cálculo es
 
 test("un error vencido vuelve a calcularse y el último ranking se degrada a stale si falla el proveedor", async () => {
   await withoutAstrologyCredentials(async () => {
-    const localDate = localDateIn("UTC");
+    const timezone = "UTC";
+    const localDate = localDateIn(timezone);
     const now = Date.now();
     const identity = baseHash(null, null);
     const dailyScope = { localDate, timezone: "UTC" };
@@ -471,7 +472,8 @@ test("sin hora ni muestras del día completo no filtra el mediodía al mapa, pat
 
 test("Cumpleluna no rescata una fecha cacheada si el intervalo natal cruza el ciclo", async () => {
   await withoutAstrologyCredentials(async () => {
-    const localDate = localDateIn("UTC");
+    const timezone = "UTC";
+    const localDate = localDateIn(timezone);
     const now = Date.now();
     const birthData: BirthDataSnapshot = {
       birthDate: "1994-05-04",
@@ -503,7 +505,7 @@ test("Cumpleluna no rescata una fecha cacheada si el intervalo natal cruza el ci
     const identity = baseHash(birthData, chart, natalEphemeris);
     const cachedCumpleluna = result({
       analysisId: "ORB-LUN-002",
-      inputHash: resultHash(identity, "ORB-LUN-002"),
+      inputHash: resultHash(identity, "ORB-LUN-002", { localDate, timezone }),
       status: "partial",
       precision: "range",
       observedAt: now - 20 * 60 * 60 * 1000,
@@ -645,7 +647,7 @@ test("el Mandala hereda stale desde la Cumpleluna personal y no duplica calidad 
     const nextExactAt = now - 60 * 60 * 1000;
     const cachedCumpleluna = result({
       analysisId: "ORB-LUN-002",
-      inputHash: resultHash(identity, "ORB-LUN-002"),
+      inputHash: resultHash(identity, "ORB-LUN-002", { localDate, timezone }),
       status: "ready",
       precision: "exact",
       observedAt: now - 12 * 60 * 60 * 1000,
@@ -710,7 +712,7 @@ test("el hash y la vigencia del Mandala siguen sus cuatro fuentes, no Luna en tu
       );
       const cachedCumpleluna = result({
         analysisId: "ORB-LUN-002",
-        inputHash: resultHash(identity, "ORB-LUN-002"),
+        inputHash: resultHash(identity, "ORB-LUN-002", { localDate, timezone }),
         status: "ready",
         precision: "exact",
         observedAt: now,

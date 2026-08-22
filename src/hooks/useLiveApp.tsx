@@ -221,18 +221,22 @@ export type EntitlementState = {
   /**
    * ¿Se puede nombrar el plan sin especular?
    *
-   * Falso durante el arranque: mientras Clerk resuelve la sesión y no hay
-   * snapshot que llene el hueco, cualquier etiqueta sería un invento. Quien
-   * dibuja el plan no muestra nada hasta que esto sea verdad — un "Órbita Free"
-   * especulativo en la cara de alguien que paga es el defecto que esto evita.
+   * Es exactamente "la vista efectiva afirma un plan": `effective !== undefined`.
+   * Ni el arranque de Clerk ni la lectura del disco alcanzan por sí solos — con
+   * el disco leído y la sesión resuelta, un remoto que todavía no contestó sigue
+   * siendo "no sé", y nombrar eso "Free" es el defecto que esto evita (QA23-001:
+   * `FREE` visible en el encabezado mientras el entitlement no resolvía). Quien
+   * dibuja el plan no muestra nada hasta que esto sea verdad.
    */
   labelReady: boolean;
 };
 
 const OFFLINE_ENTITLEMENT: EntitlementState = {
   owner: null,
-  // Sin backend no hay plan que consultar: es una respuesta, no una espera. Pero
-  // `resolved` sigue en falso porque tampoco hay nada que autorice un cobro.
+  // Sin backend no hay plan que consultar: es una respuesta, no una espera —por
+  // eso `effective` es `null` y no `undefined`, y por eso el plan SE PUEDE
+  // nombrar acá—. Pero `resolved` sigue en falso porque tampoco hay nada que
+  // autorice un cobro.
   remote: null,
   effective: null,
   resolved: false,
@@ -257,7 +261,7 @@ const SNAPSHOT_LOADING: SnapshotRead = { hydrated: false, plan: null };
 const SNAPSHOT_NONE: SnapshotRead = { hydrated: true, plan: null };
 
 function EntitlementProviderInner({ children }: { children: ReactNode }) {
-  const { isLive, isAuthLoading, auth } = useLiveApp();
+  const { isLive, auth } = useLiveApp();
   const owner = auth?.isSignedIn ? auth.userId ?? null : null;
   /**
    * La ÚNICA `subscriptions.getCurrent` de la UI nativa.
@@ -340,10 +344,18 @@ function EntitlementProviderInner({ children }: { children: ReactNode }) {
 
   const view = decision.view;
   const hydrated = cached.hydrated;
-  // Se puede nombrar el plan si ya se sabe cuál es, o si la sesión terminó de
-  // resolver y no hay nada guardado: recién ahí "Free" es un fallback y no una
-  // suposición sobre alguien de quien todavía no sabemos nada.
-  const labelReady = view !== undefined || (hydrated && !isAuthLoading);
+  // El plan se puede nombrar cuando ya se sabe cuál es, y sólo entonces.
+  //
+  // La condición anterior tenía un segundo camino —sesión resuelta y disco leído
+  // sin nada guardado— y ése era el que publicaba "Free" mientras la única
+  // `getCurrent` seguía en vuelo: una instalación nueva, o cualquier arranque sin
+  // snapshot, mostraba el chip del plan gratuito antes de que el backend dijera
+  // nada (QA23-001). `undefined` es "no sé", no "Free": mientras la vista efectiva
+  // no afirme un plan —remoto confirmado o último confirmado en disco— no hay
+  // nombre que dar, y un hueco de un instante es más honesto que un plan
+  // inventado. `null` sí es una respuesta —el backend contestó que no hay plan— y
+  // ésa se dice Free.
+  const labelReady = view !== undefined;
 
   const value = useMemo<EntitlementState>(
     () => ({

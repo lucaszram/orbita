@@ -517,8 +517,27 @@ export const comparisonLevelValidator = v.union(
   v.literal("chart_to_chart"),
 );
 
+/**
+ * Dato declarado por la persona. No se deriva de signos, fechas ni cartas.
+ * `null` queda reservado para perfiles legacy que todavía no lo definieron;
+ * `prefer_not_to_say` es una elección explícita y distinta.
+ */
+export const relationshipTypeValidator = v.union(
+  v.literal("romantic"),
+  v.literal("parent_or_caregiver"),
+  v.literal("child"),
+  v.literal("sibling"),
+  v.literal("friendship"),
+  v.literal("work_or_project"),
+  v.literal("other"),
+  v.literal("prefer_not_to_say"),
+);
+
 export const relationshipComparisonDataValidator = v.object({
   kind: v.literal("relationship_comparison"),
+  // Aditivo: cachés previos no lo tienen. En resultados nuevos `null` marca
+  // perfil legacy; `prefer_not_to_say` conserva la elección explícita.
+  relationshipType: v.optional(v.union(relationshipTypeValidator, v.null())),
   requestedLevel: comparisonLevelValidator,
   resolvedLevel: comparisonLevelValidator,
   dimensions: v.array(relationshipDimensionValidator),
@@ -640,6 +659,10 @@ export const layerBundleValidator = v.object({
 export const relationshipProfileValidator = v.object({
   profileId: v.id("relationshipProfiles"),
   name: v.string(),
+  // Optional at the wire boundary so cached/test fixtures and installed
+  // clients from builds 22/23 remain valid. The current server normalizes
+  // legacy rows to `null` when it publishes a profile.
+  relationshipType: v.optional(v.union(relationshipTypeValidator, v.null())),
   birthDate: v.union(v.string(), v.null()),
   birthTime: v.union(v.string(), v.null()),
   birthTimePrecision: v.union(

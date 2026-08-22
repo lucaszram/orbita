@@ -191,6 +191,15 @@ export function OnboardingFlow({
   // como si el alta hubiera funcionado.
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  /**
+   * El cierre LOCAL falló con los datos remotos ya guardados (QA23-008).
+   *
+   * Se separa de `submitError` porque no es lo mismo y la salida tampoco: el
+   * guardado remoto ya está hecho e idempotente, y lo que falló es la copia
+   * local del perfil o la navegación. Reintentar tiene que volver a INTENTAR
+   * ENTRAR, no a reescribir lo que ya está en la cuenta.
+   */
+  const [entryFailed, setEntryFailed] = useState(false);
   // Lock SINCRÓNICO. `submitting` es estado de React: recién se refleja en el
   // próximo render, así que dos taps en el mismo render pasaban los dos. El ref
   // se toma en la primera línea; sólo se libera al fallar (en el éxito ya
@@ -426,14 +435,13 @@ export function OnboardingFlow({
   }, [step, sesionActiva, inspeccion]);
 
   /**
-   * Salida del alta: perfil local + recepción. Se llama UNA sola vez, y con
-   * backend configurado SÓLO después de que el estado autoritativo diga
-   * datos natales persistidos. La carta es un derivado reintentable y no
-   * participa de esta puerta.
+   * Salida del alta: perfil local + recepción. La llama `enterApp`, que es
+   * quien pone el candado —una sola vez— y quien atiende su fallo. Con backend
+   * configurado sólo corre después de que el estado autoritativo diga datos
+   * natales persistidos. La carta es un derivado reintentable y no participa de
+   * esta puerta.
    */
-  const enterApp = async () => {
-    if (enterLock.current) return;
-    enterLock.current = true;
+  const abrirOrbita = async () => {
     const birthTimeValue = timeUnknown ? undefined : timeLabel;
     // Con sesión activa el perfil queda marcado con su dueño: el próximo
     // arranque lo reconoce como propio en vez de mandarlo a reconciliar.
@@ -473,6 +481,29 @@ export function OnboardingFlow({
         ...(computed?.ascendant ? { asc: computed.ascendant } : {}),
       },
     } as never);
+  };
+
+  /**
+   * La salida, con su candado y con una salida cuando ELLA falla (QA23-008).
+   *
+   * `abrirOrbita` escribe en AsyncStorage y navega, o sea que puede rechazar
+   * DESPUÉS de que el alta remota ya cerró. Con el candado tomado para siempre
+   * y sin `submitError`, la pantalla quedaba en «Guardando tus datos…» sin un
+   * solo control: la única salida era matar la app (y recién ahí el arranque
+   * reconciliaba contra Convex). Ahora el candado se suelta, se dice qué pasó
+   * —los datos están guardados; lo que falló es este teléfono— y se ofrece
+   * volver a entrar. El guardado NO se repite: ya está hecho.
+   */
+  const enterApp = async () => {
+    if (enterLock.current) return;
+    enterLock.current = true;
+    setEntryFailed(false);
+    try {
+      await abrirOrbita();
+    } catch {
+      enterLock.current = false;
+      setEntryFailed(true);
+    }
   };
 
   const submit = async () => {
@@ -683,10 +714,21 @@ export function OnboardingFlow({
         // Un solo estado de guardado. Un fallo real de persistencia conserva el
         // borrador y ofrece recuperación inline; no existe una página terminal
         // de error de carta.
+        //
+        // Los dos fallos posibles se dicen distinto porque la salida es distinta
+        // (QA23-008): si no se pudo GUARDAR, el reintento vuelve a guardar; si
+        // se guardó y no se pudo ABRIR la app, el reintento vuelve a entrar —
+        // repetir el guardado ahí sería pedir de nuevo algo que ya está hecho.
         <SavingBirthData
-          error={submitError}
+          error={
+            entryFailed
+              ? "Tus datos quedaron guardados en tu cuenta, pero no pudimos abrir Órbita en este teléfono. Probá de nuevo."
+              : submitError
+          }
+          errorLabel={entryFailed ? "No pudimos abrir Órbita" : undefined}
+          retryLabel={entryFailed ? "Entrar a Órbita" : undefined}
           retrying={submitting}
-          onRetry={submit}
+          onRetry={entryFailed ? () => void enterApp() : submit}
         />
       );
       break;
@@ -714,11 +756,23 @@ export function OnboardingFlow({
 function SavingBirthData({
   error,
   retrying,
-  onRetry
+  onRetry,
+  /**
+   * Qué anuncia el lector de pantalla y qué dice el botón cuando hay error.
+   *
+   * Opcionales con el valor de siempre por defecto: el cierre tiene dos fallos
+   * distintos —no se pudo guardar, o se guardó y no se pudo abrir la app— y
+   * anunciar el segundo como «no pudimos sincronizar tus datos» sería decir que
+   * se perdió algo que está guardado (QA23-008).
+   */
+  errorLabel = "No pudimos sincronizar tus datos",
+  retryLabel = "Reintentar guardado"
 }: {
   error: string | null;
   retrying: boolean;
   onRetry: () => void;
+  errorLabel?: string;
+  retryLabel?: string;
 }) {
   const reduced = useReducedMotion();
   const spin = useRef(new Animated.Value(0)).current;
@@ -740,7 +794,7 @@ function SavingBirthData({
     <Screen bg={A.accountBg} bgOpacity={0.4} wash={0.72}>
       <View
         accessibilityRole="progressbar"
-        accessibilityLabel={error ? "No pudimos sincronizar tus datos" : "Guardando tus datos"}
+        accessibilityLabel={error ? errorLabel : "Guardando tus datos"}
         style={styles.saving}
       >
         {/* El orbe del alta, no un spinner sobre negro: el cierre confirma los
@@ -753,7 +807,7 @@ function SavingBirthData({
             <Body accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.savingText}>
               {error}
             </Body>
-            <CTA label={retrying ? "Guardando…" : "Reintentar guardado"} onPress={onRetry} disabled={retrying} />
+            <CTA label={retrying ? "Guardando…" : retryLabel} onPress={onRetry} disabled={retrying} />
           </>
         ) : (
           <Body accessibilityLiveRegion="polite" style={styles.savingText}>

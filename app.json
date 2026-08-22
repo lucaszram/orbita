@@ -8,10 +8,24 @@
     "orientation": "portrait",
     "scheme": "orbita",
     "userInterfaceStyle": "dark",
+    "backgroundColor": "#0A0B0E",
+    "splash": {
+      "backgroundColor": "#0A0B0E",
+      "resizeMode": "contain"
+    },
+    "androidNavigationBar": {
+      "barStyle": "light-content",
+      "backgroundColor": "#0A0B0E"
+    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.lucasssram.orbita",
-      "buildNumber": "23",
+      "buildNumber": "24",
+      "backgroundColor": "#0A0B0E",
+      "splash": {
+        "backgroundColor": "#0A0B0E",
+        "resizeMode": "contain"
+      },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "CFBundleName": "Órbita",
@@ -19,6 +33,11 @@
       }
     },
     "android": {
+      "backgroundColor": "#0A0B0E",
+      "splash": {
+        "backgroundColor": "#0A0B0E",
+        "resizeMode": "contain"
+      },
       "adaptiveIcon": {
         "backgroundColor": "#0D0E12"
       },

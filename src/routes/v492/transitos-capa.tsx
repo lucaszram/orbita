@@ -9,6 +9,7 @@ import { AnoDetailScreen } from "@/screens/v492/AnoDetailScreen";
 import { CumplelunaDetailScreen } from "@/screens/v492/CumplelunaDetailScreen";
 import { EstacionDetailScreen } from "@/screens/v492/EstacionDetailScreen";
 import { LunaDetailScreen } from "@/screens/v492/LunaDetailScreen";
+import { MandalaDetailScreen } from "@/screens/v492/MandalaDetailScreen";
 
 /**
  * Qué pantalla abre cada capa.
@@ -19,13 +20,15 @@ import { LunaDetailScreen } from "@/screens/v492/LunaDetailScreen";
  * `cumpleluna` y `luna` son las MISMAS pantallas que abre Hoy —la composición,
  * el copy y los estados siguen viviendo una sola vez en `screens/v492`—; lo
  * único que cambia es de qué stack cuelgan. `estacion` y `ano` son los detalles
- * nuevos de los dos ritmos que sólo esta sección muestra (QA22-024).
+ * de los dos ritmos que sólo esta sección muestra (QA22-024) y `mandala` es el
+ * detalle integral del dibujo que los reúne (QA23-002).
  */
 const PANTALLA: Record<SectionLayerDetail, (props: { fallbackHref: string }) => ReactElement> = {
   estacion: EstacionDetailScreen,
   ano: AnoDetailScreen,
   cumpleluna: CumplelunaDetailScreen,
-  luna: LunaDetailScreen
+  luna: LunaDetailScreen,
+  mandala: MandalaDetailScreen
 };
 
 /**

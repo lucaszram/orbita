@@ -1,5 +1,12 @@
 import { parseDateInput, parseTimeInput } from "@/domain/birthInput";
 import { formatCivilDate } from "@/domain/layers";
+import {
+  readRelationshipType,
+  relationshipTypeAllowsDesire,
+  relationshipTypeSaveField,
+  RELATIONSHIP_NEUTRAL_DESIRE_LABEL,
+  type RelationshipTypeKey
+} from "@/domain/relationshipType";
 import type {
   ComparisonLevel,
   RelationshipDimension,
@@ -246,6 +253,29 @@ export const RELATIONSHIP_DIMENSION_LABEL: Record<RelationshipDimensionKey, stri
 };
 
 /**
+ * Cómo se llama una dimensión PARA ESTE VÍNCULO (QA23-004).
+ *
+ * La tabla de arriba es el vocabulario completo del cálculo —las cinco
+ * dimensiones existen siempre y se calculan siempre—; esto es cómo se NOMBRAN
+ * según el tipo declarado. `Deseo` sólo se puede escribir con un vínculo
+ * romántico declarado; en todo lo demás —los otros seis tipos,
+ * `prefer_not_to_say` y el legacy `null`— la misma dimensión se llama
+ * `Energía compartida`, que es el literal que el motor ya publica en el sobre.
+ *
+ * El cálculo no cambia: cambian el rótulo y la voz. Lo que se muestra son los
+ * mismos contactos, con las mismas identidades y los mismos pesos.
+ */
+export function relationshipDimensionLabel(
+  key: RelationshipDimensionKey,
+  type: RelationshipTypeKey | null
+): string {
+  if (key === "desire" && !relationshipTypeAllowsDesire(type)) {
+    return RELATIONSHIP_NEUTRAL_DESIRE_LABEL;
+  }
+  return RELATIONSHIP_DIMENSION_LABEL[key];
+}
+
+/**
  * Qué NO se pudo calcular, dicho antes de las causas.
  *
  * Es una sola frase sobre el CÁLCULO, sin atribuir el faltante a nadie: de quién
@@ -473,9 +503,27 @@ function nombreDe(profile: RelationshipProfile): string {
 export const RELATIONSHIP_COMPARISON_DISCLAIMER =
   "Esto muestra patrones simbólicos entre dos cartas. No mide amor, compatibilidad ni cuánto puede durar una relación.";
 
-export function relationshipDisclaimer(disclaimer: string | null | undefined): string {
+/**
+ * El mismo límite para un vínculo que no se declaró romántico.
+ *
+ * "No mide amor" no es lo que hay que decirle a alguien que guardó a su hermana
+ * o a un socio: nombra un plano que esa persona no pidió leer. El hecho es el
+ * mismo —esto no mide el vínculo ni predice cuánto dura—, dicho sin suponer de
+ * qué vínculo se trata. Es la misma pareja de textos que el motor publica en
+ * `disclaimer`; esta versión sólo cubre los cachés viejos, que no lo traen.
+ */
+export const RELATIONSHIP_NEUTRAL_COMPARISON_DISCLAIMER =
+  "Esto muestra patrones simbólicos entre dos cartas. No mide el valor del vínculo, no decide si son compatibles y no predice cuánto puede durar.";
+
+export function relationshipDisclaimer(
+  disclaimer: string | null | undefined,
+  type: RelationshipTypeKey | null = null
+): string {
   const propio = disclaimer?.trim();
-  return propio ? propio : RELATIONSHIP_COMPARISON_DISCLAIMER;
+  if (propio) return propio;
+  return relationshipTypeAllowsDesire(type)
+    ? RELATIONSHIP_COMPARISON_DISCLAIMER
+    : RELATIONSHIP_NEUTRAL_COMPARISON_DISCLAIMER;
 }
 
 /**
@@ -611,14 +659,35 @@ export function relationshipBirthLine(profile: RelationshipProfile): string | nu
 // Rutas de Vínculos: dónde termina un guardado y dónde se editan los datos
 // ---------------------------------------------------------------------------
 
-/** La raíz de la sección. Es a donde vuelve todo guardado (QA22-015). */
+/** La raíz de la sección: tu patrón relacional y la lista de tus personas. */
 export const VINCULOS_ROUTE = "/vinculos";
 
 /** El formulario de datos de una persona. Sin id, es un alta. */
 export const VINCULOS_FORM_ROUTE = "/vinculos/conectar";
 
-/** Qué persona se acaba de guardar, para confirmarlo en la raíz. */
-export const RELATIONSHIP_SAVED_PARAM = "guardada";
+/**
+ * El PERFIL canónico de una persona guardada (QA23-005).
+ *
+ * Es la superficie de esa persona y el destino de todo guardado: quién es, qué
+ * datos quedaron cargados y qué vínculo se declaró. Desde acá cuelgan sus dos
+ * acciones —ver la comparación y editar los datos—, así que una fila de la lista,
+ * un deep link y el final de un alta llegan todos al mismo lugar.
+ */
+export function relationshipProfileHref(profileId: string): string {
+  return `${VINCULOS_ROUTE}/${profileId}`;
+}
+
+/**
+ * La comparación de esa persona, como ruta HIJA de su perfil (QA23-005).
+ *
+ * La jerarquía es el punto: la comparación es UNA de las cosas que se pueden
+ * hacer con una persona guardada, no la persona. Colgándola del perfil, "volver"
+ * cae en el perfil —que es de donde se abrió— en vez de saltar a la raíz global,
+ * y el guardado deja de competir con ella por el mismo destino.
+ */
+export function relationshipComparisonHref(profileId: string): string {
+  return `${relationshipProfileHref(profileId)}/comparacion`;
+}
 
 /** Si ese guardado fue un alta o una edición: cambian la confirmación. */
 export const RELATIONSHIP_SAVED_MODE_PARAM = "modo";
@@ -637,14 +706,17 @@ export function relationshipEditHref(profileId: string): string {
 }
 
 /**
- * La raíz de Vínculos, declarando qué persona se acaba de guardar.
+ * Dónde termina un guardado: el PERFIL de esa persona, declarando qué acaba de
+ * pasar (QA23-005).
  *
- * El alta no abre la lectura (QA22-015): vuelve acá, con la persona a la vista y
- * una confirmación de que quedó guardada. Abrir su comparación pasa a ser una
- * acción explícita, que es lo que permite verificar que el alta terminó.
+ * Sigue sin abrir la lectura (QA22-015) y ahora tampoco vuelve a la raíz global:
+ * el alta y la edición aterrizan en la superficie de la persona que se guardó,
+ * que es la única que puede confirmar el guardado mostrando el resultado. El
+ * `profileId` es el SEGMENTO de la ruta —el que devolvió el backend—, así que lo
+ * único que viaja como parámetro es el modo.
  */
 export function relationshipSavedHref(profileId: string, modo: RelationshipSaveMode): string {
-  return `${VINCULOS_ROUTE}?${RELATIONSHIP_SAVED_PARAM}=${profileId}&${RELATIONSHIP_SAVED_MODE_PARAM}=${modo}`;
+  return `${relationshipProfileHref(profileId)}?${RELATIONSHIP_SAVED_MODE_PARAM}=${modo}`;
 }
 
 /** El modo declarado en la URL, o `null` si no vino o no es uno de los dos. */
@@ -656,15 +728,19 @@ export function relationshipSavedMode(raw: unknown): RelationshipSaveMode | null
 /**
  * La confirmación del guardado, con el nombre de la persona.
  *
- * Dice lo que PASÓ y dónde quedó: sin esta frase, volver a una lista con una
- * fila más no alcanza para saber que el alta terminó bien —fue exactamente lo
- * que quedó registrado en QA22-015—.
+ * Dice lo que PASÓ y dónde quedó: sin esta frase, aterrizar en una pantalla con
+ * los datos cargados no alcanza para saber que el guardado terminó bien —fue
+ * exactamente lo que quedó registrado en QA22-015—.
+ *
+ * Y no promete un cálculo (QA23-005). Guardar no arranca ninguna comparación: la
+ * frase dice que la comparación se abre —y recién ahí se calcula— en vez de
+ * sugerir que algo está corriendo en el fondo.
  */
 export function relationshipSavedConfirmation(name: string, modo: RelationshipSaveMode): string {
   const quien = name.trim() || "esta persona";
   return modo === "alta"
-    ? `Guardamos a ${quien} en tu cuenta. Ya está en tu lista: tocala para abrir su comparación.`
-    : `Guardamos los datos de ${quien}. Su comparación se rehace con los datos nuevos.`;
+    ? `Guardamos a ${quien} en tu cuenta y ya está en tu lista. Éste es su perfil: la comparación se calcula cuando la abrís.`
+    : `Guardamos los datos de ${quien}. La comparación se vuelve a calcular con los datos nuevos cuando la abrís.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -691,9 +767,21 @@ export type RelationshipPlaceChoice = {
  * decir "carta con carta" con una persona que sólo tenía el signo, y al guardar
  * el backend devolvía otro nivel. Ahora hay una sola derivación
  * —`relationshipLevelFromDraft`— y nada que la pueda contradecir.
+ *
+ * **Sí lleva `relationshipType` (QA23-004), y es lo contrario del nivel.** El
+ * nivel se deriva y no se pregunta; el tipo se pregunta y no se deriva. Va junto
+ * al NOMBRE y no junto a los datos de nacimiento porque no es un dato de
+ * nacimiento: no participa de `relationshipLevelFromDraft`, no habilita ni
+ * bloquea ningún escalón y no se puede completar mirando el signo, la fecha ni
+ * la carta.
  */
 export type RelationshipDraft = {
   name: string;
+  /**
+   * Qué vínculo tiene con esa persona, declarado. `null` es "sin definir": no
+   * se contestó y nadie lo va a suponer.
+   */
+  relationshipType: RelationshipTypeKey | null;
   /** Sin fecha, uno de los doce signos elegido a mano. */
   zodiacSign: RelationshipSignKey | null;
   /** `YYYY-MM-DD` */
@@ -707,6 +795,7 @@ export type RelationshipDraft = {
 export function emptyRelationshipDraft(): RelationshipDraft {
   return {
     name: "",
+    relationshipType: null,
     zodiacSign: null,
     birthDate: null,
     birthTime: null,
@@ -728,6 +817,11 @@ export function emptyRelationshipDraft(): RelationshipDraft {
  * partir de las coordenadas de la ciudad elegida, y si no se resuelve no se
  * guarda nada (`relationshipSavePayload` devuelve `null`). Por eso acá alcanza
  * con que HAYA una ciudad elegida.
+ *
+ * **El tipo de vínculo no entra, y no puede entrar (QA23-004).** El nivel lo
+ * fijan la fecha, la hora y la ciudad; declarar `Amistad` o `Vínculo romántico`
+ * no agrega ni quita una sola posición. La función mira tres campos y ninguno
+ * es el tipo.
  */
 export function relationshipLevelFromDraft(draft: RelationshipDraft): ComparisonLevel {
   const fecha = draft.birthDate ? parseDateInput(draft.birthDate) : null;
@@ -771,6 +865,10 @@ export function relationshipDraftFromProfile(profile: RelationshipProfile): Rela
   const { latitude, longitude } = profile;
   return {
     name: profile.name,
+    // Lo declarado se muestra tal cual, y un perfil legacy —o uno publicado por
+    // un backend que todavía no expone el campo— entra como `null`: sin definir,
+    // que es exactamente lo que es. Editar no lo inventa ni lo hereda del signo.
+    relationshipType: readRelationshipType(profile),
     zodiacSign: relationshipSignKey(profile.zodiacSign),
     birthDate: profile.birthDate,
     birthTime: profile.birthTimePrecision === "unknown" ? null : profile.birthTime,
@@ -797,6 +895,10 @@ export function relationshipDraftFromProfile(profile: RelationshipProfile): Rela
  * exige lo que ese escalón necesita: guardar "carta con carta" a medias sería
  * prometer una lectura que no va a llegar. El objetivo es intención de pantalla
  * y no se guarda en ningún lado: lo que queda persistido es el nivel derivado.
+ *
+ * **El tipo de vínculo nunca bloquea (QA23-004).** Es opcional en el alta y en
+ * la edición: sin definir se guarda igual, la comparación se calcula igual y la
+ * lectura es la neutral. Exigirlo convertiría un dato declarado en un peaje.
  */
 export function relationshipDraftBlock(
   draft: RelationshipDraft,
@@ -840,8 +942,25 @@ export function relationshipDraftBlock(
   return null;
 }
 
+/**
+ * Los argumentos de `relationships.savePerson` **más** el campo aditivo del tipo
+ * de vínculo.
+ *
+ * La intersección existe por una razón de tiempos, no de gusto: el contrato ya
+ * declara `relationshipType` como argumento opcional, pero mientras no corra el
+ * codegen `SavePersonArgs` —que se deriva de `convex/_generated`— todavía no lo
+ * conoce. Declararlo acá hace que el pedido compile hoy y siga compilando
+ * después, cuando el generado lo incluya con exactamente esta forma.
+ *
+ * Es opcional y NO admite `null`, igual que el validator: el campo se omite o
+ * lleva uno de los ocho valores. Ver `relationshipTypeSaveField`.
+ */
+export type RelationshipSaveArgs = SavePersonArgs & {
+  relationshipType?: RelationshipTypeKey;
+};
+
 /** Lo que se manda a guardar, sin la clave que identifica al INTENTO. */
-type RelationshipSavePayload = Omit<SavePersonArgs, "idempotencyKey">;
+type RelationshipSavePayload = Omit<RelationshipSaveArgs, "idempotencyKey">;
 
 /**
  * El pedido que corresponde a este borrador, o `null` si no se puede guardar.
@@ -887,6 +1006,11 @@ function relationshipSavePayload(
 
   const sinDatos = {
     ...(profileId ? { profileId } : {}),
+    // Declarado, no derivado: el tipo viaja con los tres niveles sin mirar qué
+    // datos hay. Y viaja OMITIDO cuando no se definió —el validator acepta los
+    // ocho valores o la ausencia del campo, nunca `null`—, que además es lo que
+    // impide que un guardado sin contestar borre una elección anterior.
+    ...relationshipTypeSaveField(draft.relationshipType),
     birthDate: null,
     birthTime: null,
     birthPlaceLabel: null,
@@ -956,9 +1080,28 @@ export function relationshipSaveArgs(
   resolvedTimezone: string | null,
   profileId: RelationshipProfileId | null,
   idempotencyKey: string
-): SavePersonArgs | null {
+): RelationshipSaveArgs | null {
   const payload = relationshipSavePayload(draft, resolvedTimezone, profileId);
   return payload ? { ...payload, idempotencyKey } : null;
+}
+
+/**
+ * El MISMO pedido, sin el campo del tipo de vínculo.
+ *
+ * Es la degradación ante un backend que todavía no desplegó el contrato
+ * aditivo: Convex rechaza un argumento que su validator no declara, así que un
+ * cliente nuevo contra un deployment viejo no guardaría nada —ni el nombre, ni
+ * la fecha, ni la carta—. Reconocido el rechazo
+ * (`relationshipTypeRejectedByBackend`), el pedido se reintenta por acá.
+ *
+ * Se conserva la clave de idempotencia del intento original a propósito: el
+ * primer pedido no llegó a ejecutarse —lo frenó la validación de argumentos—,
+ * así que esto no es un pedido nuevo, es el mismo pedido en el idioma que ese
+ * backend entiende.
+ */
+export function relationshipSaveArgsWithoutType(args: RelationshipSaveArgs): SavePersonArgs {
+  const { relationshipType: _declarado, ...resto } = args;
+  return resto;
 }
 
 /**
@@ -971,6 +1114,11 @@ export function relationshipSaveArgs(
  * siendo el mismo intento. Los campos se ordenan para que la huella no dependa
  * del orden en que se armó el objeto, y se recorre el pedido entero en vez de
  * una lista de campos aparte: si el contrato agrega uno, entra solo.
+ *
+ * Ese "entra solo" es lo que mete al TIPO DE VÍNCULO en la identidad del pedido
+ * sin una línea propia (QA23-004): cambiar `Amistad` por `Trabajo o proyecto` es
+ * otro pedido, estrena clave de idempotencia y el backend lo trata como una
+ * escritura nueva en vez de devolver la persona que ya había guardado.
  */
 export function relationshipSaveSignature(
   draft: RelationshipDraft,

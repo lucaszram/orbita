@@ -48,18 +48,32 @@ export function relationshipNeedsCalculation(comparison: RelationshipCalcEnvelop
 
 /**
  * La huella del estado que ya pidió un cálculo automático: persona, nivel que
- * permiten sus datos y entradas del cálculo.
+ * permiten sus datos, TIPO DE VÍNCULO declarado y entradas del cálculo.
  *
- * Mientras esos tres no cambien, un resultado que sigue corto —el proveedor
+ * Mientras esos cuatro no cambien, un resultado que sigue corto —el proveedor
  * caído— no reabre el ciclo: es lo que acota el reintento automático a UNO por
  * estado en vez de dejarlo girando.
+ *
+ * **Por qué el tipo entra (QA23-004).** El backend ya lo mete en su propio
+ * `inputHash`, así que en el camino normal el cambio de tipo llega solo por ese
+ * lado. Entra igual acá porque esta clave es la identidad que el CLIENTE tiene
+ * del estado, y tiene que cambiar cuando cambia lo declarado aunque el sobre
+ * todavía sea el viejo —o aunque venga de un backend que no lo hashea—: si no,
+ * la pantalla se quedaría sentada sobre un intento ya gastado, con una lectura
+ * escrita para otro vínculo. Es sólo una identidad: no dispara nada por sí sola,
+ * porque `relationshipNeedsCalculation` sigue decidiendo si hay algo que pedir.
+ *
+ * `undefined` y `null` son la misma cosa —sin definir— y dan la misma clave, tal
+ * como el hash del backend.
  */
 export function relationshipCalcKey(args: {
   profileId: string;
   level: string;
   inputHash: string;
+  /** El tipo declarado, o `null`/ausente cuando no se definió. */
+  relationshipType?: string | null;
 }): string {
-  return `${args.profileId}|${args.level}|${args.inputHash}`;
+  return `${args.profileId}|${args.level}|${args.relationshipType ?? "sin_definir"}|${args.inputHash}`;
 }
 
 /**

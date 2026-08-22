@@ -795,9 +795,9 @@ test("el cierre del alta muestra que está guardando, no una pantalla vacía", (
   assert.match(flow, /source=\{A\.heroEclipse\}/, "y la pieza orbital como señal de actividad");
   // Anunciado: rol de progreso + región viva para un lector de pantalla.
   assert.match(flow, /accessibilityRole="progressbar"/);
-  assert.match(flow, /accessibilityLabel=\{error \? "No pudimos sincronizar tus datos" : "Guardando tus datos"\}/);
+  assert.match(flow, /accessibilityLabel=\{error \? errorLabel : "Guardando tus datos"\}/);
   assert.match(flow, /accessibilityLiveRegion="polite"/);
-  assert.match(flow, /Reintentar guardado/);
+  assert.match(flow, /retryLabel = "Reintentar guardado"/);
 
   // Y el relleno negro vacío ya no se monta en ninguna rama del switch.
   const cierre = flow.slice(flow.indexOf("case FINAL_STEP:"), flow.indexOf("function SavingBirthData"));

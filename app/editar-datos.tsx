@@ -33,8 +33,10 @@ import {
   type BirthEditorSeed
 } from "@/domain/birthEditorSeed";
 import { createExclusiveGate, runExclusive } from "@/domain/exclusive";
+import { sensitiveOperationBlockMessage } from "@/domain/sessionResilience";
 import { useAppState } from "@/hooks/useAppState";
 import { useLiveApp, useLiveAppDocs } from "@/hooks/useLiveApp";
+import { useSensitiveOperation } from "@/hooks/useSessionResilience";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
 import { BirthDateField, BirthTimeField } from "@/onboarding/components/BirthDateTimeField";
 import { CTA } from "@/onboarding/components/CTA";
@@ -75,10 +77,22 @@ export default function EditarDatosRoute() {
   //
   // Sin envs no hay cuenta que resolver (builds locales): el editor guarda sólo
   // en el teléfono y no pasa por el gate.
+  //
+  // `requires="confirmed-session"` (QA23-007): esta ruta existe para REESCRIBIR
+  // los datos natales, que recalculan la carta y todas las lecturas. Se declara
+  // aunque hoy `destinationAllows("degraded", "edit-birth-data")` ya sea `false`:
+  // depender de esa coincidencia dejaría la protección en manos de una tabla que
+  // no se escribió para esto, y ampliar `edit-birth-data` mañana por cualquier
+  // otro motivo abriría el editor con la sesión sin confirmar sin que nadie lo
+  // note. Acá la exigencia queda dicha por la ruta, que es de quien es.
   return (
     <WebLayoutProvider>
       {backendConfig.isConfigured ? (
-        <AccountGate surface="edit-birth-data" loading={<WebLoading />}>
+        <AccountGate
+          surface="edit-birth-data"
+          requires="confirmed-session"
+          loading={<WebLoading />}
+        >
           <EditarDatosSurface />
         </AccountGate>
       ) : (
@@ -98,6 +112,25 @@ function EditarDatosSurface() {
   // y rechazaría un cambio con ONBOARDING_BIRTH_DATA_CONFLICT.
   const persistBackend = useProfileBirthDataPersist();
   const signedIn = !!auth?.isSignedIn;
+  /**
+   * La confianza de sesión, revalidada DENTRO del editor (QA23-007).
+   *
+   * El gate de la ruta ya exige `confirmed-session`, pero el gate decide al
+   * montar y esta pantalla vive minutos: se busca una ciudad, se corrige una
+   * hora, se vuelve del teclado. Si la conexión se cae con el editor abierto, el
+   * gate no vuelve a intervenir sobre una superficie ya montada y el `Guardar`
+   * quedaría autorizado por un render viejo. Acá se pregunta en cada render, y
+   * el handler vuelve a preguntar antes de escribir.
+   *
+   * Sin envs no hay cuenta que confirmar y el editor es local: la exigencia se
+   * aplica sólo donde hay backend, igual que el gate de la ruta.
+   */
+  const edicion = useSensitiveOperation("natal-edit");
+  const edicionBloqueada = backendConfig.isConfigured && !edicion.allowed;
+  // La misma respuesta, legible desde adentro de un `await`: `edicionBloqueada`
+  // es del render que dibujó el botón y esto es de AHORA.
+  const bloqueoRef = useRef(edicionBloqueada);
+  bloqueoRef.current = edicionBloqueada;
 
   // La semilla se congela una vez, cuando el origen autoritativo resuelve. El
   // borrador se compara SIEMPRE contra ella: es el dato real de la persona.
@@ -206,6 +239,13 @@ function EditarDatosSurface() {
     setDraft((current) => (current ? { ...current, ...patch } : current));
 
   const save = async () => {
+    // La sesión, revalidada en el handler y no heredada del render que dibujó el
+    // botón. Se contesta con el motivo escrito: un `Guardar` que no hace nada y
+    // no dice por qué se lee como un editor roto.
+    if (bloqueoRef.current) {
+      setSaveError(sensitiveOperationBlockMessage("natal-edit"));
+      return;
+    }
     if (!draft || saving || !canSaveBirthEditor(readiness)) return;
     // Último borde: si al borrador le falta algo, no se completa nada por él.
     const edits = draftToEdits(draft);
@@ -217,6 +257,12 @@ function EditarDatosSurface() {
       setSaving(true);
       setSaveError(null);
       try {
+        // Y otra vez, pegado a la escritura: entre el toque y este punto hubo un
+        // `await` del candado, y la confianza pudo caer en el medio.
+        if (bloqueoRef.current) {
+          setSaveError(sensitiveOperationBlockMessage("natal-edit"));
+          return;
+        }
         if (signedIn && persistBackend) {
           // Con sesión: esperar la confirmación del backend (recalcula carta y
           // lectura) ANTES de aplicar nada. Si falla, no se guarda ni local:
@@ -400,6 +446,21 @@ function EditarDatosSurface() {
             {blockMessage}
           </Body>
         ) : null}
+        {/* La sesión dejó de estar confirmada con el editor YA ABIERTO. Se dice
+            acá, con `alert` y región viva, porque puede aparecer sin que la
+            persona haya tocado nada —se cae la conexión mientras corrige una
+            hora— y un `Guardar` apagado sin explicación se lee como una falla.
+            Lo tipeado no se pierde: el bloqueo es del guardado, no del
+            formulario (QA23-007). */}
+        {edicionBloqueada ? (
+          <Body
+            accessibilityRole="alert"
+            accessibilityLiveRegion="polite"
+            style={TEXT.saveError}
+          >
+            {sensitiveOperationBlockMessage("natal-edit")}
+          </Body>
+        ) : null}
         <CTA
           label={
             saving
@@ -413,7 +474,12 @@ function EditarDatosSurface() {
                     : "Guardar cambios"
           }
           onPress={readiness === "retry-remote" ? retrySync : save}
-          disabled={saving || (readiness !== "retry-remote" && !canSaveBirthEditor(readiness))}
+          // El reintento de sincronización sigue vivo aunque la sesión no esté
+          // confirmada: es justamente la salida. Lo que se apaga es guardar.
+          disabled={
+            saving ||
+            (readiness !== "retry-remote" && (edicionBloqueada || !canSaveBirthEditor(readiness)))
+          }
         />
         <Pressable
           onPress={() => router.back()}

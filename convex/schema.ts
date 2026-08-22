@@ -9,6 +9,7 @@ import {
   ephemerisPositionValidator,
   precisionValidator,
   relationshipComparisonDataValidator,
+  relationshipTypeValidator,
   sourceRefValidator,
 } from "./lib/layerContract";
 
@@ -362,6 +363,9 @@ export default defineSchema({
     // confundir el reintento con otra persona intencionalmente igual.
     creationRequestKey: v.optional(v.string()),
     name: v.string(),
+    // Aditivo: filas de builds 22/23 permanecen sin campo (= legacy/null en la
+    // salida pública). `prefer_not_to_say` se persiste como valor explícito.
+    relationshipType: v.optional(relationshipTypeValidator),
     birthDate: v.optional(v.string()),
     birthTime: v.optional(v.string()),
     birthTimePrecision: v.optional(birthTimePrecision),

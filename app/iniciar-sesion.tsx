@@ -3,6 +3,7 @@ import { StyleSheet, View } from "react-native";
 import { Redirect, useRouter } from "expo-router";
 
 import { ONBOARDING_ROUTE } from "@/domain/appRoutes";
+import { clearDraft } from "@/domain/onboardingDraft";
 import { AccountGate } from "@/components/orbita/AccountGate";
 import { WebLayoutProvider } from "@/components/web/web-layout-provider";
 import { useAppState } from "@/hooks/useAppState";
@@ -63,8 +64,34 @@ function SignInSurface() {
    *
    * Al activarse la sesión el resolver reevalúa y `AccountGate` desmonta esta
    * pantalla para hidratar y navegar.
+   *
+   * ## El borrador anónimo se ABANDONA acá (QA23-008)
+   *
+   * Entrar por esta puerta es la declaración explícita de "ya tengo cuenta", y
+   * un alta anónima a medio hacer no es de una cuenta que ya existía. El
+   * `clientDraftId` vivía en memoria de módulo (nativo) y en `sessionStorage`
+   * (web), o sea que sobrevivía a esta pantalla, y con él pasaban dos cosas:
+   *
+   * 1. `onboarding.getCompletionStatus` recibía ese id, encontraba el borrador
+   *    ANÓNIMO —que no tiene dueño y por lo tanto pasa el control de
+   *    pertenencia— y contestaba `recovery: "onboarding"`. Una cuenta
+   *    preexistente incompleta, que tiene que ir a `/editar-datos`, entraba al
+   *    alta, que es create-only.
+   * 2. Ya adentro del alta, el cierre llama `completeSignupFromDraft` con ESE
+   *    id, y esa mutación copia los datos natales **de la fila del borrador**.
+   *    O sea: la cuenta que acaba de entrar se quedaba con los datos de
+   *    nacimiento que había cargado el alta anterior —de otra persona en un
+   *    teléfono compartido, o los viejos de la misma— y lo tipeado en los pasos
+   *    4–12 se descartaba sin decir nada, porque con la sesión activa el
+   *    borrador remoto ya no se vuelve a escribir.
+   *
+   * Se borra en las tres vías de esta pantalla (código, contraseña y Google):
+   * `SignInScreen` las hace pasar a todas por `onSignedIn`. Volver atrás o
+   * salir a crear una cuenta NO borra nada: ahí el alta sigue siendo de quien
+   * la empezó.
    */
   const enter = async () => {
+    clearDraft();
     setHydrateFailed(false);
   };
 

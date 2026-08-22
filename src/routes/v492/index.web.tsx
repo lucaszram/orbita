@@ -17,7 +17,7 @@ import { useAppState } from "@/hooks/useAppState";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { useSignInHydrate } from "@/onboarding/useAccount";
 import { backendConfig } from "@/services/backendProviders";
-import { theme } from "@/theme/theme";
+import { BOOT_ACCENT, BOOT_BACKGROUND, BOOT_TEXT, BOOT_TEXT_MUTED } from "@/theme/boot";
 
 const IS_WEB = process.env.EXPO_OS === "web";
 const BACKEND_CONFIGURED = backendConfig.hasConvex && backendConfig.hasClerk;
@@ -163,7 +163,7 @@ export default function IndexRoute() {
     // alcanzarse, y si se alcanzara igual no se dibuja landing ni producto.
     return (
       <View style={styles.loading}>
-        <ActivityIndicator color={theme.colors.plum} />
+        <ActivityIndicator color={BOOT_ACCENT} />
       </View>
     );
   }
@@ -220,7 +220,7 @@ export default function IndexRoute() {
     default:
       return (
         <View style={styles.loading}>
-          <ActivityIndicator color={theme.colors.plum} />
+          <ActivityIndicator color={BOOT_ACCENT} />
         </View>
       );
   }
@@ -252,28 +252,36 @@ function AuthTimeout({ onRetry }: { onRetry: () => void }) {
   );
 }
 
+/**
+ * El arranque es OSCURO, también acá (QA23-006).
+ *
+ * La variante web comparte el defecto y la corrección con la nativa: era el
+ * crema del MVP legado con el spinner en `plum`. Se mantienen idénticas a
+ * propósito —son la misma decisión de arranque en dos plataformas—, así que un
+ * cambio en una tiene que verse igual en la otra.
+ */
 const styles = StyleSheet.create({
   errorBody: {
-    color: theme.colors.muted,
+    color: BOOT_TEXT_MUTED,
     fontSize: 14,
     marginTop: 8,
     textAlign: "center"
   },
   errorTitle: {
-    color: theme.colors.ink,
+    color: BOOT_TEXT,
     fontSize: 17,
     fontWeight: "600",
     textAlign: "center"
   },
   loading: {
     alignItems: "center",
-    backgroundColor: theme.colors.background,
+    backgroundColor: BOOT_BACKGROUND,
     flex: 1,
     justifyContent: "center",
     paddingHorizontal: 32
   },
   retryBtn: {
-    borderColor: theme.colors.plum,
+    borderColor: BOOT_ACCENT,
     borderRadius: 999,
     borderWidth: 1,
     marginTop: 24,
@@ -281,7 +289,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10
   },
   retryText: {
-    color: theme.colors.plum,
+    color: BOOT_ACCENT,
     fontSize: 13,
     fontWeight: "600",
     letterSpacing: 1

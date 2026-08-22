@@ -20,7 +20,9 @@ import { layerRetryLogLine } from "@/domain/layerRetry";
 import { claveDeAlcance, createRefreshCycle, type RefreshCycle } from "@/domain/refreshCycle";
 import { createRefreshQueue, type RefreshRequest } from "@/domain/refreshQueue";
 import { sessionPhase, type SessionPhase } from "@/domain/screenPhase";
+import { sessionPhaseUnderConfidence } from "@/domain/sessionResilience";
 import { useLiveApp } from "@/hooks/useLiveApp";
+import { useSessionResilience } from "@/hooks/useSessionResilience";
 import { layersApi, type LayerBundle, type NatalBaseBundle } from "@/services/layersApi";
 import { backendConfig } from "@/services/backendProviders";
 
@@ -197,9 +199,22 @@ function readClock(): Clock {
 
 function LayersProviderInner({ children }: { children: ReactNode }) {
   const live = useLiveApp();
-  const session = sessionPhase(live);
+  /**
+   * La fase de sesión, corregida por la confianza (QA23-007).
+   *
+   * Sin esto, el shell degradado abría y CADA sección se quedaba en `cargando`
+   * para siempre: `liveAppGate` deja `isAuthLoading` en true mientras el
+   * handshake con Convex no cierra, y un spinner eterno no es un estado — es una
+   * promesa que no se cumple. Con la sesión sin confirmar, cada sección muestra
+   * su error y su reintento, que es lo único honesto que se puede ofrecer.
+   */
+  const { confidence, retry } = useSessionResilience();
+  const session = sessionPhaseUnderConfidence(sessionPhase(live), confidence);
   const accountKey = live.isLive ? live.auth?.userId ?? "live" : null;
-  const retrySession = live.retryUser;
+  // El reintento por sección pasa por la resiliencia: reintenta la fila `users`
+  // y, cuando corresponde, rearma el plazo. En el shell degradado no lo rearma,
+  // para no devolver la pantalla entera a un spinner.
+  const retrySession = retry;
 
   const [clock, setClock] = useState<Clock>(readClock);
   const [refreshing, setRefreshing] = useState(false);

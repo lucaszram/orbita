@@ -384,6 +384,7 @@ describe("V4.9.2 relationship person input", () => {
       }),
       {
         name: "Martina",
+        relationshipType: null,
         birthDate: null,
         birthTime: null,
         birthTimePrecision: "unknown",
@@ -506,7 +507,7 @@ describe("V4.9.2 relationship comparison envelope", () => {
     assert.equal(result.data?.generalOnly, true);
     assert.equal(result.data?.resolvedLevel, "sign_to_sign");
     assert.deepEqual(result.data?.dimensions, []);
-    assert.match(result.data?.disclaimer ?? "", /No mide amor/i);
+    assert.match(result.data?.disclaimer ?? "", /No mide el valor del vínculo/i);
     assert.match(result.data?.disclaimer ?? "", /no decide si son compatibles/i);
     assert.ok(result.sourceRefs.some((source) => source.author === "Stephen Arroyo"));
     assert.doesNotMatch(JSON.stringify(result), /globalScore|compatibilityScore|puntajeGlobal/i);
@@ -579,7 +580,7 @@ describe("V4.9.2 relationship comparison envelope", () => {
 
   it("identifica el caché de forma estable y lo invalida al cambiar cualquier carta", () => {
     assert.equal(RELATIONSHIP_LAYERS_VERSION, "orbita-relationship-layers-v1");
-    assert.equal(RELATIONSHIP_COMPARISON_VERSION, "orbita-relationship-comparison-v2");
+    assert.equal(RELATIONSHIP_COMPARISON_VERSION, "orbita-relationship-comparison-v3");
     const base = buildRelationshipComparisonInputHash({
       userId: "user-1",
       profile: profile(),
@@ -1005,6 +1006,24 @@ describe("V4.9.2 idempotent relationship person creation", () => {
       }),
       /RELATIONSHIP_PROFILE_NOT_FOUND/,
     );
+  });
+
+  it("una edición desde build 22/23 no borra el tipo declarado por un cliente nuevo", async () => {
+    const harness = relationshipMutationHarness();
+    const created = await harness.run("token-a", {
+      ...signOnlyPerson,
+      relationshipType: "friendship",
+      idempotencyKey: "ios.create:typed-profile-0001",
+    });
+    const editedFromLegacyClient = await harness.run("token-a", {
+      ...signOnlyPerson,
+      profileId: created.profileId,
+      name: "Martina editada",
+      idempotencyKey: "ios.update:legacy-client-0001",
+    });
+
+    assert.equal(editedFromLegacyClient.relationshipType, "friendship");
+    assert.equal(editedFromLegacyClient.name, "Martina editada");
   });
 });
 

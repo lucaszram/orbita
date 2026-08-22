@@ -9,7 +9,7 @@ import { resolveTabsGuard, type LocalProfileOwner } from "@/domain/sessionStart"
 import { useAppState } from "@/hooks/useAppState";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { backendConfig } from "@/services/backendProviders";
-import { theme } from "@/theme/theme";
+import { BOOT_ACCENT, BOOT_BACKGROUND } from "@/theme/boot";
 
 const IS_WEB = process.env.EXPO_OS === "web";
 const BACKEND_CONFIGURED = backendConfig.hasConvex && backendConfig.hasClerk;
@@ -129,7 +129,7 @@ function TabsChrome({ pathname }: { pathname: string }): ReactNode {
   return (
     <Tabs
       tabBar={(props) => <OrbitaTabBar {...props} />}
-      screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: "#0A0B0E" } }}
+      screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: BOOT_BACKGROUND } }}
     >
       <Tabs.Screen name="hoy" options={{ title: "Hoy" }} />
       <Tabs.Screen name="transitos" options={{ title: "Tránsitos" }} />
@@ -145,10 +145,11 @@ function TabsChrome({ pathname }: { pathname: string }): ReactNode {
   );
 }
 
+/** La espera del gate, oscura como el shell que está por montar (QA23-006). */
 function TabsLoading() {
   return (
     <View style={styles.loading}>
-      <ActivityIndicator color={theme.colors.plum} />
+      <ActivityIndicator color={BOOT_ACCENT} />
     </View>
   );
 }
@@ -156,7 +157,7 @@ function TabsLoading() {
 const styles = StyleSheet.create({
   loading: {
     alignItems: "center",
-    backgroundColor: theme.colors.background,
+    backgroundColor: BOOT_BACKGROUND,
     flex: 1,
     justifyContent: "center"
   }

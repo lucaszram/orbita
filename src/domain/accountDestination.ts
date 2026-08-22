@@ -48,7 +48,18 @@ export type AccountDestination =
    */
   | "edit-birth-data"
   | "app-home"
-  | "retry";
+  | "retry"
+  /**
+   * No se pudo CONFIRMAR la sesión, pero la identidad local es segura: el dueño
+   * del perfil en disco es exactamente el que Clerk publica ahora (QA23-007).
+   *
+   * No lo produce este resolver —que sólo sabe de estado remoto— sino
+   * `applySessionResilience` (`@/domain/sessionResilience`), que degrada un
+   * `loading` o un `retry` cuando venció el plazo de confirmación. Abre el shell
+   * con los últimos datos de ESA cuenta, con aviso, y sin autoridad para
+   * comprar, borrar, editar datos natales ni escribir en la cuenta.
+   */
+  | "degraded";
 
 export type AccountState = {
   /** Convex + Clerk configurados. Sin backend no hay cuenta que resolver. */
@@ -141,6 +152,10 @@ export function destinationAllows(
       // y editar los datos de una cuenta ya completa desde Perfil.
       return destination === "edit-birth-data" || destination === "app-home";
     case "app":
-      return destination === "app-home";
+      // El shell abre también con la sesión sin confirmar y la identidad local
+      // segura (QA23-007): son los últimos datos de ESTA misma cuenta. Lo que
+      // no abre es ninguna escritura — eso lo decide `sensitiveOperationAllowed`
+      // y, para una ruta entera, `SurfaceRequirement`.
+      return destination === "app-home" || destination === "degraded";
   }
 }

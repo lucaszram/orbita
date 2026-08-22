@@ -29,6 +29,7 @@ import {
   relationshipDraftFromProfile,
   relationshipLevelFromDraft,
   relationshipSaveArgs,
+  relationshipSaveArgsWithoutType,
   relationshipSavedHref,
   relationshipSaveSignature,
   VINCULOS_FORM_ROUTE,
@@ -37,7 +38,18 @@ import {
   type RelationshipSaveIntent,
   type RelationshipSignKey
 } from "@/domain/relationships";
+import {
+  RELATIONSHIP_TYPE_FIELD_HINT,
+  RELATIONSHIP_TYPE_FIELD_LABEL,
+  RELATIONSHIP_TYPE_NOT_SAVED_NOTE,
+  RELATIONSHIP_TYPE_OPTIONAL_HINT,
+  RELATIONSHIP_TYPE_OPTIONS,
+  relationshipTypeRejectedByBackend,
+  type RelationshipTypeKey
+} from "@/domain/relationshipType";
+import { sensitiveOperationBlockMessage } from "@/domain/sessionResilience";
 import { useLayers } from "@/hooks/useLayers";
+import { useSensitiveOperation } from "@/hooks/useSessionResilience";
 import { BirthDateField, BirthTimeField } from "@/onboarding/components/BirthDateTimeField";
 import { appApi } from "@/services/appRefs";
 import { searchPlaces, type PlaceHit } from "@/services/geocoding";
@@ -68,6 +80,14 @@ import {
  * navega por sí solo y no esconde el CTA — `CONTINUAR` queda inmediatamente
  * debajo de las tres opciones y siempre accionable (QA22-013).
  *
+ * **El tipo de vínculo se pregunta, junto al nombre (QA23-004).** Va en el paso
+ * 1 y no en el 3 porque no es un dato de nacimiento: es quién es esa persona
+ * para vos. No se deduce del signo, de la fecha ni de la carta, es OPCIONAL
+ * —guardar sin contestarlo deja el perfil "sin definir" y no bloquea nada— y se
+ * puede cambiar entrando a editar, con las mismas ocho opciones. Lo que decide
+ * es el vocabulario de la lectura: sólo un vínculo romántico declarado puede
+ * nombrar `Deseo`.
+ *
  * Cada dato se guarda por lo que es, sin completar lo que falta:
  * - **Signo**: uno de los doce, elegido a mano. Se guarda el signo y nada más;
  *   no se inventa una fecha ni una hora para completar el perfil.
@@ -82,10 +102,11 @@ import {
  *   nada: la zona del teléfono es la equivocada para alguien nacido en otra, y
  *   una carta calculada en la zona equivocada no es la carta de nadie.
  *
- * **Guardar no es calcular (QA22-016).** Al terminar se vuelve a la raíz de
- * Vínculos con la persona a la vista y una confirmación de que quedó guardada;
- * la comparación se prepara en SU fila, no reemplazando la pantalla, y abrir la
- * lectura es una acción explícita (QA22-015).
+ * **Guardar no es calcular (QA22-016 · QA23-005).** Al terminar se aterriza en el
+ * PERFIL de esa persona —no en la raíz global y no en su comparación— con una
+ * confirmación breve de qué acaba de pasar. Nada se calcula por haber guardado:
+ * la comparación es una ruta hija del perfil y su cálculo empieza cuando alguien
+ * la abre, que es lo que mantiene separadas las dos esperas.
  *
  * Cero maqueta: la persona guardada sale de `relationships.savePerson` y el id
  * que se confirma es el que devolvió el backend.
@@ -205,6 +226,19 @@ function ConnectForm({ persona }: { persona: RelationshipProfile | null }) {
   // La zona horaria del LUGAR, derivada de sus coordenadas en el backend. El
   // buscador devuelve etiqueta y coordenadas, nunca la zona.
   const resolveTimezone = useAction(appApi.placeTimezone.atCoordinates);
+  /**
+   * Guardar una persona ESCRIBE en la cuenta (QA23-007).
+   *
+   * `useLayers` normalmente desmonta este cuerpo al degradar —su fase pasa a
+   * `error`—, y por eso esto es defensa en profundidad y no la única puerta.
+   * Pero un handler no puede quedar autorizado por una implicación de render:
+   * la fase la decide un provider que puede cambiar, este formulario puede
+   * quedar montado mientras la confianza cae, y `save` corre `await`s en el
+   * medio. La autorización se pregunta acá, y otra vez pegada a la mutation.
+   */
+  const escritura = useSensitiveOperation("account-write");
+  const escrituraRef = useRef(escritura.allowed);
+  escrituraRef.current = escritura.allowed;
 
   const [draft, setDraft] = useState<RelationshipDraft>(() =>
     persona ? relationshipDraftFromProfile(persona) : emptyRelationshipDraft()
@@ -215,6 +249,16 @@ function ConnectForm({ persona }: { persona: RelationshipProfile | null }) {
   const [placeError, setPlaceError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  /**
+   * La persona quedó guardada, pero su tipo de vínculo no viajó porque el
+   * backend todavía no conoce el campo. Guarda el DESTINO al que se iba a ir.
+   *
+   * No es un error del guardado y por eso no comparte estado con él; y no se
+   * navega solo, que es lo que escondería el hecho detrás de una confirmación
+   * diciendo que todo salió bien. La pantalla se queda, lo dice, y salir pasa a
+   * ser un toque.
+   */
+  const [tipoSinGuardar, setTipoSinGuardar] = useState<string | null>(null);
 
   const editando = Boolean(persona);
   /**
@@ -347,13 +391,20 @@ function ConnectForm({ persona }: { persona: RelationshipProfile | null }) {
   const block = relationshipDraftBlock(draft, intencion);
 
   const save = async () => {
-    // Dos puertas, cada una para un momento distinto: lo que YA se guardó no se
+    // Tres puertas. La primera es la sesión: sin confirmarla no se escribe en la
+    // cuenta, y se dice por qué en vez de no hacer nada.
+    if (!escrituraRef.current) {
+      setSaveError(sensitiveOperationBlockMessage("account-write"));
+      return;
+    }
+    // Las otras dos, cada una para un momento distinto: lo que YA se guardó no se
     // vuelve a mandar, y lo que está saliendo —o todavía no puede salir— tampoco.
     if (guardado.current) return;
     if (enVuelo.current || block !== null) return;
     enVuelo.current = true;
     setSaving(true);
     setSaveError(null);
+    setTipoSinGuardar(null);
     try {
       // Fallar cerrado: la zona se resuelve ANTES de escribir. Si el backend no
       // la devuelve, no se guarda la persona a medias ni se cae a la zona del
@@ -397,16 +448,47 @@ function ConnectForm({ persona }: { persona: RelationshipProfile | null }) {
         setSaveError("Faltan datos para guardar a esta persona en el nivel elegido.");
         return;
       }
+      // La sesión, otra vez y pegada a la mutation: entre el toque y este punto
+      // se resolvió la zona horaria contra el backend, y la confianza pudo caer
+      // en ese `await`. Nada se anotó todavía, así que no hay nada que deshacer.
+      if (!escrituraRef.current) {
+        setSaveError(sensitiveOperationBlockMessage("account-write"));
+        return;
+      }
       // Recién acá queda anotado el intento: es la clave que efectivamente sale.
       intento.current = { signature: firma, idempotencyKey };
-      const saved = await savePerson(args);
-      // Guardar no es calcular. Se vuelve a la RAÍZ de Vínculos con el id que
-      // devolvió el backend, para confirmar el alta con la persona a la vista;
-      // la comparación se prepara en su fila y su lectura se abre a mano.
+      // Degradación ante un backend que todavía no publicó el campo aditivo.
+      // Convex rechaza un argumento que su validator no declara, así que sin
+      // esto un deployment viejo no guardaría NADA —ni el nombre, ni la fecha—
+      // por un campo opcional. El reintento va con la MISMA clave: el primer
+      // pedido no llegó a ejecutarse, así que no es un pedido nuevo.
+      let tipoRechazado = false;
+      const saved = await savePerson(args).catch(async (error: unknown) => {
+        if (args.relationshipType === undefined || !relationshipTypeRejectedByBackend(error)) {
+          throw error;
+        }
+        // Se marca DESPUÉS de que el reintento salió bien: si también falla, lo
+        // que hubo es un guardado fallido y se dice como tal.
+        const persistida = await savePerson(relationshipSaveArgsWithoutType(args));
+        tipoRechazado = true;
+        return persistida;
+      });
+      // Guardar no es calcular. Se aterriza en el PERFIL de la persona, con el id
+      // que devolvió el backend: es la superficie que puede confirmar el guardado
+      // mostrando el resultado, y desde ahí la comparación se abre a mano.
+      //
+      // `replace` y no `dismissTo` (QA23-005): el perfil puede o no estar ya en el
+      // stack —se edita desde la raíz, desde el propio perfil y desde la
+      // comparación—, y `replace` deja el mismo destino en los tres casos en vez
+      // de depender de si había una pantalla que descartar. El formulario, que ya
+      // cumplió, no queda debajo.
       guardado.current = true;
-      router.dismissTo(
-        relationshipSavedHref(saved.profileId, persona ? "edicion" : "alta") as never
-      );
+      const destino = relationshipSavedHref(saved.profileId, persona ? "edicion" : "alta");
+      if (tipoRechazado) {
+        setTipoSinGuardar(destino);
+        return;
+      }
+      router.replace(destino as never);
     } catch {
       setSaveError(
         persona
@@ -467,6 +549,16 @@ function ConnectForm({ persona }: { persona: RelationshipProfile | null }) {
           <Note style={styles.hint}>
             Es para reconocerla en tu lista. No entra en ningún cálculo.
           </Note>
+
+          {/* El tipo de vínculo va ACÁ, con el nombre, y no con la fecha ni con
+              el signo: no es un dato de nacimiento, es quién es esa persona
+              para vos. Se declara, nunca se deduce, y es opcional —CONTINUAR y
+              GUARDAR no dependen de él— (QA23-004). */}
+          <TipoDeVinculo
+            value={draft.relationshipType}
+            onChange={(relationshipType) => patch({ relationshipType })}
+          />
+
           {!editando ? (
             <View style={styles.cta}>
               <PrimaryButton
@@ -645,12 +737,27 @@ function ConnectForm({ persona }: { persona: RelationshipProfile | null }) {
         <>
         <View style={styles.status} accessibilityLiveRegion="polite">
           {saving ? <Note>Guardando estos datos en tu cuenta…</Note> : null}
-          {!saving && saveError !== null ? (
+          {/* La sesión dejó de estar confirmada con el formulario abierto: se
+              dice ANTES que cualquier otra cosa, porque explica por qué GUARDAR
+              está apagado. Lo cargado no se pierde (QA23-007). */}
+          {!saving && !escritura.allowed ? (
+            <View style={styles.alert} accessibilityRole="alert">
+              <Body style={styles.alertText}>
+                {sensitiveOperationBlockMessage("account-write")}
+              </Body>
+            </View>
+          ) : null}
+          {!saving && escritura.allowed && saveError !== null ? (
             <View style={styles.alert} accessibilityRole="alert">
               <Body style={styles.alertText}>{saveError}</Body>
             </View>
           ) : null}
-          {!saving && saveError === null && block !== null ? <Note>{block}</Note> : null}
+          {!saving && escritura.allowed && saveError === null && block !== null ? (
+            <Note>{block}</Note>
+          ) : null}
+          {/* La persona se guardó igual: lo que no llegó es el campo aditivo.
+              Se dice acá y no como error, porque no lo es. */}
+          {!saving && tipoSinGuardar ? <Note>{RELATIONSHIP_TYPE_NOT_SAVED_NOTE}</Note> : null}
         </View>
 
         <View style={styles.cta}>
@@ -658,6 +765,8 @@ function ConnectForm({ persona }: { persona: RelationshipProfile | null }) {
             label={
               saving
                 ? "GUARDANDO…"
+                : tipoSinGuardar
+                  ? "IR AL PERFIL"
                 : saveError !== null
                   ? "REINTENTAR"
                   : persona
@@ -665,12 +774,29 @@ function ConnectForm({ persona }: { persona: RelationshipProfile | null }) {
                     : "GUARDAR PERSONA"
             }
             accessibilityLabel={
-              persona
+              tipoSinGuardar
+                ? "Continuar al perfil guardado"
+                : persona
                 ? `Guardar los datos de ${persona.name} para comparar ${nivelLabel}`
                 : `Guardar esta persona para comparar ${nivelLabel}`
             }
-            onPress={save}
-            disabled={saving || block !== null}
+            // Por qué está apagado, en el propio control: quien navega con lector
+            // de pantalla no debería tener que buscar el motivo en otro bloque.
+            accessibilityHint={
+              !tipoSinGuardar && !escritura.allowed
+                ? sensitiveOperationBlockMessage("account-write")
+                : undefined
+            }
+            onPress={() => {
+              if (tipoSinGuardar) {
+                router.replace(tipoSinGuardar as never);
+                return;
+              }
+              void save();
+            }}
+            // Salir al perfil ya guardado no escribe nada y sigue disponible; lo
+            // que se apaga sin sesión confirmada es guardar.
+            disabled={saving || (!tipoSinGuardar && (block !== null || !escritura.allowed))}
           />
         </View>
         {!editando ? (
@@ -725,6 +851,61 @@ function QueVasAVer({ level }: { level: ComparisonLevel }) {
         <Label style={styles.limitesTexto}>{RELATIONSHIP_READING_LIMITS_LABEL}</Label>
       </Touchable>
       {abierto ? <Note style={styles.queVasAVerTexto}>{form.cannot}</Note> : null}
+    </View>
+  );
+}
+
+/**
+ * Qué vínculo tenés con esa persona (QA23-004).
+ *
+ * Ocho opciones declaradas, ninguna preseleccionada y ninguna obligatoria. Es un
+ * `radiogroup` real —cada opción anuncia si está elegida— y no hay opción de
+ * "ninguno": no elegir ES no elegir, y se guarda como "sin definir". Volver a
+ * tocar la opción ya elegida la suelta, que es la única forma de deshacer una
+ * elección sin salir de la pantalla.
+ *
+ * `Prefiero no decirlo` no es lo mismo que no contestar y por eso está en la
+ * lista: una es una respuesta y la otra es un hueco. Las dos leen igual de
+ * neutral; la diferencia se ve en el perfil, donde sólo el hueco ofrece
+ * definirlo.
+ */
+function TipoDeVinculo({
+  value,
+  onChange
+}: {
+  value: RelationshipTypeKey | null;
+  onChange: (type: RelationshipTypeKey | null) => void;
+}) {
+  return (
+    <View style={styles.tipo}>
+      <Label>{RELATIONSHIP_TYPE_FIELD_LABEL}</Label>
+      <View
+        style={styles.tipoOpciones}
+        accessibilityRole="radiogroup"
+        accessibilityLabel="Tipo de vínculo con esta persona"
+      >
+        {RELATIONSHIP_TYPE_OPTIONS.map((opcion) => {
+          const selected = opcion.key === value;
+          return (
+            <Touchable
+              key={opcion.key}
+              onPress={() => onChange(selected ? null : opcion.key)}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: selected }}
+              accessibilityLabel={opcion.label}
+              accessibilityHint={
+                selected ? "Tocá de nuevo para dejarlo sin definir" : "Tocá para elegirlo"
+              }
+              style={[styles.tipoOpcion, selected ? styles.tipoOpcionOn : null]}
+              pressedStyle={styles.pressed}
+            >
+              <Body style={selected ? styles.tipoTextoOn : styles.tipoTexto}>{opcion.label}</Body>
+            </Touchable>
+          );
+        })}
+      </View>
+      <Note style={styles.hint}>{RELATIONSHIP_TYPE_FIELD_HINT}</Note>
+      <Note style={styles.hint}>{RELATIONSHIP_TYPE_OPTIONAL_HINT}</Note>
     </View>
   );
 }
@@ -972,5 +1153,21 @@ const styles = StyleSheet.create({
     gap: v492.space.sm,
     marginTop: v492.space.md
   },
-  status: { marginTop: v492.space.xxl }
+  status: { marginTop: v492.space.xxl },
+  tipo: { marginTop: v492.space.xl },
+  // Una columna: las etiquetas son frases ("Madre, padre o cuidador/a") y en
+  // dos columnas se parten en tres renglones con Dynamic Type grande.
+  tipoOpcion: {
+    borderColor: v492.colors.line,
+    borderRadius: v492.radius.md,
+    borderWidth: 1,
+    justifyContent: "center",
+    minHeight: v492.touch,
+    paddingHorizontal: v492.space.lg,
+    paddingVertical: v492.space.sm
+  },
+  tipoOpcionOn: { backgroundColor: v492.colors.surfaceRaised, borderColor: v492.colors.copper },
+  tipoOpciones: { gap: v492.space.sm, marginTop: v492.space.md },
+  tipoTexto: { color: v492.colors.textMuted },
+  tipoTextoOn: { color: v492.colors.text }
 });

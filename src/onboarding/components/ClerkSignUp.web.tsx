@@ -1,5 +1,6 @@
 import { StyleSheet, View } from "react-native";
 import { SignUp } from "@clerk/expo/web";
+import { SIGN_IN_ROUTE } from "@/domain/appRoutes";
 
 type Props = {
   /**
@@ -22,6 +23,11 @@ type Props = {
  * rutas propias, así que se usa el modo por defecto del componente. Declarar un
  * `path` obligaría a un catch-all en el router.
  *
+ * El enlace «Ya tengo cuenta» sale a la puerta canónica de login. No puede
+ * convertir este `<SignUp />` embebido en un sign-in interno: esa puerta es la
+ * que abandona el borrador anónimo antes de aceptar una cuenta existente
+ * (QA23-008), para que esa cuenta nunca herede los datos natales del alta.
+ *
  * Tampoco se pisa la `appearance`: el tema es el que Clerk resuelve para la
  * instancia. Personalizarlo desde acá acoplaba el alta a variables internas del
  * componente, que ya cambiaron una vez.
@@ -34,7 +40,10 @@ export function ClerkSignUp({ email }: Props) {
 
   return (
     <View style={styles.host}>
-      <SignUp initialValues={prefill ? { emailAddress: prefill } : undefined} />
+      <SignUp
+        initialValues={prefill ? { emailAddress: prefill } : undefined}
+        signInUrl={SIGN_IN_ROUTE}
+      />
     </View>
   );
 }

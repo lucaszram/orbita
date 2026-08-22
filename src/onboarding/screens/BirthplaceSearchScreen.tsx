@@ -137,7 +137,16 @@ export function BirthplaceSearchScreen({ step, query, onQuery, onSelect, onBack 
             <Caption style={styles.hint}>Sin resultados. Probá agregando el país o con otra ciudad.</Caption>
           ) : (
             results.map((place) => (
-              <Pressable key={place.label} onPress={() => onSelect(place)} style={styles.result}>
+              // Rol declarado: es una lista de opciones tocables, y sin él un
+              // lector de pantalla la lee como texto suelto y no ofrece
+              // activarla (QA23-008). El nombre accesible lo aporta el texto.
+              <Pressable
+                key={place.label}
+                onPress={() => onSelect(place)}
+                accessibilityRole="button"
+                accessibilityHint="Elegí esta ciudad como tu lugar de nacimiento"
+                style={styles.result}
+              >
                 <Text style={styles.resultTxt}>{place.label}</Text>
                 <View style={styles.resultLine} />
               </Pressable>

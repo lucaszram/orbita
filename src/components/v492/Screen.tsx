@@ -17,7 +17,7 @@ import { ContentCanvas } from "@/components/orbita/ContentCanvas";
 import { Touchable } from "@/components/v492/Touchable";
 import { Body, Eyebrow, Mono } from "@/components/v492/typography";
 import { v492 } from "@/components/v492/tokens";
-import { PLAN_FREE_LABEL, PLAN_PLUS_LABEL, planLabel } from "@/domain/entitlement";
+import { PLAN_FREE_LABEL, PLAN_PLUS_LABEL, planLabel, planMark } from "@/domain/entitlement";
 import { useEntitlement } from "@/hooks/useLiveApp";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
 
@@ -35,6 +35,11 @@ const MONO_ADVANCE = 0.6;
 
 /**
  * Ancho del chip con el label más largo, en puntos.
+ *
+ * Se calcula con los nombres ENTEROS porque es la reserva de la barra de
+ * detalle, que es la superficie donde el chip se dibuja completo (`full`). La
+ * raíz dibuja la marca corta y no reserva nada: ahí el chip viaja pegado a la
+ * marca y quien cede ancho es la fecha de la derecha.
  *
  * Al ser mono no hace falta medirlo en pantalla: glifos × (cuerpo × avance +
  * tracking), más el padding y el borde de cada lado. Los dos nombres —"Órbita
@@ -60,6 +65,15 @@ const PLAN_BADGE_WIDTH = Math.ceil(
 const DETAIL_EDGE = Math.max(v492.touch, PLAN_BADGE_WIDTH);
 
 /**
+ * Cuánto plan escribe el chip. Sin default: lo elige cada superficie.
+ *
+ * - `mark` — la marca corta (`PLUS` / `FREE`), para la raíz de una pestaña.
+ * - `full` — el nombre entero (`Órbita Plus` / `Órbita Free`), para la barra de
+ *   un detalle.
+ */
+export type PlanBadgeVariant = "mark" | "full";
+
+/**
  * Chip del plan de la cuenta: una línea, discreto y en el mismo lugar siempre.
  *
  * Está acá —en la pantalla base y no en cada pestaña— porque la pregunta "¿este
@@ -69,18 +83,36 @@ const DETAIL_EDGE = Math.max(v492.touch, PLAN_BADGE_WIDTH);
  * Tres reglas:
  *
  * - **No especula.** Mientras el provider no pueda nombrar el plan sin inventar
- *   —arranque en frío, sesión resolviendo, snapshot sin leer— no dibuja nada.
- *   Un "Free" parpadeando en la cara de alguien que paga es peor que un hueco.
+ *   —arranque en frío, remoto sin contestar, snapshot sin leer— no dibuja nada.
+ *   Un "Free" parpadeando en la cara de alguien que paga es peor que un hueco, y
+ *   es el defecto que el build 23 mostró en el encabezado (QA23-001).
  * - **No concede.** La etiqueta puede venir del snapshot local; el acceso no.
  *   Los gates siguen leyendo el remoto (`resolved`), y comprar también.
- * - **Se lee entero.** En pantalla dice el nombre completo del plan —"Órbita
- *   Plus", "Órbita Free"—, el mismo que anuncia VoiceOver. La marca corta
- *   (`PLUS` / `FREE`) ahorraba dos palabras a cambio de pedir que ya se supiera
- *   qué es "PLUS" acá adentro, que es justo lo que este chip viene a contestar.
+ * - **Se lee siempre entero, aunque no se escriba entero.** La `variant` decide
+ *   cuánto texto entra en el chip; el nombre COMPLETO del plan es siempre lo que
+ *   anuncia VoiceOver, así que la forma corta nunca le pide a nadie que ya sepa
+ *   qué es "PLUS" acá adentro. La variante es OBLIGATORIA a propósito: sin
+ *   default, una superficie nueva tiene que elegir y las dos que existen no
+ *   pueden divergir por olvido.
+ *
+ * Por qué dos formas y no una: la raíz de una pestaña lleva el chip pegado a la
+ * marca —ahí el nombre entero le comía el ancho a la fecha del encabezado— y la
+ * barra de un detalle lo lleva solo en su extremo, con la reserva ya hecha y sin
+ * nada más alrededor que lo explique.
  */
-export function PlanBadge({ style }: { style?: StyleProp<TextStyle> }) {
+export function PlanBadge({
+  variant,
+  style
+}: {
+  /** `mark` = `PLUS`/`FREE` (raíz) · `full` = `Órbita Plus`/`Órbita Free` (detalle). */
+  variant: PlanBadgeVariant;
+  style?: StyleProp<TextStyle>;
+}) {
   const { effective, labelReady } = useEntitlement();
   if (!labelReady) return null;
+  // El nombre entero se resuelve SIEMPRE: es el que se anuncia, y la marca corta
+  // se deriva de él en el dominio, así que las dos formas no pueden llegar a
+  // nombrar planes distintos.
   const label = planLabel(effective);
   const plus = label === PLAN_PLUS_LABEL;
   return (
@@ -90,7 +122,7 @@ export function PlanBadge({ style }: { style?: StyleProp<TextStyle> }) {
       maxFontSizeMultiplier={v492.type.label.maxScale}
       style={[styles.planBadge, plus ? styles.planBadgePlus : styles.planBadgeFree, style]}
     >
-      {label}
+      {variant === "mark" ? planMark(effective) : label}
     </Text>
   );
 }
@@ -228,7 +260,10 @@ export function LayerScreen({
             <View style={styles.brandRow}>
               {/* La marca y el plan viajan juntos a la izquierda: el chip no le
                   saca el lugar ni a la fecha ni al engranaje, que siguen siendo
-                  el otro extremo de la fila. */}
+                  el otro extremo de la fila. Va en marca corta —`PLUS`/`FREE`—
+                  porque acá comparte renglón con "Órbita" y con la fecha, y el
+                  nombre entero empujaba a la meta contra el borde; VoiceOver
+                  sigue anunciando el plan completo. */}
               <View style={styles.brandGroup}>
                 <Text
                   style={styles.brand}
@@ -237,7 +272,7 @@ export function LayerScreen({
                 >
                   Órbita
                 </Text>
-                <PlanBadge />
+                <PlanBadge variant="mark" />
               </View>
               {action ? (
                 <View style={styles.headerAction}>{action}</View>
@@ -316,7 +351,10 @@ export function DetailLayerScreen({
           {/* Los dos extremos miden lo MISMO (`DETAIL_EDGE`), así que el rótulo
               del medio queda centrado en la pantalla y no en lo que sobra:
               tenga chip o no —y diga Free o Plus—, no se corre un punto. El
-              toque de "volver" sigue siendo de 44×44 adentro de su slot. */}
+              toque de "volver" sigue siendo de 44×44 adentro de su slot. Acá el
+              chip va con el nombre ENTERO: la reserva está hecha con esos dos
+              nombres y el detalle no tiene el resto del encabezado alrededor
+              para explicar una marca de cuatro letras. */}
           <View style={styles.detailBack}>
             <Touchable
               onPress={() => (router.canGoBack() ? router.back() : router.replace(fallbackHref as never))}
@@ -334,7 +372,7 @@ export function DetailLayerScreen({
             {eyebrow}
           </Eyebrow>
           <View style={styles.detailBadge}>
-            <PlanBadge style={styles.detailBadgeText} />
+            <PlanBadge variant="full" style={styles.detailBadgeText} />
           </View>
         </View>
       </ContentCanvas>

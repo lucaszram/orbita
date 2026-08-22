@@ -16,7 +16,9 @@ import {
   DELETE_ACCOUNT_SUBSCRIPTION_WARNING,
   DELETE_ACCOUNT_WARNING
 } from "@/domain/accountDeletionCopy";
+import { sensitiveOperationBlockMessage } from "@/domain/sessionResilience";
 import { useAppState } from "@/hooks/useAppState";
+import { useSensitiveOperation } from "@/hooks/useSessionResilience";
 import { useIsDesktop } from "@/hooks/useLayoutMode";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import type { OrbitaAuth } from "@/hooks/useOrbitaAuth";
@@ -225,6 +227,18 @@ function AccountSignedIn({
   retryUser: () => void;
 }) {
   const { archiveAccountData, resetApp } = useAppState();
+  /**
+   * Borrar la cuenta exige sesión CONFIRMADA (QA23-007).
+   *
+   * El shell puede estar abierto en modo degradado —últimos datos de esta misma
+   * cuenta, con la sesión sin confirmar— y ahí este botón no puede existir: la
+   * eliminación arranca escribiendo un marcador con un dueño y sigue con una
+   * mutación destructiva en Convex y un `user.delete()` en Clerk. Sin poder
+   * confirmar QUIÉN es la sesión viva, ninguna de las tres cosas se puede
+   * atribuir. El bloqueo es de la ACCIÓN además de la vista: `allowed` se
+   * revalida dentro del handler, porque entre el render y el tap puede cambiar.
+   */
+  const eliminacion = useSensitiveOperation("account-delete");
   // El boundary global de eliminación pendiente: si la eliminación queda a
   // medias, publicarle el marcador desmonta el producto entero.
   const { publish: publishPendingDeletion } = usePendingDeletionGate();
@@ -282,6 +296,8 @@ function AccountSignedIn({
 
   async function handleDeleteAccount() {
     if (deletionInFlight.current || loggingOut) return;
+    // Fail closed en el instante del tap, no sólo al dibujar.
+    if (!eliminacion.allowed) return;
     deletionInFlight.current = true;
     const userId = auth.userId ?? null;
     setDeleteError(null);
@@ -379,10 +395,19 @@ function AccountSignedIn({
           No pudimos empezar a eliminar tu cuenta. Todo sigue como estaba; probá de nuevo.
         </Note>
       ) : null}
+      {/* Por qué no se puede, dicho donde se intenta y ANTES del botón: un
+          botón apagado sin explicación se lee como un error de la app. */}
+      {eliminacion.allowed ? null : (
+        <View accessibilityLiveRegion="polite">
+          <Note>{sensitiveOperationBlockMessage("account-delete")}</Note>
+        </View>
+      )}
       <Pressable
         onPress={handleDeleteAccount}
         accessibilityRole="button"
-        style={styles.deleteBtn}
+        disabled={!eliminacion.allowed}
+        accessibilityState={{ disabled: !eliminacion.allowed }}
+        style={[styles.deleteBtn, eliminacion.allowed ? null : styles.deleteBtnDisabled]}
         hitSlop={8}
       >
         <Text style={styles.deleteText}>
@@ -405,6 +430,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: orbita.spacing.lg,
     paddingVertical: orbita.spacing.sm
   },
+  // Sesión sin confirmar: el borde baja de intensidad para que se lea apagado,
+  // sin cambiar el color del texto (el contraste tiene que seguir siendo real).
+  deleteBtnDisabled: { opacity: 0.45 },
   deleteText: {
     color: orbita.colors.danger,
     fontFamily: orbita.fonts.monoMedium,

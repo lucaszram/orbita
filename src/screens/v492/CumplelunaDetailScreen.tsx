@@ -103,7 +103,7 @@ export function CumplelunaDetailScreen({
 }) {
   const layers = useLayers();
   const natal = useNatalBase();
-  const { phase, bundle, nowMs, localDate, timezone, refresh, refreshing, refreshFailed } = layers;
+  const { phase, bundle, localDate, timezone, refresh, refreshing, refreshFailed } = layers;
 
   if (phase === "cargando") {
     return (
@@ -142,7 +142,12 @@ export function CumplelunaDetailScreen({
   // muestra es la ventana entera: el centro solo se leería como una fecha
   // agendable que el método nunca afirmó.
   const exacto = envelope.precision === "exact";
-  const view = data ? cumplelunaView(data, envelope.precision, nowMs, timezone) : null;
+  // El reloj de la vista es el del sobre (QA23-003): `día del ciclo`, `faltan` y
+  // el avance son escalares que el backend fijó en `observedAt`, así que el
+  // "en 11 días" que los acompaña se cuenta desde ESE instante y no desde el del
+  // aparato. Con `nowMs` los dos relojes se separaban a medida que la pantalla
+  // seguía abierta y la misma fila podía decir `hoy` sobre un `FALTAN 1,2 días`.
+  const view = data ? cumplelunaView(data, envelope.precision, envelope.observedAt, timezone) : null;
   // El anillo dibuja UN arco, así que con el avance acotado el dibujo pasa a ser
   // una referencia: la franja posible se dice en palabras, en la nota que va
   // debajo del anillo y otra vez en la tabla de números.

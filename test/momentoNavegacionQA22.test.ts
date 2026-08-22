@@ -84,11 +84,14 @@ test("el destino declara su origen en la URL, con el mismo nombre que lee la rut
 });
 
 test("las capas que abre la sección tienen destino propio dentro de Tránsitos", () => {
-  assert.deepEqual([...SECTION_LAYER_DETAILS], ["estacion", "ano", "cumpleluna", "luna"]);
+  // `mandala` se suma en QA23-002: el dibujo pasó a tener detalle propio, y ése
+  // cuelga del mismo stack que los otros cuatro.
+  assert.deepEqual([...SECTION_LAYER_DETAILS], ["estacion", "ano", "cumpleluna", "luna", "mandala"]);
   assert.equal(layerDetailHref("estacion"), "/transitos/capa/estacion");
   assert.equal(layerDetailHref("ano"), "/transitos/capa/ano");
   assert.equal(layerDetailHref("cumpleluna"), "/transitos/capa/cumpleluna");
   assert.equal(layerDetailHref("luna"), "/transitos/capa/luna");
+  assert.equal(layerDetailHref("mandala"), "/transitos/capa/mandala");
 
   for (const capa of SECTION_LAYER_DETAILS) assert.equal(sectionLayerDetail(capa), capa);
   // El slug viaja en la URL, así que va sin acentos ni eñes: `año` obligaría a
@@ -100,19 +103,19 @@ test("las capas que abre la sección tienen destino propio dentro de Tránsitos"
 });
 
 // ---------------------------------------------------------------------------
-// La matriz: los tres detalles, desde los dos orígenes
+// La matriz: cada detalle de la sección, desde los dos orígenes
 // ---------------------------------------------------------------------------
 
 /**
  * Qué abre cada origen y a dónde vuelve ese destino sin historial.
  *
- * `Tu momento` no ofrece la Luna del día —sus cuatro ritmos son estación, año,
- * ciclo lunar y tránsito—, pero su detalle YA cuelga del stack de Tránsitos
- * (`/transitos/capa/luna`): el día que la portada lo enlace, no hay ruta que
- * inventar ni "volver" que se pierda.
+ * `Tu momento` no ofrece la Luna del día ni el ciclo lunar —desde QA23-002 sus
+ * accesos son TRES, uno por módulo—, pero sus detalles YA cuelgan del stack de
+ * Tránsitos (`/transitos/capa/luna`, `/transitos/capa/cumpleluna`): el día que
+ * la portada los enlace, no hay ruta que inventar ni "volver" que se pierda.
  *
- * Estación y año, en cambio, sólo existen en esta sección: no tienen fila con
- * origen `hoy` porque Hoy no los muestra.
+ * Estación, año y mandala, en cambio, sólo existen en esta sección: no tienen
+ * fila con origen `hoy` porque Hoy no los muestra.
  */
 const MATRIZ = [
   {
@@ -126,6 +129,13 @@ const MATRIZ = [
     detalle: "ano",
     origen: "momento",
     href: "/transitos/capa/ano",
+    archivo: "app/(tabs)/transitos/capa/[layer].tsx",
+    vuelveA: MOMENTO_ROUTE
+  },
+  {
+    detalle: "mandala",
+    origen: "momento",
+    href: "/transitos/capa/mandala",
     archivo: "app/(tabs)/transitos/capa/[layer].tsx",
     vuelveA: MOMENTO_ROUTE
   },
@@ -219,39 +229,46 @@ test("Hoy abre sus detalles en su propio stack y la puerta a Tu momento", () => 
   assert.ok(!hoy.includes(`${DETAIL_ORIGIN_PARAM}=`), "Hoy no necesita declarar origen: no lo cambia");
 });
 
-test("Tu momento abre cada ritmo con detalle DENTRO del stack de Tránsitos", () => {
+test("Tu momento abre cada MÓDULO con detalle DENTRO del stack de Tránsitos", () => {
   const momento = sinComentarios(leer(MOMENTO));
 
-  // La estación vital y el año: rutas propias de la sección, así que el origen
-  // lo dice la ruta y no hace falta declararlo (QA22-024).
+  // Los tres accesos de la vista, uno por módulo, todos con ruta propia de la
+  // sección: el origen lo dice la ruta y no hace falta declararlo (QA22-024,
+  // QA23-002).
   assert.match(momento, /href: layerDetailHref\("estacion"\)/);
   assert.match(momento, /label: "VER TU ESTACIÓN"/);
   assert.match(momento, /href: layerDetailHref\("ano"\)/);
   assert.match(momento, /label: "VER TU AÑO"/);
-  // El ciclo lunar: ruta propia de la sección, así que el origen lo dice la ruta.
-  assert.match(momento, /href: layerDetailHref\("cumpleluna"\)/);
-  assert.match(momento, /label: "VER CICLO LUNAR"/);
-  // El tránsito: ruta compartida por tres superficies, así que declara su origen.
-  assert.match(
-    momento,
-    /href: withDetailOrigin\(`\/transitos\/arco\/\$\{encodeURIComponent\(arcId\)\}`, "momento"\)/
+  assert.match(momento, /href: layerDetailHref\("mandala"\)/);
+  assert.match(momento, /label: "VER TUS CUATRO RITMOS"/);
+
+  // Ya NO hay salidas por anillo (QA23-002): el ciclo lunar y el tránsito activo
+  // se leían desde el dibujo, y sus rutas siguen existiendo para el día que otra
+  // superficie las enlace, pero esta vista no las reparte.
+  assert.ok(!momento.includes('label: "VER CICLO LUNAR"'), "el mandala no vuelve a ser un índice");
+  assert.ok(!momento.includes('label: "VER TRÁNSITO"'), "ni a salir hacia otra sección");
+  assert.ok(!momento.includes("withDetailOrigin"), "sin enlaces compartidos no hay origen que declarar");
+  assert.ok(
+    !momento.includes("bundle.today.transitArc"),
+    "la vista de los ciclos largos no necesita el arco del día"
   );
-  assert.match(momento, /label: "VER TRÁNSITO"/);
-  // Sin `arcId` no hay detalle que ofrecer: el enlace no aparece en vez de
-  // mandar a la lista, que es otra cosa.
-  assert.match(momento, /const arcId = bundle\.today\.transitArc\.data\?\.arcId \?\? null;/);
-  assert.match(momento, /\.\.\.\(arcId\s*\?/);
 
   // La regla que cierra el defecto: ningún destino de esta sección cuelga del
   // stack de Hoy. El día que se enlace la Luna, tiene que ser `capa/luna`.
   assert.ok(!/["'`]\/hoy\b/.test(momento), "Tu momento no puede abrir un detalle del stack de Hoy");
 
-  // Y el enlace vive FUERA del renglón accesible del ritmo: adentro, VoiceOver
-  // absorbe el control y no queda forma de tocarlo.
+  // Y el acceso vive FUERA del renglón accesible del ritmo: adentro, VoiceOver
+  // absorbe el control y no queda forma de tocarlo. Ahora está un nivel más
+  // arriba —lo pone el módulo, después del dibujo— así que la lista de anillos
+  // no monta ningún control.
   const mandala = momento.slice(momento.indexOf("function Mandala("));
-  const renglon = mandala.indexOf("accessibilityRole=\"text\"");
-  assert.ok(mandala.indexOf("<LinkRow") > renglon, "el enlace va debajo del renglón, no adentro");
-  assert.match(mandala, /const destino = ring\.available \? destinos\[ring\.key\] : undefined;/);
+  assert.ok(!mandala.includes("<LinkRow"), "la lista de anillos es texto, no una botonera");
+  assert.ok(!mandala.includes("router.push"), "ni navega por su cuenta");
+  const bloque03 = momento.slice(momento.indexOf('index="03"'));
+  assert.ok(
+    bloque03.indexOf("<AccesoDetalle acceso={DETALLES.mandala} />") > bloque03.indexOf("<Mandala "),
+    "el acceso del módulo va debajo del dibujo y de sus líneas"
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -277,6 +294,7 @@ test("la ruta de capa monta la pantalla de cada capa y le da el volver de Tu mom
   assert.match(capa, /ano: AnoDetailScreen/);
   assert.match(capa, /cumpleluna: CumplelunaDetailScreen/);
   assert.match(capa, /luna: LunaDetailScreen/);
+  assert.match(capa, /mandala: MandalaDetailScreen/);
   assert.match(capa, /Record<SectionLayerDetail,/, "la tabla es exhaustiva por tipo");
   assert.match(capa, /<DetalleScreen fallbackHref=\{MOMENTO_ROUTE\} \/>/);
   // Una capa que la sección no abre no monta nada: vuelve a la vista que abre

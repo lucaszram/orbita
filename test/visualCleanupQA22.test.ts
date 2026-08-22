@@ -472,6 +472,6 @@ describe("QA22-022 · el borrado de cuenta no se movió ni se diluyó", () => {
     const bloque = indiceDe(cuenta, /<ManageSubscriptionBlock\s*\/>/);
     const boton = indiceDe(cuenta, /onPress=\{handleDeleteAccount\}/);
     assert.ok(bloque !== -1 && boton > bloque, "el borrado va al final, no dentro del plan");
-    assert.match(cuenta, /style=\{styles\.deleteBtn\}/);
+    assert.match(cuenta, /style=\{\[styles\.deleteBtn, eliminacion\.allowed \? null : styles\.deleteBtnDisabled\]\}/);
   });
 });

@@ -8,7 +8,7 @@ import {
   seasonMeaning,
   yearMeaning
 } from "@/domain/layerMeaning";
-import type { LunarPhaseKey } from "@/services/layersApi";
+import type { LunarPhaseKey, TemporalMandalaRing } from "@/services/layersApi";
 
 /**
  * La LECTURA de cada ritmo: la jerarquía editorial que comparten los cuatro
@@ -97,6 +97,13 @@ export const YEAR_DETAIL_EYEBROW = "TEMA DE TU AÑO";
 export const SEASON_DATA_HEADING = "LOS DATOS DE LA FASE";
 export const YEAR_DATA_HEADING = "LOS DATOS DEL AÑO";
 
+/** El detalle integral del mandala (QA23-002) y sus cuatro bloques propios. */
+export const MANDALA_DETAIL_EYEBROW = "TUS CUATRO RITMOS";
+export const MANDALA_CONCEPT_HEADING = "QUÉ ES ESTE DIBUJO";
+export const MANDALA_RINGS_HEADING = "LOS CUATRO ANILLOS";
+export const MANDALA_NOW_HEADING = "TU CONFIGURACIÓN DE HOY";
+export const MANDALA_COMBINATION_HEADING = "CÓMO SE COMBINAN HOY";
+
 /**
  * Qué calculó cada análisis y con qué regla se lee, dicho UNA vez.
  *
@@ -117,6 +124,13 @@ export const YEAR_TRACE = {
     "Qué casa de tu carta le toca a tu edad actual, en qué signo empieza esa casa, qué planeta la rige y entre qué fechas corre el año que va de un cumpleaños al siguiente.",
   interpretiveRule:
     "El recorrido arranca en tu Ascendente, avanza una casa por año y vuelve a empezar cada doce años. La casa del año indica en qué área se concentra la lectura; no afirma que algo vaya a ocurrir en esa área."
+} as const;
+
+export const MANDALA_TRACE = {
+  calculatedDatum:
+    "En qué punto de su recorrido está hoy cada uno de los cuatro ritmos: la estación vital, el año personal, tu ritmo lunar —el que va de un cumpleluna al siguiente— y el tránsito activo más cercano a su punto exacto.",
+  interpretiveRule:
+    "Cada anillo avanza a su propio ritmo y se lee por separado. Verlos juntos muestra qué ciclos coinciden ahora mismo; el dibujo no los combina en un resultado único ni convierte una coincidencia en una causa."
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -573,6 +587,213 @@ const MOON_PHASE_QUESTION: Record<LunarPhaseKey, string> = {
   last_quarter: "¿Qué podrías sacar de tu semana sin que se note?",
   balsamic: "¿Qué te haría bien no hacer hoy?"
 };
+
+// ---------------------------------------------------------------------------
+// Tus cuatro ritmos — el mandala temporal, leído entero
+// ---------------------------------------------------------------------------
+
+/**
+ * Los cuatro ritmos que el mandala dibuja, con el nombre del contrato.
+ *
+ * `current_lunation` queda afuera a propósito: es la clave que el contrato
+ * conserva para leer mandalas v1 ya persistidos y que el ensamblador actual no
+ * vuelve a emitir. La teoría describe el dibujo de hoy, no el histórico.
+ */
+export type MandalaRingKey = Exclude<TemporalMandalaRing["key"], "current_lunation">;
+
+/** Qué es un anillo: dónde está, qué mide y a qué velocidad avanza. */
+export type MandalaRingTheory = {
+  key: MandalaRingKey;
+  /** El rótulo del ritmo, el mismo que publica el contrato. */
+  label: string;
+  /** Dónde cae en el dibujo. El orden del contrato es de lo lento a lo rápido. */
+  position: string;
+  /** Qué dato calcula ese ritmo. */
+  measures: string;
+  /** Cuánto tarda en dar una vuelta. Es lo que hace que no se lean todos igual. */
+  pace: string;
+};
+
+/**
+ * La teoría de los cuatro anillos: fija, y en el orden en que se dibujan.
+ *
+ * Es una tabla por clave —no un arreglo suelto— para que un ritmo nuevo en el
+ * contrato no compile hasta tener su explicación. El orden se declara aparte
+ * porque es una propiedad del dibujo (afuera lo lento, adentro lo rápido) y no
+ * del diccionario.
+ */
+const MANDALA_RING_THEORY: Record<MandalaRingKey, Omit<MandalaRingTheory, "key">> = {
+  progressed_lunation: {
+    label: "Estación vital",
+    position: "El anillo de afuera.",
+    measures:
+      "En qué fase del ciclo largo entre tu Sol y tu Luna progresados estás, y cuándo empezó esa fase.",
+    pace: "Ocho fases en unos 30 años: cada una dura alrededor de 3,7 años."
+  },
+  annual_profection: {
+    label: "Año personal",
+    position: "El segundo anillo desde afuera.",
+    measures: "Qué casa de tu carta le toca a tu edad de hoy y qué planeta la rige.",
+    pace: "Una casa por año, de un cumpleaños al siguiente."
+  },
+  cumpleluna: {
+    label: "Tu ritmo lunar",
+    position: "El tercer anillo desde afuera.",
+    measures:
+      "En qué punto estás del recorrido que va de una repetición de tu ángulo natal Sol–Luna a la siguiente.",
+    pace: "Una vuelta completa cada 29 días y medio, aproximadamente."
+  },
+  transit_arc: {
+    label: "Tránsito activo",
+    position: "El anillo de adentro.",
+    measures:
+      "Qué contacto entre el cielo de hoy y un punto de tu carta está más cerca de su ángulo exacto.",
+    pace: "Dura días o semanas, y se reemplaza varias veces por mes."
+  }
+};
+
+/** El orden del dibujo: del ciclo más lento afuera al más rápido adentro. */
+export const MANDALA_RING_ORDER: readonly MandalaRingKey[] = [
+  "progressed_lunation",
+  "annual_profection",
+  "cumpleluna",
+  "transit_arc"
+];
+
+export const MANDALA_RINGS: readonly MandalaRingTheory[] = MANDALA_RING_ORDER.map((key) => ({
+  key,
+  ...MANDALA_RING_THEORY[key]
+}));
+
+/**
+ * La lectura del mandala entero: el concepto, la combinación de hoy, qué hacer
+ * con ella y con qué límite.
+ *
+ * No tiene la forma `LayerReading` de los cuatro ritmos sueltos —`now` / `theme`
+ * son la síntesis de UN ciclo— porque acá el objeto de la lectura es la relación
+ * entre ellos: qué anillos hay hoy, a qué escalas pertenecen y qué se puede y
+ * qué no se puede concluir de que coincidan.
+ */
+export type MandalaReading = {
+  /** Qué es el dibujo. Fijo: no depende del día. */
+  concept: string;
+  /** Qué configuración hay hoy y qué se puede leer de ella. */
+  combination: string;
+  /** Cómo usarlo: elegir la escala a la que responder. */
+  use: string;
+  /** Una pregunta para observar. */
+  question: string;
+  /** Qué no se puede afirmar hoy, o `null` si no hay límite que declarar. */
+  caveat: string | null;
+};
+
+/**
+ * El mandala, leído como una sola cosa (QA23-002).
+ *
+ * ## Por qué existe
+ *
+ * `Tu momento` ofrecía CUATRO salidas debajo del dibujo —una por anillo— y
+ * ninguna explicaba el dibujo: se salía a la estación, al año, al ciclo lunar o
+ * al tránsito, que son los mismos análisis que la pantalla ya muestra arriba o
+ * que viven en otra sección. El mandala, que es lo único que esos cuatro
+ * enlaces no contaban, no tenía a dónde profundizar.
+ *
+ * ## Qué depende del día y qué no
+ *
+ * El concepto, el método, el uso y la pregunta son FIJOS: describen la imagen y
+ * cómo leerla, y eso no cambia con la configuración de hoy. Lo que cambia —y lo
+ * único que cambia— es **qué anillos hay**: de ahí salen `combination` y
+ * `caveat`. La misma configuración devuelve exactamente el mismo texto.
+ *
+ * Un ritmo sin cálculo no se saltea ni se disculpa dos veces: se nombra, para
+ * que el anillo vacío del dibujo tenga explicación, y el motivo puntual lo dice
+ * su propia línea con las palabras del sobre.
+ */
+export function mandalaReading(input: {
+  /** Los anillos del sobre. Sólo importa la clave y si ese ritmo se pudo calcular. */
+  rings: readonly { key: string; available: boolean }[];
+  /** El sobre tiene raíz exacta: sin ella, los avances son franjas y no puntos. */
+  exact: boolean;
+}): MandalaReading {
+  const disponible = new Set(
+    input.rings.filter((ring) => ring.available).map((ring) => ring.key)
+  );
+  const presentes = MANDALA_RINGS.filter((ring) => disponible.has(ring.key));
+  const faltantes = MANDALA_RINGS.filter((ring) => !disponible.has(ring.key));
+  const limites = [
+    faltantes.length > 0 ? MANDALA_INCOMPLETE : null,
+    input.exact ? null : MANDALA_WITHOUT_TIME
+  ].filter((limite): limite is string => limite !== null);
+
+  return {
+    concept: MANDALA_CONCEPT,
+    combination: `${mandalaConfiguration(presentes, faltantes)} ${MANDALA_RULE}`,
+    use: MANDALA_USE,
+    question: MANDALA_QUESTION,
+    caveat: limites.length > 0 ? limites.join(" ") : null
+  };
+}
+
+/** La frase de la configuración de hoy: cuántos anillos hay y cuáles faltan. */
+function mandalaConfiguration(
+  presentes: readonly MandalaRingTheory[],
+  faltantes: readonly MandalaRingTheory[]
+): string {
+  const nombres = (ritmos: readonly MandalaRingTheory[]) =>
+    enumerar(ritmos.map((ritmo) => ritmo.label.toLocaleLowerCase("es")));
+  if (presentes.length === 0) {
+    return "Hoy ninguno de los cuatro ritmos se puede calcular, así que el dibujo queda sin anillos: lo que hay para leer es qué le falta a cada uno, y eso lo dice su línea.";
+  }
+  if (faltantes.length === 0) {
+    return "Hoy los cuatro anillos tienen cálculo, así que el dibujo está completo: la escala de años, la del año en curso, la de las semanas y la de los días se ven a la vez.";
+  }
+  const vacios =
+    faltantes.length === 1
+      ? `El anillo de ${nombres(faltantes)} queda vacío`
+      : `Los anillos de ${nombres(faltantes)} quedan vacíos`;
+  // "El motivo lo dice su propia línea" y no "está escrito": el producto reserva
+  // esa forma para lo que NO afirma —"tu destino está escrito"— y usarla acá,
+  // aunque sea con otro sentido, la mete en el vocabulario del que se cuida.
+  return `Hoy se pueden calcular ${presentes.length} de los cuatro ritmos: ${nombres(
+    presentes
+  )}. ${vacios}, y el motivo lo dice su propia línea: la comparación de escalas se hace con lo que sí está.`;
+}
+
+/** Una enumeración en español: `a`, `a y b`, `a, b y c`. */
+function enumerar(items: readonly string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  return `${items.slice(0, -1).join(", ")} y ${items[items.length - 1]}`;
+}
+
+const MANDALA_CONCEPT =
+  "El mandala es una sola imagen con los cuatro ritmos que Órbita puede medir sobre tu carta al mismo tiempo. Cada anillo dibuja un ciclo distinto y avanza a su propia velocidad: el de afuera se mide en años y el de adentro en días. Están juntos para poder compararlos, no para sumarlos.";
+
+/** El guardrail del dibujo, dicho en el cuerpo y no sólo en el acordeón. */
+const MANDALA_RULE =
+  "Dos anillos que coinciden no se explican entre sí: la coincidencia se mira, no se convierte en una causa.";
+
+const MANDALA_USE =
+  "Sirve para elegir a qué escala responder. Antes de reaccionar a algo, mirá a qué anillo pertenece: lo del anillo de adentro se agota en días y casi nunca pide una decisión de fondo; lo del anillo de afuera no se resuelve en una semana y conviene darle ese tiempo.";
+
+const MANDALA_QUESTION = "¿Lo que te está ocupando hoy pertenece a un ciclo de días o a uno de años?";
+
+/**
+ * Cómo se arma el dibujo.
+ *
+ * Va suelto y no adentro de `mandalaReading` porque no depende de la
+ * configuración de hoy: es el método, y se puede —y se debe— decir también
+ * cuando el sobre no trajo ningún anillo.
+ */
+export const MANDALA_METHOD =
+  "El mandala no calcula nada por su cuenta: toma el resultado de los cuatro análisis que ya corrieron por separado —cada uno con su método, su precisión y su trazabilidad— y los dibuja en la misma imagen, del más lento afuera al más rápido adentro. Un ritmo sin cálculo no recibe un anillo estimado: se deja vacío y su ausencia se explica con palabras.";
+
+/** Con anillos vacíos la imagen está incompleta, y eso cambia lo que se afirma. */
+const MANDALA_INCOMPLETE =
+  "Con anillos vacíos la imagen de hoy está incompleta: lo que se afirma es lo que dice cada ritmo que sí tiene cálculo, y nada sobre los que faltan.";
+
+/** Sin raíz exacta los avances son franjas: el tramo se sostiene, el punto no. */
+const MANDALA_WITHOUT_TIME =
+  "Sin tu hora exacta de nacimiento el avance de los anillos se calcula con un margen, así que lo que se afirma es el tramo del recorrido y no un punto dentro de él.";
 
 // ---------------------------------------------------------------------------
 // Utilidades
