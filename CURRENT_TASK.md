@@ -1,6 +1,6 @@
 # Current Task
 
-## Hotfix post-QA build 26 → build 27/TestFlight (2026-08-22) · AUTORIZADO
+## Hotfix post-QA build 26 → build 27/TestFlight (2026-08-22) · SUBIDO · APPLE PROCESANDO
 
 **Objetivo.** Corregir el cierre del onboarding observado físicamente en el
 build 26, integrar el hotfix y generar `1.0.0 (27)` para TestFlight interno:
@@ -71,6 +71,28 @@ correcciones no relacionadas con estos dos fallos de cierre.
   confirma `1.0.0 (27)`, bundle `com.lucasssram.orbita`, Sign in with Apple y
   únicamente `com.apple.developer.applesignin=["Default"]` entre los
   entitlements declarados; no reapareció `aps-environment`.
+- Integración: PR `#82`, checks remotos en verde y merge exacto
+  `46f566ced02a11fb232eaeed6d691772d2c157e9` sobre `release/1.0.0`. El árbol
+  del merge fue idéntico al candidato validado; `qa22-fixes` no se modificó.
+- Gates repetidos sobre el merge: `pnpm typecheck` exit `0`, suite completa
+  **2762/2762** (235 suites, piso 2542) y `git diff --check` exit `0`.
+- IPA final: `/private/tmp/orbita-1.0.0-27.ipa`, `48,814,390` bytes, SHA-256
+  `f3533337d0c6f75f6c3097968adb5c1db189ba872c4feabc6d8a8027cc6d0f5e`.
+  Bundle `com.lucasssram.orbita`; versión `1.0.0`; build `27`; ejecutable
+  `arm64`; distribución App Store; `get-task-allow=false`;
+  `com.apple.developer.applesignin=["Default"]`; sin `aps-environment`.
+  El verificador local de confianza del certificado muestra el mismo
+  `CSSMERR_TP_NOT_TRUSTED` del IPA 26 ya aceptado por Apple; el archive, la
+  exportación y la validación de App Store Connect aprobaron el build 27.
+- Entorno dentro del bundle: Convex producción `exciting-bat-311`; la URL
+  `happy-otter-123` detectada en texto pertenece sólo al ejemplo del mensaje de
+  error de la librería y no a la configuración; `dutiful-viper-815` no aparece.
+- Submit EAS/App Store Connect:
+  `f48f4b35-7fe9-44cc-90c0-57fdb1c8c653`, aceptado por Apple el
+  `2026-08-22`; detalle en
+  <https://expo.dev/accounts/lucasssram/projects/orbita/submissions/f48f4b35-7fe9-44cc-90c0-57fdb1c8c653>.
+  App Store Connect informa que el binario fue cargado correctamente y está
+  procesándose. No se seleccionó para App Review ni se inició publicación.
 
 ## Promoción iOS 1.0.0 (26) → TestFlight interno (2026-08-22) · DISPONIBLE
 
