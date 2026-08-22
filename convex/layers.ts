@@ -333,7 +333,7 @@ function cacheKey(args: {
   localDate: string;
   timezone: string;
 }) {
-  const daily = ["ORB-TRN-002", "ORB-TRN-001", "ORB-LUN-003", "ORB-CYC-007"].includes(
+  const daily = ["ORB-TRN-002", "ORB-TRN-001", "ORB-LUN-002", "ORB-LUN-003", "ORB-CYC-007"].includes(
     args.result.analysisId,
   );
   return [
@@ -398,6 +398,38 @@ function staleIfExpired(result: AnalysisResult, now: number): AnalysisResult {
 function resultHash(baseHash: string, analysisId: AnalysisId, scope?: Record<string, unknown>) {
   const definition = getAnalysisDefinition(analysisId);
   return stableInputHash({ baseHash, analysisId, methodVersion: definition.methodVersion, scope: scope ?? null });
+}
+
+/**
+ * Identidad diaria del Cumpleluna.
+ *
+ * El cálculo mezcla la efeméride del momento con raíces que duran casi un ciclo.
+ * Sin el día y la zona en el hash, un sobre de ayer podía seguir coincidiendo hoy
+ * aunque sus escalares (`progress`, `cycleDay`, `daysRemaining`) pertenecieran a
+ * la observación anterior.
+ */
+export function cumplelunaInputHash(
+  baseHash: string,
+  dailyScope: { localDate: string; timezone: string },
+) {
+  return resultHash(baseHash, "ORB-LUN-002", dailyScope);
+}
+
+/**
+ * Vigencia del snapshot: nunca supera la del cielo que alimentó sus escalares y
+ * tampoco atraviesa la próxima raíz del ciclo.
+ */
+export function cumplelunaSnapshotValidUntil(args: {
+  skyValidUntil: number;
+  nextExactAt?: number | null;
+  nextExactAtRange?: { earliest: number; latest: number } | null;
+}) {
+  const deadlines = [
+    args.skyValidUntil,
+    args.nextExactAtRange?.earliest,
+    args.nextExactAt,
+  ].filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  return Math.min(...deadlines);
 }
 
 export function buildNatalAnalysisInputHash(baseHash: string, analysisId: AnalysisId) {
@@ -2009,6 +2041,7 @@ async function resolveDailySky(args: {
 }): Promise<{
   ephemeris: EphemerisPosition[] | null;
   observedAt: number;
+  validUntil: number;
   providerVersion: string | undefined;
   isStale: boolean;
   toPersist: SkySnapshot | null;
@@ -2017,6 +2050,7 @@ async function resolveDailySky(args: {
     return {
       ephemeris: args.sky.positions,
       observedAt: args.sky.observedAt,
+      validUntil: args.sky.validUntil,
       providerVersion: args.sky.providerVersion,
       isStale: false,
       toPersist: null,
@@ -2031,6 +2065,7 @@ async function resolveDailySky(args: {
     return {
       ephemeris: provider.normalized.positions,
       observedAt: provider.observedAt,
+      validUntil: provider.observedAt + HOUR_MS,
       providerVersion: provider.providerVersion,
       isStale: false,
       toPersist: {
@@ -2045,6 +2080,7 @@ async function resolveDailySky(args: {
     return {
       ephemeris: args.sky.positions,
       observedAt: args.sky.observedAt,
+      validUntil: args.sky.validUntil,
       providerVersion: args.sky.providerVersion,
       isStale: true,
       toPersist: null,
@@ -2053,6 +2089,7 @@ async function resolveDailySky(args: {
   return {
     ephemeris: null,
     observedAt: args.observedAt,
+    validUntil: args.observedAt + HOUR_MS,
     providerVersion: undefined,
     isStale: false,
     toPersist: null,
@@ -3078,12 +3115,12 @@ export const getForDate = query({
       latestMatching(
         state.snapshots,
         "ORB-LUN-002",
-        resultHash(natal.baseHash, "ORB-LUN-002"),
+        cumplelunaInputHash(natal.baseHash, dailyScope),
         now,
       ) ??
       unavailableResult(
         "ORB-LUN-002",
-        resultHash(natal.baseHash, "ORB-LUN-002"),
+        cumplelunaInputHash(natal.baseHash, dailyScope),
         now,
         ["current_ephemeris"],
       )
@@ -3556,7 +3593,7 @@ export const persistRefresh = internalMutation({
       if (existing && existing.observedAt >= result.observedAt) {
         continue;
       }
-      const isDaily = ["ORB-TRN-002", "ORB-TRN-001", "ORB-LUN-003", "ORB-CYC-007"].includes(
+      const isDaily = ["ORB-TRN-002", "ORB-TRN-001", "ORB-LUN-002", "ORB-LUN-003", "ORB-CYC-007"].includes(
         result.analysisId,
       );
       const fields = omitUndefined({
@@ -3725,6 +3762,7 @@ export const refreshForDate = action({
     });
     const ephemeris = sky.ephemeris;
     const ephemerisObservedAt = sky.observedAt;
+    const ephemerisValidUntil = sky.validUntil;
     const providerVersion = sky.providerVersion;
     const skyIsStale = sky.isStale;
     const skyToPersist = sky.toPersist;
@@ -3868,7 +3906,7 @@ export const refreshForDate = action({
         extraLimitations: staleLimitation,
       }) as MoonOnChartResult;
 
-      const cumpleHash = resultHash(natal.baseHash, "ORB-LUN-002");
+      const cumpleHash = cumplelunaInputHash(natal.baseHash, dailyScope);
       const cachedCumple = latestMatching(state.snapshots, "ORB-LUN-002", cumpleHash, observedAt);
       if (cachedCumple && cachedCumple.status !== "stale") {
         cumpleluna = cachedCumple as CumplelunaResult;
@@ -3891,10 +3929,11 @@ export const refreshForDate = action({
           analysisId: "ORB-LUN-002",
           inputHash: cumpleHash,
           observedAt,
-          validUntil:
-            cumpleBuild.data?.nextExactAtRange?.earliest ??
-            cumpleBuild.data?.nextExactAt ??
-            (cumpleBuild.status === "needs_birth_time" ? null : observedAt + HOUR_MS),
+          validUntil: cumplelunaSnapshotValidUntil({
+            skyValidUntil: ephemerisValidUntil,
+            nextExactAtRange: cumpleBuild.data?.nextExactAtRange,
+            nextExactAt: cumpleBuild.data?.nextExactAt,
+          }),
           build: cumpleBuild,
           providerVersion,
         }) as CumplelunaResult;
@@ -3918,7 +3957,7 @@ export const refreshForDate = action({
       const rankingHash = resultHash(natal.baseHash, "ORB-TRN-002", dailyScope);
       const arcHash = resultHash(natal.baseHash, "ORB-TRN-001", dailyScope);
       const moonHash = resultHash(natal.baseHash, "ORB-LUN-003", dailyScope);
-      const cumpleHash = resultHash(natal.baseHash, "ORB-LUN-002");
+      const cumpleHash = cumplelunaInputHash(natal.baseHash, dailyScope);
       transitRanking = (
         staleProviderFallback(state.snapshots, "ORB-TRN-002", rankingHash, observedAt) ??
         unavailableResult("ORB-TRN-002", rankingHash, observedAt, ["current_ephemeris"], {

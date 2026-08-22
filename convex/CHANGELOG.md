@@ -1,5 +1,55 @@
 # Contrato — CHANGELOG
 
+## 2026-08-21 (QA23 · bloque 4) — tipo de vínculo declarado y lectura contextual neutral
+
+**Aditivo y compatible con builds 22/23. Sin codegen ni deploy autorizado.**
+
+- `relationshipProfiles.relationshipType` es opcional y acepta ocho valores:
+  `romantic`, `parent_or_caregiver`, `child`, `sibling`, `friendship`,
+  `work_or_project`, `other`, `prefer_not_to_say`.
+- Filas anteriores sin campo se publican como `null` (legacy sin definir).
+  `prefer_not_to_say` queda persistido y no se confunde con ese estado.
+- `savePerson.relationshipType` y la salida de perfil son aditivos/opcionales.
+  Una edición enviada por un build 22/23, que omite el argumento, preserva el
+  valor existente en vez de borrarlo.
+- La comparación nueva publica `data.relationshipType` de forma opcional para
+  conservar legibles los cachés anteriores. El tipo entra explícitamente en
+  `inputHash`, además de `updatedAt`, por lo que cambiarlo no puede reutilizar
+  una lectura del contexto previo.
+- El tipo es siempre declarado: no se infiere de signo, fecha, posiciones,
+  casas ni de ningún proveedor. Las fuentes astrológicas locales siguen
+  respaldando las técnicas de comparación; la categoría del vínculo sólo
+  selecciona el marco editorial.
+- Únicamente `romantic` conserva la dimensión y el lenguaje de `Deseo`/
+  atracción. Cualquier otro valor y `null` publican la misma evidencia
+  determinística como `Energía compartida`, con lenguaje de iniciativa,
+  expresión y acuerdos. No se agregó LLM.
+- El método de comparación sube a `orbita-relationship-comparison-v3` y
+  `ORB-REL-003` a `relationship-five-dimensions-declared-context-v2`.
+
+No hay migración, borrado ni reescritura de filas. El deploy futuro deberá
+mantener el campo opcional aun si se revierte el cliente.
+
+## 2026-08-21 (QA23 · bloque 3) — `ORB-LUN-002` pasa a ser un snapshot diario y horario
+
+**Compatible en forma; cambia sólo identidad/vigencia de caché. Sin codegen y
+sin deploy autorizado.** `layers.getForDate` y `layers.refreshForDate` conservan
+exactamente el mismo validator y payload de Cumpleluna, pero los sobres nuevos:
+
+- incluyen `{ localDate, timezone }` en `inputHash`, igual que las demás capas
+  del día;
+- se persisten con alcance diario en `cacheKey`, `localDate` y `timezone`;
+- vencen al primer límite entre la vigencia horaria de la efeméride y la próxima
+  raíz del ciclo, en vez de durar casi 29,5 días.
+
+El motivo es de coherencia temporal: `progress`, `cycleDay` y `daysRemaining`
+son escalares del instante observado. Un hash natal y una vigencia de casi un
+ciclo permitían reutilizarlos al día siguiente mientras el cliente fechaba
+otras partes de la misma vista con el reloj actual. Los snapshots históricos
+siguen siendo válidos en schema y no se migran, pero dejan de coincidir con el
+hash diario nuevo. Builds 22/23 siguen consumiendo la misma forma; tras un deploy
+futuro sólo recibirían datos más frescos. No hay tabla, índice ni campo nuevo.
+
 ## 2026-08-21 (QA22 · bloque 4B) — `relationships.getComparison`: la evidencia por contacto, sin tocar `drivers`
 
 **Aditivo, no breaking. Codegen pendiente de Codex; deploy NO autorizado.**

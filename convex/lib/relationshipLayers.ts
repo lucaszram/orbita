@@ -7,7 +7,7 @@
  */
 
 export const RELATIONSHIP_LAYERS_VERSION = "orbita-relationship-layers-v1";
-export const RELATIONSHIP_COMPARISON_VERSION = "orbita-relationship-comparison-v2";
+export const RELATIONSHIP_COMPARISON_VERSION = "orbita-relationship-comparison-v3";
 
 export const RELATIONSHIP_DIMENSION_IDS = [
   "communication",
@@ -21,6 +21,15 @@ export type RelationshipDimensionId = (typeof RELATIONSHIP_DIMENSION_IDS)[number
 export type RelationshipComparisonLevel = 1 | 2 | 3;
 export type RelationshipBirthTimePrecision = "known" | "approximate" | "unknown";
 export type RelationshipPointPrecision = "exact" | "estimated" | "range";
+export type RelationshipType =
+  | "romantic"
+  | "parent_or_caregiver"
+  | "child"
+  | "sibling"
+  | "friendship"
+  | "work_or_project"
+  | "other"
+  | "prefer_not_to_say";
 
 export const RELATIONSHIP_ZODIAC_SIGNS = [
   "aries",
@@ -371,6 +380,8 @@ const DIMENSION_META: Record<RelationshipDimensionId, { label: string; relevant:
   friction: { label: "Fricción", relevant: ["mars", "saturn", "sun", "mercury", "moon"] },
   shared_project: { label: "Proyecto en común", relevant: ["sun", "jupiter", "saturn"] }
 };
+
+const NEUTRAL_DESIRE_LABEL = "Energía compartida";
 
 const PAIR_WEIGHTS: Record<RelationshipDimensionId, Record<string, number>> = {
   communication: {
@@ -879,6 +890,7 @@ function aspectDriver(args: {
   a: PointForComparison;
   b: PointForComparison;
   aspect: StableAspect;
+  romantic: boolean;
 }): RelationshipDriver {
   const definition = aspectDefinition(args.aspect.type);
   const strength = args.aspect.strength;
@@ -895,7 +907,15 @@ function aspectDriver(args: {
     precision: args.aspect.precision,
     strength,
     weight: rounded(strength * args.multiplier),
-    text: `Su ${args.b.label} forma ${definition.article} ${definition.label} con tu ${args.a.label}, un contacto de ${definition.angle}°; ${formatDistanceFromExact(args.aspect.orb, args.aspect.orbRange)}. ${DRIVER_ENDINGS[args.dimension][definition.quality]}`
+    text: `Su ${args.b.label} forma ${definition.article} ${definition.label} con tu ${args.a.label}, un contacto de ${definition.angle}°; ${formatDistanceFromExact(args.aspect.orb, args.aspect.orbRange)}. ${
+      args.dimension === "desire" && !args.romantic
+        ? {
+            support: "Aporta una vía para coordinar iniciativa y expresión, no una garantía.",
+            tension: "Señala impulsos distintos que pueden necesitar acuerdos explícitos.",
+            neutral: "Concentra energía en el intercambio y aumenta su visibilidad."
+          }[definition.quality]
+        : DRIVER_ENDINGS[args.dimension][definition.quality]
+    }`
   };
 }
 
@@ -947,6 +967,7 @@ function houseDrivers(args: {
   targetPerson: "a" | "b";
   targetName: string;
   targetChart: RelationshipChartInput;
+  romantic: boolean;
 }) {
   const rule = HOUSE_OVERLAYS.find((item) => item.dimension === args.dimension);
   if (!rule) return [];
@@ -958,6 +979,12 @@ function houseDrivers(args: {
     if (!point || point.longitude === null) continue;
     const house = houseForDegree(point.longitude, cusps);
     if (house === null || !rule.houses.includes(house)) continue;
+    const houseMeaning =
+      !args.romantic && house === 4
+        ? "raíces y vida compartida"
+        : !args.romantic && house === 5
+          ? "expresión y creatividad"
+          : HOUSE_MEANINGS[house];
     drivers.push({
       id: `house:${args.sourcePerson}:${key}:${args.targetPerson}:${house}`,
       kind: "house_overlay",
@@ -975,8 +1002,8 @@ function houseDrivers(args: {
       // `Su Sol cae en tu casa 7, vinculada con pareja y asociaciones.`
       text:
         args.sourcePerson === "b"
-          ? `Su ${point.label} cae en tu casa ${house}, vinculada con ${HOUSE_MEANINGS[house]}. Esto sólo ubica ese planeta en un área de la carta; no garantiza cómo va a funcionar el vínculo.`
-          : `Tu ${point.label} cae en su casa ${house}, vinculada con ${HOUSE_MEANINGS[house]}. Esto sólo ubica ese planeta en un área de la carta; no garantiza cómo va a funcionar el vínculo.`
+          ? `Su ${point.label} cae en tu casa ${house}, vinculada con ${houseMeaning}. Esto sólo ubica ese planeta en un área de la carta; no garantiza cómo va a funcionar el vínculo.`
+          : `Tu ${point.label} cae en su casa ${house}, vinculada con ${houseMeaning}. Esto sólo ubica ese planeta en un área de la carta; no garantiza cómo va a funcionar el vínculo.`
     });
   }
   return drivers;
@@ -987,7 +1014,8 @@ function dimensionSummary(
   status: RelationshipDimension["status"],
   support: number,
   tension: number,
-  neutral: number
+  neutral: number,
+  romantic: boolean,
 ): { tone: RelationshipDimension["tone"]; text: string } {
   if (status === "insufficient_data") {
     return { tone: "not_available", text: "Faltan posiciones para leer esta dimensión sin completar huecos con supuestos." };
@@ -998,7 +1026,10 @@ function dimensionSummary(
       text: "Con estos datos no aparece un contacto principal en esta dimensión. Eso no equivale a ausencia de vínculo."
     };
   }
-  const label = DIMENSION_META[dimension].label.toLowerCase();
+  const label =
+    dimension === "desire" && !romantic
+      ? NEUTRAL_DESIRE_LABEL.toLowerCase()
+      : DIMENSION_META[dimension].label.toLowerCase();
   if (support > tension * 1.25) {
     return {
       tone: "more_fluid",
@@ -1037,6 +1068,7 @@ function buildDimensions(args: {
   a: RelationshipChartInput;
   b: RelationshipChartInput;
   limitations: string[];
+  relationshipType?: RelationshipType | null;
 }) {
   const pointsA = comparisonPoints(args.a, args.level);
   const pointsB = comparisonPoints(args.b, args.level);
@@ -1044,6 +1076,7 @@ function buildDimensions(args: {
   const nameB = args.b.name?.trim() || "la segunda persona";
   let unstableMoonContact = false;
   let unstableOtherContact = false;
+  const romantic = args.relationshipType === "romantic";
 
   const dimensions = RELATIONSHIP_DIMENSION_IDS.map((dimension): RelationshipDimension => {
     const drivers: RelationshipDriver[] = [];
@@ -1059,7 +1092,7 @@ function buildDimensions(args: {
           }
           continue;
         }
-        drivers.push(aspectDriver({ dimension, multiplier, a, b, aspect }));
+        drivers.push(aspectDriver({ dimension, multiplier, a, b, aspect, romantic }));
       }
     }
 
@@ -1072,7 +1105,8 @@ function buildDimensions(args: {
           sourcePoints: pointsA,
           targetPerson: "b",
           targetName: nameB,
-          targetChart: args.b
+          targetChart: args.b,
+          romantic,
         }),
         ...houseDrivers({
           dimension,
@@ -1081,7 +1115,8 @@ function buildDimensions(args: {
           sourcePoints: pointsB,
           targetPerson: "a",
           targetName: nameA,
-          targetChart: args.a
+          targetChart: args.a,
+          romantic,
         })
       );
     }
@@ -1102,10 +1137,20 @@ function buildDimensions(args: {
         : dimensionHasEnoughData(dimension, pointsA, pointsB)
           ? "no_major_contacts"
           : "insufficient_data";
-    const summary = dimensionSummary(dimension, status, supportWeight, tensionWeight, neutralWeight);
+    const summary = dimensionSummary(
+      dimension,
+      status,
+      supportWeight,
+      tensionWeight,
+      neutralWeight,
+      romantic,
+    );
     return {
       id: dimension,
-      label: DIMENSION_META[dimension].label,
+      label:
+        dimension === "desire" && !romantic
+          ? NEUTRAL_DESIRE_LABEL
+          : DIMENSION_META[dimension].label,
       status,
       tone: summary.tone,
       weight: rounded(supportWeight + tensionWeight + neutralWeight),
@@ -1149,6 +1194,8 @@ export function buildRelationshipComparison(args: {
   requestedLevel: RelationshipComparisonLevel;
   personA: RelationshipChartInput;
   personB: RelationshipChartInput;
+  /** Declarado por quien guarda el perfil; ausente/null conserva lectura legacy neutral. */
+  relationshipType?: RelationshipType | null;
 }): RelationshipComparison {
   if (![1, 2, 3].includes(args.requestedLevel)) {
     throw new Error("RELATIONSHIP_LEVEL_INVALID: requestedLevel debe ser 1, 2 o 3.");
@@ -1181,7 +1228,16 @@ export function buildRelationshipComparison(args: {
     }
   }
 
-  const dimensions = level === 1 ? [] : buildDimensions({ level, a: args.personA, b: args.personB, limitations });
+  const dimensions =
+    level === 1
+      ? []
+      : buildDimensions({
+          level,
+          a: args.personA,
+          b: args.personB,
+          limitations,
+          relationshipType: args.relationshipType,
+        });
   const levelLabel = level === 1 ? "signo contra signo" : level === 2 ? "fecha contra fecha" : "carta contra carta";
   return {
     methodVersion: RELATIONSHIP_COMPARISON_VERSION,
@@ -1192,6 +1248,8 @@ export function buildRelationshipComparison(args: {
     dimensions,
     limitations: Array.from(new Set(limitations)),
     disclaimer:
-      "Esto muestra patrones simbólicos entre las dos cartas. No mide amor, no decide si son compatibles y no predice cuánto va a durar el vínculo."
+      args.relationshipType === "romantic"
+        ? "Esto muestra patrones simbólicos entre las dos cartas. No mide amor, no decide si son compatibles y no predice cuánto va a durar el vínculo."
+        : "Esto muestra patrones simbólicos entre las dos cartas. No mide el valor del vínculo, no decide si son compatibles y no predice cuánto va a durar."
   };
 }

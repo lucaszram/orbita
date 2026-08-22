@@ -329,7 +329,7 @@ export const ANALYSIS_REGISTRY: Record<
   },
   "ORB-REL-003": {
     title: "Diálogos entre dos cartas",
-    methodVersion: "relationship-five-dimensions-v1",
+    methodVersion: "relationship-five-dimensions-declared-context-v2",
     elaboration: "orbita_synthesis",
     sourceLocators: [
       locator("ST-LAA", "Interpretación práctica", pages(101, 112), pages(107, 118), "direct"),
@@ -338,6 +338,7 @@ export const ANALYSIS_REGISTRY: Record<
     ],
     limitations: [
       "Las cinco dimensiones son módulos editoriales de Órbita; no producen un puntaje global.",
+      "El tipo de vínculo es contexto declarado por la persona: no se infiere de signos, fechas, posiciones ni casas.",
       "Una comparación por signo es general y no se presenta como una lectura personalizada.",
     ],
   },

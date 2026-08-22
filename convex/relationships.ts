@@ -13,6 +13,7 @@ import {
   comparisonLevelValidator,
   relationshipComparisonResultValidator,
   relationshipProfileValidator,
+  relationshipTypeValidator,
   type EphemerisPosition,
 } from "./lib/layerContract";
 import {
@@ -34,6 +35,7 @@ import {
   type RelationshipComparisonLevel,
   type RelationshipDimension,
   type RelationshipPointPrecision,
+  type RelationshipType,
   type RelationshipZodiacSign,
 } from "./lib/relationshipLayers";
 import { extractNormalizedChartFromPayload, type NormalizedAstroChart } from "./lib/orbita";
@@ -58,6 +60,7 @@ const savePersonArgs = {
   profileId: v.optional(v.id("relationshipProfiles")),
   idempotencyKey: v.string(),
   name: v.string(),
+  relationshipType: v.optional(relationshipTypeValidator),
   birthDate: v.optional(nullableString),
   birthTime: v.optional(nullableString),
   birthTimePrecision: birthTimePrecisionValidator,
@@ -285,6 +288,7 @@ function assertCoordinatePair(latitude: number | null, longitude: number | null)
 
 export type NormalizedRelationshipPersonInput = {
   name: string;
+  relationshipType: RelationshipType | null;
   birthDate: string | null;
   birthTime: string | null;
   birthTimePrecision: RelationshipBirthTimePrecision;
@@ -300,6 +304,7 @@ export type NormalizedRelationshipPersonInput = {
 /** Validación semántica compartida por la mutation y las pruebas de contrato. */
 export function normalizeRelationshipPersonInput(args: {
   name: string;
+  relationshipType?: RelationshipType | null;
   birthDate?: string | null;
   birthTime?: string | null;
   birthTimePrecision: RelationshipBirthTimePrecision;
@@ -341,6 +346,7 @@ export function normalizeRelationshipPersonInput(args: {
 
   return {
     name,
+    relationshipType: args.relationshipType ?? null,
     birthDate,
     birthTime,
     birthTimePrecision: args.birthTimePrecision,
@@ -403,6 +409,7 @@ function toPublicProfile(profile: Doc<"relationshipProfiles">): PublicRelationsh
   return {
     profileId: profile._id,
     name: profile.name,
+    relationshipType: profile.relationshipType ?? null,
     birthDate,
     birthTime,
     birthTimePrecision,
@@ -430,6 +437,7 @@ function relationshipProfileMatchesNormalizedInput(
 ) {
   return (
     profile.name === normalized.name &&
+    (profile.relationshipType ?? null) === normalized.relationshipType &&
     trimmedOrNull(profile.birthDate) === normalized.birthDate &&
     trimmedOrNull(profile.birthTime) === normalized.birthTime &&
     precisionFromProfile(profile) === normalized.birthTimePrecision &&
@@ -638,6 +646,7 @@ export function buildRelationshipComparisonInputHash(args: {
     profileId: String(args.profile.profileId),
     profile: {
       name: args.profile.name,
+      relationshipType: args.profile.relationshipType ?? null,
       birthDate: args.profile.birthDate,
       birthTime: args.profile.birthTime,
       birthTimePrecision: args.profile.birthTimePrecision,
@@ -680,10 +689,14 @@ function dimensionValue(dimension: RelationshipDimension) {
   );
 }
 
-function comparisonData(comparison: RelationshipComparison) {
+function comparisonData(
+  comparison: RelationshipComparison,
+  relationshipType: RelationshipType | null | undefined,
+) {
   const resolvedLevel = NUMBER_TO_LEVEL[comparison.level];
   return {
     kind: "relationship_comparison" as const,
+    relationshipType: relationshipType ?? null,
     requestedLevel: NUMBER_TO_LEVEL[comparison.requestedLevel],
     resolvedLevel,
     dimensions: comparison.dimensions.map((dimension) => ({
@@ -760,6 +773,7 @@ export function buildRelationshipComparisonResult(args: {
   requestedLevel: ComparisonLevelName;
   personA: RelationshipChartWire;
   personB: RelationshipChartWire;
+  relationshipType?: RelationshipType | null;
   observedAt: number;
   providerVersion?: string;
   providerUnavailable?: boolean;
@@ -771,6 +785,7 @@ export function buildRelationshipComparisonResult(args: {
     requestedLevel: LEVEL_TO_NUMBER[args.requestedLevel],
     personA: asEngineChart(args.personA),
     personB: asEngineChart(args.personB),
+    relationshipType: args.relationshipType,
   });
   const analysisId = comparison.level === 1 ? "ORB-REL-002" : "ORB-REL-003";
   const definition = getAnalysisDefinition(analysisId);
@@ -809,7 +824,7 @@ export function buildRelationshipComparisonResult(args: {
         : resultPrecision(comparison),
     observedAt: args.observedAt,
     validUntil: null,
-    data: comparisonData(comparison),
+    data: comparisonData(comparison, args.relationshipType),
     missingInputs,
     limitations,
     elaboration: definition.elaboration,
@@ -961,6 +976,7 @@ export function fallbackForState(state: Infer<typeof comparisonRefreshStateValid
     requestedLevel: state.requestedLevel,
     personA: state.personA,
     personB,
+    relationshipType: state.profile.relationshipType,
     observedAt,
     providerUnavailable: state.requestedLevel !== "sign_to_sign",
     extraMissingInputs:
@@ -1387,6 +1403,7 @@ export const getActive = query({
 export const upsert = mutation({
   args: {
     name: v.string(),
+    relationshipType: v.optional(relationshipTypeValidator),
     birthDate: v.optional(v.string()),
     birthTime: v.optional(v.string()),
     birthPlaceLabel: v.optional(v.string()),
@@ -1409,6 +1426,7 @@ export const upsert = mutation({
       ...omitUndefined({
         userId: user._id,
         name: args.name.trim(),
+        relationshipType: args.relationshipType,
         birthDate: args.birthDate,
         birthTime: args.birthTime,
         birthPlaceLabel: args.birthPlaceLabel,
@@ -1472,6 +1490,12 @@ export const savePerson = mutation({
     const now = Date.now();
     const values = {
       name: normalized.name,
+      // Un cliente 22/23 no conoce este campo: al editar no debe borrar una
+      // elección hecha luego desde un cliente nuevo. Sólo se toca cuando el
+      // argumento vino declarado explícitamente.
+      ...(args.relationshipType !== undefined
+        ? { relationshipType: normalized.relationshipType ?? undefined }
+        : {}),
       birthDate: normalized.birthDate ?? undefined,
       birthTime: normalized.birthTime ?? undefined,
       birthTimePrecision: normalized.birthTimePrecision,
@@ -1777,6 +1801,7 @@ export const refreshComparison = action({
             requestedLevel: state.requestedLevel,
             personA: ownCalculated.personB,
             personB: calculated.personB,
+            relationshipType: state.profile.relationshipType,
             observedAt,
             providerVersion: versions.length > 0 ? versions.join("+") : undefined,
             providerUnavailable: false,
