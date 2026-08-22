@@ -15,6 +15,7 @@ import { A } from "../assets";
 import { Emblem } from "../components/Emblem";
 import { Header } from "../components/Header";
 import { Screen } from "../components/Screen";
+import { ONBOARDING_TOTAL } from "../steps";
 import { Body, Caption, Label, Title } from "../components/Type";
 import { font, GUTTER, orbita } from "../theme";
 
@@ -96,7 +97,7 @@ export function BirthplaceSearchScreen({ step, query, onQuery, onSelect, onBack 
 
   return (
     <Screen bg={A.dailyTexture} wash={0.52} scroll>
-      <Header step={step} total={13} onBack={onBack} />
+      <Header step={step} total={ONBOARDING_TOTAL} onBack={onBack} />
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.fill}

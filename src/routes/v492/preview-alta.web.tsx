@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Redirect } from "expo-router";
 
 import { OnboardingFlow } from "@/onboarding/OnboardingFlow";
+import { ONBOARDING_TOTAL } from "@/onboarding/steps";
 import { font, orbita } from "@/onboarding/theme";
 import { INTERNAL_TOOLS_ENABLED } from "@/services/internalTools";
 
@@ -11,11 +12,11 @@ import { INTERNAL_TOOLS_ENABLED } from "@/services/internalTools";
  *
  * Monta el alta REAL —no una copia— dentro de marcos del tamaño exacto de la
  * matriz de aceptación, para poder comparar el mismo paso en móvil y escritorio
- * de un vistazo, sin redimensionar la ventana quince veces.
+ * de un vistazo, sin redimensionar la ventana una vez por paso.
  *
  * El flujo se monta con `debugStep`, que es de SÓLO LECTURA: no persiste
  * borrador, no calcula carta, no crea cuenta y no escribe nada remoto. Por eso
- * esta ruta puede recorrer los quince pasos sin tocar ninguna cuenta.
+ * esta ruta puede recorrer todos los pasos sin tocar ninguna cuenta.
  *
  * Con `EXPO_PUBLIC_ORBITA_INTERNAL_TOOLS` sin setear (producción) redirige a
  * `/`, igual que `/studio`, `/lab` y `/backoffice`.
@@ -33,24 +34,20 @@ const SIZES = [
   { label: "1920 × 1080", w: 1920, h: 1080 }
 ] as const;
 
-const STEPS = Array.from({ length: 15 }, (_, i) => i);
+const STEPS = Array.from({ length: ONBOARDING_TOTAL }, (_, i) => i);
 
 const STEP_NAMES = [
-  "00 Splash",
-  "01 Align",
-  "02 Identify",
-  "03 Daily guidance",
-  "04 Birthdate",
-  "05 Birthdate selected",
-  "06 Birthplace search",
-  "07 Birthplace selected",
-  "08 Birth time",
-  "09 Birth time selected",
-  "10 Base chart",
-  "11 Personalizing",
-  "12 Before / after",
-  "13 Create account",
-  "14 Close"
+  "00 Crear cuenta o ingresar",
+  "01 Promesa",
+  "02 Identidad",
+  "03 Guía diaria",
+  "04 Fecha",
+  "05 Lugar",
+  "06 Hora",
+  "07 Estos son tus datos",
+  "08 Tríada",
+  "09 Antes / después",
+  "10 Paywall"
 ];
 
 export default function PreviewAltaRoute() {

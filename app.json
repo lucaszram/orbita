@@ -19,8 +19,9 @@
     },
     "ios": {
       "supportsTablet": false,
+      "usesAppleSignIn": true,
       "bundleIdentifier": "com.lucasssram.orbita",
-      "buildNumber": "25",
+      "buildNumber": "26",
       "backgroundColor": "#0A0B0E",
       "splash": {
         "backgroundColor": "#0A0B0E",
@@ -62,7 +63,7 @@
       [
         "@clerk/expo",
         {
-          "appleSignIn": false
+          "appleSignIn": true
         }
       ],
       "expo-video"

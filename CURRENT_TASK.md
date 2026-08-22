@@ -1,5 +1,52 @@
 # Current Task
 
+## Promoción iOS 1.0.0 (26) → TestFlight interno (2026-08-22) · AUTORIZADA
+
+**Objetivo.** Congelar el diff aprobado del onboarding canónico, integrarlo en
+un commit reproducible, generar el archive productivo iOS `1.0.0 (26)` y
+enviarlo a TestFlight interno para QA física.
+
+**Criterios de aceptación.** (1) El candidato incluye el diff actual completo
+del onboarding auth-first, Apple/Google/email, aislamiento del marcador OAuth,
+entitlement Sign in with Apple y paywall nativa; (2) `ios.buildNumber=26`, sin
+reutilizar el 25; (3) suite completa, typecheck y `git diff --check` en verde;
+(4) Expo introspection contiene `com.apple.developer.applesignin=["Default"]`
+y no contiene `aps-environment`; (5) el archive se inspecciona antes de subir:
+bundle `com.lucasssram.orbita`, versión `1.0.0`, build `26`,
+`get-task-allow=false` y entitlement Apple; (6) Apple acepta el binario en
+TestFlight interno; (7) no se inicia App Review ni publicación.
+
+**Owner y territorio.** Claude conserva `app/**` y `src/**`; Codex revisa y
+controla documentación compartida, Git, configuración de release, archive EAS
+y TestFlight. No se modifica ni despliega `convex/**`.
+
+**Base de integración.** `origin/release/1.0.0` en `4f62b861`; candidato
+verificado en `f67c5760`; rama `fix/onboarding-final-build26`; worktree
+`qa23-fixes`. **Cambio de contrato:** no.
+
+**Riesgo.** Alto: autenticación nativa, onboarding, entitlement y comercio.
+El provisioning profile anterior quedó obsoleto al habilitar Sign in with
+Apple y debe regenerarse para este archive.
+
+**Plan de pruebas.** Suite completa con piso 2542, typecheck,
+`git diff --check`, revisión de diff, Expo config introspect, export web/iOS e
+inspección del IPA firmado. Después de TestFlight: instalación limpia, Apple
+(email visible/oculto y cuenta existente), Google, email+código,
+reintento/relaunch, compra, cancelación, restore y seguir gratis.
+
+**Rollout.** Commit identificable → integración de la rama de release → archive
+productivo build 26 → inspección local → submit a TestFlight interno. Lucas
+prueba el mismo binario y autoriza por separado cualquier promoción posterior.
+
+**Rollback.** Si falla cualquier gate, no subir el archive y conservar el build
+25 disponible. Si Apple recibe el 26 pero falla QA, no seleccionarlo ni
+promoverlo; corregir en un número de build nuevo.
+
+**Fuera de alcance.** App Review, publicación productiva, deploy web, deploy o
+codegen Convex, cambios de contrato/backend, rediseño adicional, los textos
+pendientes de Tránsitos, Baúl del Umbral, copy de cuota agotada, refinamiento de
+múltiples exactos y QA física de VoiceOver fuera de TestFlight.
+
 ## Onboarding auth-first (2026-08-21) · PROMOCIÓN A BUILD 25 AUTORIZADA
 
 ### Ficha de tarea · identidad antes de los datos natales

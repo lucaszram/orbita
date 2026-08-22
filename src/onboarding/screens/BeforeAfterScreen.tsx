@@ -7,6 +7,7 @@ import { A } from "../assets";
 import { CTA } from "../components/CTA";
 import { Header } from "../components/Header";
 import { Screen } from "../components/Screen";
+import { ONBOARDING_TOTAL } from "../steps";
 import { Body, Caption, Title } from "../components/Type";
 import { font, GUTTER, orbita } from "../theme";
 
@@ -39,7 +40,7 @@ export function BeforeAfterScreen({ step, onNext, onBack }: Props) {
   const insets = useSafeAreaInsets();
   return (
     <Screen bg={A.beforeAfterBg} bgOpacity={0.8} wash={0.6}>
-      <Header step={step} total={13} onBack={onBack} />
+      <Header step={step} total={ONBOARDING_TOTAL} onBack={onBack} />
       <View style={styles.body}>
         <ScrollView
           style={styles.scroll}

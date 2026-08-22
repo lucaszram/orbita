@@ -136,10 +136,12 @@ test("todo campo de texto del producto tiene etiqueta accesible", () => {
  * pantalla no lo menciona: la persona vuelve a tocar el botón sin saber qué pasó.
  */
 const CON_ERROR: Array<[string, string]> = [
-  // El alta ya no tiene formulario propio: el único fallo que le queda a la
-  // pantalla es el del borrador remoto que se guarda ANTES de abrir Clerk, y es
-  // el más importante de anunciar — sin él la cuenta se crearía sin datos.
-  ["src/onboarding/screens/AccountScreen.tsx", "styles.error"],
+  // El acceso (paso 0) dice sus fallos —proveedor, código, contraseña— en la
+  // misma pantalla, en español y sin URL técnica; sin anuncio, la persona
+  // vuelve a tocar el botón sin saber qué pasó.
+  ["src/onboarding/screens/AuthScreen.tsx", "message"],
+  // El resumen "Estos son tus datos" anuncia el fallo de guardado con reintento.
+  ["src/onboarding/screens/BirthSummaryScreen.tsx", "saveError"],
   ["src/onboarding/screens/SignInScreen.tsx", "flow.error"],
   ["src/onboarding/components/CodeHelp.tsx", "feedback"],
   ["app/editar-datos.tsx", "saveError"]

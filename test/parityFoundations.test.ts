@@ -40,19 +40,23 @@ test("ninguna ruta importa una pantalla web duplicada", () => {
   assert.deepEqual(culpables, [], `estas rutas duplican una pantalla: ${culpables.join(", ")}`);
 });
 
-test("web y nativo llegan primero al alta y después al MISMO onboarding canónico", () => {
+test("web y nativo llegan al MISMO onboarding canónico por sus entradas resueltas", () => {
   const canonico = readFileSync(join(ROOT, "src/onboarding/OnboardingFlow.tsx"), "utf8");
-  assert.match(canonico, /const TOTAL = 13;/, "el onboarding autenticado tiene 13 pasos");
-  assert.doesNotMatch(canonico, /AccountScreen|ClerkSignUp/);
+  // 11 pasos: el camino canónico aprobado (auth primero → Carta), con la
+  // cuenta como primera superficie y el paywall al final.
+  assert.match(canonico, /const TOTAL = ONBOARDING_TOTAL;/, "el flujo usa el total canónico");
+  const steps = readFileSync(join(ROOT, "src/onboarding/steps.ts"), "utf8");
+  assert.match(steps, /export const ONBOARDING_TOTAL = 11;/, "el flujo canónico tiene 11 pasos");
+  // La ruta web monta el gate compartido; la entrada nativa histórica
+  // `/empezar` es sólo un alias limpio hacia `/onboarding`, que monta ese mismo
+  // gate. Así la web conserva su aviso de backend sin meterlo en el bundle iOS.
   const gate = readFileSync(join(ROOT, "src/onboarding/OnboardingGate.tsx"), "utf8");
   assert.ok(/@\/onboarding\/OnboardingFlow/.test(gate), "el gate debe montar el flujo canónico");
   const empezarWeb = fuenteDeEntrada("app/empezar.tsx", "web");
-  assert.match(empezarWeb, /SIGN_UP_ROUTE/);
-  assert.match(empezarWeb, /<Redirect href=\{SIGN_UP_ROUTE\}\s*\/>/);
-  assert.doesNotMatch(empezarWeb, /import \{ OnboardingGate \}/);
+  assert.match(empezarWeb, /OnboardingGate/, "la entrada web debe montar el gate compartido");
 
   const empezarNative = fuenteDeEntrada("app/empezar.tsx", "native");
-  assert.match(empezarNative, /<Redirect href=\{SIGN_UP_ROUTE\}\s*\/>/, "el alias nativo entra al alta");
+  assert.match(empezarNative, /<Redirect href="\/onboarding"\s*\/>/, "el alias nativo entra al onboarding");
   assert.doesNotMatch(
     empezarNative,
     /OnboardingGate|WebNotice|backendConfig/,
@@ -67,9 +71,21 @@ test("web y nativo llegan primero al alta y después al MISMO onboarding canóni
   );
 });
 
-test("Gate A: el onboarding no reintroduce una pantalla de pago web", () => {
+test("la paywall del onboarding cobra con el comercio real de cada plataforma", () => {
   const canonico = readFileSync(join(ROOT, "src/onboarding/OnboardingFlow.tsx"), "utf8");
-  assert.match(canonico, /const PAYWALL_ENABLED = false;/, "Gate A es comercio apagado");
+  // Reactivada y SIEMPRE visible como cierre: el flujo monta la paywall y
+  // Metro resuelve la variante por plataforma — RevenueCat en nativo, el
+  // circuito Stripe existente en web. Nunca un selector cosmético, nunca una
+  // compra simulada, y una superficie que no puede cobrar conserva igual el
+  // camino aprobado de "Seguir gratis".
+  assert.match(canonico, /<OnboardingPaywallScreen/);
+  assert.doesNotMatch(canonico, /PAYWALL_ENABLED|COMMERCE_AVAILABLE/, "sin flags que escondan el cierre");
+  const nativo = readFileSync(join(ROOT, "src/onboarding/screens/OnboardingPaywallScreen.tsx"), "utf8");
+  assert.match(nativo, /useRevenueCat\(\)/, "nativo: tienda real");
+  const web = readFileSync(join(ROOT, "src/onboarding/screens/OnboardingPaywallScreen.web.tsx"), "utf8");
+  assert.match(web, /getWebOffer/, "web: la oferta sale de Stripe");
+  assert.match(web, /createCheckoutSession/, "web: el checkout es el circuito existente");
+  assert.match(web, /Seguir gratis/, "web: el camino gratuito aprobado se conserva");
 });
 
 test("el borrador de sesión está cableado al flujo canónico", () => {

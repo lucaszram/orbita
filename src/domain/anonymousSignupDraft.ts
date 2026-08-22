@@ -37,9 +37,15 @@ export type SignupDraftInput = {
   clientDraftId: string;
   currentStep: number;
   identity?: "ella" | "el" | "prefiero_no_decirlo";
-  birthDate: string;
+  /**
+   * Opcionales, igual que en el validador del backend: el flujo auth-first
+   * guarda un borrador MÍNIMO (sólo `clientDraftId` + paso) antes de crear la
+   * cuenta, como marcador de "alta en curso". Los datos natales llegan después,
+   * por el camino autenticado (`completeBirthData`).
+   */
+  birthDate?: string;
   birthTime?: string;
-  birthTimePrecision: "known" | "approximate" | "unknown";
+  birthTimePrecision?: "known" | "approximate" | "unknown";
   birthPlaceLabel?: string;
   latitude?: number;
   longitude?: number;

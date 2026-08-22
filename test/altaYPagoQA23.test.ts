@@ -307,19 +307,19 @@ test("QA23-008 · el alta web no inicia una cuenta existente dentro del borrador
 test("QA23-008 · un fallo del cierre local suelta el candado y ofrece entrar", () => {
   const codigo = sinComentarios(leer("src/onboarding/OnboardingFlow.tsx"));
 
-  const enterApp = /const enterApp = async \(\) => \{([\s\S]*?)\n  \};/.exec(codigo);
-  assert.ok(enterApp, "`enterApp` sigue siendo el punto único de salida");
-  const cuerpo = enterApp![1];
+  const enterCarta = /const enterCarta = async \(\) => \{([\s\S]*?)\n  \};/.exec(codigo);
+  assert.ok(enterCarta, "`enterCarta` sigue siendo el punto único de salida");
+  const cuerpo = enterCarta![1];
   assert.match(cuerpo, /if \(enterLock\.current\) return;/, "el candado sigue estando");
-  assert.match(cuerpo, /try \{[\s\S]*await abrirOrbita\(\)[\s\S]*\} catch \{/);
   assert.match(cuerpo, /catch \{[\s\S]*enterLock\.current = false;/, "un fallo suelta el candado");
   assert.match(cuerpo, /setEntryFailed\(true\)/);
 
-  // El reintento vuelve a ENTRAR, no a reescribir lo que ya está guardado.
-  assert.match(codigo, /onRetry=\{entryFailed \? \(\) => void enterApp\(\) : submit\}/);
-  // Y no se anuncia como una pérdida de datos: los datos están guardados.
-  assert.match(codigo, /errorLabel=\{entryFailed \? "No pudimos abrir Órbita" : undefined\}/);
-  assert.match(leer("src/onboarding/OnboardingFlow.tsx"), /quedaron guardados en tu cuenta/);
+  // El reintento vuelve a ENTRAR, no a reescribir lo que ya está guardado: el
+  // fallo se anuncia EN la paywall (que sigue visible) y "Seguir gratis"
+  // vuelve a llamar la misma salida. No se anuncia como una pérdida de datos.
+  assert.match(codigo, /entryFailed=\{entryFailed\}/);
+  assert.match(leer("src/onboarding/screens/OnboardingPaywallScreen.tsx"), /quedaron guardados en tu cuenta/);
+  assert.match(leer("src/onboarding/screens/OnboardingPaywallScreen.web.tsx"), /quedaron guardados en tu cuenta/);
 });
 
 test("QA23-008 · el recordatorio diario no puede voltear un perfil ya guardado", () => {

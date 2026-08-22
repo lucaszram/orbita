@@ -39,7 +39,7 @@ export type OnboardingDraft = {
   birthTime?: DraftBirthTime;
   timeUnknown: boolean;
   /**
-   * Email tipeado en el paso de cuenta (índice 13) o traído del login por
+   * Email tipeado en la superficie de acceso (paso 0) o traído del login por
    * `?email=`. Se conserva porque es justo el dato que la vuelta de Clerk hacía
    * perder: se tipea, el navegador remonta `/empezar` y había que tipearlo de
    * nuevo.
@@ -48,6 +48,17 @@ export type OnboardingDraft = {
    * trae, y eso no puede invalidarlo — simplemente queda sin email.
    */
   email?: string;
+  /**
+   * Dueño del borrador: el `userId` de Clerk que estaba activo al escribirlo.
+   *
+   * Con el acceso PRIMERO, los datos natales se cargan con sesión activa, así
+   * que el borrador tiene dueño desde el primer dato. Si otra cuenta abre la
+   * misma pestaña, el borrador ajeno se descarta: ninguna cuenta puede heredar
+   * fecha, lugar u hora de otra. OPCIONAL: un borrador anterior a este campo
+   * simplemente no declara dueño y el flujo lo descarta ante una sesión con
+   * identidad distinta de la que pudo haberlo escrito.
+   */
+  ownerUserId?: string;
   /**
    * Id del borrador REMOTO de este alta (`onboardingDrafts.clientDraftId`).
    *
@@ -124,6 +135,9 @@ export function parseDraft(raw: string | null, stepCount: number): OnboardingDra
     // y `OnboardingFlow` ya lo lee — sin esta línea el ida y vuelta lo
     // descartaba en silencio y `saved?.email` era código muerto.
     email: optStr(d.email),
+    // Sólo si existe: un `ownerUserId: undefined` fijo rompería la igualdad del
+    // ida y vuelta de un borrador que nunca lo tuvo (igual que `clientDraftId`).
+    ...(optStr(d.ownerUserId) ? { ownerUserId: optStr(d.ownerUserId) } : {}),
     // Un id manipulado a mano no puede adjuntar el borrador de otra persona:
     // se acepta sólo la forma opaca que emite `createClientDraftId`. La
     // propiedad se agrega SÓLO si existe: un `clientDraftId: undefined` fijo
@@ -134,6 +148,58 @@ export function parseDraft(raw: string | null, stepCount: number): OnboardingDra
 
 export function serializeDraft(draft: OnboardingDraft): string {
   return JSON.stringify(draft);
+}
+
+/**
+ * ¿Esta sesión puede usar este borrador?
+ *
+ * - Sin identidad todavía, sólo un borrador SIN dueño (lo único que puede
+ *   haberse escrito antes de autenticar: paso, email y el id remoto).
+ * - Con identidad, el borrador escrito por ESA misma cuenta; o uno sin dueño
+ *   que NO cargue datos natales (el marcador pre-acceso, que la cuenta recién
+ *   creada adopta al volver del redirect de Clerk).
+ * - Un borrador de otra cuenta —o uno viejo sin dueño que SÍ carga datos y no
+ *   puede probar de quién son— se descarta entero: ninguna cuenta hereda
+ *   fecha, lugar u hora de otra.
+ *
+ * Función pura para poder fijar la regla con tests.
+ */
+export function draftUsableBy(
+  draft: Pick<OnboardingDraft, "ownerUserId" | "identity" | "birthDate" | "birthPlace"> | null,
+  userId: string | null
+): boolean {
+  if (!draft) return false;
+  if (!userId) return !draft.ownerUserId;
+  if (draft.ownerUserId) return draft.ownerUserId === userId;
+  return !draft.identity && !draft.birthDate && !draft.birthPlace;
+}
+
+/**
+ * Persiste YA el id del borrador remoto, aun sin nada cargado.
+ *
+ * El acceso es el paso 0: al abrir OAuth el navegador se va entero y vuelve
+ * con la memoria en blanco. `writeDraft` no guarda un borrador vacío
+ * (`isWorthSaving`), así que sin esto el remonte no podía reencontrar el
+ * marcador de "alta en curso" y la cuenta recién creada se clasificaba como
+ * recuperación de cuenta preexistente (`edit_birth_data`). En nativo no hay
+ * redirect ni sessionStorage y la función no-opea, igual que el resto.
+ */
+export function persistClientDraftId(id?: string): void {
+  const draftId = id ?? readClientDraftId();
+  if (!draftId) return;
+  // El espejo en memoria también se repone: un `clearDraft()` previo (p. ej.
+  // descartar el marcador al caer a un ingreso) lo había anulado, y el flujo
+  // puede volver al modo alta con el MISMO id capturado.
+  memoryClientDraftId = draftId;
+  const s = storage();
+  if (!s) return;
+  try {
+    const existing = parseDraft(s.getItem(ONBOARDING_DRAFT_KEY), Number.MAX_SAFE_INTEGER);
+    const base: OnboardingDraft = existing ?? { step: 0, placeQuery: "", timeUnknown: false };
+    s.setItem(ONBOARDING_DRAFT_KEY, serializeDraft({ ...base, clientDraftId: draftId }));
+  } catch {
+    // Cuota llena o modo privado: el acceso sigue; el id vive en memoria.
+  }
 }
 
 /** ¿Vale la pena guardar? En el paso 0 y sin nada cargado no aporta nada. */

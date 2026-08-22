@@ -2,8 +2,10 @@
  * Entrada pública web v2 — corrección final.
  *
  * Dos invariantes de producto:
- * 1. El flujo web y nativo empiezan en AlignScreen después de crear o recuperar
- *    la cuenta. La portada y la cuenta tardía ya no forman parte del onboarding.
+ * 1. El flujo web normal (`/` → `/empezar`) entra DIRECTO en AlignScreen
+ *    (paso 1, CTA "Empezar el viaje"): la portada nativa (SplashScreen, con su
+ *    video y "Órbita · Tu cielo, todos los días") nunca se monta en web fuera
+ *    de la inspección interna. El nativo conserva su paso 0 intacto.
  * 2. La landing extiende el fondo orbital aprobado a toda la página, muestra el
  *    mazo real (abanico en el hero + sección "El mazo de Órbita" de 16 cartas)
  *    y la ilustración de La Luna aparece UNA sola vez, en la lectura editorial.
@@ -22,27 +24,34 @@ const LANDING = sinComentarios(leer("src/components/web/orbita-landing.tsx"));
 
 const contar = (src: string, needle: string) => src.split(needle).length - 1;
 
-// --- 1. La entrada autenticada es AlignScreen en ambas plataformas -----------
+// --- 1. La entrada es el acceso en las DOS plataformas -----------------------
 
-test("web y nativo arrancan el onboarding autenticado en AlignScreen", () => {
-  assert.match(FLOW, /const IS_WEB = process\.env\.EXPO_OS === "web";/);
-  assert.match(FLOW, /const ENTRY_STEP = 0;/);
-  assert.doesNotMatch(FLOW, /SplashScreen|AccountScreen|normalizeEntryStep/);
-  assert.match(FLOW, /case 0:\s*screen = <AlignScreen/);
+test("web y nativo arrancan el alta en el acceso (paso 0)", () => {
+  assert.match(FLOW, /const IS_WEB = Platform\.OS === "web";/);
+  // Con backend, la PRIMERA superficie es "Crear cuenta o ingresar" en las dos
+  // plataformas; sin backend (build local) no hay Clerk y se entra en la
+  // promesa. La portada vieja (SplashScreen) ya no existe.
+  assert.match(FLOW, /const ENTRY_STEP = HAS_BACKEND \? STEP_AUTH : STEP_PROMISE;/);
+  assert.match(FLOW, /case STEP_AUTH:[\s\S]{0,400}<AuthScreen/);
+  assert.doesNotMatch(FLOW, /SplashScreen/, "la portada vieja no puede volver al flujo");
+  // Y la promesa conserva el CTA acordado.
   assert.match(leer("src/onboarding/screens/AlignScreen.tsx"), /Empezar el viaje/);
 });
 
-test("volver desde el paso 1 web regresa a la landing, no a la portada", () => {
+test("volver desde la entrada web regresa a la landing", () => {
   const back = FLOW.slice(FLOW.indexOf("const back = () => {"), FLOW.indexOf("const birthDateISO"));
-  assert.match(back, /if \(IS_WEB && !inspeccion && step <= ENTRY_STEP\) \{/, "en web el paso 1 ES la entrada");
+  assert.match(back, /if \(IS_WEB && !inspeccion && step <= ENTRY_STEP\) \{/, "en web la entrada vuelve a la landing");
   assert.match(back, /router\.replace\("\/"\);/, "y volver sale a la landing");
-  assert.match(back, /Math\.max\(ENTRY_STEP, s - 1\)/, "ningún back del flujo normal baja del paso de entrada");
+  // Con sesión activa el acceso quedó atrás: la promesa es el piso del back.
+  assert.match(back, /const floor = HAS_BACKEND && !sesionActiva \? STEP_AUTH : STEP_PROMISE;/);
+  assert.match(back, /Math\.max\(floor, s - 1\)/, "ningún back vuelve al acceso con sesión activa");
 });
 
-test("sólo el resume explícito salta al tramo de datos natales", () => {
-  assert.equal(contar(FLOW, 's === ENTRY_STEP ? STEP_BIRTHDATE : s'), 1);
-  assert.match(FLOW, /params\.resume === "datos" \? STEP_BIRTHDATE : saved\?\.step \?\? ENTRY_STEP/);
-  assert.doesNotMatch(FLOW, /auth\?\.isSignedIn[\s\S]{0,180}setStep/);
+test("los saltos de sesión y de resume apuntan al paso de la fecha", () => {
+  // Una cuenta con sesión y SIN datos natales continúa por los datos, no por
+  // el acceso ni por el tramo inmersivo repetido.
+  assert.match(FLOW, /params\.resume === "datos" \? STEP_BIRTHDATE : ENTRY_STEP/);
+  assert.match(FLOW, /s === STEP_AUTH \? STEP_BIRTHDATE : s/, "el respaldo del resume salta desde el acceso");
   assert.doesNotMatch(FLOW, /s === 0 \? STEP_BIRTHDATE/, "la comparación contra 0 literal no puede volver");
 });
 

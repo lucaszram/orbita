@@ -47,33 +47,34 @@ const PLAN_BLOCK_NATIVE = moduloDesde(
 );
 const HOME = sinComentarios(leer("src/screens/HomeScreen.tsx"));
 
-// --- 1. El alta termina en la recepción -------------------------------------
+// --- 1. El alta termina en la Carta -----------------------------------------
 
-test("la salida del alta navega a /recepcion, no a Home", () => {
-  assert.match(FLOW, /import \{ RECEPTION_ROUTE \} from "@\/domain\/appRoutes"/);
-  assert.match(FLOW, /router\.replace\(\{\s*pathname: RECEPTION_ROUTE,/);
-  assert.doesNotMatch(FLOW, /HOME_ROUTE/, "el destino del cierre ya no es Home");
-  assert.match(sinComentarios(leer("src/domain/appRoutes.ts")), /RECEPTION_ROUTE = "\/recepcion"/);
+test("la salida del alta navega a la Carta, y ningún camino nuevo usa /recepcion", () => {
+  assert.match(FLOW, /CARTA_TAB_ROUTE/, "el destino es la Carta de la última pestaña");
+  assert.match(FLOW, /router\.replace\(CARTA_TAB_ROUTE as never\)/);
+  assert.doesNotMatch(FLOW, /RECEPTION_ROUTE|"\/recepcion"/, "el flujo ya no navega a la recepción");
+  const rutas = sinComentarios(leer("src/domain/appRoutes.ts"));
+  // `/recepcion` queda SOLO por compatibilidad con instalaciones anteriores.
+  assert.match(rutas, /RECEPTION_ROUTE = "\/recepcion"/);
+  assert.match(rutas, /CARTA_TAB_ROUTE = IS_WEB \? "\/\(tabs\)\/carta" : "\/perfil"/);
+  // Y nadie más navega a la recepción: el único uso vivo es la ruta de
+  // compatibilidad y su propia definición.
+  assert.doesNotMatch(FLOW, /pathname: RECEPTION_ROUTE/);
 });
 
-test("la tríada REAL calculada por el alta viaja en los params", () => {
-  const salida = FLOW.slice(FLOW.indexOf("const abrirOrbita = async () => {"));
-  assert.match(salida, /sol: computed\.sun/);
-  assert.match(salida, /luna: computed\.moon/);
-  assert.match(salida, /asc: computed\.ascendant/);
-  // Y sólo se manda lo que se calculó: nada de placeholders ni signos inventados.
-  assert.match(salida, /\.\.\.\(computed\?\.sun \? \{ sol: computed\.sun \} : \{\}\)/);
+test("el hito de primera vez se marca en la salida (la ceremonia ya no corre)", () => {
+  const salida = FLOW.slice(FLOW.indexOf("const enterCarta = async () => {"));
+  assert.match(salida, /markFirstRun\(\{ recepcionVista: true \}\)/, "ninguna superficie reofrece la ceremonia");
 });
 
 test("el cierre conserva perfil, limpieza del borrador y su lock de una sola salida", () => {
-  const salida = FLOW.slice(FLOW.indexOf("const abrirOrbita = async () => {"));
+  const salida = FLOW.slice(FLOW.indexOf("const enterCarta = async () => {"));
   const perfil = salida.indexOf("await createProfile(");
   const limpiar = salida.indexOf("clearDraft()");
   const navegar = salida.indexOf("router.replace(");
   assert.ok(perfil !== -1 && limpiar > perfil && navegar > limpiar, "el orden de salida se conserva");
   assert.match(FLOW, /if \(enterLock\.current\) return;\s*enterLock\.current = true;/);
-  assert.match(FLOW, /try \{\s*await abrirOrbita\(\);\s*\} catch \{/);
-  assert.match(FLOW, /if \(!isBirthDataReady\(completion\)\) return;\s*void enterApp\(\);/);
+  assert.match(salida, /\} catch \{\s*enterLock\.current = false;\s*setEntryFailed\(true\);/);
   assert.match(FLOW, /resolveProfileOwnerAtCreation\(\{/, "la adopción del perfil sigue igual");
 });
 

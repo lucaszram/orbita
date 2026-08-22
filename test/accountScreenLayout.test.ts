@@ -3,71 +3,70 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 
-// Verificación ESTRUCTURAL del paso de cuenta. La cuenta la crea la UI OFICIAL
-// de Clerk (`ClerkSignUp`), que trae su propio formulario, su propio manejo de
-// teclado y su propio botón: acá ya no hay campos, ni CTA "Guardar mi carta",
-// ni KeyboardAvoidingView propio — envolver el widget de Clerk en uno anidaba
-// dos manejos del teclado.
-//
-// Lo que SÍ sigue siendo responsabilidad de la pantalla: que el escenario
-// (sello + título + copy) y el widget entren en una pantalla chica sin dejar
-// nada fuera de alcance, con el header fijo. No se puede renderizar RN en node;
-// se valida la estructura del fuente.
+// Verificación ESTRUCTURAL del acceso (paso 0 del onboarding aprobado):
+// "Crear cuenta o ingresar" es UNA sola superficie con dos modos; la
+// verificación del email, la contraseña legacy de ingreso y los errores son
+// estados internos y no agregan pasos. No se puede renderizar RN en node; se valida la estructura
+// del fuente.
 const SRC = readFileSync(
-  path.join(process.cwd(), "src/onboarding/screens/AccountScreen.tsx"),
+  path.join(process.cwd(), "src/onboarding/screens/AuthScreen.tsx"),
   "utf8"
 );
+const CODE = SRC.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 
-const idx = (needle: string) => SRC.indexOf(needle);
-
-describe("AccountScreen — escenario scrolleable alrededor de la UI de Clerk", () => {
-  it("monta la UI oficial de Clerk y ningún campo propio", () => {
-    // Con el email como PRELLENADO: la pantalla no tiene campo de email, sólo
-    // le pasa a Clerk el que la persona ya escribió antes de llegar.
-    assert.match(SRC, /<ClerkSignUp email=\{email\} \/>/);
-    for (const prohibido of ["TextInput", "CodeInput", "secureTextEntry", "Guardar mi carta"]) {
-      assert.ok(!SRC.includes(prohibido), `el formulario propio no puede volver: ${prohibido}`);
-    }
-    // El widget de Clerk maneja su propio teclado: anidar otro descoordinaba
-    // los dos y dejaba el botón de Clerk fuera de pantalla.
-    assert.ok(!SRC.includes("KeyboardAvoidingView"), "no se anida un keyboard-avoiding propio");
+describe("AuthScreen — la primera superficie del onboarding", () => {
+  it("crear cuenta e ingresar son modos de la MISMA pantalla", () => {
+    assert.match(CODE, /useState<AuthMode>\("signup"\)/, "el alta es la puerta por defecto");
+    assert.match(CODE, /cambiarModo\("signup"\)/);
+    assert.match(CODE, /cambiarModo\("signin"\)/);
+    // El selector es un grupo accesible con estado por puerta.
+    assert.match(CODE, /accessibilityRole="tablist"/);
+    assert.match(CODE, /accessibilityRole="tab"/);
+    assert.match(CODE, /accessibilityState=\{\{ selected: on \}\}/);
   });
 
-  it("el contenido scrollea", () => {
-    assert.match(SRC, /<ScrollView/);
-    assert.match(SRC, /keyboardShouldPersistTaps=["']handled["']/);
+  it("verificación, contraseña legacy y errores son estados internos, no pasos", () => {
+    // El código de 6 dígitos y la contraseña de una cuenta legacy se dibujan EN esta pantalla.
+    assert.match(CODE, /<CodeInput/);
+    assert.match(CODE, /secureTextEntry/);
+    assert.match(CODE, /\{passwordPhase \? \(/, "la contraseña sólo aparece al ingresar una cuenta que ya la usa");
+    assert.doesNotMatch(CODE, /newPassword|Elegí una contraseña/, "el alta nueva es email + código");
+    // Cambiar de fase nunca navega: no hay router.push a otra pantalla del alta.
+    assert.ok(!CODE.includes("router.push(\"/crear-cuenta\""), "el acceso no delega en el formulario suelto");
+    // El error se dice acá mismo, en español y sin URL técnica.
+    assert.match(CODE, /accessibilityRole="alert"/);
+    assert.match(CODE, /No perdiste nada/);
   });
 
-  it("el header queda FIJO fuera del scroll (Header antes de abrir el ScrollView)", () => {
-    const header = idx("<Header ");
-    const scrollOpen = idx("<ScrollView");
-    const scrollClose = idx("</ScrollView>");
-    assert.ok(header >= 0 && scrollOpen >= 0 && scrollClose >= 0, "faltan Header/ScrollView");
-    assert.ok(header < scrollOpen, "el Header debe renderizarse ANTES del ScrollView (fijo)");
-    // Y no debe volver a aparecer un Header dentro del scroll.
-    assert.equal(SRC.indexOf("<Header ", scrollOpen), -1, "el Header no debe vivir dentro del ScrollView");
+  it("el reenvío del código no crea otra cuenta", () => {
+    assert.match(CODE, /<CodeHelp onResend=\{flow\.resend\} \/>/);
   });
 
-  it("el contenido del scroll tiene padding inferior (llegar al final del widget)", () => {
-    assert.match(SRC, /scrollContent:\s*\{[^}]*paddingBottom/);
+  it("cambiar de puerta o de email nunca pierde el progreso del acceso", () => {
+    // Reintentar o cambiar de vía resetea la fase, no el flujo entero.
+    assert.match(CODE, /const volverAlEmail = \(\) => \{/);
+    assert.match(CODE, /flow\?\.resetToEmail\(\);/);
+    assert.match(CODE, /Usar otro email/);
   });
 
-  it("el área de Clerk vive DENTRO del scroll", () => {
-    const scrollOpen = idx("<ScrollView");
-    const scrollClose = idx("</ScrollView>");
-    const clerk = idx("<ClerkSignUp ");
-    assert.ok(clerk > scrollOpen && clerk < scrollClose, "el widget debe estar dentro del scroll");
-    // Y con alto reservado: sin esto el widget arranca colapsado dentro de un
-    // contenedor que se encoge a su contenido.
-    assert.match(SRC, /clerkZone:\s*\{[^}]*minHeight/);
+  it("el estado de entrada se anuncia UNA sola vez", () => {
+    // Con la sesión activa, un único anuncio del estado de carga.
+    const anuncios = CODE.match(/Entrando a tu cuenta…/g) ?? [];
+    assert.equal(anuncios.length, 1, "un solo texto de entrada");
+    assert.match(CODE, /accessibilityLiveRegion="polite"/);
   });
 
-  it("el error del borrador y su reintento también viven dentro del scroll", () => {
-    const scrollOpen = idx("<ScrollView");
-    const scrollClose = idx("</ScrollView>");
-    const error = idx("styles.error");
-    const retry = idx('label="Reintentar"');
-    assert.ok(error > scrollOpen && error < scrollClose, "el error debe estar dentro del scroll");
-    assert.ok(retry > scrollOpen && retry < scrollClose, "el reintento debe estar dentro del scroll");
+  it("los objetivos táctiles cumplen los 44 puntos", () => {
+    assert.match(CODE, /minHeight: 44/);
+    // CTA de 54 y campos de 62 ya superan el mínimo por diseño.
+    assert.match(CODE, /minHeight: 62/);
+    assert.match(CODE, /height: 54/);
+  });
+
+  it("los términos y la privacidad se declaran y se alcanzan", () => {
+    assert.match(CODE, /entretenimiento y autoconocimiento/);
+    assert.match(CODE, /router\.push\("\/terminos"\)/);
+    assert.match(CODE, /router\.push\("\/privacy"\)/);
+    assert.match(CODE, /accessibilityRole="link"/);
   });
 });

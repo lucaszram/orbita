@@ -7,6 +7,7 @@ import { A } from "../assets";
 import { CTA } from "../components/CTA";
 import { Header } from "../components/Header";
 import { Screen } from "../components/Screen";
+import { ONBOARDING_TOTAL } from "../steps";
 import { Body, Caption, Title } from "../components/Type";
 import { font, GUTTER, orbita } from "../theme";
 
@@ -30,7 +31,7 @@ type Props = {
 export function IdentifyScreen({ step, identity, onSelect, onNext, onBack }: Props) {
   return (
     <Screen bg={A.identifyBg} wash={0.5}>
-      <Header step={step} total={13} onBack={onBack} />
+      <Header step={step} total={ONBOARDING_TOTAL} onBack={onBack} />
       <View style={styles.body}>
         <Title>¿Cómo te identificás?</Title>
         <Body style={styles.sub}>Elegí cómo preferís que te hablemos.</Body>
