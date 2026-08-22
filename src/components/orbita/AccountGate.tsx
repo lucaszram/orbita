@@ -1,7 +1,11 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import { Redirect } from "expo-router";
-import { destinationAllows, type AccountSurface } from "@/domain/accountDestination";
+import {
+  destinationAllows,
+  mountedOnboardingRetainsCompletion,
+  type AccountSurface
+} from "@/domain/accountDestination";
 import { EDIT_BIRTH_DATA_ROUTE, HOME_ROUTE, ONBOARDING_ROUTE, SIGN_IN_ROUTE } from "@/domain/appRoutes";
 import { surfaceOpensUnderConfidence, type SurfaceRequirement } from "@/domain/sessionResilience";
 import { useAccountBootstrap } from "@/hooks/useAccountBootstrap";
@@ -61,18 +65,15 @@ export function AccountGate({
   requires?: SurfaceRequirement;
   /**
    * La superficie tiene ESTADO PROPIO que no se puede perder: una vez montada,
-   * un `loading` transitorio no la desmonta. Lo usa el alta.
+   * un `loading` transitorio no la desmonta. Lo usa el onboarding.
    *
-   * Por qué hace falta: la cuenta se crea DENTRO del alta (paso 13). Al
-   * activarse la sesión, `users` pasa a `pending` y `birthData` vuelve a
-   * `undefined`, así que el resolver dice `loading` por un instante y el gate
-   * desmontaba el flujo entero justo en el paso más caro. En web el borrador de
-   * `sessionStorage` lo disimulaba; en nativo no hay borrador y se perdía TODO
-   * lo cargado (identidad, fecha, lugar, hora).
+   * También sostiene el cierre después de persistir los datos natales: en ese
+   * momento el resolver ya dice `app-home`, pero el flujo todavía debe mostrar
+   * Antes/Después y la paywall y salir explícitamente a Carta.
    *
-   * No debilita la protección: `sticky` sólo sostiene el estado `loading`, que
-   * es "todavía no se sabe". Un destino RESUELTO distinto sigue redirigiendo, y
-   * una cuenta completa sigue sin poder montar el alta.
+   * No debilita la protección: el destino resuelto sólo se retiene para un
+   * onboarding que YA se montó de forma legítima. Una cuenta completa que abre
+   * esta ruta inicialmente conserva `mounted=false` y es redirigida.
    */
   sticky?: boolean;
 }) {
@@ -186,6 +187,16 @@ export function AccountGate({
     // Ver `sticky`: el alta ya montada se sostiene, no se desmonta y se remonta.
     if (sticky && montado.current) return <>{children}</>;
     return mostrarCarga();
+  }
+  if (
+    mountedOnboardingRetainsCompletion({
+      sticky,
+      mounted: montado.current,
+      surface,
+      destination
+    })
+  ) {
+    return <>{children}</>;
   }
   if (permitido) return <>{children}</>;
 

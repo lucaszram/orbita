@@ -1,5 +1,77 @@
 # Current Task
 
+## Hotfix post-QA build 26 → build 27/TestFlight (2026-08-22) · AUTORIZADO
+
+**Objetivo.** Corregir el cierre del onboarding observado físicamente en el
+build 26, integrar el hotfix y generar `1.0.0 (27)` para TestFlight interno:
+después de guardar los datos natales debe continuar dentro del flujo, mostrar
+la paywall aprobada y salir únicamente a la pestaña Carta.
+
+**Criterios de aceptación.** (1) Persistir los datos natales no desmonta un
+onboarding que ya estaba legítimamente montado; (2) Antes/Después conduce a la
+paywall; (3) compra, restauración y `Seguir gratis` salen a Carta; (4) cancelar
+permanece en la paywall; (5) una cuenta ya completa que abre `/onboarding` desde
+afuera sigue siendo redirigida y nunca monta el alta; (6) Apple, Google,
+email+código y el camino sin hora conservan el comportamiento validado en QA.
+
+**Owner y territorio.** Corrección acotada de cliente en
+`src/domain/accountDestination.ts`, `src/components/orbita/AccountGate.tsx`,
+comentarios del gate y pruebas. Sin cambios en `convex/**`, contratos ni datos.
+Rama local `fix/onboarding-paywall-card-exit` desde `origin/release/1.0.0` en el
+worktree `qa23-fixes`.
+
+**Riesgo.** Alto por tocar la puerta de identidad/navegación. La continuidad se
+concede sólo a la superficie onboarding con `sticky` que ya llegó a montarse;
+no se cambia `destinationAllows`, por lo que un deep link inicial de una cuenta
+completa sigue cerrado.
+
+**Plan de pruebas.** Regresión pura de la transición
+`onboarding → app-home` con superficie ya montada; deep link de cuenta completa;
+otras superficies y `sticky=false`; estructura paywall→Carta; focales vecinos;
+suite completa con piso 2542, `pnpm typecheck` y `git diff --check`.
+
+**Rollout.** Autorizado el 2026-08-22: commit identificable → PR a
+`release/1.0.0` → gates sobre el merge → archive productivo `1.0.0 (27)` →
+inspección del IPA → TestFlight interno. QA física: recorrido normal hasta
+paywall y matriz compra/restauración/cancelación/seguir gratis, verificando
+Carta como destino final.
+
+**Rollback.** Revertir sólo el helper de continuidad y su uso en `AccountGate`;
+no hay migración, deploy ni cambio de contrato que deshacer.
+
+**Fuera de alcance.** App Review, publicación pública, deploy o codegen Convex,
+Android, web productiva, cambios visuales/editoriales adicionales y
+correcciones no relacionadas con estos dos fallos de cierre.
+
+### Evidencia de fuente
+
+- El video físico del build 26 confirma el salto directo a la pestaña Hoy, con
+  `FREE` ya resuelto y sin haber mostrado la paywall.
+- Causa raíz: después de `completeBirthData`, la query autoritativa cambia a
+  `app-home`; `AccountGate` trataba ese cambio reactivo como un deep link nuevo
+  y desmontaba el `OnboardingFlow` que ya estaba en curso.
+- La continuidad nueva exige simultáneamente `sticky`, superficie
+  `onboarding`, instancia ya montada y destino `app-home`. `destinationAllows`
+  no cambió: una cuenta completa que llega inicialmente a `/onboarding` sigue
+  siendo rechazada.
+- Focales de destino/onboarding/pago: **74/74**. Suite completa:
+  **2762/2762**, 235 suites, piso **2542** aprobado. `pnpm typecheck` y
+  `git diff --check`: verdes.
+- La revisión por el lanzador seguro de Claude se intentó según el workflow,
+  pero quedó sin salida ni cambios y se interrumpió; la revisión final de
+  lifecycle React no encontró nuevos efectos, suscripciones, waterfalls ni
+  ampliaciones de autoridad.
+- Autorización recibida para integrar y producir el build 27/TestFlight. En QA
+  física queda completar compra, restore, cancelación y `Seguir gratis`, y
+  confirmar que todos los caminos terminan en Carta. App Review sigue fuera de
+  alcance hasta una autorización posterior.
+- Preflight del build 27: `ios.buildNumber=27`, `pnpm typecheck` verde, suite
+  completa **2762/2762** con piso 2542, `git diff --check` verde y export iOS
+  exitoso en `/private/tmp/orbita-build27-ios-export`. La introspección Expo
+  confirma `1.0.0 (27)`, bundle `com.lucasssram.orbita`, Sign in with Apple y
+  únicamente `com.apple.developer.applesignin=["Default"]` entre los
+  entitlements declarados; no reapareció `aps-environment`.
+
 ## Promoción iOS 1.0.0 (26) → TestFlight interno (2026-08-22) · DISPONIBLE
 
 **Objetivo.** Congelar el diff aprobado del onboarding canónico, integrarlo en
