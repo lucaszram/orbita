@@ -71,10 +71,28 @@ registrada para una tarea posterior.
   cero skips. `tsc --noEmit` y `git diff --check`: verdes. Revisión React/Expo:
   sin `Pressable.style` en forma función, targets de 44 px, selector con estado
   accesible y un único camino visual entre alta e ingreso.
-- **QA pendiente.** Instalación limpia real en iOS: alta por Apple/Google/email,
-  ingreso existente, cancelar/reintentar, relanzar a mitad del onboarding y
-  confirmar que los datos reaparecen sólo bajo la misma cuenta. No se creó ni
-  subió build 25 en esta tarea.
+- **Integración.** El commit de fuente `885df9f81c4e0389a6af5d9d2a43881c0d8da226`
+  pasó el PR [#78](https://github.com/lucaszram/orbita/pull/78) y quedó integrado
+  en `release/1.0.0` mediante el merge
+  `7b841ec44c613412bf99528ad3518b30ead3f88d`. El árbol exacto del merge repitió
+  **2723/2723** tests, typecheck, `git diff --check` y export iOS en verde.
+- **Binario 25.** EAS local archivó y firmó
+  `/private/tmp/orbita-1.0.0-25.ipa` (aprox. 47 MB; SHA-256
+  `f44975c520ebd210bab03f233559ee4cf876e809ea30ea61145f76950f2a11ea`).
+  La inspección confirmó `1.0.0 (25)`, bundle `com.lucasssram.orbita`, ejecutable
+  arm64, deployment target iOS 17, `get-task-allow=false` y beta reports activos.
+  Expo Doctor conserva el warning conocido del RC anterior: 17/18 por tres
+  desfasajes sólo de patch; no se amplió el hotfix actualizando dependencias.
+- **TestFlight.** Apple aceptó el binario mediante la presentación
+  `7aab0938-dd63-45ff-b737-1bcabe9ef21e`. Detalle:
+  <https://expo.dev/accounts/lucasssram/projects/orbita/submissions/7aab0938-dd63-45ff-b737-1bcabe9ef21e>.
+  TestFlight:
+  <https://appstoreconnect.apple.com/apps/6788918249/testflight/ios>. Apple puede
+  tardar algunos minutos adicionales en procesarlo y mostrarlo a testers
+  internos. No se ejecutó deploy Convex, App Review ni publicación pública.
+- **QA pendiente.** Instalación limpia real en iOS: alta e ingreso con los
+  métodos visibles/configurados, cancelar/reintentar, relanzar a mitad del
+  onboarding y confirmar que los datos reaparecen sólo bajo la misma cuenta.
 
 ## QA23 · promoción del cierre posterior al build 23 (2026-08-21) · AUTORIZADA · EN CURSO
 
