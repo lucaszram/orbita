@@ -2,10 +2,8 @@
  * Entrada pública web v2 — corrección final.
  *
  * Dos invariantes de producto:
- * 1. El flujo web normal (`/` → `/empezar`) entra DIRECTO en AlignScreen
- *    (paso 1, CTA "Empezar el viaje"): la portada nativa (SplashScreen, con su
- *    video y "Órbita · Tu cielo, todos los días") nunca se monta en web fuera
- *    de la inspección interna. El nativo conserva su paso 0 intacto.
+ * 1. El flujo web y nativo empiezan en AlignScreen después de crear o recuperar
+ *    la cuenta. La portada y la cuenta tardía ya no forman parte del onboarding.
  * 2. La landing extiende el fondo orbital aprobado a toda la página, muestra el
  *    mazo real (abanico en el hero + sección "El mazo de Órbita" de 16 cartas)
  *    y la ilustración de La Luna aparece UNA sola vez, en la lectura editorial.
@@ -24,20 +22,13 @@ const LANDING = sinComentarios(leer("src/components/web/orbita-landing.tsx"));
 
 const contar = (src: string, needle: string) => src.split(needle).length - 1;
 
-// --- 1. La entrada web es AlignScreen, la portada queda para nativo ----------
+// --- 1. La entrada autenticada es AlignScreen en ambas plataformas -----------
 
-test("la web arranca el alta en el paso 1 y el nativo conserva su paso 0", () => {
-  assert.match(FLOW, /const IS_WEB = Platform\.OS === "web";/);
-  assert.match(FLOW, /const ENTRY_STEP = IS_WEB \? 1 : 0;/, "la entrada es por plataforma");
-  // El estado inicial pasa por la normalización: un borrador web viejo guardado
-  // en el paso 0 se levanta en el 1, nunca en la portada.
-  assert.match(FLOW, /const normalizeEntryStep = \(s: number\) => \(IS_WEB && s === 0 \? ENTRY_STEP : s\);/);
-  assert.match(FLOW, /normalizeEntryStep\(saved\?\.step \?\? ENTRY_STEP\)/, "el borrador restaurado también se normaliza");
-  // La portada sigue existiendo para nativo (y para `debugStep=0`, que ya pasa
-  // por la guarda de herramientas internas de `resolveDebugStep`).
-  assert.match(FLOW, /case 0:\s*screen = \(\s*<SplashScreen/);
-  assert.match(FLOW, /case 1:\s*screen = <AlignScreen/);
-  // Y la pantalla de entrada web tiene el CTA acordado.
+test("web y nativo arrancan el onboarding autenticado en AlignScreen", () => {
+  assert.match(FLOW, /const IS_WEB = process\.env\.EXPO_OS === "web";/);
+  assert.match(FLOW, /const ENTRY_STEP = 0;/);
+  assert.doesNotMatch(FLOW, /SplashScreen|AccountScreen|normalizeEntryStep/);
+  assert.match(FLOW, /case 0:\s*screen = <AlignScreen/);
   assert.match(leer("src/onboarding/screens/AlignScreen.tsx"), /Empezar el viaje/);
 });
 
@@ -48,10 +39,10 @@ test("volver desde el paso 1 web regresa a la landing, no a la portada", () => {
   assert.match(back, /Math\.max\(ENTRY_STEP, s - 1\)/, "ningún back del flujo normal baja del paso de entrada");
 });
 
-test("los saltos de sesión y de resume apuntan a la entrada por plataforma", () => {
-  // Antes comparaban contra el 0 literal: en web (entrada = 1) una cuenta
-  // incompleta se habría quedado mirando AlignScreen en vez de seguir el alta.
-  assert.equal(contar(FLOW, 's === ENTRY_STEP ? STEP_BIRTHDATE : s'), 2);
+test("sólo el resume explícito salta al tramo de datos natales", () => {
+  assert.equal(contar(FLOW, 's === ENTRY_STEP ? STEP_BIRTHDATE : s'), 1);
+  assert.match(FLOW, /params\.resume === "datos" \? STEP_BIRTHDATE : saved\?\.step \?\? ENTRY_STEP/);
+  assert.doesNotMatch(FLOW, /auth\?\.isSignedIn[\s\S]{0,180}setStep/);
   assert.doesNotMatch(FLOW, /s === 0 \? STEP_BIRTHDATE/, "la comparación contra 0 literal no puede volver");
 });
 

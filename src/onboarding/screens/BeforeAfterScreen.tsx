@@ -39,7 +39,7 @@ export function BeforeAfterScreen({ step, onNext, onBack }: Props) {
   const insets = useSafeAreaInsets();
   return (
     <Screen bg={A.beforeAfterBg} bgOpacity={0.8} wash={0.6}>
-      <Header step={step} total={15} onBack={onBack} />
+      <Header step={step} total={13} onBack={onBack} />
       <View style={styles.body}>
         <ScrollView
           style={styles.scroll}

@@ -33,7 +33,7 @@ type Props = {
 export function BirthTimeScreen({ step, value, onChange, unknown, onToggleUnknown, onNext, onBack }: Props) {
   return (
     <Screen bg={A.dailyTexture} wash={0.52}>
-      <Header step={step} total={15} onBack={onBack} />
+      <Header step={step} total={13} onBack={onBack} />
       <View style={styles.body}>
         <Title>¿A qué hora naciste?</Title>
         <Body style={styles.sub}>La hora afina tu ascendente y tus casas.</Body>

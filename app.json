@@ -20,7 +20,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.lucasssram.orbita",
-      "buildNumber": "24",
+      "buildNumber": "25",
       "backgroundColor": "#0A0B0E",
       "splash": {
         "backgroundColor": "#0A0B0E",

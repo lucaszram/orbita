@@ -118,22 +118,22 @@ test("el id del borrador es opaco, estable y viaja en el borrador local", () => 
 
 // --- 3. El orden del alta ----------------------------------------------------
 
-test("el borrador remoto se persiste y se CONFIRMA antes de abrir Clerk", () => {
+test("Clerk abre antes del onboarding y los datos natales se guardan con sesión confirmada", () => {
   const flow = sinComentarios(leer("src/onboarding/OnboardingFlow.tsx"));
-  // El id se genera una sola vez y viaja con el borrador local.
+  // El id opaco sigue existiendo para la previsualización determinística y su
+  // cuota, pero ya no controla el alta ni el guardado de datos personales.
   assert.match(flow, /ensureClientDraftId\(\)/);
   assert.match(flow, /clientDraftId: clientDraftId \?\? undefined/);
-  // Y la puerta: Clerk sólo se monta con el borrador confirmado.
-  assert.match(flow, /prepareSignupDraft\(\{/);
-  assert.match(flow, /setDraftPhase\("ready"\)/);
-  assert.match(flow, /setDraftPhase\("error"\)/);
+  assert.doesNotMatch(flow, /prepareSignupDraft|setDraftPhase|<AccountScreen\b/);
+  assert.match(flow, /const persistBirthData = useOnboardingBirthDataPersist\(\)/);
+  assert.match(flow, /if \(persistBirthData && !auth\?\.isSignedIn\)/);
+  assert.match(flow, /if \(!persistBirthData\)/);
+  assert.match(flow, /await persistBirthData\(\{/);
 
-  const cuenta = sinComentarios(leer("src/onboarding/screens/AccountScreen.tsx"));
-  assert.match(
-    cuenta,
-    /phase === "ready" \? \([\s\S]{0,200}<ClerkSignUp\b/,
-    "sin borrador confirmado NO se abre Clerk"
-  );
+  const alta = sinComentarios(leer("app/crear-cuenta.tsx"));
+  assert.match(alta, /<AccountGate surface="auth"\s/);
+  assert.match(alta, /<SignUpGateScreen\b/);
+  assert.match(alta, /clearDraft\(\)/, "el alta auth-first abandona cualquier borrador anónimo viejo");
 
   const hook = sinComentarios(leer("src/onboarding/useAccount.ts"));
   const gate = hook.slice(
@@ -141,11 +141,10 @@ test("el borrador remoto se persiste y se CONFIRMA antes de abrir Clerk", () => 
     hook.indexOf("export type FinalizeOnboarding")
   );
   assert.ok(gate.length > 0);
-  // ANÓNIMO de verdad: por el canal dedicado sin autenticar, nunca por el
-  // cliente compartido que Clerk autentica cuando se le da la gana.
-  assert.doesNotMatch(gate, /useConvex\(\)/, "el borrador anónimo no usa el cliente de la app");
+  // Se conserva sólo como contrato de compatibilidad para builds anteriores;
+  // el flujo actual no puede importarlo ni invocarlo.
+  assert.doesNotMatch(flow, /useOnboardingSignupDraft|useOnboardingFinalize/);
   assert.match(gate, /anonymousSignupDraftTransport\(\)/);
-  assert.match(gate, /persistSignupDraft\(transport, input\)/);
 
   // Con clientDraftId, y confirmado DESPUÉS de guardar. Las dos llamadas al
   // contrato viven en el transporte dedicado.

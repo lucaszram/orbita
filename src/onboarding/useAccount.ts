@@ -699,21 +699,28 @@ export type PersistBirthData = (input: {
   birthPlaceLabel?: string;
   latitude?: number;
   longitude?: number;
-  /** Timezone del lugar de nacimiento (del geocoding); fallback: la del dispositivo. */
+  /**
+   * Timezone del LUGAR de nacimiento. Si viene vacía, la resuelve el backend
+   * desde las coordenadas (`placeTimezone.atCoordinates`). No hay fallback a la
+   * zona del dispositivo: para alguien nacido en otra zona es la equivocada.
+   */
   timezone?: string;
 }) => Promise<void>;
 
 /**
- * Persistencia con errores TRAGADOS (onboarding: la copia local ya existe y
- * el flujo no debe cortarse). Para "Editar datos" usar la variante estricta.
- */
-/**
- * @deprecated El cierre del alta usa `useOnboardingFinalize`, que además
- * adjunta el borrador anónimo a la cuenta (`markAccountCreated` con el
- * `clientDraftId`) y reintenta la cadena completa. Esta variante escribe los
- * datos natales sin ese vínculo, así que un alta cerrada por acá queda como una
- * recuperación de cuenta preexistente. Se conserva sólo para consumidores
- * previos; no agregar usos nuevos.
+ * Cierre CANÓNICO del alta auth-first: la cuenta se crea PRIMERO y los datos
+ * natales se escriben después, ya bajo sesión, con `onboarding.completeBirthData`.
+ * No hay borrador anónimo que adjuntar porque en este orden nunca existió: la
+ * identidad ya está montada cuando se piden los datos, así que no puede quedar
+ * un alta a medias colgada de un `clientDraftId` que ninguna pantalla recupera.
+ *
+ * La zona horaria se resuelve acá desde las COORDENADAS del lugar, igual que en
+ * el editor de perfil, y nunca se toma la del dispositivo. El error se propaga:
+ * la pantalla que cierra el alta necesita poder ofrecer reintento.
+ *
+ * El camino con borrador anónimo (`useOnboardingSignupDraft` +
+ * `useOnboardingFinalize`) sigue intacto para los builds 22–24, que crean la
+ * cuenta al final.
  */
 export function useOnboardingBirthDataPersist(): PersistBirthData | null {
   if (!HAS_BACKEND) return null;
@@ -747,6 +754,7 @@ function useBackendPersistInner(): PersistBirthData {
   // Backend la define como Action (igual que en la web); antes acá estaba mal
   // como useMutation → "Trying to execute ... as Mutation, but defined as Action".
   const calculateChart = useAction(appApi.charts.calculateOrCreateNatalChart);
+  const resolveTimezone = useAction(appApi.placeTimezone.atCoordinates);
   const isSignedIn = auth.isSignedIn;
 
   return useCallback(
@@ -756,8 +764,17 @@ function useBackendPersistInner(): PersistBirthData {
       // adelante sin haber escrito nada. Se rechaza y la pantalla ofrece
       // reintentar, que es lo que la carrera necesita.
       if (!isSignedIn) throw new Error("ONBOARDING_SESSION_NOT_READY");
+      // Zona horaria del LUGAR, derivada de sus coordenadas en el backend —
+      // mismo camino que el editor de perfil. Photon no devuelve timezone, así
+      // que sin este paso una ciudad recién elegida moría en `zonaFaltante` y el
+      // alta auth-first no podía cerrarse nunca. Va ANTES de validar y de
+      // escribir; si la resolución falla, el error se propaga y no se escribe
+      // nada. Nunca se cae a la zona del dispositivo: para alguien nacido en
+      // otra zona es la equivocada.
+      const lookup = timezoneLookupFor(input);
+      const resolved = lookup ? withResolvedTimezone(input, (await resolveTimezone(lookup)).timezone) : input;
       // Nada de rellenar: sin lugar elegido, coordenadas o zona, no se escribe.
-      const payload = validateBirthPayload(input);
+      const payload = validateBirthPayload(resolved);
       await ensureUser({});
       await completeBirthData({
         birthDate: payload.birthDate,
@@ -768,13 +785,17 @@ function useBackendPersistInner(): PersistBirthData {
         longitude: payload.longitude,
         timezone: payload.timezone
       });
-      await calculateChart({});
+      // Guardar los datos natales es la operación obligatoria; la carta es un
+      // derivado y NO puede convertir un guardado ya confirmado en un error del
+      // cierre. Mejor esfuerzo: si el proveedor falla, Carta vuelve a dispararla
+      // al abrirse y ofrece reintento ahí.
+      void calculateChart({}).catch(() => undefined);
       // NO se llama `readings.generateToday` acá: usaba la fecha y la timezone
       // del dispositivo, y el día astrológico lo decide el servidor desde la
       // zona natal (`daily.getTodayContext`). La generación diaria sigue por el
       // camino canónico, que ya corre en la Home con la fecha del servidor.
     },
-    [calculateChart, completeBirthData, ensureUser, isSignedIn]
+    [calculateChart, completeBirthData, ensureUser, isSignedIn, resolveTimezone]
   );
 }
 

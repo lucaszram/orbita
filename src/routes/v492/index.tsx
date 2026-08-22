@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 import { Redirect } from "expo-router";
 import { usePendingDeletionGate } from "@/components/PendingDeletionBoundary";
 import { bootGateSurface } from "@/domain/accountDeletion";
+import { SIGN_UP_ROUTE } from "@/domain/appRoutes";
 import {
   isAccountSwitch,
   onboardingInputFromBirthData,
@@ -178,8 +179,11 @@ export default function IndexRoute() {
       // datos (el paso de cuenta se saltea solo; no se crea una segunda).
       return <Redirect href={{ pathname: "/onboarding", params: { resume: "datos" } }} />;
     case "entry":
-      // Entrada estable: Empezar / Ya tengo cuenta (paso 0 del onboarding).
-      return <Redirect href="/onboarding" />;
+      // Instalación nueva, sin identidad previa: la PRIMERA acción es crear la
+      // cuenta (auth-first). El onboarding ya no es la entrada — se abre después,
+      // con sesión y una cuenta donde persistir, así que no queda un borrador
+      // anónimo esperando a que alguien lo confirme.
+      return <Redirect href={SIGN_UP_ROUTE} />;
     case "sign-in":
       // Esta instalación es de una cuenta y Clerk confirmó que no hay sesión
       // (logout a medio terminar o sesión perdida en un upgrade): volver a

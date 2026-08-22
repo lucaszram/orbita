@@ -14,7 +14,7 @@ import { font, GUTTER, orbita } from "../theme";
 export function DailyGuidanceScreen({ step, onNext, onBack }: { step: number; onNext: () => void; onBack: () => void }) {
   return (
     <Screen bg={A.guidanceBg} wash={0.44}>
-      <Header step={step} total={15} onBack={onBack} />
+      <Header step={step} total={13} onBack={onBack} />
       <View style={styles.body}>
         <Title style={styles.title}>Guía diaria,{"\n"}ajustada a vos</Title>
         <Body style={styles.sub}>Micro-rituales, señales y contexto para tu día.</Body>

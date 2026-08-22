@@ -40,21 +40,19 @@ test("ninguna ruta importa una pantalla web duplicada", () => {
   assert.deepEqual(culpables, [], `estas rutas duplican una pantalla: ${culpables.join(", ")}`);
 });
 
-test("web y nativo llegan al MISMO onboarding canónico por sus entradas resueltas", () => {
+test("web y nativo llegan primero al alta y después al MISMO onboarding canónico", () => {
   const canonico = readFileSync(join(ROOT, "src/onboarding/OnboardingFlow.tsx"), "utf8");
-  // 15 pasos: la secuencia V4.4 completa, con la cuenta en su lugar original
-  // (`14 / Create Account`) y el cierre al final.
-  assert.match(canonico, /const TOTAL = 15;/, "el flujo canónico debe tener 15 pasos");
-  // La ruta web monta el gate compartido; la entrada nativa histórica
-  // `/empezar` es sólo un alias limpio hacia `/onboarding`, que monta ese mismo
-  // gate. Así la web conserva su aviso de backend sin meterlo en el bundle iOS.
+  assert.match(canonico, /const TOTAL = 13;/, "el onboarding autenticado tiene 13 pasos");
+  assert.doesNotMatch(canonico, /AccountScreen|ClerkSignUp/);
   const gate = readFileSync(join(ROOT, "src/onboarding/OnboardingGate.tsx"), "utf8");
   assert.ok(/@\/onboarding\/OnboardingFlow/.test(gate), "el gate debe montar el flujo canónico");
   const empezarWeb = fuenteDeEntrada("app/empezar.tsx", "web");
-  assert.match(empezarWeb, /OnboardingGate/, "la entrada web debe montar el gate compartido");
+  assert.match(empezarWeb, /SIGN_UP_ROUTE/);
+  assert.match(empezarWeb, /<Redirect href=\{SIGN_UP_ROUTE\}\s*\/>/);
+  assert.doesNotMatch(empezarWeb, /import \{ OnboardingGate \}/);
 
   const empezarNative = fuenteDeEntrada("app/empezar.tsx", "native");
-  assert.match(empezarNative, /<Redirect href="\/onboarding"\s*\/>/, "el alias nativo entra al onboarding");
+  assert.match(empezarNative, /<Redirect href=\{SIGN_UP_ROUTE\}\s*\/>/, "el alias nativo entra al alta");
   assert.doesNotMatch(
     empezarNative,
     /OnboardingGate|WebNotice|backendConfig/,

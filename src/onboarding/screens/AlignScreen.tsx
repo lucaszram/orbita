@@ -27,7 +27,7 @@ import { font, GUTTER, orbita } from "../theme";
 export function AlignScreen({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
   return (
     <Screen bg={A.dailyTexture} wash={0.44}>
-      <Header step={1} total={15} onBack={onBack} />
+      <Header step={0} total={13} onBack={onBack} />
       <View style={styles.body}>
         <Title style={styles.title}>Alineate con el ritmo del universo</Title>
         <Body style={styles.sub}>Descifrá amor, trabajo y camino personal desde tu carta.</Body>

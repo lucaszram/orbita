@@ -67,13 +67,13 @@ const conCuenta = (completion: AccountState["completion"], extra: Partial<Accoun
 
 // --- El resolver: una sola decisión -----------------------------------------
 
-test("sin sesión: landing, login y el ALTA; nunca la app", () => {
+test("sin sesión: sólo landing y login; ni el alta ni la app", () => {
   assert.equal(resolveAccountDestination(BASE), "sign-in");
   assert.ok(destinationAllows("sign-in", "landing"));
   assert.ok(destinationAllows("sign-in", "auth"));
-  // El alta se monta sin sesión: junta todo en el borrador local y pide cuenta
-  // en su paso original. Es lo que permite que la experiencia enganche primero.
-  assert.ok(destinationAllows("sign-in", "onboarding"), "el alta empieza sin cuenta");
+  // Auth-first: el alta arranca con la cuenta ya creada, así que sin sesión no
+  // se monta el onboarding — se pasa antes por `auth`.
+  assert.ok(!destinationAllows("sign-in", "onboarding"), "el alta no empieza sin cuenta");
   // La app sigue cerrada: sin sesión no se entra a ninguna Home.
   assert.ok(!destinationAllows("sign-in", "app"));
 });
@@ -267,36 +267,74 @@ test("home-local sólo vale sin backend configurado", () => {
 
 // --- El alta salió del onboarding ------------------------------------------
 
-test("una cuenta COMPLETA no puede entrar al alta, con o sin sesión", () => {
+test("el alta la monta un solo destino: `onboarding` y nada más", () => {
   // La protección que motivó el gate sigue intacta: es lo único que impide
   // sobrescribir datos natales desde el onboarding.
   assert.equal(resolveAccountDestination(conCuenta(READY)), "app-home");
   assert.ok(!destinationAllows("app-home", "onboarding"), "una cuenta completa NUNCA monta el alta");
+  // Y ahora tampoco entra quien todavía no tiene cuenta: primero `auth`.
+  const otros = ["loading", "sign-in", "bootstrap", "edit-birth-data", "app-home", "retry", "degraded"] as const;
+  for (const destino of otros) {
+    assert.ok(!destinationAllows(destino, "onboarding"), destino);
+  }
+  assert.ok(destinationAllows("onboarding", "onboarding"));
 });
 
-test('"Empezar" abre la experiencia inmersiva, no un formulario suelto', () => {
+test('"Empezar" entra por el alta auth-first, no por los pasos sin sesión', () => {
   const landing = readFileSync(join(ROOT, "src/components/web/orbita-landing.tsx"), "utf8");
   assert.ok(/href="\/empezar"/.test(landing), '"Empezar" tiene que abrir el alta completa');
   assert.ok(
     !/<WebLinkButton href="\/crear-cuenta"/.test(landing),
-    "la landing no puede abrir el formulario de cuenta como primera pantalla"
+    "la landing tiene un solo CTA de arranque, y es /empezar"
   );
+
+  // Y `/empezar` es sólo la puerta: redirige al alta, donde se crea la cuenta.
+  // Montar `OnboardingGate` acá abría el onboarding SIN sesión y dejaba la
+  // cuenta para el final, colgando de un borrador anónimo.
+  for (const plataforma of ["native", "web"] as const) {
+    const empezar = sinComentarios(fuenteDeEntrada("app/empezar.tsx", plataforma));
+    assert.ok(
+      /<Redirect href=\{SIGN_UP_ROUTE\}/.test(empezar),
+      `${plataforma} tiene que redirigir al alta`
+    );
+    assert.ok(!/OnboardingGate/.test(empezar), `${plataforma} no puede montar los pasos sin cuenta`);
+  }
 });
 
-test("el alta suelta usa la UI oficial de Clerk, no un segundo formulario propio", () => {
-  const pantalla = readFileSync(join(ROOT, "src/onboarding/screens/SignUpGateScreen.tsx"), "utf8");
-  // La copy de encabezado del handoff se conserva; el formulario es de Clerk.
+test("`/crear-cuenta` es la entrada auth-first: selector + UI oficial de Clerk", () => {
+  const pantalla = sinComentarios(
+    readFileSync(join(ROOT, "src/onboarding/screens/SignUpGateScreen.tsx"), "utf8")
+  );
+  // Copy VISIBLE: lo que se promete es el orden del alta —primero la cuenta,
+  // después los datos de nacimiento—, no el encabezado de un formulario suelto.
   for (const texto of [
     "Creá tu cuenta.",
-    "Guardamos tu carta y tus lecturas en un solo lugar.",
-    "Ya tengo cuenta · Iniciar sesión"
+    "Primero creás tu cuenta y después completás tus datos de nacimiento."
   ]) {
     assert.ok(pantalla.includes(texto), `falta la copy: ${texto}`);
   }
+  // Las dos puertas se ven juntas y arriba, antes de escribir nada: siendo esta
+  // la PRIMERA pantalla, quien ya tiene cuenta no puede depender de encontrar un
+  // enlace chico debajo de un formulario de Clerk que scrollea.
+  assert.ok(
+    /<AuthModeSwitch\b[\s\S]{0,120}?mode="signUp"/.test(pantalla),
+    "monta el selector de auth en modo alta"
+  );
+  assert.ok(
+    !pantalla.includes("Ya tengo cuenta · Iniciar sesión"),
+    "el enlace al pie no puede volver: lo reemplaza AuthModeSwitch"
+  );
   assert.ok(/<ClerkSignUp email=\{email\} \/>/.test(pantalla), "monta el componente oficial");
   // Ningún campo propio: era una copia del formulario de AccountScreen que
   // había que mantener dos veces y se desfasaba con la instancia de Clerk.
-  for (const prohibido of ["TextInput", "CodeInput", "Repetir contraseña", "Verificar código", "secureTextEntry"]) {
+  for (const prohibido of [
+    "AccountScreen",
+    "TextInput",
+    "CodeInput",
+    "Repetir contraseña",
+    "Verificar código",
+    "secureTextEntry"
+  ]) {
     assert.ok(!pantalla.includes(prohibido), `el formulario propio no puede volver: ${prohibido}`);
   }
 });

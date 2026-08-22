@@ -16,7 +16,7 @@ type Props = { step: number; place: string; onNext: () => void; onBack: () => vo
 export function BirthplaceSelectedScreen({ step, place, onNext, onBack }: Props) {
   return (
     <Screen bg={A.dailyTexture} wash={0.48}>
-      <Header step={step} total={15} onBack={onBack} />
+      <Header step={step} total={13} onBack={onBack} />
       <View style={styles.body}>
         <Title>Horizonte definido.</Title>
         <Text style={styles.place}>{place}</Text>

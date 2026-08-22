@@ -30,7 +30,7 @@ type Props = {
 export function IdentifyScreen({ step, identity, onSelect, onNext, onBack }: Props) {
   return (
     <Screen bg={A.identifyBg} wash={0.5}>
-      <Header step={step} total={15} onBack={onBack} />
+      <Header step={step} total={13} onBack={onBack} />
       <View style={styles.body}>
         <Title>¿Cómo te identificás?</Title>
         <Body style={styles.sub}>Elegí cómo preferís que te hablemos.</Body>

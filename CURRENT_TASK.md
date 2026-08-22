@@ -1,5 +1,81 @@
 # Current Task
 
+## Onboarding auth-first (2026-08-21) · PROMOCIÓN A BUILD 25 AUTORIZADA
+
+### Ficha de tarea · identidad antes de los datos natales
+
+**Objetivo.** Reordenar el alta de Órbita para que, después del splash de
+marca, la primera acción sea crear cuenta o ingresar con Apple, Google o email.
+Sólo una sesión confirmada puede comenzar o reanudar el onboarding natal. El
+flujo deja de depender de confirmar un borrador anónimo y de resolver la zona
+horaria antes de mostrar Clerk.
+
+**Criterios de aceptación.** (1) una instalación sin sesión ve primero una
+superficie unificada `Crear cuenta | Ingresar`; (2) una cuenta nueva entra al
+onboarding sólo después de activar la sesión; (3) una cuenta completa entra a
+Inicio y una incompleta retoma el destino autoritativo correspondiente; (4) el
+paso tardío `Guardá tu carta` deja de crear la cuenta; (5) un fallo de zona
+horaria no puede impedir registrarse; (6) cancelación, error y reintento de auth
+tienen salida útil; (7) no se muestran ni adoptan datos de otra cuenta; (8) web,
+iOS, accesibilidad y restauración de sesión conservan sus contratos; (9) los
+endpoints de borrador anónimo siguen disponibles para builds 22–24.
+
+**Owner y territorio.** Claude Code ejecuta el frontend en `app/**`, `src/**`.
+Codex orquesta, actualiza las pruebas, revisa identidad/ownership y verifica;
+`convex/**` es sólo lectura y no cambia en esta tarea. Trabajo aislado en
+`/Users/lucas/Documents/Core/worktrees/orbita/auth-first-onboarding`, rama
+local `fix/auth-first-onboarding`, desde `58a41efa` (`release/1.0.0`).
+
+**Riesgo.** Alto: cambia el orden de autenticación, los destinos de arranque y
+la persistencia del alta. Se falla cerrado ante sesión no confirmada, se evita
+adoptar borradores anónimos de otra identidad y se preserva compatibilidad con
+los clientes ya distribuidos. No se reemplaza Clerk ni se inventa un manejo de
+tokens propio.
+
+**Plan de pruebas.** Pruebas puras del resolver de destino; instalación nueva;
+crear cuenta e ingresar; cuenta completa/incompleta; volver/cancelar/reintentar;
+ownership entre dos cuentas; restauración y offline seguro; regresiones del
+onboarding; accesibilidad estructural; `pnpm typecheck`, suite completa con
+piso vigente, `git diff --check` y revisión del diff. Sin QA física de
+VoiceOver en este entorno.
+
+**Rollout.** Integrar este único objetivo mediante PR a `release/1.0.0`, subir
+el build iOS de 24 a 25, producir el RC con configuración productiva y enviarlo
+a TestFlight interno para QA física. El backend compatible ya desplegado no se
+modifica porque este diff no toca contrato ni funciones Convex.
+
+**Rollback.** Descartar/revertir exclusivamente el diff de esta rama y volver
+al flujo del build 24. Como no se elimina ningún contrato backend, los builds
+22–24 continúan funcionando sin migración destructiva.
+
+**Fuera de alcance.** Deploy de Convex sin delta backend, App Review,
+publicación pública, OTA, Android, rediseño visual completo, cambios de pago y
+la revisión editorial de Tránsitos (`VER TU MOMENTO`, ranking y copy), que queda
+registrada para una tarea posterior.
+
+### Evidencia de cierre de fuente
+
+- **Entrada auth-first.** Instalación nueva y `/empezar` abren
+  `/crear-cuenta`; la cuenta existente puede cambiar a `/iniciar-sesion` desde
+  el selector visible `Crear cuenta | Ingresar`. El onboarding canónico queda
+  en `/onboarding` y sólo admite el destino autenticado `onboarding`.
+- **Flujo natal.** La portada y el alta tardía salieron de `OnboardingFlow`;
+  quedan 13 pasos (0–12). El cierre escribe `completeBirthData` bajo sesión,
+  resuelve la zona horaria desde las coordenadas del lugar y espera readiness
+  autoritativo antes de crear el perfil local y entrar a Recepción.
+- **Aislamiento.** El alta nueva abandona cualquier borrador anónimo legacy;
+  una cuenta completa no puede montar el onboarding y una cuenta preexistente
+  incompleta conserva su recuperación por el editor natal. Los contratos de
+  borrador remoto se mantienen sin cambios para los builds ya distribuidos.
+- **Verificación.** Suite completa: **2723/2723**, 235 suites, cero fallos,
+  cero skips. `tsc --noEmit` y `git diff --check`: verdes. Revisión React/Expo:
+  sin `Pressable.style` en forma función, targets de 44 px, selector con estado
+  accesible y un único camino visual entre alta e ingreso.
+- **QA pendiente.** Instalación limpia real en iOS: alta por Apple/Google/email,
+  ingreso existente, cancelar/reintentar, relanzar a mitad del onboarding y
+  confirmar que los datos reaparecen sólo bajo la misma cuenta. No se creó ni
+  subió build 25 en esta tarea.
+
 ## QA23 · promoción del cierre posterior al build 23 (2026-08-21) · AUTORIZADA · EN CURSO
 
 ### Ficha de promoción · integración + Convex + build 24/TestFlight

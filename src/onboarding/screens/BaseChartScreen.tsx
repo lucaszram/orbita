@@ -22,7 +22,7 @@ type Props = {
 export function BaseChartScreen({ step, dateLabel, place, timeLabel, onNext, onBack }: Props) {
   return (
     <Screen bg={A.dailyTexture} wash={0.48} scroll>
-      <Header step={step} total={15} onBack={onBack} />
+      <Header step={step} total={13} onBack={onBack} />
       <View style={styles.body}>
         <Title style={styles.title}>Estos son tus{"\n"}puntos de partida.</Title>
 
