@@ -1,5 +1,1239 @@
 # Current Task
 
+## QA23 · promoción del cierre posterior al build 23 (2026-08-21) · AUTORIZADA · EN CURSO
+
+### Ficha de promoción · integración + Convex + build 24/TestFlight
+
+**Objetivo.** Convertir el árbol QA23 ya verificado en un Release Candidate
+identificable: integrar la rama por el flujo del repositorio, regenerar y
+desplegar el contrato/backend Convex compatible, incrementar sólo el build iOS
+a 24, producir el binario productivo desde ese commit y enviarlo a TestFlight
+para QA física. Esta autorización no incluye App Review ni liberación pública.
+
+**Criterios de aceptación.** (1) commit y rama remota exactos; (2) diff completo
+revisado y worktree limpio antes del build; (3) `convex/_generated` actualizado
+por Codex, contrato aditivo y builds 22/23 compatibles; (4) suite completa con
+piso 2542, typecheck, diff check y export iOS verdes sobre el commit candidato;
+(5) variables de producción presentes sin imprimir valores; (6) deploy Convex
+exitoso y smoke checks de funciones críticas; (7) versión `1.0.0`, build iOS
+`24`, perfil EAS `production`; (8) build subido a TestFlight con identificador y
+URL registradas; (9) ninguna acción de App Review ni release pública.
+
+**Owner y territorio.** Claude Code revisa el frente y la configuración Expo;
+Codex orquesta, revisa, controla `convex/**`, codegen, deploy, Git y EAS. El
+trabajo continúa exclusivamente en `qa23-fixes`; no se toca `qa22-fixes` ni
+otro producto. Archivos compartidos de release (`app.json`, `eas.json`, docs y
+config) sólo se cambian cuando el gate lo exige.
+
+**Riesgo.** Alto: auth, compra, onboarding, esquema aditivo, backend productivo
+y distribución iOS. Se falla cerrado ante rama/base inesperada, secretos
+faltantes, codegen no reproducible, tests rojos, deploy parcial, número de build
+ocupado o credenciales no disponibles. No se corrige una falla ampliando el
+alcance silenciosamente.
+
+**Plan de pruebas.** Revisión de diff y secretos; codegen; suite completa y gate
+de conteo; typecheck; `git diff --check`; export iOS; verificación de config
+pública Expo; smoke backend sin escrituras destructivas; estado de EAS y App
+Store Connect. La QA física posterior cubre instalación nueva, alta, login de
+cuenta existente, compra sandbox, cancelación, restore, reinicio, Free/Plus,
+offline/reconexión y navegación crítica.
+
+**Rollout.** Commit(s) identificables → rama remota/PR o integración equivalente
+según el estado real del repo → deploy Convex compatible → build 24 productivo →
+TestFlight interno. Lucas prueba y autoriza por separado App Review y la salida
+pública del mismo binario.
+
+**Rollback.** Antes del deploy, detener la promoción y conservar build 23. Tras
+el deploy, mantener el campo opcional nuevo en schema y revertir lógica/cliente
+si fuera necesario; no hacer una migración destructiva. Un build fallido o no
+aprobado queda sin seleccionar en App Store Connect y build 23 sigue vigente.
+
+**Fuera de alcance.** App Review, publicación pública/automática, OTA, Android,
+web productiva, cambios de producto adicionales, migraciones destructivas y
+QA física realizada por el agente.
+
+**Preflight ejecutado.** Base y branch correctas (`5ffbd17`,
+`fix/qa23-release-readiness`); `origin/main` es ancestro de la línea de release
+y no existe todavía una rama remota QA23/release que pueda pisarse. EAS reconoce
+la cuenta `lucasssram`, el proyecto `9e91bb5e-e69e-489e-818d-0e377f397147` y el
+bundle `com.lucasssram.orbita`; el build 24 no aparece usado. Codegen contra
+Development (`dutiful-viper-815`) terminó en verde y no modificó
+`convex/_generated`. El candidato `1.0.0 (24)` cerró **2720/2720**, gate mínimo
+**2542**, typecheck y `git diff --check`; export iOS en
+`/private/tmp/orbita-qa23-build24-ios-export` terminó en verde. La revisión
+estática de los TSX, siguiendo el checklist de hooks/render/persistencia, no
+encontró P0/P1, mocks activos, endpoints locales ni secretos en los archivos
+cambiados. Expo Doctor conserva el warning ya conocido del build 23: **17/18**,
+con tres desfasajes sólo de patch (`expo` 54.0.35 vs 54.0.37,
+`expo-constants` 18.0.13 vs 18.0.14 y `expo-updates` 29.0.18 vs 29.0.20); no se
+actualizan dependencias dentro de este RC porque el build 23 archivó bien con la
+misma base y hacerlo ampliaría el riesgo. La revisión adicional de Claude se
+interrumpió al quedar sin salida ni cambios; no ejecutó acciones externas.
+
+## Cierre de fuente QA23 · evidencia previa
+
+**Objetivo.** Cerrar en código los hallazgos de QA física del build 23 sobre la
+base exacta `5ffbd17`, preservando el RC/binario existente (`0ec205d`) y
+preparando un árbol verificable para una futura build 24, sin crearla ni
+distribuirla en esta tarea.
+
+**Criterios de aceptación.**
+
+1. **Plan.** La raíz muestra sólo `PLUS` / `FREE`; los detalles muestran
+   `Órbita Plus` / `Órbita Free`; toda variante tiene nombre accesible y no se
+   presenta `Free` mientras el entitlement siga sin resolver.
+2. **Tu momento.** La raíz presenta tres módulos hermanos —Estación vital,
+   Tema del año y Tus cuatro ritmos—. Estación y año conservan sus detalles.
+   Cuatro ritmos tiene un único CTA a un detalle integral y determinístico del
+   mandala (concepto, cuatro anillos, configuración actual, combinación, uso,
+   pregunta, método y trazabilidad), sin enlaces internos a estación, año,
+   ciclo lunar ni tránsito. Atrás y deep link vuelven a Tu momento preservando
+   scroll; la pestaña Tránsitos abre Ahora y los arcos abiertos desde Ahora
+   vuelven a Ahora.
+3. **Cumpleluna.** La identidad del snapshot incorpora el alcance diario y su
+   vigencia deja de cubrir casi un ciclo; el cliente no combina `Date.now()` con
+   escalares de otro día. Hay pruebas de cambio de día y bordes temporales.
+4. **Tipo de vínculo aditivo.** Se aceptan los ocho valores internos y labels
+   definidos por Lucas. El tipo se pregunta junto al nombre, es editable,
+   declarado y separado de signo/fecha/carta. Contrato, schema, guardado y perfil
+   son opcionales y compatibles con builds 22/23 (`null` = legacy; `prefer_not_to_say`
+   = elección explícita). Sólo `romantic` puede emitir Deseo o lenguaje sexual;
+   los demás y legacy son neutrales. Legacy muestra `DEFINIR TIPO DE VÍNCULO`
+   sin bloquear. El tipo participa de hash/cache y el copy se contrasta con las
+   fuentes astrológicas locales. Sin LLM nuevo y sin deploy.
+5. **Post-guardado.** Alta y edición confirman brevemente y aterrizan en el
+   perfil canónico de la persona. Las filas abren ese perfil, que ofrece
+   `VER LA COMPARACIÓN` y `EDITAR DATOS`; la comparación es una ruta hija. Las
+   pruebas fijan ownership y evitan abrir datos de otra cuenta.
+6. **Arranque visual.** Splash y gates usan `#0A0B0E`, no muestran frames claros
+   ni slide lateral de redirects y no parpadean `Free`. Se puede modificar
+   `app.json`, pero no construir ni publicar.
+7. **Offline seguro.** Un timeout de Clerk no se interpreta como signed-out.
+   Con cuenta previamente válida y snapshot local seguro se abre el shell con
+   últimos datos, aviso localizado, errores/reintentos por sección y
+   reconexión sin reinicio. Sin sesión confirmada se bloquean compras, borrado,
+   edición natal y escrituras sensibles. Instalación nueva o sin identidad local
+   segura conserva el gate. Una matriz pura demuestra que nunca se muestran
+   datos de otra cuenta.
+8. **Cierre técnico.** Se revisan onboarding nuevo completo y pago/restore/
+   reinicio. Suite completa con piso `>= 2542` y cero fallos, `pnpm typecheck`,
+   `git diff --check`, export Expo web/iOS fuera del repo si no publica y
+   compatibilidad de web/rutas, sin build ni distribución.
+
+**Owner y territorio.** Claude Code es ejecutor principal de `app/**`, `src/**`,
+config gris imprescindible (`app.json`) y pruebas del cliente. Codex orquesta,
+revisa, verifica y es dueño exclusivo de `convex/**`, contrato, CHANGELOG y
+eventual codegen. Documentación y pruebas se actualizan como evidencia. Todo se
+hace únicamente en `/Users/lucas/Documents/Core/worktrees/orbita/qa23-fixes`,
+rama local `fix/qa23-release-readiness`; `qa22-fixes` queda intacto.
+
+**Riesgo.** Alto por abarcar navegación, identidad offline, compra, datos
+persistidos y un contrato aditivo. Los cortes fail-closed son: ninguna autoridad
+de compra o escritura desde snapshots; ninguna publicación de datos sin dueño
+correlacionado; campos nuevos opcionales; cachés versionados por entradas; y
+degradación neutral para vínculos legacy. Los cambios se implementan y revisan
+por bloque, con prueba focal, typecheck y diff antes de avanzar.
+
+**Plan de pruebas.** Por bloque: pruebas puras de dominio y ownership, pruebas
+estructurales de ruta/copy/accesibilidad y regresiones existentes vecinas;
+`pnpm typecheck` y revisión de diff. Cierre: suite completa, gate de conteo con
+piso 2542, `git diff --check`, exports Expo web/iOS sólo a `/private/tmp` y
+revisión manual del árbol. La QA física de VoiceOver queda fuera y sólo se
+mantiene/cubre la accesibilidad automatizada.
+
+**Rollout.** Futuro PR y futura build 24 únicamente después de autorización
+separada. El contrato de vínculo es aditivo y puede convivir con builds 22/23;
+el cliente nuevo degrada ante backend viejo y filas legacy. Esta tarea no hace
+commit, push, deploy, build, EAS/TestFlight, submit ni App Review.
+
+**Rollback.** Antes de deploy futuro, descartar/revertir el cambio de fuente
+restaura el build 23 sin migración. Después de un eventual deploy que haya
+escrito el campo opcional de vínculo, el rollback seguro es mantener el campo en
+schema/backend y revertir sólo el cliente hasta que expiren cachés; no se elimina
+schema contra filas ya escritas. Los snapshots offline nuevos son de
+presentación y quedan inertes si el lector se revierte.
+
+**Fuera de alcance aceptado.** Baúl del Umbral; copy del CTA de cuota agotada;
+refinamiento de múltiples exactos; QA física de VoiceOver; commit, push, deploy
+de Convex, codegen no imprescindible, build 24, EAS/TestFlight, App Review y
+publicación; otros productos y otros worktrees.
+
+### Avance verificado · bloques 1–8 cerrados en fuente (sin publicar)
+
+Esta sección **reemplaza el estado provisional que sigue debajo**, escrito por
+el ejecutor antes de que Codex completara backend y pruebas.
+
+- **Bloques 1–2:** implementación frontend completa; focal conjunto en verde
+  (`181/181`) y `pnpm typecheck` en verde.
+- **Bloque 3:** backend y frontend completos. `ORB-LUN-002` incorpora alcance
+  diario `{localDate, timezone}`, persiste como snapshot diario, acota
+  `validUntil` al primer borde seguro y el cliente ancla todos los escalares a
+  `observedAt`. Focal backend/frontend y bordes en verde (`93/93`), typecheck en
+  verde. No hubo codegen ni deploy.
+- **Bloque 4:** completo en contrato, schema, motor, caché y cliente. Ocho tipos
+  y labels exactos; alta/edición junto al nombre; `null` legacy distinto de
+  `prefer_not_to_say`; CTA no bloqueante para legacy; hash, idempotencia y
+  claves de lectura incluyen el tipo. Sólo `romantic` publica `Deseo` o lenguaje
+  de atracción; cualquier otro tipo y legacy usan `Energía compartida` con
+  redacción neutral sobre iniciativa, expresión y acuerdos. El tipo no se
+  infiere de carta/fecha/signo y las técnicas se contrastaron con los locators
+  locales de `ORB-REL-002/003`. Un backend viejo puede rechazar el único campo
+  nuevo sin perder el alta: el cliente reintenta el mismo intento sin ese campo,
+  informa la degradación y ofrece salida al perfil. Focal consolidado en verde:
+  **100/100**; `pnpm typecheck` y `git diff --check` en verde. No hubo LLM nuevo,
+  migración, codegen ni deploy.
+- **Bloque 5:** perfil canónico en `/vinculos/[profileId]`, comparación hija en
+  `/vinculos/[profileId]/comparacion`, filas y post-guardado al perfil, dos CTA
+  explícitos y cero cálculo automático desde raíz/perfil. Ownership y deep links
+  resuelven el id contra `relationships.list` antes de publicar datos. Focal
+  consolidado en verde: **116/116**; `pnpm typecheck` y `git diff --check` en
+  verde.
+
+- **Bloque 6:** arranque visual escrito en fuente y en `app.json`. Un solo color
+  `#0A0B0E` para splash, root view, `Stack` raíz y los seis gates; barra de
+  estado `light` declarada una sola vez y repetida por el shell con el mismo
+  token; los cuatro redirects de gate reemplazan sin animación y la navegación
+  posterior conserva la suya; el chip del plan sigue sin poder decir `Free`
+  antes de saberlo, y ahora ningún gate nombra un plan siquiera. Las pruebas
+  del bloque y sus regresiones vecinas cerraron **41/41**; `pnpm typecheck` y
+  `git diff --check` están en verde. No hubo prebuild ni build.
+- **Bloque 7:** timeout no equivale a signed-out; sesión degradada sólo con
+  identidad previa nativa en SecureStore y ownership exacto, web fail-closed,
+  aviso/reintento sin reinicio y bloqueos explícitos para pago, restore, edición
+  natal, eliminación y escrituras de Vínculos. La secuencia de cambio A→B
+  serializa `clear` y `write` y nunca publica owner durante una transición.
+  Focal ampliada en verde: **211/211**; `pnpm typecheck` y `git diff --check` en
+  verde. No hubo codegen, deploy, prebuild ni build.
+
+- **Bloque 8:** auditoría de release-readiness del onboarding nuevo completo y
+  del flujo de pago/restore/reinicio cerrada. Se corrigieron: adopción indebida
+  del borrador anónimo al entrar con una cuenta existente; falso fallo del alta
+  si fallaba el recordatorio; selección de ciudad que pedía dos toques con el
+  teclado abierto; salida local post-guardado que podía quedar trabada; y el
+  enlace de cuenta existente de Clerk web, que ahora sale a `/iniciar-sesion`
+  antes de reutilizar una sesión. El focal propio cerró **16/16** y la
+  reverificación estructural de los contratos que cambiaron cerró **202/202**.
+
+**Cierre final:** suite completa **2720/2720** (piso requerido 2542),
+`pnpm typecheck` exit 0, `git diff --check` exit 0 y exports Expo web/iOS exit 0
+fuera del repositorio (`/private/tmp/orbita-qa23-web-final`, 33 MB, 189 archivos;
+`/private/tmp/orbita-qa23-ios-final`, 30 MB, 125 archivos). No hubo commit,
+push, codegen, deploy, prebuild, build nativo, EAS, TestFlight ni App Review.
+No hay bloque 9: sólo queda la autorización separada para integrar/publicar y
+la revalidación física sobre una futura build 24.
+
+### Bloque 8 · cierre técnico: alta nueva y pago/restore/reinicio (QA23-008) · VERIFICADO
+
+**Estado.** Auditoría completa del grafo real —nativo y web— del onboarding
+nuevo y del comercio, con las correcciones de fuente y pruebas descriptas
+abajo. Codex verificó el focal propio **16/16**, los contratos estructurales
+afectados **202/202**, la suite completa **2720/2720**, `pnpm typecheck` y
+`git diff --check`; los exports Expo web e iOS terminaron en verde fuera del
+repo. No hubo codegen, deploy, prebuild, build nativo, EAS, TestFlight ni App
+Review. `app.json` conserva versión `1.0.0` y build `23`; sus cambios sólo
+preparan el fondo de arranque para una futura build 24 autorizada.
+
+**Qué se recorrió, y hasta dónde.** El grafo entero de entrada y de cobro, leído
+de punta a punta: `app/index.tsx` y `src/routes/v492/index{,.web}.tsx` →
+`resolveStart` → `/onboarding` → `OnboardingGate` → `AccountGate` →
+`OnboardingFlow` (los quince pasos, el borrador local y el remoto, la tríada, el
+paso de cuenta con la UI oficial de Clerk, el cierre y la recepción) →
+`/iniciar-sesion` → `useAccountBootstrap` → `/editar-datos`; y del otro lado
+`/paywall` → `PlusPaywallScreen` → `RevenueCatProvider` → `nativeCommerce` /
+`purchaseGuard`, más `ManageSubscriptionBlock`, el Perfil y
+`PendingDeletionBoundary`. Del backend se leyeron —sin tocar—
+`convex/onboarding.ts`, `convex/publicOnboarding.ts` y
+`convex/lib/onboardingCompletion.ts`, porque los tres defectos de identidad del
+alta sólo se ven cruzando el cliente con lo que la mutación hace de verdad.
+
+#### Defecto 1 · una cuenta se quedaba con los datos natales de otra alta
+
+**Qué pasaba.** El `clientDraftId` del alta anónima vive en memoria de módulo
+(nativo) y en `sessionStorage` (web) — a propósito: es lo que le permite
+sobrevivir a la vuelta de Clerk en web. Pero también sobrevivía a la pantalla de
+login, y ahí dejaba de ser suyo:
+
+1. `SessionResilienceProvider` le pasa ese id a
+   `onboarding.getCompletionStatus`. El backend lo busca y acepta el borrador si
+   **no tiene dueño** (`safeExplicitDraft`), que es exactamente el caso de un
+   borrador anónimo. Con él presente contesta `recovery: "onboarding"`.
+2. Con esa respuesta, `resolveReadinessDestination` manda a una cuenta
+   preexistente incompleta **al alta**, que es create-only, en vez de a
+   `/editar-datos`, que es su destino diseñado.
+3. Ya adentro del alta, `sesionActiva` hace que `prepareSignupDraft` se saltee
+   entero: con la sesión activa el borrador remoto **no se vuelve a escribir**.
+   Los pasos 4–12 se cargan sólo en `useState`.
+4. El cierre llama `completeSignupFromDraft({ clientDraftId })`, y esa mutación
+   copia fecha, hora, lugar, coordenadas y zona **de la fila del borrador** — no
+   de lo que la persona acaba de tipear.
+
+**El resultado.** La cuenta que acaba de entrar se queda con los datos de
+nacimiento del alta anterior (otra persona en un teléfono o una pestaña
+compartida, o los datos viejos de la misma persona), y lo que tipeó se descarta
+sin un solo aviso. Es el caso que el criterio «una cuenta A nunca hereda datos de
+B» nombra, y estaba abierto.
+
+**Reproducción, sin inventar nada.** Empezar el alta, llegar al paso 13 (el
+borrador remoto queda guardado y confirmado ahí), no crear la cuenta, volver
+atrás hasta el paso 0, tocar «Ya tengo cuenta» y entrar con una cuenta que
+existe y no completó su alta.
+
+**La corrección (`app/iniciar-sesion.tsx`).** Entrar por esa puerta es la
+declaración explícita de «ya tengo cuenta», así que el alta anónima se
+**abandona**: `clearDraft()` en `enter`, que es el `onSignedIn` de
+`SignInScreen` y por donde pasan las tres vías (código, contraseña y Google).
+Con el id fuera, `getCompletionStatus` deja de encontrar el borrador ajeno, la
+cuenta incompleta vuelve a `/editar-datos` —que sí puede completar y recalcular—
+y el alta no se puede montar ni por deep link
+(`destinationAllows("edit-birth-data", "onboarding") === false`). Volver atrás o
+salir a «Crear una cuenta» **no** borran nada: ahí el alta sigue siendo de quien
+la empezó.
+
+#### Defecto 2 · un fallo del recordatorio diario se reportaba como alta fallida
+
+**Qué pasaba.** `scheduleDailyReminder` traga el error del **permiso**
+(`requestNotificationAccess`), pero no el de
+`cancelAllScheduledNotificationsAsync` ni el de `scheduleNotificationAsync`, que
+pueden tirar con el permiso ya concedido. `createProfile` los esperaba **después**
+de haber escrito el perfil y su dueño en disco, así que ese rechazo se propagaba
+hacia atrás a los cuatro llamadores: el cierre del alta quedaba en «Guardando tus
+datos…», el editor natal decía «no cambiamos nada» habiendo escrito, y el
+bootstrap y la recuperación del arranque mostraban reintento sobre algo que ya
+estaba guardado.
+
+**La corrección (`src/hooks/useAppState.tsx`).** El recordatorio es un efecto
+lateral, no parte de la creación del perfil: las dos llamadas —creación y
+edición— quedan `.catch(() => false)`. El orden no cambió: primero el disco,
+después el efecto lateral.
+
+#### Defecto 3 · elegir la ciudad pedía dos toques
+
+**Qué pasaba.** `keyboardShouldPersistTaps` por defecto es `"never"`: con el
+teclado abierto, el primer toque fuera del campo lo cierra y **no se entrega al
+hijo**. El paso «¿Dónde naciste?» es exactamente esa interacción —se tipea y se
+toca un resultado de la lista— y el shell del alta
+(`src/onboarding/components/Screen.tsx`) no lo declaraba. El editor natal sí lo
+declaraba por su cuenta, con el comentario que explica justamente este caso: las
+dos superficies con la misma interacción se comportaban distinto.
+
+**La corrección.** `keyboardShouldPersistTaps="handled"` en el `ScrollView` del
+shell del alta —una vez, para todos los pasos— y `accessibilityRole="button"`
+más `accessibilityHint` en cada resultado de ciudad, que se leían como texto
+suelto y no ofrecían activarse. El mismo shell lo monta `SignInScreen`, así que
+el `Continuar` / `Verificar código` del login con el teclado abierto también deja
+de necesitar dos toques.
+
+#### Defecto 4 · el cierre del alta no tenía salida si fallaba la parte local
+
+**Qué pasaba.** `enterApp` tomaba `enterLock` y no lo soltaba nunca («en el éxito
+ya navegamos fuera»). Un rechazo de `createProfile` —AsyncStorage, o el
+recordatorio del defecto 2— dejaba el candado tomado, sin `submitError` y sin
+navegación: la pantalla quedaba en «Guardando tus datos…» sin un solo control,
+con los datos **ya guardados en la cuenta**. La única salida era matar la app (y
+recién ahí el arranque reconciliaba contra Convex).
+
+**La corrección (`src/onboarding/OnboardingFlow.tsx`).** El cuerpo pasó a
+`abrirOrbita` y `enterApp` es ahora el candado más su fallo: suelta el candado,
+publica `entryFailed` y la pantalla ofrece **volver a entrar** —no a guardar de
+nuevo algo que ya está hecho—. El aviso lo dice así («tus datos quedaron
+guardados en tu cuenta, pero no pudimos abrir Órbita en este teléfono») y el
+anuncio para lector de pantalla deja de ser «no pudimos sincronizar tus datos»,
+que habría afirmado una pérdida que no ocurrió. `SavingBirthData` recibió dos
+props opcionales con el valor de siempre por defecto, así que el camino de
+guardado no cambió en nada.
+
+#### Lo que se revisó y quedó BIEN (evidencia, no resumen)
+
+- **Ownership del alta.** El aislamiento de datos ajenos corre **antes** de
+  elegir destino y también cuando la cuenta activa no tiene `birthData`
+  (`runAccountBootstrap`, `resolveAccountDestination` → `bootstrap`), con archivo
+  bajo el dueño anterior + `resetApp` y fail-closed si el archivo falla. El
+  arranque nativo hace lo mismo en su rama `recover`, y `leaveWithoutSignIn`
+  cubre al que se va del login sin entrar.
+- **Alta parcialmente persistida.** El cierre es idempotente por `clientDraftId`
+  (`completeSignupFromDraft` → `decideOnboardingBirthDataWrite` devuelve
+  `idempotent` para el mismo payload) y la puerta de salida es la query reactiva
+  `getCompletionStatus`, no el retorno de la escritura: un reintento no duplica y
+  un corte no pierde. `commitProfileCreation` persiste perfil y dueño **antes**
+  de publicar la adopción diferida.
+- **Doble toque.** `submitLock` y `enterLock` son refs sincrónicos;
+  `verifyGuardRef` cubre el auto-submit del código contra el tap del botón;
+  `runExclusive` + `createOwnerGates` cubren compra, restore, Customer Center y
+  activación, y el candado es **por dueño**.
+- **Sesión sin confirmar (bloque 7) sobre el alta.** `AccountGate` resuelve la
+  sesión sin confirmar **antes** que nada y nunca redirige por ella; con
+  `sticky` —que sólo declara el alta— un corte de red en el paso 13 no desmonta
+  el flujo con la cuenta recién creada. Ninguna escritura sale de ahí sin cuenta
+  activa: `submit` exige `cuentaActiva` y vuelve al paso de cuenta con el
+  borrador intacto, y `useOnboardingFinalize` rechaza sin `isSignedIn`.
+- **Ningún CTA cobra, restaura o gestiona sin sesión confirmada.** `/paywall`
+  declara `requires="confirmed-session"` (apaga Offering, compra, restore y
+  Customer Center de una vez); `restoreReady` exige identidad de RevenueCat **y**
+  entitlement remoto resuelto para esta cuenta; las seis operaciones del SDK
+  pasan por `runOnStore`, que exige `isLive` + identidad alineada + generación;
+  `ManageSubscriptionBlock` deriva del **remoto** (sin él, `view === "loading"` y
+  no dibuja ninguna acción) y separa el dueño de Clerk —portal de Stripe— del
+  dueño de la tienda —Customer Center y restore—; `Eliminar mi cuenta` se
+  revalida en el handler.
+- **Resultado ambiguo y reinicio.** El marcador se escribe en disco **antes** de
+  abrir la hoja de la tienda y sobrevive al desmontaje: al remontar, el primario
+  es `restore` y nunca `purchase`. Sólo una cancelación demostrada o un restore
+  vacío autoritativo lo levantan; `store_confirmed` no, y `recheck_empty`
+  tampoco. Un marcador ilegible bloquea (falla cerrado) y el de A no frena a B.
+- **Cambio A → B.** `purchaseSessionForOwner` devuelve una sesión nueva en el
+  mismo render, así que B nunca hereda el `guardLoaded` de A; `publishOwnedValue`
+  hace que una continuación tardía de A no pueda publicar ni limpiar sobre B; y
+  `storeIdentityIsCurrent` cae el estado del provider de forma **síncrona**.
+- **Snapshot del entitlement y plan sin parpadeo.** El snapshot es por cuenta y
+  validado; `labelReady` es exactamente «la vista efectiva afirma un plan», así
+  que `Free` no puede aparecer antes de saberlo; y todo lo que decide plata sale
+  de `remote`/`resolved`, nunca de `effective`.
+- **PendingDeletionBoundary × compra.** El boundary envuelve sesión, plan y
+  Stack, así que un marcador vivo desmonta el producto entero antes de que
+  `RevenueCatProvider` identifique a nadie; la purga llama `clearPurchaseGuard`
+  (que **propaga** el fallo) y sólo declara `completed` si todos los pasos
+  cerraron; en web no purga y lo dice.
+
+**Archivos tocados en este bloque.**
+
+| Archivo | Qué cambió |
+|---|---|
+| `app/iniciar-sesion.tsx` | `clearDraft()` en `enter` (el `onSignedIn` de las tres vías) + el porqué escrito. |
+| `src/hooks/useAppState.tsx` | `scheduleDailyReminder` best-effort en `createProfile` y `updateProfile`. |
+| `src/onboarding/OnboardingFlow.tsx` | `abrirOrbita` + `enterApp` con su catch; estado `entryFailed`; `SavingBirthData` con `errorLabel`/`retryLabel` opcionales. |
+| `src/onboarding/components/Screen.tsx` | `keyboardShouldPersistTaps="handled"` en el scroll del shell del alta. |
+| `src/onboarding/screens/BirthplaceSearchScreen.tsx` | Rol y pista accesibles en cada resultado de ciudad. |
+| `test/altaYPagoQA23.test.ts` (nuevo) | La prueba focal del bloque. |
+
+**Prueba escrita · NO EJECUTADA.**
+
+| Archivo | Qué fija | Estado |
+|---|---|---|
+| `test/altaYPagoQA23.test.ts` (nuevo) | **Puro y ejecutado:** el ciclo de vida del borrador anónimo sobre un `sessionStorage` falso —que el id sea estable y sobreviva a un remonte (la propiedad que el alta necesita) y que `clearDraft()` se lleve el id **y** los datos tipeados, y que un alta posterior estrene el suyo—; la cadena de destino completa (`resolveReadinessDestination` → `resolveAccountDestination` → `destinationAllows`) para una cuenta preexistente incompleta y para una completa, que es lo que decide si el alta se puede montar; y los puntos de reinicio del pago (marcador persistido → `restore`, marcador ilegible → `restore`, marcador de otra cuenta → `purchase`, qué respuestas levantan el bloqueo, y que un cambio A → B no herede ni `guardLoaded` ni una publicación tardía). **Cableado, leyendo la fuente:** que `/iniciar-sesion` importe y llame `clearDraft` en `enter` y que `leaveWithoutSignIn` **no** lo llame; que las tres vías de `SignInScreen` pasen por `onSignedIn`; que `enterApp` suelte el candado y ofrezca entrar; que las dos llamadas al recordatorio estén `.catch`-eadas y sigan después del disco; que el shell del alta persista los taps y que el resultado de ciudad tenga rol; y que ningún CTA comercial exista sin sesión confirmada (`requires` del pago y del editor, `restoreReady`, las seis acciones por `runOnStore`, el remoto en `ManageSubscriptionBlock` y la revalidación del borrado en Perfil). | **escrito, sin ejecutar** |
+
+**Lo que esta prueba NO afirma.** No monta React ni navega: fija que el handler
+revalide y que la ruta declare su exigencia, no cómo se ve. No compra de verdad
+—la hoja de StoreKit, el webhook y el Customer Center son prueba de dispositivo—
+y no ejercita `expo-secure-store` ni el comportamiento real de Clerk sin red. Y
+no prueba el backend: `completeSignupFromDraft` se leyó, no se corrió.
+
+**Comandos exactos que Codex tiene que correr.**
+
+1. `pnpm typecheck`
+2. `npx tsx --test test/altaYPagoQA23.test.ts`
+3. Focal de regresión vecina (todo lo que lee estas fuentes o depende de ellas):
+   `npx tsx --test test/sesionOfflineQA23.test.ts test/arranqueVisualQA23.test.ts test/planIndicatorQA23.test.ts test/v492ReleaseP1.test.ts test/responsiveShells.test.ts`
+4. `git diff --check`
+5. Suite completa con el piso de conteo (`>= 2542`, ahora + los casos nuevos) y
+   cero fallos.
+6. Export Expo web/iOS fuera del repo (`/private/tmp`), sin build ni
+   distribución.
+
+**Riesgos anotados.**
+
+1. **Nada de esto se ejecutó.** Es el riesgo principal, igual que en el bloque 7:
+   el ejecutor trabajó sin shell por instrucción explícita. Los cinco archivos de
+   fuente y la prueba están escritos y sin una sola corrida.
+2. **Las aserciones estructurales de la prueba nueva son de TEXTO.** Fijan
+   fragmentos concretos (`const restoreReady = …`, `onRetry={entryFailed ? …}`,
+   el conteo de `await runOnStore(`). Un reformateo las rompe por forma y no por
+   conducta. Están elegidas sobre líneas que llevan la garantía, no sobre
+   decoración, pero conviene saberlo.
+3. **`OnboardingFlow` cambió de forma.** El cuerpo del cierre se llama ahora
+   `abrirOrbita`, hay un estado nuevo (`entryFailed`) y `SavingBirthData` tiene
+   dos props más. Si alguna prueba existente lee ese archivo esperando la forma
+   anterior —en particular una que afirme que `enterLock` **nunca** se libera—
+   falla por forma y hay que actualizarla: la conducta nueva es deliberada.
+4. **`app/iniciar-sesion.tsx` cambió `enter`.** Era un cuerpo de una línea. Una
+   prueba estructural que lo lea literal falla por forma.
+5. **`keyboardShouldPersistTaps="handled"` aplica a TODOS los pasos con
+   `scroll`.** Es el comportamiento estándar y el mismo que ya tenían el editor
+   natal y el paso de cuenta, pero cambia cómo se cierra el teclado en esos
+   pasos: ahora un toque sobre un control lo conserva. Conviene mirarlo en el
+   teléfono en el paso 6 y en el 13.
+6. **La cuenta preexistente incompleta cambia de destino.** Con el borrador
+   abandonado ya no entra al alta: va a `/editar-datos`. Es el destino diseñado y
+   documentado en `resolveReadinessDestination`, pero es un cambio de conducta
+   visible y es lo primero que hay que probar en el teléfono: entrar con una
+   cuenta sin datos natales y confirmar que aterriza en el editor y que puede
+   completar y recalcular.
+7. **Queda un camino que esta corrección NO cubre.** Si la UI oficial de Clerk
+   ofrece «iniciar sesión» **dentro** del paso 13, la sesión se activa sin pasar
+   por `/iniciar-sesion` y el borrador —que en ese caso es el que la persona
+   acaba de cargar— se adjunta igual. Con una cuenta que ya tiene datos natales,
+   `decideOnboardingBirthDataWrite` tira `ONBOARDING_BIRTH_DATA_CONFLICT` y el
+   cierre reintenta sesenta segundos antes de mostrar el error: es fail-closed
+   (no pisa datos) pero la espera es larga y el mensaje habla de conexión. No se
+   tocó porque cerrarlo bien exige que el backend distinga «este borrador creó
+   esta cuenta», que es territorio de Codex.
+8. **El cierre exitoso deja `submitLock` tomado a propósito.** Si
+   `finalizeOnboarding` cierra bien pero la query reactiva de readiness nunca
+   confirma, la pantalla se queda en «Guardando tus datos…» sin CTA. Reiniciar la
+   app lo resuelve (el arranque reconcilia contra Convex). No se cambió: soltar
+   el candado ahí habilitaría reescrituras sobre un cierre ya hecho.
+9. **La instalación nueva sin red no puede empezar el alta.** Con
+   `transient-unavailable`, `AccountGate` bloquea la superficie `onboarding` con
+   reintento. Antes era un spinner infinito, así que es mejor, pero los doce
+   primeros pasos del alta son locales y hoy no se pueden ver sin conexión. Es
+   conducta heredada del bloque 7, no de éste, y se deja anotada porque es lo
+   primero que ve alguien que instala en el subte.
+
+**Autorizaciones pendientes.** Commit, push, PR, deploy de Convex, codegen,
+prebuild, build 24, EAS, TestFlight, submit y App Review siguen **sin
+autorizar** y no se hicieron. `app.json` no se tocó.
+
+### Bloque 7 · una sesión sin confirmar no es una sesión ausente (QA23-007) · VERIFICADO
+
+**Estado.** Implementación completa y verificada en el árbol de trabajo, **sin
+commit**. Después de tres pasadas de implementación/revisión, Codex cerró la
+tanda focal ampliada en **211/211**, `pnpm typecheck` y `git diff --check` en
+verde. No se tocó `convex/**` durante este bloque, no hubo codegen, deploy,
+prebuild, build, EAS, TestFlight ni App Review.
+
+**Tercera pasada · hallazgos y cierre de la verificación de Codex.** La focal
+intermedia cerró `204/204` y `git diff --check` quedó en verde, pero aparecieron
+dos cosas; ambas quedaron corregidas y la repetición final cerró `211/211` más
+typecheck y diff-check verdes:
+
+1. **`pnpm typecheck` fallaba en el propio focal.** `test/sesionOfflineQA23.test.ts`
+   le pasaba a `resolveLocalViewer` un literal con `confirmationTimedOut` adentro,
+   y esa señal es de `SessionSignals`, no de `LocalIdentitySignals`. Se corrigió
+   **sin debilitar el caso**: el estado con el plazo vencido se nombra una vez,
+   tipado como `SessionSignals`, y se usa para las dos aserciones (la confianza
+   degradada y que la vía del dueño sea la viva).
+2. **Había una carrera material entre `clear` y `write`.** El efecto marcaba la
+   identidad en memoria y arrancaba el `clear`; el render siguiente veía el
+   registro vacío, decidía `write` y lo arrancaba **con el `clear` todavía en
+   vuelo**. Los comentarios decían «dos pasos», pero nada los serializaba: el
+   resultado dependía de cuál promesa del llavero resolviera última y una de las
+   posibilidades era el `clear` borrando al dueño que el `write` acababa de
+   escribir. La corrección está descrita abajo, en «La serialización».
+
+**Los cuatro huecos que marcó Codex, y qué se hizo con cada uno.**
+
+1. **La política sólo degradaba si Clerk publicaba `userId` en este proceso**, y
+   eso no cubre el timeout COMPLETO de Clerk para una cuenta previamente válida
+   —que es el caso de aceptación escrito—. Se agregó una **identidad
+   previamente confirmada** en almacenamiento seguro nativo (`expo-secure-store`,
+   ya instalado), con su secuencia fail-closed. Ver abajo. **Y una pieza más que
+   la revisión no pidió pero sin la cual la anterior era código muerto:**
+   `src/routes/v492/index.tsx` cortaba en `auth-timeout` —la pantalla de
+   reintento del arranque— antes de que ningún gate opinara, y ése es exactamente
+   el arranque en frío sin red. Ahora, y sólo con `degraded-local`, redirige a
+   `/hoy`; para todo lo demás el bloqueo no destructivo queda igual y
+   `resolveStart` no se tocó.
+2. **`/editar-datos` no declaraba nada** y se apoyaba en que
+   `destinationAllows("degraded", "edit-birth-data")` hoy sea `false`. Ahora
+   declara `requires="confirmed-session"` y además revalida en el handler.
+3. **Los tres handlers de escritura de Vínculos** quedaban autorizados por una
+   implicación de render (`useLayers` desmonta el cuerpo al degradar). Ahora
+   revalidan `useSensitiveOperation("account-write")` pegado a cada
+   action/mutation y apagan el control con copy accesible.
+4. **La cobertura de «últimos datos» estaba redondeada.** Ahora está enumerada,
+   en el copy y en esta ficha.
+
+**El defecto.** Con la sesión restaurada del llavero y sin red, la app no
+distinguía «no se puede confirmar» de «no hay cuenta». Dos formas del mismo
+error, las dos reproducibles leyendo el código del build 23:
+
+1. **El spinner infinito.** `useConvexAuth` no valida el token, así que
+   `liveAppGate` deja `isAuthLoading` en `true`, `resolveAccountDestination`
+   contesta `loading` y `AccountGate` dibuja `MinimalLoading` para siempre. No
+   hay plazo, no hay reintento y no hay salida sin matar la app.
+2. **La pantalla de error sobre todo el producto.** Si `getOrCreateCurrentUser`
+   agota sus tres intentos, el destino pasa a `retry` y el gate tapa la app
+   entera —con todo lo de esa misma cuenta ahí en disco—.
+
+Y una tercera pieza: aunque el shell hubiera abierto, **cada sección se habría
+quedado girando**, porque `LayersProvider` deriva su fase de `sessionPhase`, que
+con `isAuthLoading` responde `cargando`.
+
+**La decisión de diseño.** Cinco estados explícitos, nunca colapsados:
+`loading`, `confirmed-signed-in`, `confirmed-signed-out`,
+`transient-unavailable` y `degraded-local`. La línea que **no** se cruza:
+degradar no afloja la identidad. `degraded-local` exige un **dueño vigente** que
+sea **exactamente** el dueño persistido del perfil (`orbita:profile-owner`) y el
+de **cada snapshot local que la superficie vaya a publicar**. Un signed-out
+**confirmado** sigue mandando al login y sigue sin tocar un solo byte local.
+
+**Lo que cambió en la corrección: de dónde puede salir ese dueño.** Con una sola
+fuente —el `userId` vivo de Clerk— el bloque no cubría su propio caso de
+aceptación. Ahora hay dos, y la segunda no afloja la primera:
+
+1. **Vivo.** Clerk publicó un `userId` en ESTE proceso. Cubre el corte de red con
+   Clerk ya cargado: el handshake de Convex que no cierra, la fila `users` que
+   agota sus intentos, el estado autoritativo que no llega.
+2. **Previamente confirmado.** El último dueño que esta app confirmó de punta a
+   punta, guardado en el **llavero del sistema** (`expo-secure-store`:
+   Keychain/Keystore) bajo `orbita.session.last-confirmed-owner`. Cubre el
+   **timeout completo de Clerk**, que es el caso real de "abro la app sin red con
+   la sesión en el llavero": ahí Clerk no publica nada y con la regla anterior el
+   producto entero quedaba tapado por un bloqueo.
+
+Lo que se guarda es un `clerkUserId` —el mismo identificador público que ya vive
+en claro en `orbita:profile-owner`—, **no un token**. No se lee, se copia ni se
+toca nada del almacén de Clerk. No autoriza: toda operación sensible sigue
+exigiendo `confirmed-signed-in`; esto sólo puede habilitar una **lectura** de lo
+que ya está en el aparato.
+
+**La secuencia fail-closed** (`secureIdentityAction`, pura y probada):
+
+- **Escribir** sólo con `confirmed-signed-in`. Ni una espera, ni un timeout, ni
+  una sesión degradada dejan una identidad nueva en disco.
+- **Borrar** ante un signed-out **confirmado**, y ante **cualquier** dueño vivo
+  distinto del guardado. Un cambio de identidad se resuelve en **dos pasos**
+  —`clear` y recién en la vuelta siguiente `write`— para que un cierre de la app
+  en el medio deje el registro vacío (que no abre nada) en vez de dejar al dueño
+  anterior (que abriría lo que no debe). En el servicio, escribir es además
+  `deleteItemAsync` y después `setItemAsync`, por la misma razón.
+- **No tocar** en todo lo demás: un corte de red no puede alterar el disco.
+- Un **error** de lectura o de escritura deja la identidad en nada, y nada no
+  abre. Mientras el llavero **no contestó**, el vínculo local es `unknown`: no se
+  muestra un solo dato antes de terminar de hidratar esta identidad.
+- Un registro **versionado** que no se entiende se lee como ausencia. No hay
+  migración: perder la identidad previa cuesta un bloqueo con reintento, aceptar
+  un formato desconocido costaría mostrar los datos de otra cuenta.
+
+**La serialización (tercera pasada).** `secureIdentityAction` contesta sobre un
+registro **quieto**, y entre que una operación arranca y que el llavero contesta
+el registro no es ni lo viejo ni lo nuevo. Preguntar ahí calcula la respuesta
+contra un disco que ya no existe, y eso es lo que hacía que los «dos pasos»
+fueran uno con dos resultados posibles. Ahora el estado del registro se modela
+entero y las dos preguntas se hacen sobre él, las dos puras y probadas:
+
+- **`SecureIdentitySlot`** = `{ hydrated, busy, error, owner }`. `hydrated` es
+  «la lectura inicial contestó»; `busy` es «hay UNA operación en vuelo».
+- **`publishSecureIdentity(slot)`** es lo único que ve la política de sesión.
+  Con la lectura sin terminar, con una operación en vuelo o con el llavero roto:
+  `ready: false` (o `error: true`) y **`owner: null`**. Sólo un registro quieto y
+  confirmado publica un dueño, así que **durante la transición no se puede abrir
+  el shell degradado con la identidad previa**.
+- **`nextSecureIdentityStep({ slot, confidence, liveOwner })`** es lo único que
+  autoriza una operación, y agrega tres puertas a la política de siempre: no
+  decide sin la lectura, **no arranca una segunda operación mientras hay una en
+  vuelo**, y no vuelve a tocar un llavero que falló. Sobre un registro quieto
+  contesta exactamente lo mismo que `secureIdentityAction` —hay una prueba que lo
+  fija— así que no es una segunda política.
+- En el provider, un **candado en `useRef`** (`enVuelo`) toma antes de cualquier
+  otra cosa y se suelta **siempre**, incluso si el árbol se desmontó: un candado
+  tomado para siempre dejaría el llavero muerto y con él la degradación offline.
+  Un resultado que llega tarde al **mismo árbol vivo se aplica igual** —es el de
+  la única operación que hubo—; lo único que se descarta es publicar sobre un
+  árbol que ya no está. La lectura inicial sólo puede **hidratar**: si contesta
+  después de que este proceso escribió o borró, manda lo que se hizo.
+- Nada de esto usa timers ni depende del orden en que resuelvan las promesas:
+  con una sola operación posible por vez, no hay carrera que ordenar. El `write`
+  de un cambio de identidad lo decide el render que ve el `clear` **ya
+  terminado**. Y cualquier fallo —promesa rota o resultado negativo— deja
+  `BROKEN`, que no publica dueño y por lo tanto no abre nada.
+
+**En web no existe.** `localStorage` es legible y escribible por cualquier script
+del origen, así que guardar ahí "el último dueño confirmado" no sería una prueba
+de identidad sino un valor que decide qué se muestra y que cualquiera puede
+poner. `src/services/secureIdentity.web.ts` declara
+`SECURE_IDENTITY_SUPPORTED = false` y contesta siempre "no hay registro": sin
+`userId` vivo, el navegador **conserva el gate**, exactamente como antes del
+bloque.
+
+**Los tres casos que jamás abren, dicho una vez:** cuenta B confirmada mirando el
+perfil de A; perfil sin dueño (invitado o legado); snapshot sin dueño o de otra
+cuenta. Y uno más que la corrección agregó: Clerk que afirma `isSignedIn` sin
+publicar `userId` — ahí no se cae al dueño previo, porque atribuirle a una sesión
+nueva la identidad de la vieja es justamente lo que no puede pasar.
+
+**Qué se hizo.**
+
+- **`src/domain/sessionResilience.ts` (nuevo)** — la política, pura y sin React:
+  `resolveSessionConfidence` (los cinco estados), `resolveLocalViewer` (de dónde
+  sale el dueño vigente: `live` / `secure-prior` / `pending` / `none`),
+  `resolveLocalIdentity` (seis vínculos: `unknown` / `none` / `unowned` /
+  `unproven` / `foreign` / `secure`, con `unproven` y `foreign` separados a
+  propósito), `publishableViewer` (el dueño con el que se puede publicar un dato:
+  un dueño previo sólo vale si la identidad local entera cerró contra él),
+  `sensitiveOperationAllowed` sobre una tabla operación → confianza declarada una
+  por una, `sensitiveOperationBlockMessage`, `surfaceOpensUnderConfidence`,
+  `applySessionResilience`, `ownedDataReadable`, `sessionPhaseUnderConfidence` y
+  el copy. `SESSION_CONFIRMATION_TIMEOUT_MS = 8000`, el **mismo** plazo que ya
+  usaban la raíz y el gate de las pestañas para el `isLoaded` de Clerk. Las
+  señales nuevas de la identidad previa son **opcionales con default cerrado**:
+  quien no la declara no puede abrir por ella.
+- **`src/domain/secureIdentity.ts` (nuevo, corrección)** — el registro previo,
+  puro: clave, versión, `serializeSecureIdentity`, `parseSecureIdentity` (todo lo
+  que no se entiende es ausencia; sin migración) y `secureIdentityAction`, que es
+  la secuencia fail-closed entera —`keep` / `write` / `clear`— y converge en un
+  máximo de dos pasos para toda combinación. **En la tercera pasada se le sumó el
+  estado del registro y sus dos preguntas**, también puras: `SecureIdentitySlot`
+  con sus constructores (`SECURE_SLOT_HYDRATING`, `SECURE_SLOT_EMPTY`,
+  `SECURE_SLOT_BROKEN`, `secureSlotSettled`, `secureSlotBusy`),
+  `publishSecureIdentity` (qué se le puede decir a la política; `null` en las
+  tres esperas) y `nextSecureIdentityStep` (qué operación se puede arrancar;
+  ninguna mientras haya una en vuelo). El módulo sigue sin importar runtime.
+- **`src/services/secureIdentity.ts` + `.web.ts` (nuevos, corrección)** — el
+  adaptador. Nativo: `expo-secure-store`, ninguna función tira (un llavero que no
+  contesta es una respuesta, y la más restrictiva), y escribir es borrar y
+  después escribir. Web: no-op que declara `SECURE_IDENTITY_SUPPORTED = false` y
+  no arrastra `expo-secure-store` al bundle.
+- **`src/hooks/useSessionResilience.tsx` (nuevo)** — el provider: **un** plazo,
+  **una** `onboarding.getCompletionStatus` y **una** lectura del llavero para
+  todo el árbol. La consulta vivía dentro de `useAccountDestination`, que se monta
+  en cada `AccountGate`: había una suscripción y un `setTimeout` por gate, y con
+  ellos dos ideas distintas de «la cuenta ya resolvió». Expone `confidence`,
+  `completion`, `viewer` y `retry`, más el azúcar `useSensitiveOperation(op)`. El
+  `retry` **no** rearma el plazo en el shell degradado: hacerlo lo devolvería a un
+  spinner y desmontaría lo que la persona está leyendo. La reconexión no necesita
+  el botón: cuando Convex vuelve a validar el token y la fila queda lista, la
+  confianza pasa sola a `confirmed-signed-in` y el aviso desaparece **sin
+  reiniciar**. En la corrección se le sumó: la hidratación única del llavero, el
+  efecto que aplica la política del registro (bajando la identidad en memoria
+  **antes** de tocar el disco), `viewer` derivado de `publishableViewer` y el
+  dueño del snapshot del plan declarado en `snapshotOwners` cuando la vista
+  efectiva viene del caché. **En la tercera pasada se serializó ese efecto**: un
+  solo estado `slot`, publicado con `publishSecureIdentity`; la decisión pasa por
+  `nextSecureIdentityStep`; el candado `enVuelo` impide arrancar una segunda
+  operación y se suelta siempre; `montado` distingue «resultado tardío del árbol
+  vivo» (se aplica) de «árbol desmontado» (no se publica); y la lectura inicial
+  ya no puede pisar lo que este proceso escribió. Se fue el `vivo = false` por
+  corrida del efecto, que cancelaba resultados del árbol vivo y era la mitad del
+  problema.
+- **`src/domain/accountDestination.ts`** — un destino nuevo, `degraded`, y una
+  sola línea en `destinationAllows`: lo admite `app` y nadie más. `landing`,
+  `auth`, `onboarding` y `edit-birth-data` conservan su gate. El resolver **no
+  cambió**: la resiliencia se aplica después, en `useAccountDestination`, y sólo
+  degrada `loading` y `retry`. Un destino resuelto —`sign-in`, `onboarding`,
+  `bootstrap`— manda siempre.
+- **`src/components/orbita/AccountGate.tsx`** — resuelve la sesión sin confirmar
+  **antes** que nada y **nunca redirige** por ella. Con identidad segura y
+  superficie permitida abre con `DegradedSessionBanner` arriba; si la ruta
+  declara `requires="confirmed-session"`, no abre. Sin identidad segura muestra
+  el bloqueo con reintento, con el motivo dicho según lo que la superficie
+  esperaba (donde hace falta cuenta: «no mostramos datos que no podemos
+  verificar»; en landing/login/alta: «no pudimos conectar»). **`sticky` manda
+  igual que en `loading`**: un corte de red en el paso 13 del alta no puede
+  desmontar el flujo con la cuenta recién creada.
+- **`src/components/orbita/SessionNotice.tsx` (nuevo)** — la franja y la pantalla
+  de bloqueo. Cero colores a mano: todo sale de `@/theme/boot` (QA23-006). Región
+  viva `polite` + `accessibilityRole="alert"`, botón real con rol, etiqueta,
+  pista y `minHeight: 44`, y la franja respeta el inset superior porque se dibuja
+  sobre un shell sin header.
+- **Bloqueos de escritura.** `/paywall` declara `requires="confirmed-session"`
+  (apaga de una vez Offering, compra, restore y Customer Center); el Perfil
+  bloquea `Eliminar mi cuenta` **en la vista y en el handler**, con `disabled`,
+  `accessibilityState` y el motivo escrito arriba del botón.
+  `ManageSubscriptionBlock` no necesitó gate nuevo: ya deriva del **remoto**, que
+  sin sesión viva es `undefined` y deja la vista en `loading` — se fijó con una
+  prueba para que nadie lo mueva a la vista efectiva (que incluye el snapshot).
+- **`app/editar-datos.tsx` (corrección).** Declara
+  `requires="confirmed-session"` **por sí misma**, y no por la coincidencia de
+  que `destinationAllows("degraded", "edit-birth-data")` hoy sea `false`: ampliar
+  esa superficie mañana por cualquier otro motivo abriría el editor con la sesión
+  sin confirmar sin que nadie lo note. Además `EditarDatosSurface` consulta
+  `useSensitiveOperation("natal-edit")` **en cada render** y revalida **dos
+  veces** en el handler (al entrar y pegado a la escritura remota, que está
+  detrás de un `await` del candado), porque el gate decide al montar y esta
+  pantalla vive minutos: la conexión se puede caer con el editor ya abierto.
+  Cuando pasa, `Guardar` se apaga y el motivo se anuncia con `alert` + región
+  viva; lo tipeado no se pierde y el `Reintentar sincronización` sigue vivo,
+  porque es la salida. Sin envs no hay cuenta que confirmar y el editor local no
+  se bloquea.
+- **Vínculos, defensa en profundidad (corrección).** Los tres puntos donde esa
+  sección escribe en la cuenta —`savePerson` en `VinculosConnectScreen`, y
+  `refreshComparison` (que **persiste** un sobre nuevo, no es una lectura) y
+  `removePerson` en `VinculosResultScreen`— revalidan
+  `useSensitiveOperation("account-write")` justo antes de la action/mutation, y
+  no una sola vez: `savePerson` vuelve a preguntar después del `await` que
+  resuelve la zona horaria, y `removePerson` después del `await` de la
+  confirmación destructiva, que dura lo que la persona tarde en decidir.
+  `useLayers` normalmente desmonta esos cuerpos al degradar, pero un handler no
+  puede quedar autorizado por una implicación de render. Los controles se apagan
+  con `disabled`, `accessibilityState` y `accessibilityHint`, y el motivo se
+  anuncia una vez por pantalla. Salir al perfil ya guardado —que no escribe— sigue
+  disponible. El ciclo automático de recálculo **no** marca su clave como pedida
+  cuando está bloqueado: si la marcara, al reconectar no volvería a intentarlo
+  solo. El bloque 4 (tipo de vínculo, `romantic` y demás) quedó intacto.
+- **`src/routes/v492/index.tsx` (corrección).** El arranque nativo tenía su
+  propio plazo y su propia salida: `resolveStart` contesta `auth-timeout` y esa
+  pantalla de reintento tapaba el producto entero. Es el arranque en frío sin
+  red, o sea el caso que la identidad previa existe para cubrir, así que sin
+  tocarla el resto del bloque nunca se llegaba a ver. Ahora ese caso —y **sólo**
+  ese— consulta la confianza: con `degraded-local` redirige a `/hoy` y el shell
+  abre con su franja; con cualquier otra cosa conserva el bloqueo tal cual.
+  `resolveStart` **no cambió** y el plazo sigue sin disfrazarse de «cargado». La
+  variante web no se tocó: allá no hay identidad previa, así que `degraded-local`
+  sólo puede salir de la vía viva, que no produce `auth-timeout`.
+- **`src/hooks/useLayers.tsx`** — la fase pasa por `sessionPhaseUnderConfidence`,
+  así que con la sesión sin confirmar **cada sección muestra su error y su
+  reintento** en vez de un spinner eterno, y `retrySession` pasa a ser el
+  `retry` de la resiliencia.
+- **`app/_layout.tsx`** — `SessionResilienceProvider` montado una sola vez,
+  dentro de `AppStateProvider` (necesita el dueño del perfil), dentro de
+  `EntitlementProvider` (declara el dueño del snapshot del plan) y envolviendo al
+  `Stack` (todo `AccountGate` vive adentro). **La lista de `Stack.Screen` no se
+  movió**: ningún deep link cambia.
+
+**«Últimos datos», enumerado (corrección).** El aviso decía «lo último que
+guardamos en este teléfono», que es cierto pero incompleto, y la parte que
+faltaba es la que genera la decepción. Esto es lo que hay, exactamente:
+
+*Persistido en el dispositivo y publicable en un arranque sin red* —siempre que
+el dueño cierre contra la identidad segura—:
+
+| Dato | Clave | Alcance |
+|---|---|---|
+| Perfil local (nombre, fecha, hora, lugar, signo) | `orbita:profile` | global, atribuido por `orbita:profile-owner` |
+| Dueño del perfil | `orbita:profile-owner` | es el que se compara |
+| Lecturas guardadas y sus lápidas | `orbita:saved-readings`, `orbita:saved-readings-tombstones` | global, se archiva por cuenta al cerrar sesión |
+| Diario | `orbita:journal` | ídem |
+| Snapshot del plan (`isPro`) | `orbita:entitlement-snapshot:<owner>` | **por cuenta**, con el dueño también dentro del valor |
+
+*Sin snapshot local, por lo tanto con bloqueo y reintento por sección:* las capas
+del día y de ayer (`layers.getForDate`), las capas natales, la carta
+(`charts.current`), la lectura del día (`readings.getToday`), el `birthData`
+remoto, la lista de personas de Vínculos y toda comparación
+(`relationships.list` / `getComparison`), y el Cumpleluna. **Convex no persiste
+nada de eso en el dispositivo**, así que no hay un «último valor» que mostrar y
+el aviso no lo promete: `sessionPhaseUnderConfidence` pasa la fase a `error` y
+cada sección dibuja su `ErrorBlock` con reintento.
+
+Dos precisiones sobre el snapshot del plan, que es el único que se integra:
+
+1. Es **owner-scoped y validado** (`parsePlanSnapshot` exige que el dueño de
+   adentro sea el vigente) y **no se migró nada**: ya existía desde QA23-001.
+2. Bajo un **timeout completo de Clerk no aparece**, y eso es correcto: se lee
+   con `readEntitlementSnapshot(owner)` y sin `userId` vivo no hay `owner`, así
+   que la vista efectiva queda en `undefined`, `labelReady` en `false` y el chip
+   del plan **no se dibuja**. Sólo aparece en la degradación con Clerk vivo
+   (handshake de Convex caído). Por eso el copy dice que el plan «se calcula en
+   tu cuenta» en vez de prometerlo.
+
+El copy vive en `DEGRADED_SESSION_COVERAGE`, se dibuja en la franja y entra en su
+`accessibilityLabel`.
+
+**Pruebas escritas · NO EJECUTADAS.**
+
+| Archivo | Qué fija | Estado |
+|---|---|---|
+| `test/sesionOfflineQA23.test.ts` (reescrito en la corrección) | **Conducta pura:** los cinco estados y que no se colapsen; la **matriz completa de 73 728 combinaciones** (las 3072 anteriores × las 24 de la identidad previa) con seis invariantes —confirmar exige todas las piezas y ninguna es local; degradar exige un dueño vigente igual al del disco por una de **dos** vías declaradas, y la vía previa sólo con llavero soportado, leído, sin error y con Clerk sin publicar sesión; un signed-out confirmado sólo sale de un Clerk cargado; nada que no sea confirmar autoriza una operación; con dueños distintos no se abre nada, venga el dueño de Clerk o del llavero; y el llavero a medio leer no decide nada—, más la comprobación de que las **dos** vías se ejercitan de verdad. El caso de aceptación (timeout completo + dueño previo) y sus cinco negativas: web, llavero ilegible, llavero sin contestar, sin registro y registro de otra cuenta. Cuenta B confirmada contra perfil de A. Clerk con `isSignedIn` sin `userId`. Snapshots ambiguos —ajeno, sin dueño y mezclado— por las dos vías. El formato del registro (versionado, sin migrar, con catorce entradas de basura) y la clave válida para `expo-secure-store`. La secuencia fail-closed: quién puede escribir, qué borra un signed-out confirmado, el cambio de identidad en dos pasos, que un corte de red no toca el disco y que **toda** combinación converge en ≤ 2 pasos. `ownedDataReadable` y `publishableViewer`. El producto cartesiano operación × confianza y el copy de cada bloqueo. `applySessionResilience` sobre los ocho destinos × cinco confianzas; que `degraded` sólo monte `app`; `surfaceOpensUnderConfidence`; la regresión de `resolveAccountDestination`; la fase por sección; y la cobertura declarada (que nombre perfil, guardadas y diario, y que **no** prometa capas). **Cableado:** gate, layout (incluida la anidación dentro de `EntitlementProvider`), provider (las cuatro señales, la hidratación, la acción y el orden memoria-antes-que-disco), llavero nativo (no menciona Clerk ni token; borra antes de escribir; tres `catch`), llavero web (sin `expo-secure-store` y sin `localStorage`), **el arranque nativo (que `auth-timeout` deje pasar sólo a `degraded-local` y conserve su bloqueo para todo lo demás, con `resolveStart` intacto)**, pago, **editor natal (`requires` + dos revalidaciones + control apagado)**, **los tres handlers de Vínculos (conteo exacto de revalidaciones + controles apagados + el ciclo automático)**, Perfil, gestión de suscripción, capas y accesibilidad del aviso. **Tercera pasada:** la **serialización** del llavero, ejecutada de verdad sobre la política pura —un bucle que reproduce el orden del provider (un render decide un paso, el paso marca el registro en vuelo, el llavero contesta, recién ahí se decide el siguiente) y comprueba en cada vuelta que con una operación en vuelo la política contesta `keep`; el cambio de identidad sale exactamente como `["clear", "write"]` y en las dos transiciones lo publicado es `{ ready: false, owner: null }`; ninguna combinación de cinco confianzas × tres dueños vivos × cinco registros iniciales × tres llaveros (el que anda, el que falla al borrar y el que falla al escribir) arranca dos operaciones, deja el registro en vuelo, se cuelga ni termina con un dueño que no sea el vivo; con el registro quieto `nextSecureIdentityStep` contesta lo mismo que `secureIdentityAction` para las 45 combinaciones, y no contesta otra cosa que `keep` en las tres esperas; a nivel de sesión, el instante de la transición **no** degrada (queda `transient-unavailable`) y el mismo caso con el registro quieto sí; y un llavero roto no abre ni se reintenta. **Cableado nuevo:** el candado tomado antes de nada y soltado siempre, el resultado tardío que igual se aplica al árbol vivo, la lectura que sólo hidrata, y que el archivo no tenga más `setTimeout` que el del plazo ni un `Promise.all/race`. | **escrito, sin ejecutar** |
+
+**Lo que estas pruebas NO afirman**, escrito también en el encabezado del
+archivo: no reemplazan apagar el wifi con la app abierta (el comportamiento real
+de Clerk sin red sólo se ve en un teléfono), no prueban `expo-secure-store` de
+verdad —qué devuelve tras reinstalar, tras un restore de backup o con el
+dispositivo bloqueado es una prueba de dispositivo—, y no montan React: los
+bloqueos se comprueban leyendo el código, así que fijan que el handler revalide y
+que el control se apague, no cómo se ve.
+
+**Comandos que Codex tiene que correr.**
+
+1. `pnpm typecheck`
+2. `npx tsx --test test/sesionOfflineQA23.test.ts`
+3. Focal de regresión vecina: `npx tsx --test test/arranqueVisualQA23.test.ts test/planIndicatorQA23.test.ts test/layersV492Runtime.test.ts test/vinculosQA22.test.ts test/vinculosReadingQA22.test.ts test/relationshipsV492.test.ts test/v492ReleaseP1.test.ts test/responsiveShells.test.ts`
+4. `git diff --check`
+
+**Riesgos anotados.**
+
+1. **Nada de esto se ejecutó.** Es el riesgo principal del bloque: el código y
+   las pruebas están escritos y sin una sola corrida. Cualquier detalle de
+   tipos —el `satisfies` de `SESSION_CONFIDENCES`, el estrechamiento de
+   `liveOwner` dentro del ternario del efecto— aparece recién en
+   `pnpm typecheck`.
+2. **Regresión posible en pruebas vecinas.** Se tocaron `useAccountDestination`
+   (perdió su `useQuery`), `useLayers` (fase y `retrySession`), `AccountGate`,
+   `app/_layout.tsx` y `accountDestination`. Si alguna prueba existente lee esas
+   fuentes esperando la forma anterior, falla por forma y no por conducta.
+   `arranqueVisualQA23` se revisó por lectura y no debería moverse: no se agregó
+   ningún color, ningún `router.push`, ningún `Link` y la lista de rutas del
+   `Stack` quedó igual.
+3. **El plazo de 8 s es una elección, no una medida.** Se eligió por coherencia
+   con el `CLERK_LOAD_TIMEOUT_MS` que ya existía. Cuánto tarda de verdad Clerk
+   sin red sólo se sabe apagando el wifi en un teléfono.
+4. **El `retry` del shell degradado puede no hacer nada visible.** Si Convex
+   nunca autenticó, `SessionProviderInner` ni siquiera intenta `ensureUser`, así
+   que el botón sólo re-dispara la evaluación. La reconexión real la trae el
+   websocket de Convex por su cuenta. Es honesto (no promete un plazo) pero no
+   es un botón que «arregle».
+5. **El paywall web queda fuera.** `/paywall` en web es el lanzador de checkout
+   de Stripe y no pasa por `AccountGate`; la regla nueva cubre la ruta nativa.
+   Web no es la superficie de esta build.
+6. **`transient-unavailable` cambia lo que se ve en la landing web y en el alta
+   offline.** Antes era un spinner sin fin; ahora es un bloqueo con reintento.
+   Es mejor, pero es un cambio de conducta visible que conviene mirar.
+7. **La API de `expo-secure-store` se usó sin poder compilarla.** Sólo
+   `getItemAsync` / `setItemAsync` / `deleteItemAsync`, sin opciones, para no
+   apoyarse en constantes cuyo nombre no se pudo verificar. La clave evita `:`
+   porque el módulo sólo admite alfanuméricos, `.`, `-` y `_`; una clave inválida
+   haría fallar la escritura en el dispositivo y ese fallo se leería para siempre
+   como «no hay identidad previa» (fail closed, pero sin cubrir el caso).
+   Verificar en un teléfono, y verificar también que el módulo nativo esté en el
+   binario: `expo-secure-store` ya estaba en `package.json`, pero esta es la
+   primera vez que la app lo importa.
+8. **La matriz pasó de 3072 a 73 728 combinaciones.** Sigue siendo una función
+   pura y los mensajes caros se construyen sólo al fallar (`assert.fail`), pero
+   es el test más lento del archivo y conviene mirar su tiempo.
+9. **`viewer` cambió de significado.** Antes era el `userId` de Clerk; ahora es
+   `publishableViewer`, que además puede ser el dueño previo cuando la identidad
+   local cerró entera. Todo caso que antes devolvía un valor sigue devolviendo el
+   mismo; lo nuevo es que a veces devuelve algo donde antes devolvía `null`. Si
+   algún consumidor lo usara como argumento de query, habría que mirarlo.
+10. **Durante la transición la degradación no está disponible.** Mientras un
+    `clear` o un `write` viajan, lo publicado es `ready: false` y `owner: null`,
+    así que si en ese milisegundo venciera el plazo la respuesta sería
+    `transient-unavailable` (bloqueo con reintento) y no el shell degradado. Es
+    la elección correcta —el registro está en un estado que el proceso no
+    conoce— pero es una ventana en la que el modo degradado no aparece. Dura lo
+    que tarde el llavero, y sólo puede abrirse con Clerk vivo, que es justamente
+    el caso en el que el dueño sale de la vía viva y no del registro.
+11. **El fallo del llavero es terminal dentro del proceso.** Un `read`, `write` o
+    `clear` que falla deja `BROKEN` y nada vuelve a tocar el llavero hasta la
+    próxima apertura de la app. Es a propósito: reintentar en bucle no arregla un
+    llavero roto y cada intento sería otra escritura sobre un registro que ya no
+    sabemos cómo quedó. La consecuencia real es que un `clear` fallido puede
+    dejar el registro viejo en disco hasta el próximo arranque; no abre nada
+    —`BROKEN` no publica dueño— y en el flujo de logout es inocuo porque
+    `resetApp()` borra el perfil local y sin perfil no hay nada que atribuir.
+    Tampoco se reintenta el `write` después de una lectura fallida, que es la
+    única conducta que la tercera pasada cambió acá: antes ese caso escribía.
+12. **Un llavero que nunca contesta deja el registro en vuelo para siempre.** No
+    hay plazo, y es deliberado: un timer sobre `expo-secure-store` sólo podría
+    inventar una respuesta que el disco no dio. Si una promesa colgara, la
+    identidad previa queda no publicable el resto del proceso —fail-closed,
+    cuesta un bloqueo con reintento— y el resto de la app no depende de ella.
+13. **La serialización se probó sobre la política pura, no montando React.** El
+    bucle de la prueba reproduce el orden del provider (decidir → marcar en vuelo
+    → contestar → decidir), y el cableado se fija leyendo el archivo. Lo que
+    **no** se ejercita es el doble efecto de `StrictMode` ni el render
+    concurrente; el candado en `useRef` está justamente para eso, pero es la
+    parte que sólo se ve corriendo la app.
+14. **`useSessionResilience` ahora depende de `useEntitlement`.** El orden del
+    layout raíz lo sostiene (`EntitlementProvider` envuelve a
+    `SessionResilienceProvider`) y hay una prueba que lo fija, pero es un
+    acoplamiento nuevo entre dos providers: mover uno rompe el otro.
+15. **El arranque nativo tiene una salida nueva.** `auth-timeout` con
+    `degraded-local` redirige a `/hoy` en vez de mostrar el bloqueo. El shell no
+    devuelve a `/`, así que no hay bucle posible, pero es la conducta de arranque
+    más visible del bloque y es la que hay que mirar primero en el teléfono:
+    apagar el wifi, matar la app y abrirla. Si Clerk **sí** resuelve desde su
+    caché sin red, el camino que se ejercita es el vivo y no el previo, y esta
+    línea no se ejecuta.
+16. **`test/sessionStart` y compañía no se tocaron, pero el archivo sí.**
+    `src/routes/v492/index.tsx` cambió de forma (un import y una rama). Si alguna
+    prueba estructural del arranque lee ese archivo esperando la forma anterior,
+    falla por forma y no por conducta.
+17. **El provider volvió a cambiar de forma en la tercera pasada.** `secure` pasó
+    de estado a valor derivado (`slot` + `publishSecureIdentity`) y se fueron
+    `setSecure`, `SECURE_IDENTITY_NONE` y compañía. Las aserciones estructurales
+    que leían esas líneas están actualizadas en `sesionOfflineQA23`; si alguna
+    otra prueba leyera `src/hooks/useSessionResilience.tsx` esperando la forma
+    anterior, falla por forma y no por conducta.
+
+**Próximo paso.** Bloque 8 (cierre técnico), después de que Codex verifique este.
+
+### Bloque 6 · arranque visual coherente (QA23-006) · VERIFICADO
+
+**Estado.** Implementación completa y verificada en el árbol de trabajo, **sin
+commit**. La tanda focal cerró **41/41**, `pnpm typecheck` y `git diff --check`
+cerraron en verde. No se tocó `convex/**`, no hubo codegen, deploy, prebuild,
+build, EAS, TestFlight ni App Review.
+
+**El defecto.** Abrir la app mostraba tres cosas que no son Órbita, en este
+orden.
+
+1. **El splash blanco.** `app.json` no declaraba el fondo del splash ni el del
+   root view, así que el color lo ponía el template nativo.
+2. **Frames claros.** Los gates que se dibujan antes de que haya producto
+   pintaban `theme.colors.background` —el crema `#fff8f0` del MVP legado, no el
+   `#0A0B0E` del producto— con el spinner en `theme.colors.plum`, que sobre el
+   fondo de Órbita es casi invisible. Y el `Stack` raíz no declaraba
+   `contentStyle`, así que cada hueco entre gates lo llenaba el fondo claro del
+   tema por defecto de React Navigation. En el camino feliz se ven al menos dos:
+   el boundary de eliminación pendiente mientras lee el disco, y la espera del
+   gate de las tabs.
+3. **Un deslizamiento lateral.** `<Redirect>` es un `replace`, y el stack nativo
+   anima un replace como un `pop`: la primera pantalla real entraba desde el
+   costado, como si alguien hubiera tocado «volver». No es una transición entre
+   pantallas: es la app decidiendo a dónde va, y decidir no se anima.
+
+**Qué se hizo.**
+
+- **`src/theme/boot.ts` (nuevo)** — el arranque tiene **un color y cero
+  movimiento**, y los dos viven acá: `BOOT_BACKGROUND` (= `orbita.colors.background`
+  = `v492.colors.background`, así que entrar al producto no cambia un punto de la
+  pantalla), `BOOT_TEXT` / `BOOT_TEXT_MUTED` / `BOOT_ACCENT` para que repintar el
+  fondo no deje el texto oscuro sobre oscuro, `BOOT_STATUS_BAR_STYLE`,
+  `BOOT_SCREEN_OPTIONS` y `BOOT_GATE_ROUTES`. Módulo puro: no importa nada de
+  React Native, así que las pruebas lo ejecutan.
+- **`app/_layout.tsx`** — la barra de estado pasa de `dark` a
+  `BOOT_STATUS_BAR_STYLE`; el `Stack` estrena `contentStyle` con el fondo del
+  arranque; el fondo se declara **además** en el nodo más alto del árbol
+  (`SafeAreaProvider`), que es lo que se ve entre que el splash se retira y el
+  primer gate monta; y las **cuatro** rutas del arranque —`index`, `onboarding`,
+  `iniciar-sesion`, `(tabs)`— reciben `options={BOOT_SCREEN_OPTIONS}`. Ninguna
+  otra pantalla del `Stack` declara opciones: el pago, las lecturas, la carta
+  completa, la recepción y el editor conservan su animación. **La lista de
+  `Stack.Screen` no cambió**, así que ningún deep link se movió.
+- **Los seis gates repintados** — `src/components/PendingDeletionBoundary.tsx`,
+  `src/components/orbita/AccountGate.tsx`, `src/routes/v492/index.tsx` y su
+  `.web.tsx`, `src/routes/v492/tabs-layout.tsx` y su `.web.tsx`. Ninguno importa
+  ya `@/theme/theme` y **ninguno escribe un color a mano**: fondo, titular,
+  cuerpo, spinner y borde de reintento salen todos de `@/theme/boot`. El
+  `sceneStyle` de las tabs deja de repetir el literal `#0A0B0E` y usa el token.
+- **`AccountGate` estrena `BootSurface`.** `MinimalLoading` y `ErrorState` son
+  bloques de CONTENIDO —están escritos para caer dentro de un shell que ya puso
+  el fondo— y el gate los montaba sueltos: `/onboarding` y `/iniciar-sesion` no
+  le pasan un `loading` propio, así que el color lo ponía lo que hubiera detrás.
+  Las superficies que sí traen el suyo (`WebLoading`, la espera de las tabs) no
+  pasan por ahí y no cambian.
+- **`app.json`** — `backgroundColor`, `ios.backgroundColor`,
+  `android.backgroundColor`, `splash.backgroundColor`, `ios.splash`,
+  `android.splash` y `androidNavigationBar` (`light-content` + `#0A0B0E`), todos
+  con el mismo valor. `userInterfaceStyle` ya era `dark`. **No se tocaron
+  `version` ni `ios.buildNumber`:** el RC 1.0.0 (23) sigue siendo el binario que
+  existe. El ícono adaptativo de Android queda en `#0D0E12` —es el lanzador, no
+  el arranque—.
+- **Accesibilidad.** Cambio de color solamente: los dos reintentos de la raíz
+  conservan `accessibilityRole="button"` y su `hitSlop`, el bloqueo conserva su
+  botón de 44 y su enlace a soporte, y no se movió un copy. Los tres colores
+  nuevos se miden contra el fondo: **17,0:1** el titular, **8,9:1** el cuerpo y
+  **8,1:1** el cobre suave del spinner y del reintento.
+
+**Pruebas verificadas.**
+
+| Archivo | Qué fija | Estado |
+|---|---|---|
+| `test/arranqueVisualQA23.test.ts` (nuevo) | Que el color del arranque sea el del shell; que el crema legado fuera literalmente un frame claro (18:1) y que repintar sólo el fondo habría dejado texto y spinner por debajo de 3:1; el contraste real de los tres colores nuevos; que ningún gate lea el tema legado ni escriba un color a mano; la superficie propia de los estados por defecto de `AccountGate`; splash, root view, barra de estado y barra de navegación en `app.json`, con un solo color y sin mover `version`/`buildNumber`; que las cuatro rutas del arranque —y sólo ellas— reemplacen sin animación; que los stacks de pestaña conserven `slide_from_right` y su respeto por «Reducir movimiento»; que ningún gate apile ni ofrezca navegación; la lista completa de rutas del `Stack` raíz y el esquema `orbita` (deep links); la regresión de QA23-001 más la regla nueva de que ningún gate nombra un plan; y los roles y objetivos táctiles de los gates. | PASS dentro de la tanda focal 41/41 |
+
+Regresiones vecinas revisadas por lectura; la tanda focal ejecutada incluyó
+`planIndicatorQA23`, `planIndicatorQA22`, `gatesQA22`, `accountGate` y
+`pendingDeletionBoundary`:
+`test/responsiveShells.test.ts` deja `app/_layout.tsx` fuera de su barrido de
+lienzo y no mira la barra de estado; `test/v492ReleaseP1.test.ts` recorre el
+grafo nativo desde `app/**` —`src/theme/boot.ts` entra y no nombra nada ajeno—;
+`test/v492CopyA11y.test.ts` barre `src/components/v492/**` y `src/screens/v492/**`,
+que esta pasada no toca; `test/nativeDefectsV492.test.ts` y
+`test/tabPressV492.test.ts` leen la barra de pestañas y el editor, intactos; y
+`test/planIndicatorQA23.test.ts` fija `labelReady` y las dos variantes del chip,
+que tampoco se movieron.
+
+**Riesgos anotados.**
+
+1. **La suite completa todavía no se corrió.** La focal cubre el bloque y sus
+   regresiones directas; el cierre integral pertenece al bloque 8.
+2. **El launch screen sale de `prebuild`, no del bundle.** El color declarado en
+   `app.json` cambia el fingerprint y **exige un build nuevo** para verse; esta
+   tanda no construye. Además `expo-splash-screen` **no figura en
+   `package.json`**: `backgroundColor` / `ios.backgroundColor` los aplica el core
+   de `@expo/config-plugins` (root view), pero si este SDK ignorara la clave
+   legada `splash`, para pintar el launch screen habría que agregar ese paquete e
+   instalarlo — y eso desincroniza el lockfile, así que queda fuera de alcance y
+   se anota acá en vez de hacerse a medias.
+3. **`editar-datos` conserva su animación a propósito.** Es destino de gate en un
+   caso de recuperación (cuenta preexistente incompleta), pero también es la
+   navegación normal desde el Perfil; apagarle la transición rompería lo segundo
+   para arreglar un camino raro. Queda anotado como decisión, no como olvido.
+
+**Próximo paso.** Bloque 7.
+
+### Bloque 5 · perfil canónico y comparación como ruta hija (QA23-005) · VERIFICADO
+
+**Estado.** Implementación frontend completa y verificada en el árbol de
+trabajo, **sin commit**. La tanda focal cerró **116/116**, `pnpm typecheck` y
+`git diff --check` están en verde. No se tocó `convex/**`, no hubo codegen,
+deploy, build ni publicación.
+
+**El defecto.** `/vinculos/[profileId]` **era** la comparación y el guardado
+volvía a la raíz global con `?guardada=<id>` (QA22-015). Juntas, las dos cosas
+dejaban al alta sin superficie propia: quien acababa de cargar a alguien
+aterrizaba en una lista donde su persona es una fila más, y lo único que la
+nombraba era una lectura que la raíz **arrancaba sola** —así que guardar y
+calcular volvían a verse como una sola espera, que es justo lo que QA22-016 había
+separado—.
+
+**Qué se hizo.**
+
+- **`src/screens/v492/VinculosProfileScreen.tsx` (nuevo)** — el perfil canónico.
+  Muestra los datos tal como quedaron guardados (`relationshipBirthLine`, nivel
+  con su rótulo y su nota) y el tipo **declarado o legacy**
+  (`relationshipTypeLine`, chip, y `DEFINIR TIPO DE VÍNCULO` **no bloqueante**
+  sólo cuando es `null`). Ofrece **exactamente dos** acciones primarias —`VER LA
+  COMPARACIÓN` y `EDITAR DATOS`—. **No monta `getComparison`, `refreshComparison`,
+  `useAction` ni `useEffect`:** entrar acá —o aterrizar acá al guardar— no
+  arranca ningún cálculo.
+- **Ownership antes que cualquier dato.** El `profileId` de la URL se resuelve con
+  `findRelationshipProfile(personas, profileId)` contra `relationships.list`
+  —la misma conversión autorizada que usan el formulario y la comparación—:
+  `undefined` mientras la lista viaja, `null` para un id ajeno, borrado o
+  inventado. El bloque del id no autorizado **no lee un solo campo de la persona**
+  y ofrece volver a la lista. Cero `as Id<…>`.
+- **Rutas.** `app/(tabs)/vinculos/[profileId]/comparacion.tsx` (nuevo, wrapper) →
+  `src/routes/v492/vinculos-comparacion.tsx` / `.web.tsx` (nuevos).
+  `src/routes/v492/vinculos-perfil.tsx` pasa a montar el perfil. Los destinos
+  viven en el dominio: `relationshipProfileHref` y `relationshipComparisonHref`
+  (nuevos en `src/domain/relationships.ts`), y ninguna pantalla arma una URL de
+  Vínculos a mano.
+- **Post-guardado.** `relationshipSavedHref` devuelve
+  `/vinculos/<id>?modo=alta|edicion`: el id es el **segmento** —el que devolvió el
+  backend— y lo único que viaja como parámetro es el modo.
+  `VinculosConnectScreen` navega con `router.replace(destino)` (antes
+  `dismissTo`): el perfil puede o no estar en el stack —se edita desde la raíz,
+  desde el propio perfil y desde la comparación— y `replace` deja el mismo
+  destino en los tres casos, sin el formulario debajo. La degradación de
+  QA23-004 (`tipoSinGuardar` → `IR AL PERFIL`) sale al **mismo** destino.
+- **Confirmación.** Vive en el perfil, es una región viva `polite`, se puede
+  cerrar y **no promete un cálculo**: `relationshipSavedConfirmation` se reescribió
+  para decir que la comparación se calcula *cuando la abrís*.
+- **Raíz.** `VinculosHubScreen` perdió el bloque de confirmación, el chip
+  `RECIÉN GUARDADA` y **todo** `EstadoLectura` —la única superficie que disparaba
+  `refreshComparison` desde la lista—. Cada fila abre
+  `relationshipProfileHref(persona.profileId)`. Se conservan `EDITAR DATOS DE …`
+  y el CTA legacy fuera de la tarjeta (QA22-023). `RELATIONSHIP_SAVED_PARAM` se
+  eliminó del dominio: sin `?guardada=` no tiene a quién nombrar.
+- **Back y deep link.** La comparación vuelve al **perfil**
+  (`fallbackHref = relationshipProfileHref(...)`, en las nueve superficies de la
+  pantalla); el perfil vuelve a la **raíz**; un id borrado o ajeno sale a la raíz
+  en vez de rebotar contra un perfil igual de vacío; borrar sigue haciendo
+  `replace` a `/vinculos`. Sin segmento, las dos rutas redirigen a
+  `VINCULOS_ROUTE` en vez de montar una pantalla sin persona.
+- **Web.** La cuarta ruta degrada igual que las otras tres: wrapper neutro en
+  `app/`, implementación por plataforma fuera de `app/` y `<Redirect href="/vinculo" />`
+  en la variante `.web.tsx`. Ninguna arrastra `src/screens/v492/**` al paquete web.
+- **Accesibilidad.** Las dos acciones anuncian etiqueta con el nombre de la
+  persona y pista con la consecuencia —incluida «el cálculo empieza al abrirla»—;
+  el CTA legacy y el cierre de la confirmación son botones reales con
+  `minHeight: v492.touch`; la tarjeta de la fila sigue anunciando nombre y nivel y
+  no contiene otros botones adentro. Cero color o espaciado hardcodeado.
+
+**Pruebas escritas · VERIFICADAS.**
+
+| Archivo | Qué fija | Estado |
+|---|---|---|
+| `test/vinculosPerfilQA23.test.ts` (nuevo) | Las cuatro rutas y la degradación web; que la comparación cuelgue del perfil; el destino del post-guardado y su confirmación sin promesa de cálculo; la ausencia de `getComparison`/`refreshComparison`/`useAction`/`useEffect` en raíz y perfil; la matriz de ownership de `findRelationshipProfile`; que el id no autorizado no publique un campo; las dos acciones exactas; y la accesibilidad del perfil. | verde |
+| `test/vinculosQA22.test.ts` | Ajustado: destinos del dominio, confirmación, `router.replace`, «guardar aterriza en el perfil y NO abre la comparación», la raíz sin ningún cálculo y las **cuatro** rutas. Las garantías puras de nivel, bloqueo, idempotencia y fase del cálculo no se movieron. | verde |
+| `test/vinculosNativeV492.test.ts` | Ajustado: `VINCULOS_ROUTES` pasa a cuatro; las pruebas de la comparación apuntan a `[profileId]/comparacion`; `[profileId]` estrena su prueba de perfil sin cálculo; `relationshipReading(datosComparacion, tipo)` reemplaza al `relationshipReading(data)` viejo. | verde |
+| `test/tipoVinculoFrontQA23.test.ts` | Ajustado: el CTA legacy se exige también en el perfil; la fila abre `relationshipProfileHref`; la clave de cálculo dejó de vivir en la raíz. | verde |
+| `test/vinculosLecturaQA22.test.ts` | Ajustado: la lista de rutas pasa a cuatro. | verde |
+
+**Riesgo anotado.** `relationshipCalcPhase`, `relationshipCalcNote`,
+`relationshipRowCanRetry` y `RELATIONSHIP_ROW_RETRY_LIMIT` quedan **sin call site
+en `src/`** al retirarse `EstadoLectura`; el módulo sigue existiendo y probado, y
+`relationshipCalcKey` / `relationshipNeedsCalculation` los sigue usando la
+comparación. Si Codex prefiere podarlos, es una pasada aparte.
+
+**Próximo paso.** Bloque 6.
+
+### Registro provisional del ejecutor · bloques 1, 2 y 3 (supersedido)
+
+**Estado.** Bloques **1 (plan)**, **2 (Tu momento)** y la **parte frontend del 3
+(Cumpleluna)** están escritos en el árbol de trabajo, **sin commit**. Los bloques
+4 a 8 no se tocaron. Nada de `convex/**` se modificó —la mitad backend del bloque
+3 (hash diario de `ORB-LUN-002` y `validUntil` acotado) sigue **pendiente** y es
+de Codex—. **No se corrió `pnpm test` ni `pnpm typecheck`**: las pruebas de abajo
+quedan **pendientes de ejecución** y ése es el primer paso de la próxima sesión,
+antes de cualquier otra cosa.
+
+**Bloque 1 · el plan no se adivina (QA23-001).**
+
+- `src/hooks/useLiveApp.tsx` — `labelReady` pasó a ser exactamente
+  `effective !== undefined`. El segundo camino de la condición anterior —sesión
+  de Clerk resuelta y disco leído sin snapshot— es verdadero en toda instalación
+  nueva y publicaba `FREE` mientras la única `subscriptions.getCurrent` seguía en
+  vuelo. `undefined` es "no sé"; `null` sí es respuesta y se dice Free. Es el
+  único cambio del archivo, más el `isAuthLoading` que dejó de destructurarse
+  porque ya no se usa. `OFFLINE_ENTITLEMENT` no se tocó: sin backend el plan es
+  una respuesta (`effective: null`, `labelReady: true`) y sigue sin autorizar
+  cobro.
+- `src/components/v492/Screen.tsx` — `PlanBadge` recibe una `variant`
+  **obligatoria** (sin default): `mark` dibuja `PLUS`/`FREE` en la raíz de una
+  pestaña —donde el nombre entero le comía el ancho a la fecha— y `full` dibuja
+  `Órbita Plus`/`Órbita Free` en la barra de un detalle. Las dos anuncian el
+  nombre **completo** por VoiceOver, y la marca corta se deriva de `planMark`,
+  que a su vez se deriva de `planLabel`: no pueden divergir. La reserva de ancho
+  (`PLAN_BADGE_WIDTH` / `DETAIL_EDGE`) se sigue calculando con los nombres
+  enteros, que es la superficie donde el chip se dibuja completo.
+
+**Bloque 2 · `Tu momento`, tres módulos hermanos (QA23-002).**
+
+- `src/domain/layerReading.ts` — teoría y lectura del dibujo: `MANDALA_RINGS` /
+  `MANDALA_RING_ORDER` (los cuatro anillos, de afuera hacia adentro, sin la clave
+  de compatibilidad `current_lunation`), `mandalaReading()` —puro y
+  determinístico: concepto, uso, pregunta y método fijos; combinación y límite
+  derivados sólo de **qué anillos hay**—, `MANDALA_METHOD` y `MANDALA_TRACE`.
+- `src/screens/v492/MandalaDetailScreen.tsx` (**nuevo**) — el detalle integral,
+  en orden: concepto → los cuatro anillos → tu configuración de hoy →
+  combinación → cómo usarlo → para observar → límite → método y trazabilidad.
+  **Adentro no hay ningún enlace** a estación, año, ciclo lunar ni tránsito, y no
+  monta query propia: lee el mismo sobre `ORB-CYC-003` del bundle del día.
+- `src/screens/v492/TransitosLayersScreen.tsx` — el mandala dejó de repartir
+  cuatro enlaces por anillo. Cada módulo tiene **un** acceso —`VER TU ESTACIÓN`,
+  `VER TU AÑO`, `VER TUS CUATRO RITMOS`—, y el del mandala sólo aparece cuando
+  hay dibujo. Se eliminaron la prop `destinos`, los tipos `RitmoDestino` /
+  `RitmoDestinos` y el `arcId` que alimentaba la salida al tránsito.
+- `src/domain/detailOrigin.ts` y `src/routes/v492/transitos-capa.tsx` — `mandala`
+  entra en `SECTION_LAYER_DETAILS` y en la tabla de pantallas, así que
+  `/transitos/capa/mandala` resuelve por deep link, vuelve a `Tu momento` sin
+  historial y, con historial, hace `pop` del stack de Tránsitos conservando el
+  scroll. La pestaña Tránsitos sigue abriendo `Ahora` y un arco abierto desde
+  `Ahora` sigue volviendo a `Ahora` (sin origen declarado → raíz canónica); las
+  dos cosas quedaron fijadas por prueba.
+
+**Bloque 3 · el Cumpleluna se lee con un solo reloj (QA23-003) · MITAD FRONTEND.**
+
+La pantalla mezclaba dos relojes en la misma fila. `cumplelunaView` compone
+**escalares del snapshot** —`cycleDay`, `cycleLength`, `daysRemaining`,
+`progressBand`, que el backend fijó en `observedAt` y no se recalculan solos—
+con **un instante relativo**, `nextWhen`, que sin ventana se arma con
+`relativeDayLabel(nextExactAt, <reloj>)`. Las dos superficies le pasaban el
+`nowMs` de la sesión, así que bastaba que el sobre tuviera unas horas para que la
+misma fila dijera `Hoy` al lado de `FALTAN 1,2 días`; con la app abierta cruzando
+la medianoche, el titular avanzaba solo y la barra no.
+
+- `src/domain/layers.ts` — el tercer parámetro de `cumplelunaView` pasa de
+  `nowMs` a **`observedAtMs`**, documentado como «`observedAt` del MISMO sobre
+  que trajo `data`, nunca `Date.now()`». El nombre es el contrato: un `nowMs` en
+  un call site ahora se lee como lo que es. `cumplelunaToday` **conserva `nowMs`**
+  —si hoy es el día del Cumpleluna sí es una pregunta del día civil de la
+  persona— y ninguna otra capa se tocó.
+- `src/screens/v492/CumplelunaDetailScreen.tsx` — la vista se arma con
+  `envelope.observedAt`: precisión y reloj salen del mismo sobre. `nowMs` dejó de
+  destructurarse de `useLayers()` porque era su único uso.
+- `src/screens/v492/HoyScreen.tsx` — `CumplelunaBloque` cambia la prop `nowMs`
+  por **`observedAt: number`** y los **dos** call sites —el bloque destacado
+  cuando el Cumpleluna es hoy y el bloque en su lugar del orden cuando no— pasan
+  `cumpleluna.observedAt`. `nowMs` sigue alimentando `cumplelunaToday`, la fecha
+  del encabezado, el ranking y el resto de la pantalla.
+
+Sin cambios de copy, de estructura ni de accesibilidad: las etiquetas del head,
+del anillo y de la barra son las mismas y siguen anunciando lo mismo; lo único
+que cambia es desde qué instante se cuenta el `en N días`. **Los bordes
+temporales del bloque 3 que dependen del backend —hash diario de `ORB-LUN-002` y
+`validUntil` acotado— no están hechos: son de `convex/**` y quedaron fuera.**
+
+**Pruebas escritas · PENDIENTES DE CORRER.**
+
+| Archivo | Qué fija | Estado |
+|---|---|---|
+| `test/planIndicatorQA23.test.ts` (nuevo) | La celda exacta del defecto (arranque sin snapshot, sesión resuelta), la matriz de cuándo se puede nombrar el plan, `labelReady` sin `hydrated` ni `isAuthLoading`, el estado offline y las dos variantes del chip. | pendiente |
+| `test/mandalaDetalleQA23.test.ts` (nuevo) | `mandalaReading` puro, determinístico y con guardrails; los cuatro anillos y su orden; anillos vacíos y raíz inexacta; el detalle sin enlaces; el deep link, el `pop`, Tránsitos→Ahora y arco desde Ahora→Ahora. | pendiente |
+| `test/planIndicatorQA22.test.ts` | Ajustado: el chip ahora tiene `variant`. Las cuatro garantías QA22 no se movieron. | pendiente |
+| `test/momentoNavegacionQA22.test.ts` | Ajustado: `mandala` en `SECTION_LAYER_DETAILS`, en la matriz y en la tabla de rutas; el test de accesos pasa de cuatro enlaces por anillo a tres por módulo. | pendiente |
+| `test/lecturasQA22.test.ts` | Ajustado: «los cuatro accesos» pasa a «los tres módulos»; se exige que el acceso viva en la rama con cálculo. | pendiente |
+| `test/cumplelunaRelojQA23.test.ts` (nuevo) | El dominio nombra `observedAtMs`; la mezcla de relojes reproducida y cortada por el ancla (`hoy` + `1,2 días` → `mañana` + `1,2 días`); que el ancla sólo pueda mover `nextWhen`; los dos call sites de Hoy y el del detalle; `cumplelunaToday` con `nowMs`; y la accesibilidad del bloque y del anillo intactas. | pendiente |
+
+Regresiones QA22 revisadas y **sin cambios necesarios**:
+`test/layerMeaningV492.test.ts` (una línea por ritmo, nada entre las líneas y el
+acordeón), `test/momentoV492.test.ts`, `test/v492PrecisionUi.test.ts`,
+`test/v492CopyA11y.test.ts`, `test/v492ReleaseP1.test.ts` y
+`test/tabPressV492.test.ts`. Las tres últimas tocan el Cumpleluna y ninguna se
+apoya en el reloj que cambió: `v492ReleaseP1` llama a `cumplelunaView` por
+posición, `v492PrecisionUi` mira `precision={cumpleluna.precision}` y
+`hoy={cumplelunaHoyAt}`, y `v492CopyA11y` mira las etiquetas del bloque —que no
+se movieron—. **Revisado leyendo los archivos, no ejecutándolos.**
+
+**Próximo paso.** Correr `pnpm typecheck` y `pnpm test` (con el gate de piso
+`>= 2542`, que ahora debería subir por los tres archivos nuevos), revisar
+`git diff --check`, y recién entonces encarar lo que falta del bloque 3: la
+mitad backend en `convex/**` —hash diario de `ORB-LUN-002` y `validUntil`
+acotado, que es de Codex— y las pruebas de cambio de día y bordes temporales que
+dependen de ella.
+
 ## RC iOS 1.0.0 (23) · RESULTADO (2026-08-21) · BINARIO ARMADO LOCALMENTE · SIN PUSH NI DISTRIBUCIÓN
 
 **Estado: RC armado.** El binario existe y su **commit exacto es `0ec205d`**.
