@@ -1,6 +1,6 @@
 # Current Task
 
-## Promoción iOS 1.0.0 (26) → TestFlight interno (2026-08-22) · AUTORIZADA
+## Promoción iOS 1.0.0 (26) → TestFlight interno (2026-08-22) · DISPONIBLE
 
 **Objetivo.** Congelar el diff aprobado del onboarding canónico, integrarlo en
 un commit reproducible, generar el archive productivo iOS `1.0.0 (26)` y
@@ -21,8 +21,9 @@ controla documentación compartida, Git, configuración de release, archive EAS
 y TestFlight. No se modifica ni despliega `convex/**`.
 
 **Base de integración.** `origin/release/1.0.0` en `4f62b861`; candidato
-verificado en `f67c5760`; rama `fix/onboarding-final-build26`; worktree
-`qa23-fixes`. **Cambio de contrato:** no.
+verificado en `f67c5760`; commit final `3182f6a`; PR `#80` integrado como
+`d58cb20`; rama `fix/onboarding-final-build26`; worktree `qa23-fixes`.
+**Cambio de contrato:** no.
 
 **Riesgo.** Alto: autenticación nativa, onboarding, entitlement y comercio.
 El provisioning profile anterior quedó obsoleto al habilitar Sign in with
@@ -46,6 +47,38 @@ promoverlo; corregir en un número de build nuevo.
 codegen Convex, cambios de contrato/backend, rediseño adicional, los textos
 pendientes de Tránsitos, Baúl del Umbral, copy de cuota agotada, refinamiento de
 múltiples exactos y QA física de VoiceOver fuera de TestFlight.
+
+### Evidencia de cierre
+
+- Integración: PR `#80`, controles remotos en verde (`typecheck · tests ·
+  export web`, Vercel Órbita y preview); árbol ejecutable idéntico al candidato
+  validado y sin cambios en `convex/**`.
+- Gates locales sobre la integración: `pnpm typecheck` exit `0`, suite completa
+  `2759/2759` (piso `2542`), `git diff --check` exit `0`. Export iOS y export
+  web aprobados; gate web: `36.12 MB`, imagen máxima `479.3 KB`, JS gzip
+  `1.15 MB`, SEO completo.
+- Firma: el perfil de julio fue rechazado correctamente por no contener Sign in
+  with Apple y no produjo un IPA distribuible. Se retiró ese perfil y se creó
+  el profile `F7N5XA58QP` (`f1f91ea2-47c1-41bc-9377-64fb61c0484f`) con el
+  certificado vigente.
+- IPA final: `/private/tmp/orbita-1.0.0-26.ipa`, `48,815,132` bytes, SHA-256
+  `2cee7ec704c3a431f19cf438972a36a4851c9d333d3b6f01e2de45873200457d`.
+  Firma válida; bundle `com.lucasssram.orbita`; versión `1.0.0`; build `26`;
+  `get-task-allow=false`; `com.apple.developer.applesignin=["Default"]`; sin
+  `aps-environment` en los entitlements de la app.
+- Submit EAS/App Store Connect: `6d3490ad-cd0a-4aad-bb16-553024e2a6fc`,
+  finalizado entre `2026-08-22 17:57–17:59 -03`. Apple terminó de procesarlo y
+  TestFlight informa `1.0.0 (26) — internal: in beta testing`. App Store:
+  `Live: none`, `In review: none`, `Pending release: none`.
+- Advertencia no bloqueante: Expo Doctor reportó tres desfases de parche ya
+  existentes (`expo 54.0.35→54.0.37`, `expo-constants 18.0.13→18.0.14`,
+  `expo-updates 29.0.18→29.0.20`). El archive y todos los gates terminaron bien;
+  no se amplió el alcance de esta promoción para actualizar dependencias.
+- Pendiente antes de cualquier producción: QA física del mismo build 26 en
+  instalación limpia y cuenta existente para Apple (email visible/oculto),
+  Google y email+código; relaunch/reintento; datos natales con y sin hora;
+  compra, cancelación, restauración y `Seguir gratis`. Cualquier promoción a
+  App Review o producción requiere una autorización nueva.
 
 ## Onboarding auth-first (2026-08-21) · PROMOCIÓN A BUILD 25 AUTORIZADA
 
