@@ -159,3 +159,31 @@ export function destinationAllows(
       return destination === "app-home" || destination === "degraded";
   }
 }
+
+/**
+ * Continuidad acotada del onboarding que YA estaba en pantalla.
+ *
+ * `completeBirthData` vuelve la cuenta apta para la app antes de que terminen
+ * las superficies editoriales del alta. La query reactiva pasa entonces a
+ * `app-home`; si el gate redirige en ese instante, salta Antes/Después y la
+ * paywall y aterriza en Hoy. Un onboarding legítimamente montado conserva su
+ * propia navegación hasta que su CTA final lo reemplaza por Carta.
+ *
+ * No se incorpora esta excepción a `destinationAllows`: una cuenta completa
+ * que llega inicialmente por un deep link a `/onboarding` mantiene
+ * `mounted=false` y sigue siendo rechazada. Tampoco se extiende a otra
+ * superficie ni a un gate que no haya pedido continuidad explícita.
+ */
+export function mountedOnboardingRetainsCompletion(args: {
+  sticky: boolean;
+  mounted: boolean;
+  surface: AccountSurface;
+  destination: AccountDestination;
+}): boolean {
+  return (
+    args.sticky &&
+    args.mounted &&
+    args.surface === "onboarding" &&
+    args.destination === "app-home"
+  );
+}

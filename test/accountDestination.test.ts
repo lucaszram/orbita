@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   destinationAllows,
+  mountedOnboardingRetainsCompletion,
   resolveAccountDestination,
   type AccountState
 } from "../src/domain/accountDestination";
@@ -272,6 +273,60 @@ test("una cuenta COMPLETA no puede entrar al alta, con o sin sesión", () => {
   // sobrescribir datos natales desde el onboarding.
   assert.equal(resolveAccountDestination(conCuenta(READY)), "app-home");
   assert.ok(!destinationAllows("app-home", "onboarding"), "una cuenta completa NUNCA monta el alta");
+  assert.equal(
+    mountedOnboardingRetainsCompletion({
+      sticky: true,
+      mounted: false,
+      surface: "onboarding",
+      destination: "app-home"
+    }),
+    false,
+    "un deep link inicial no adquiere continuidad"
+  );
+});
+
+test("el onboarding ya montado conserva el cierre hasta paywall y Carta", () => {
+  // Secuencia real del build 26: la cuenta nueva empieza incompleta y el gate
+  // permite montar el flujo. `Preparar mi carta` persiste birthData y la query
+  // reactiva cambia a app-home ANTES de Antes/Después y la paywall.
+  const inicial = resolveAccountDestination(conCuenta(EN_ALTA, { localProfileReady: false }));
+  assert.equal(inicial, "onboarding");
+  assert.equal(destinationAllows(inicial, "onboarding"), true);
+
+  const despuesDeGuardar = resolveAccountDestination(conCuenta(SIN_CARTA));
+  assert.equal(despuesDeGuardar, "app-home");
+  assert.equal(destinationAllows(despuesDeGuardar, "onboarding"), false);
+  assert.equal(
+    mountedOnboardingRetainsCompletion({
+      sticky: true,
+      mounted: true,
+      surface: "onboarding",
+      destination: despuesDeGuardar
+    }),
+    true,
+    "el cambio reactivo no expulsa el flujo que ya estaba en pantalla"
+  );
+});
+
+test("la continuidad resuelta es exclusiva del onboarding sticky ya montado", () => {
+  for (const caso of [
+    { sticky: false, mounted: true, surface: "onboarding" as const, destination: "app-home" as const },
+    { sticky: true, mounted: false, surface: "onboarding" as const, destination: "app-home" as const },
+    { sticky: true, mounted: true, surface: "auth" as const, destination: "app-home" as const },
+    { sticky: true, mounted: true, surface: "app" as const, destination: "app-home" as const },
+    { sticky: true, mounted: true, surface: "onboarding" as const, destination: "edit-birth-data" as const }
+  ]) {
+    assert.equal(mountedOnboardingRetainsCompletion(caso), false, JSON.stringify(caso));
+  }
+});
+
+test("el gate cablea la continuidad sin ampliar destinationAllows", () => {
+  const gate = sinComentarios(readFileSync(join(ROOT, "src/components/orbita/AccountGate.tsx"), "utf8"));
+  const onboardingGate = sinComentarios(readFileSync(join(ROOT, "src/onboarding/OnboardingGate.tsx"), "utf8"));
+  assert.match(gate, /mountedOnboardingRetainsCompletion\(\{/);
+  assert.match(gate, /mounted: montado\.current/);
+  assert.match(onboardingGate, /surface="onboarding" sticky/);
+  assert.equal(destinationAllows("app-home", "onboarding"), false);
 });
 
 test('"Empezar" abre la experiencia inmersiva, no un formulario suelto', () => {
