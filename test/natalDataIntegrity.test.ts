@@ -32,84 +32,90 @@ function bloqueDesde(src: string, ancla: string): string {
 }
 
 // --- El incidente ------------------------------------------------------------
-// Abrir `?debugStep=14` con sesión activa persistía los valores POR DEFECTO del
-// flujo encima de los datos natales de la cuenta y recalculaba la carta: el
-// paso 14 auto-ejecutaba `submit()` al montarse.
+// Abrir el último paso por `debugStep` con sesión activa persistía los valores
+// POR DEFECTO del flujo encima de los datos natales de la cuenta y recalculaba
+// la carta: el paso final auto-ejecutaba la escritura al montarse. La regla
+// sobrevive al rediseño auth-first: la inspección NUNCA escribe.
 
 test("montar el ÚLTIMO paso por debugStep no escribe nada", () => {
-  // El paso de cierre se nombra (`FINAL_STEP`) en vez de ir por número: el
+  // El paso de cierre se nombra (`STEP_PAYWALL`) en vez de ir por número: el
   // camino de escritura depende del índice y un renumerado silencioso ya costó
   // datos cuando el alta salió del onboarding.
-  assert.ok(/const FINAL_STEP = 12;/.test(FLOW), "el último paso debe estar nombrado");
-  const autoSubmit = bloqueDesde(FLOW, "if (step === FINAL_STEP && !PAYWALL_ENABLED)");
+  assert.ok(/case STEP_PAYWALL:/.test(FLOW), "el último paso debe estar nombrado");
+  // El cierre ya NO tiene ningún efecto de montaje que escriba o navegue: la
+  // paywall se monta siempre y las salidas son acciones de la persona.
   assert.ok(
-    /if \(inspeccion\) return;/.test(
-      bloqueDesde(FLOW, "useEffect(() => {\n    if (inspeccion) return;\n    if (step === FINAL_STEP")
-    ),
-    "el efecto de cierre debe cortar en inspección"
+    !FLOW_CODE.includes("if (step !== STEP_PAYWALL) return;"),
+    "no puede volver un efecto automático del cierre"
   );
-  assert.ok(autoSubmit.includes("submit()"), "el efecto sigue siendo el del submit");
+  // La paywall se monta en modo inspección (sin impresión ni acciones)…
+  assert.match(FLOW_CODE, /inspect=\{inspeccion\}/);
 
-  // Y `submit` en sí falla cerrado, por si lo dispara un CTA.
-  const submit = bloqueDesde(FLOW, "const submit = async () => {");
-  const primerasLineas = submit.split("\n").slice(0, 4).join("\n");
-  assert.ok(/if \(inspeccion\) return;/.test(primerasLineas), "submit debe cortar en la primera línea");
-});
-
-test("el alta auth-first no monta ni crea una cuenta desde los pasos natales", () => {
-  assert.ok(!/AccountScreen/.test(FLOW_CODE), "la cuenta no puede ser un paso del onboarding");
-  assert.ok(!/ClerkSignUp/.test(FLOW_CODE), "Clerk sólo vive en la superficie auth");
-  assert.ok(/const TOTAL = 13;/.test(FLOW_CODE));
-  assert.ok(/const FINAL_STEP = 12;/.test(FLOW_CODE));
-  for (const viejo of ["accountOAuth", "accountNext", "account.oauth(", "account.verify("]) {
-    assert.ok(!FLOW_CODE.includes(viejo), `el camino custom no puede volver: ${viejo}`);
-  }
-  for (const viejo of ["STEP_ACCOUNT", "prepareSignupDraft", "useOnboardingFinalize", "completeSignupFromDraft"]) {
-    assert.ok(!FLOW_CODE.includes(viejo), `el camino tardío no puede volver: ${viejo}`);
-  }
-  const cierre = bloqueDesde(FLOW_CODE, "const submit = async () => {");
+  // …y las dos escrituras en sí fallan cerradas, por si las dispara un CTA.
+  const preparar = bloqueDesde(FLOW, "const prepararCarta = async () => {");
   assert.ok(
-    /if \(inspeccion\) return;/.test(cierre.split("\n").slice(0, 4).join("\n")),
-    "el cierre corta en inspección antes de finalizar"
+    /if \(inspeccion\) return;/.test(preparar.split("\n").slice(0, 3).join("\n")),
+    "prepararCarta debe cortar en la primera línea"
+  );
+  const salida = bloqueDesde(FLOW, "const enterCarta = async () => {");
+  assert.ok(
+    /if \(inspeccion\) return;/.test(salida.split("\n").slice(0, 3).join("\n")),
+    "enterCarta debe cortar en la primera línea"
   );
 });
 
-test("nada se persiste sin una cuenta activa", () => {
-  const guard = FLOW_CODE.slice(
-    FLOW_CODE.indexOf("if (persistBirthData && !auth?.isSignedIn)"),
-    FLOW_CODE.indexOf("if (persistBirthData && !auth?.isSignedIn)") + 420
-  );
-  assert.ok(guard.length > 0, "falta el guard de cuenta activa antes de persistir");
-  assert.match(guard, /if \(persistBirthData && !auth\?\.isSignedIn\) \{/);
-  assert.match(guard, /setSubmitError\(/, "sin sesión se muestra recuperación");
-  assert.match(guard, /submitLock\.current = false;/, "se libera el lock para reintentar");
-  assert.ok(
-    FLOW_CODE.indexOf("if (persistBirthData && !auth?.isSignedIn)") < FLOW_CODE.indexOf("await persistBirthData("),
-    "el guard tiene que preceder a la escritura"
-  );
+test("el acceso vive en el flujo, y la inspección nunca crea una cuenta", () => {
+  assert.ok(/AuthScreen/.test(FLOW_CODE), "el acceso es el primer paso del onboarding");
+  // La salida del paso de acceso —que puede navegar y limpiar el borrador—
+  // corta ANTES de nada bajo inspección: `debugStep` puede DIBUJAR el paso,
+  // nunca escribir ni crear una cuenta.
+  const iSalida = FLOW_CODE.indexOf("if (step !== STEP_AUTH) return;");
+  assert.ok(iSalida > 0, "falta el efecto de salida del acceso");
+  const antes = FLOW_CODE.slice(Math.max(0, iSalida - 160), iSalida);
+  assert.ok(/if \(inspeccion \|\| !HAS_BACKEND\) return;/.test(antes), "la salida corta en inspección primero");
+  // El marcador remoto de alta en curso tampoco se siembra en inspección: el
+  // flujo ni siquiera le pasa el handler a la pantalla.
+  assert.match(FLOW_CODE, /inspeccion \|\| !clientDraftId \|\| !markSignup\s*\? undefined/);
+  assert.match(FLOW_CODE, /markSignup\(clientDraftId\)/);
+  // Y el paywall se monta en modo inspección: sin impresión y sin acciones.
+  assert.match(FLOW_CODE, /inspect=\{inspeccion\}/);
+});
+
+test("nada se escribe sin una cuenta activa", () => {
+  // Con el acceso PRIMERO, los datos natales se escriben por el camino
+  // autenticado. El guard vive en el hook: sin sesión, RECHAZA — jamás se
+  // resuelve como éxito ni se escribe "por si acaso".
+  const inner = bloqueDesde(PERSIST, "function useOnboardingBirthDataSaveInner()");
+  assert.match(inner, /if \(!isSignedIn\) throw new Error\("ONBOARDING_SESSION_NOT_READY"\)/);
+  assert.ok(!/if \(!isSignedIn\) return;/.test(inner));
+  // Y la pantalla del resumen traduce esa carrera a un reintento, no a un cierre.
+  const preparar = bloqueDesde(FLOW_CODE, "const prepararCarta = async () => {");
+  assert.match(preparar, /ONBOARDING_SESSION_NOT_READY/);
+  assert.match(preparar, /setSaveError\(/);
 });
 
 test("en inspección no se calcula carta ni se pisa el borrador", () => {
-  const triada = bloqueDesde(FLOW, "if (step < STEP_COMPUTE_TRIAD) return;");
-  assert.ok(/inspeccion/.test(FLOW.slice(FLOW.indexOf("Inspección: no se le pega a la API"), FLOW.indexOf("if (step < STEP_COMPUTE_TRIAD"))));
-  assert.ok(triada.length > 0);
-  // Sin backend, sin lugar o sin borrador tampoco se calcula: el estado queda
-  // "unavailable" y el alta avanza igual que siempre.
-  assert.match(
-    FLOW_CODE,
-    /if \(!computeTriad \|\| !birthPlace \|\| !clientDraftId\) \{\s*setTriadStatus\("unavailable"\);\s*return;/
-  );
+  // El efecto de la tríada corta en inspección antes de pegarle a la API.
+  const iTriada = FLOW_CODE.indexOf("if (step !== STEP_TRIAD) return;");
+  assert.ok(iTriada > 0, "falta el efecto de la tríada");
+  const antesTriada = FLOW_CODE.slice(Math.max(0, iTriada - 120), iTriada);
+  assert.ok(/if \(inspeccion\) return;/.test(antesTriada), "la tríada no se calcula en inspección");
+  // Sin backend, sin lugar o sin borrador tampoco se calcula: el flujo saltea
+  // la superficie y el guard del efecto corta sin tocar nada.
+  assert.match(FLOW_CODE, /if \(!computeTriad \|\| !birthPlace \|\| !clientDraftId\) return;/);
+  assert.match(FLOW_CODE, /const canComputeTriad = Boolean\(computeTriad && birthPlace && clientDraftId\);/);
 
-  // El borrador local pasó a multilínea al sumarle el `clientDraftId`.
+  // El borrador local viaja con su id remoto Y su dueño.
   const borrador = bloqueDesde(FLOW, "writeDraft({");
   assert.ok(borrador.length > 0);
   assert.match(borrador, /clientDraftId: clientDraftId \?\? undefined/, "el id del borrador remoto viaja con él");
+  assert.match(borrador, /ownerUserId: userId \?\? undefined/, "el dueño viaja con el borrador");
   const efectoBorrador = FLOW.slice(FLOW.indexOf("// En inspección no se guarda"), FLOW.indexOf("writeDraft({"));
   assert.ok(/if \(inspeccion\) return;/.test(efectoBorrador), "el borrador real no se sobrescribe");
 });
 
 test("sin herramientas internas no hay inspección posible", () => {
-  assert.equal(resolveDebugStep({ raw: "12", total: 13, internalToolsEnabled: false }), null);
+  assert.equal(resolveDebugStep({ raw: "10", total: 11, internalToolsEnabled: false }), null);
 });
 
 // --- Separación de endpoints -------------------------------------------------
@@ -150,17 +156,20 @@ test("la persistencia compartida ya no genera el día con la fecha del dispositi
 
 // --- Una cuenta con datos no vuelve al alta ---------------------------------
 
-test("web y nativo pasan primero por auth y comparten el gate del onboarding", () => {
+test("web y nativo rechazan una cuenta completa por el MISMO gate", () => {
   const sinComentarios = (x: string) =>
     x.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
-  const empezar = sinComentarios(EMPEZAR);
-  assert.match(empezar, /SIGN_UP_ROUTE/);
-  assert.ok(!/OnboardingGate/.test(empezar), "sin sesión no se monta el onboarding");
-  const onboarding = sinComentarios(ONBOARDING);
-  assert.ok(/OnboardingGate/.test(onboarding));
-  assert.ok(!/OnboardingFlow/.test(onboarding), "la ruta no saltea el gate");
-  const alta = sinComentarios(readFileSync(join(ROOT, "app/crear-cuenta.tsx"), "utf8"));
-  assert.match(alta, /AccountGate surface="auth"/);
+  for (const [nombre, src] of [
+    ["app/empezar.tsx (web)", EMPEZAR],
+    ["app/onboarding.tsx (nativo)", ONBOARDING]
+  ] as const) {
+    const codigo = sinComentarios(src);
+    assert.ok(/OnboardingGate/.test(codigo), `${nombre} debe pasar por el gate compartido`);
+    assert.ok(
+      !/OnboardingFlow/.test(codigo),
+      `${nombre} no puede montar el flujo directo: se saltearía el gate`
+    );
+  }
   // El gate delega en el resolver único; la consulta del estado autoritativo y
   // la redirección viven ahí, no duplicadas en cada superficie.
   assert.ok(/AccountGate surface="onboarding"/.test(GATE), "el gate usa la puerta compartida");
@@ -180,74 +189,79 @@ test("web y nativo pasan primero por auth y comparten el gate del onboarding", (
 });
 
 // --- Una sola ruta de persistencia ------------------------------------------
-// Había DOS escrituras al llegar al paso 14: un efecto al montar (sin guarda de
-// inspección y con `void`, así que un fallo era invisible) y otra en `submit()`.
-// El efecto era el que persistía los valores por defecto en un salto directo.
+// El único punto que escribe los datos natales es "Preparar mi carta". Ningún
+// efecto de montaje persiste nada, y el fallo nunca es invisible.
 
-test("existe exactamente UNA llamada de cierre en el flujo", () => {
-  const llamadas = FLOW_CODE.match(/await persistBirthData\(\{/g) ?? [];
+test("existe exactamente UNA llamada de persistencia natal en el flujo", () => {
+  const llamadas = FLOW_CODE.match(/await saveBirthData\(\{/g) ?? [];
   assert.equal(llamadas.length, 1, `se esperaba una sola persistencia, hay ${llamadas.length}`);
-  assert.ok(!/finalizeOnboarding/.test(FLOW_CODE));
+  // Los caminos viejos no pueden convivir: serían una segunda escritura.
   assert.ok(!/persistBackend\(\{/.test(FLOW_CODE), "el camino viejo de persistencia no puede volver");
+  assert.ok(!/finalizeOnboarding\(\{/.test(FLOW_CODE), "el cierre por borrador anónimo salió del flujo");
 });
 
 test("no queda ningún cierre con `void` ni el ref calcFired", () => {
-  assert.ok(!/void\s+finalizeOnboarding/.test(FLOW_CODE), "un `void` esconde el fallo y navega igual");
+  assert.ok(!/void\s+saveBirthData/.test(FLOW_CODE), "un `void` esconde el fallo y navega igual");
   assert.ok(!/void\s+persistBackend/.test(FLOW_CODE));
-  assert.ok(!/calcFired/.test(FLOW_CODE), "el efecto de persistencia del paso 14 debe estar eliminado");
+  assert.ok(!/calcFired/.test(FLOW_CODE), "el efecto de persistencia del cierre debe seguir eliminado");
 });
 
-test("el cierre se espera dentro de submit, y la salida espera sólo los datos", () => {
-  const submit = bloqueDesde(FLOW, "const submit = async () => {");
-  const i = submit.indexOf("await persistBirthData({");
-  assert.notEqual(i, -1, "la persistencia debe estar dentro de submit y con await");
-  // `submit` no navega: el retorno de una llamada no reemplaza a la autoridad
-  // reactiva. Perfil, limpieza y salida viven en `enterApp`, que corre sólo
-  // cuando el estado autoritativo confirma los datos natales persistidos.
+test("la persistencia se espera en «Preparar mi carta», y el derivado nunca la bloquea", () => {
+  const preparar = bloqueDesde(FLOW, "const prepararCarta = async () => {");
+  const i = preparar.indexOf("await saveBirthData({");
+  assert.notEqual(i, -1, "la persistencia debe estar dentro de prepararCarta y con await");
+  // `prepararCarta` no navega fuera del flujo ni toca el perfil local: eso vive
+  // en `enterCarta`, la única salida.
   for (const prohibido of ["await createProfile(", "clearDraft()", "router.replace("]) {
-    assert.ok(!submit.includes(prohibido), `${prohibido} no puede depender del retorno de la escritura`);
+    assert.ok(!preparar.includes(prohibido), `${prohibido} no pertenece a la persistencia`);
   }
-  const salida = bloqueDesde(FLOW, "const abrirOrbita = async () => {");
+  // El cálculo derivado de la carta corre en mejor esfuerzo DENTRO del hook:
+  // guardar es obligatorio, la carta nunca convierte un guardado en error.
+  const inner = bloqueDesde(PERSIST, "function useOnboardingBirthDataSaveInner()");
+  assert.ok(inner.indexOf("await completeBirthData(") < inner.indexOf("void calculateChart"));
+  assert.match(inner, /void calculateChart\(\{\}\)\.catch\(\(\) => undefined\)/);
+  assert.doesNotMatch(inner, /await calculateChart/);
+
+  // La salida única: perfil local con dueño → limpiar borrador → marcar la
+  // primera vez → Carta. Ningún camino nuevo pasa por /recepcion.
+  const salida = bloqueDesde(FLOW, "const enterCarta = async () => {");
   const perfil = salida.indexOf("await createProfile(");
   const limpiar = salida.indexOf("clearDraft()");
-  const navegar = salida.indexOf("router.replace(");
+  const navegar = salida.indexOf("router.replace(CARTA_TAB_ROUTE");
   assert.ok(perfil !== -1 && limpiar > perfil && navegar > limpiar, "el orden de salida se conserva");
-  // La carta no participa de la puerta; `birthDataReady` sí.
-  assert.match(FLOW_CODE, /if \(!isBirthDataReady\(completion\)\) return;\s*void enterApp\(\);/);
-  // El destino del cierre es la recepción del día 1 (decisión 2026-08-12): la
-  // Home directa se saltaba la única entrega ceremonial del alta.
-  assert.match(salida, /router\.replace\(\{\s*pathname: RECEPTION_ROUTE,/);
-  assert.doesNotMatch(salida, /HOME_ROUTE/);
+  assert.doesNotMatch(salida, /RECEPTION_ROUTE/);
   assert.match(FLOW_CODE, /if \(enterLock\.current\) return;/, "y se sale una sola vez");
 });
 
-test("si la persistencia falla no se crea perfil, no se limpia el borrador y no se navega", () => {
-  const submit = bloqueDesde(FLOW, "const submit = async () => {");
-  const catchBlock = submit.slice(submit.indexOf("} catch (e) {"));
-  assert.ok(/setSubmitError\(/.test(catchBlock), "el fallo tiene que ser visible");
-  assert.ok(/return;/.test(catchBlock), "y tiene que cortar el cierre");
-  assert.ok(/submitLock\.current = false/.test(catchBlock), "el lock se libera para poder reintentar");
-  // El mismo estado de guardado muestra recuperación inline: no existe una
-  // pantalla terminal por fallo del cálculo de la carta.
-  assert.match(FLOW, /<SavingBirthData[\s\S]*?: submitError/);
-  assert.match(FLOW, /retryLabel = "Reintentar guardado"/);
-  assert.match(FLOW, /retrying \? "Guardando…" : retryLabel/);
+test("si la persistencia falla no se avanza, no se limpia nada y se puede reintentar", () => {
+  const preparar = bloqueDesde(FLOW, "const prepararCarta = async () => {");
+  const catchBlock = preparar.slice(preparar.indexOf("} catch (e) {"));
+  assert.ok(/setSaveError\(/.test(catchBlock), "el fallo tiene que ser visible");
+  assert.ok(/return;/.test(catchBlock), "y tiene que cortar el avance");
+  assert.ok(/saveLock\.current = false/.test(catchBlock), "el lock se libera para poder reintentar");
+  // El error se dice EN el resumen, con reintento inline: no existe una
+  // pantalla terminal de fallo.
+  assert.match(FLOW_CODE, /saveError=\{saveError\}/);
+  const resumen = readFileSync(join(ROOT, "src/onboarding/screens/BirthSummaryScreen.tsx"), "utf8");
+  assert.match(resumen, /accessibilityRole="alert"/);
+  assert.match(resumen, /\{saveError\}/);
   assert.doesNotMatch(FLOW, /No pudimos guardar tu carta/);
 });
 
 // --- El alta normal sigue funcionando ---------------------------------------
 
-test("el alta normal sigue creando datos natales una vez, y el reintento es idempotente", () => {
-  const inner = bloqueDesde(PERSIST, "function useBackendPersistInner()");
-  assert.ok(!/Date\.now\(\)/.test(inner), "un valor por llamada rompería la idempotencia");
-  assert.ok(!/Math\.random/.test(inner));
-  assert.match(inner, /appApi\.onboarding\.completeBirthData/);
-  assert.match(inner, /timezoneLookupFor\(input\)/);
-  assert.match(inner, /withResolvedTimezone/);
-  assert.match(FLOW_CODE, /useOnboardingBirthDataPersist\(\)/);
-  assert.ok(!/useOnboardingFinalize\(\)/.test(FLOW_CODE));
-  const backend = readFileSync(join(ROOT, "convex/onboarding.ts"), "utf8");
-  assert.match(backend, /decideOnboardingBirthDataWrite/);
+test("el alta normal escribe los datos validados una vez, con reintento seguro", () => {
+  // El guardado auth-first valida en el borde de escritura y no rellena nada:
+  // sin lugar elegido, coordenadas o zona, no se escribe.
+  const inner = bloqueDesde(PERSIST, "function useOnboardingBirthDataSaveInner()");
+  assert.match(inner, /validateBirthPayload\(resolved\)/);
+  assert.match(inner, /timezoneLookupFor\(input\)/, "la zona se deriva del lugar, nunca del aparato");
+  assert.ok(!/deviceTimezone\(\)/.test(inner));
+  assert.ok(!/"Sin especificar"/.test(inner), "el lugar no se rellena");
+  // El `clientDraftId` viaja para adjuntar el marcador de alta en curso.
+  assert.match(inner, /clientDraftId: input\.clientDraftId/);
+  // Y el flujo canónico usa este guardado.
+  assert.ok(/useOnboardingBirthDataSave\(\)/.test(FLOW));
 });
 
 test("la cadena obligatoria es atómica y la carta queda en mejor esfuerzo", () => {
@@ -369,20 +383,17 @@ test("el borrador remoto se guarda y se CONFIRMA antes de abrir Clerk", () => {
   );
   assert.ok(!/deviceTimezone\(\)/.test(CADENA), "la zona no sale del dispositivo");
 
-  // Y el paso de cuenta no abre Clerk sin ese `ready`.
-  const cuenta = readFileSync(join(ROOT, "src/onboarding/screens/AccountScreen.tsx"), "utf8");
-  assert.match(cuenta, /phase === "ready" \? \([\s\S]{0,200}<ClerkSignUp\b/);
 });
 
 test("el lock de reentrada es un ref sincrónico, no estado de React", () => {
-  const submit = bloqueDesde(FLOW, "const submit = async () => {");
-  const primeras = submit.split("\n").slice(0, 8).join("\n");
-  assert.ok(/submitLock\.current = true/.test(primeras), "el lock se toma en las primeras líneas");
+  const preparar = bloqueDesde(FLOW, "const prepararCarta = async () => {");
+  const primeras = preparar.split("\n").slice(0, 6).join("\n");
+  assert.ok(/saveLock\.current = true/.test(primeras), "el lock se toma en las primeras líneas");
   assert.ok(
-    !/if \(submitting\) return/.test(submit),
-    "`submitting` es estado: dos taps del mismo render pasarían los dos"
+    !/if \(saving\) return/.test(preparar),
+    "`saving` es estado: dos taps del mismo render pasarían los dos"
   );
-  assert.ok(/const submitLock = useRef\(false\)/.test(FLOW));
+  assert.ok(/const saveLock = useRef\(false\)/.test(FLOW));
 });
 
 // --- Validación en el borde de escritura del EDITOR --------------------------

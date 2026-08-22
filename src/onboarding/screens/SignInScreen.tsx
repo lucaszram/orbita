@@ -2,9 +2,9 @@ import { useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
 
 import { Text } from "@/components/ui/text";
+import { shouldOfferSignup } from "@/domain/sessionStart";
 
 import { A } from "../assets";
-import { AuthModeSwitch } from "../components/AuthModeSwitch";
 import { CodeHelp } from "../components/CodeHelp";
 import { CodeInput } from "../components/CodeInput";
 import { CTA } from "../components/CTA";
@@ -22,7 +22,7 @@ type Props = {
   onCreateAccount: (email: string) => void;
   onBack: () => void;
   /**
-   * ¿Se ofrece la puerta al alta ("Crear cuenta")? Por defecto sí.
+   * ¿Se ofrece "Crear una cuenta"? Por defecto sí.
    *
    * El boundary de eliminación pendiente monta esta misma pantalla para que la
    * cuenta que se está borrando vuelva a entrar y termine su eliminación. Ahí
@@ -45,8 +45,7 @@ type Props = {
  * 01C — Iniciar sesión ("Bienvenido de nuevo"). Puerta para usuarios que ya
  * tienen cuenta: email → contraseña o código (según lo que soporte la cuenta)
  * u OAuth. NO manda al onboarding: con carta en Convex se entra derecho a la
- * Home. La salida al alta es la otra mitad del `AuthModeSwitch`, arriba y a la
- * misma altura que "Ingresar" —no un CTA suelto debajo del formulario.
+ * Home. La salida al alta ("Crear una cuenta") está siempre a mano.
  */
 export function SignInScreen({
   flow,
@@ -64,13 +63,15 @@ export function SignInScreen({
   const codePhase = flow.phase === "code" && !flow.isSignedIn;
   const passwordPhase = flow.phase === "password" && !flow.isSignedIn;
   const busy = flow.busy || entering;
+  const offerSignup =
+    allowSignup && shouldOfferSignup({ phase: flow.phase, isSignedIn: flow.isSignedIn });
   const subtitle = flow.isSignedIn
     ? "Tu sesión ya está activa. Entrá y seguí donde estabas."
     : codePhase
       ? `Te mandamos un código a ${email.trim()}.`
       : passwordPhase
         ? "Escribí tu contraseña para entrar."
-        : "Iniciá sesión y seguí donde estabas.";
+        : "Iniciá sesión y volvés directo a tu cielo — sin repetir el onboarding.";
   const ctaLabel = busy
     ? "Un momento…"
     : flow.isSignedIn
@@ -118,8 +119,10 @@ export function SignInScreen({
     // Doble llave: además de no dibujar el botón, tampoco se ejecuta. Un
     // `allowOAuth={false}` tiene que apagar el CAMINO, no sólo el píxel.
     if (!allowOAuth || busy || flow.oauthBusy) return;
-    const ok = await flow.oauth(provider);
-    if (ok) await finish();
+    // En el login cualquier sesión creada sirve (nueva o existente); sólo la
+    // cancelación/error no entra.
+    const outcome = await flow.oauth(provider);
+    if (outcome !== "cancelled") await finish();
   };
 
   return (
@@ -132,24 +135,6 @@ export function SignInScreen({
       <View style={styles.body}>
         <Title>Bienvenido{"\n"}de nuevo.</Title>
         <Body style={styles.sub}>{subtitle}</Body>
-
-        {/* Las dos puertas juntas y arriba: quien llega acá sin cuenta —o cae en
-            "No encontramos una cuenta con ese email"— no queda encerrado en el
-            login. `allowSignup={false}` (boundary de eliminación pendiente) no
-            dibuja el selector, y sin él no hay NINGUNA vía de alta en esta
-            pantalla. */}
-        {allowSignup ? (
-          <AuthModeSwitch
-            mode="signIn"
-            // El email ya tipeado viaja al alta normalizado igual que en
-            // `submit`: nadie reescribe lo que acaba de escribir.
-            onSignUp={() => onCreateAccount(email.trim().toLowerCase())}
-            // Ya estás en el login: reingresar a esta misma superficie vaciaría
-            // el email/código a medio escribir.
-            onSignIn={() => {}}
-            style={styles.switch}
-          />
-        ) : null}
 
         {/* El camino corto primero; el email queda completo debajo. */}
         {allowOAuth && GOOGLE_AUTH_ENABLED && !flow.isSignedIn && flow.phase === "email" ? (
@@ -224,6 +209,20 @@ export function SignInScreen({
           <CTA label={ctaLabel} onPress={busy ? () => undefined : () => void submit()} />
         </View>
 
+        {/* Salida hacia el alta, SIEMPRE visible mientras se escribe el email
+            (shouldOfferSignup). Sin esto, "No encontramos una cuenta con ese
+            email" dejaba al usuario encerrado en el login: sin cuenta que
+            recuperar y sin forma de crear una desde acá. */}
+        {offerSignup ? (
+          <View style={styles.secondary}>
+            <CTA
+              label="Crear una cuenta"
+              variant="secondary"
+              onPress={busy ? undefined : () => onCreateAccount(email.trim().toLowerCase())}
+            />
+          </View>
+        ) : null}
+
         {codePhase || passwordPhase ? (
           <View style={styles.linksZone}>
             {/* La contraseña nunca es un callejón: siempre se puede entrar por
@@ -285,9 +284,9 @@ const styles = StyleSheet.create({
     fontFamily: font.sans,
     fontSize: 13,
   },
+  secondary: { marginTop: 12 },
   socials: { marginTop: 22 },
   spacer: { flex: 1 },
-  switch: { marginTop: 22 },
   googleTop: { marginTop: 24 },
   sub: { marginTop: 10 },
 });

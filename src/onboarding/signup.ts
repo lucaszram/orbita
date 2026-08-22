@@ -1,25 +1,11 @@
 /**
- * Alta con contraseña (Clerk Producción tiene `password: required`).
+ * Interpretación y guardas del alta passwordless y del ingreso legacy.
  *
  * Módulo PURO (sin React ni Clerk) para testear sin mocks:
- *  - validar email + contraseña + confirmación antes de crear el intento;
  *  - interpretar el resultado de `attemptEmailAddressVerification` sin confundir
  *    "faltan requisitos" (email YA verificado) con "código incorrecto";
  *  - un guard de reentrada para que auto-submit + botón no verifiquen dos veces.
  */
-
-/** Mínimo de Clerk Producción por defecto; el server igual valida su política. */
-export const MIN_PASSWORD_LENGTH = 8;
-
-/** Valida la contraseña del alta. Devuelve el error a mostrar, o null si va. */
-export function validateSignupPassword(password: string, confirm: string): string | null {
-  if (!password) return "Elegí una contraseña.";
-  if (password.length < MIN_PASSWORD_LENGTH) {
-    return `La contraseña necesita al menos ${MIN_PASSWORD_LENGTH} caracteres.`;
-  }
-  if (password !== confirm) return "Las contraseñas no coinciden.";
-  return null;
-}
 
 const MISSING_FIELD_LABELS: Record<string, string> = {
   password: "una contraseña",
@@ -54,7 +40,7 @@ export type SignUpOutcome =
  * Un código INCORRECTO hace que `attemptEmailAddressVerification` LANCE (lo
  * agarra el catch del hook). Si llegó acá sin lanzar, el código fue aceptado y
  * el email quedó verificado: si el alta no está `complete`, es porque faltan
- * requisitos (típicamente la contraseña) — NUNCA "el código no coincide".
+ * requisitos — NUNCA "el código no coincide".
  */
 export function interpretSignUpAttempt(result: SignUpAttemptResult): SignUpOutcome {
   if (result.status === "complete") {

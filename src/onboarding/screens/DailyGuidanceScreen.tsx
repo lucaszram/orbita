@@ -7,6 +7,7 @@ import { CTA } from "../components/CTA";
 import { Emblem } from "../components/Emblem";
 import { Header } from "../components/Header";
 import { Screen } from "../components/Screen";
+import { ONBOARDING_TOTAL } from "../steps";
 import { Body, Title } from "../components/Type";
 import { font, GUTTER, orbita } from "../theme";
 
@@ -14,7 +15,7 @@ import { font, GUTTER, orbita } from "../theme";
 export function DailyGuidanceScreen({ step, onNext, onBack }: { step: number; onNext: () => void; onBack: () => void }) {
   return (
     <Screen bg={A.guidanceBg} wash={0.44}>
-      <Header step={step} total={13} onBack={onBack} />
+      <Header step={step} total={ONBOARDING_TOTAL} onBack={onBack} />
       <View style={styles.body}>
         <Title style={styles.title}>Guía diaria,{"\n"}ajustada a vos</Title>
         <Body style={styles.sub}>Micro-rituales, señales y contexto para tu día.</Body>

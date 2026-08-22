@@ -13,6 +13,16 @@
  */
 export const TRIAD_CLIENT_TIMEOUT_MS = 20_000;
 
+/**
+ * Techo VISIBLE de la superficie de tríada: a los 8 segundos la espera se
+ * anuncia como demora no bloqueante (`timed_out`) y el avance queda siempre a
+ * mano. No corta el cálculo: la promesa sigue viva hasta el techo duro de
+ * arriba, y una respuesta que llegue después del aviso todavía se muestra.
+ * Es deliberadamente menor que cualquier deadline del servidor: el aviso es de
+ * UX, no una autoridad sobre el cálculo.
+ */
+export const TRIAD_VISIBLE_WAIT_MS = 8_000;
+
 export const TRIAD_CLIENT_TIMEOUT_CODE = "ONBOARDING_TRIAD_CLIENT_TIMEOUT";
 
 export type TimeoutTimers = {

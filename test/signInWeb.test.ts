@@ -53,40 +53,51 @@ test("la pantalla web monta el componente oficial de Clerk, sin tema ni rutas pr
   // El login es UNA ruta sin sub-rutas: declarar `path` obligaría a un
   // catch-all en el router.
   assert.doesNotMatch(web, /\brouting=|\bpath=/, "el login no tiene rutas propias");
-  // El destino del alta, la transferencia social y la supresión del pie
-  // duplicado son las únicas decisiones de integración con Clerk.
+  // Los ÚNICOS props son los dos que deciden qué puede pasar con una cuenta que
+  // todavía no existe; cada uno tiene su test abajo. Nada de layout ni de tema:
+  // el componente se monta pelado porque Clerk es el dueño del login.
   const props = web.match(/<SignIn([^>]*)\/>/);
   assert.ok(props, "el componente oficial se monta en la pantalla");
   assert.match(
     props[1],
-    /signUpUrl=\{SIGN_UP_ROUTE\}[\s\S]*transferable=\{false\}/,
-    "Clerk conserva el destino auth-first y no convierte un login en alta implícita"
+    /^ signUpUrl=\{ONBOARDING_ROUTE\} transferable=\{false\} $/,
+    "salvo esos dos props, el componente se monta pelado: Clerk es el dueño del login"
   );
 });
 
 // --- La salida al alta es UNA, y es el pie de la tarjeta oficial --------------
 
-test("el selector auth-first es la única salida visible al alta", () => {
+test("el pie «Registrate» de Clerk queda A LA VISTA: es la única salida al alta", () => {
+  // Estuvo oculto con una `appearance` (`footerAction__signIn: display none`)
+  // mientras Órbita ponía su propio enlace debajo. Eran dos salidas apiladas y
+  // la persona buscaba la que la tarjeta ya traía. Ahora se restituye el pie y
+  // se le cambia el DESTINO (`signUpUrl`), que es lo que había que arreglar.
   const web = sinComentarios(leer(WEB));
-  assert.match(web, /<AuthModeSwitch\b/);
-  assert.match(web, /footerAction[^\n]*display:\s*"none"/);
-  assert.equal((web.match(/footerAction/g) ?? []).length, 1, "sólo se oculta el pie duplicado");
+  assert.doesNotMatch(web, /appearance=/, "sin `appearance`: el pie no se vuelve a ocultar");
+  assert.doesNotMatch(web, /SIN_ALTA_DE_CLERK/, "la constante que lo ocultaba no puede volver");
+  // Ni por el nombre del elemento ni por la regla, con `appearance` o sin ella.
+  assert.doesNotMatch(web, /footerAction/, "no se toca el pie de ninguna tarjeta de Clerk");
+  assert.doesNotMatch(web, /display:\s*"none"/, "nada de la UI oficial se saca del árbol");
 });
 
-test("el selector de registro va a la entrada auth-first canónica", () => {
+test("el registro del pie va al onboarding canónico (`/empezar`), no a accounts.dev ni al alta suelta", () => {
+  // Sin `signUpUrl` el pie apunta a la instancia alojada
+  // (`…accounts.dev/sign-up`): crea la cuenta AFUERA de la secuencia. Y el
+  // formulario suelto (`/crear-cuenta`) tampoco es la entrada del alta.
   const web = sinComentarios(leer(WEB));
-  assert.match(web, /signUpUrl=\{SIGN_UP_ROUTE\}/);
+  assert.match(web, /signUpUrl=\{ONBOARDING_ROUTE\}/, "el pie tiene que ir al onboarding canónico");
   assert.match(
     web,
-    /import \{ SIGN_UP_ROUTE \} from "@\/domain\/appRoutes"/,
+    /import \{ ONBOARDING_ROUTE \} from "@\/domain\/appRoutes"/,
     "el destino sale de la constante canónica, no de un string suelto que se desincroniza"
   );
+  // Y esa constante es `/empezar` en web, que es donde tiene que caer.
   assert.match(
     sinComentarios(leer("src/domain/appRoutes.ts")),
-    /export const SIGN_UP_ROUTE = "\/crear-cuenta";/,
-    "el alta canónica es `/crear-cuenta`"
+    /export const ONBOARDING_ROUTE = IS_WEB \? "\/empezar" : "\/onboarding";/,
+    "`ONBOARDING_ROUTE` en web es `/empezar`"
   );
-  for (const destino of ["accounts.dev", "ONBOARDING_ROUTE", '"/empezar"']) {
+  for (const destino of ["accounts.dev", "SIGN_UP_ROUTE", "/crear-cuenta"]) {
     assert.ok(!web.includes(destino), `el registro no puede apuntar a «${destino}»`);
   }
   // Nada de redirecciones propias: adónde va DESPUÉS de entrar lo resuelve
@@ -120,9 +131,12 @@ test("desde el login NO se crea una cuenta: ni con `withSignUp` ni por Google", 
   assert.match(web, /transferable=\{false\}/, "Google no puede crear una cuenta desde el login");
 });
 
-test("no queda el CTA viejo debajo del formulario: la salida vive en el selector", () => {
+test("no queda ningún enlace propio al alta: la salida es sólo la de la tarjeta", () => {
   const web = sinComentarios(leer(WEB));
-  assert.match(web, /onSignUp=\{\(\) => onCreateAccount\(""\)\}/);
+  // El `Pressable` de Órbita («Todavía no tengo cuenta · Crear una cuenta») se
+  // fue: duplicaba el pie oficial. `onCreateAccount` sigue en el contrato de
+  // props porque el nativo la monta, pero acá no se invoca.
+  assert.doesNotMatch(web, /onCreateAccount\(/, "la pantalla web ya no llama a la salida propia");
   for (const resto of [
     "Crear una cuenta",
     "Todavía no tengo cuenta",
@@ -131,7 +145,7 @@ test("no queda el CTA viejo debajo del formulario: la salida vive en el selector
   ]) {
     assert.ok(!web.includes(resto), `el enlace exterior volvió por «${resto}»`);
   }
-  // El selector y volver son botones, no enlaces sueltos.
+  // Y ningún otro control con rol de enlace: el de volver es `role="button"`.
   const enlaces = [...web.matchAll(/accessibilityRole="link"/g)];
   assert.equal(enlaces.length, 0, `hay ${enlaces.length} enlaces propios, no tiene que haber ninguno`);
 });

@@ -163,8 +163,7 @@ describe("Arranque — la eliminación pendiente se resuelve ANTES de montar el 
       path.join(process.cwd(), "src/onboarding/screens/SignInScreen.tsx"),
       "utf8"
     );
-    assert.match(signIn, /\{allowSignup \? \(/);
-    assert.match(signIn, /<AuthModeSwitch\b/);
+    assert.match(signIn, /allowSignup && shouldOfferSignup/);
     assert.match(signIn, /allowOAuth && GOOGLE_AUTH_ENABLED/);
     assert.match(signIn, /if \(!allowOAuth \|\| busy \|\| flow\.oauthBusy\) return;/);
   });

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { Redirect, useRouter } from "expo-router";
 
-import { SIGN_UP_ROUTE } from "@/domain/appRoutes";
+import { ONBOARDING_ROUTE } from "@/domain/appRoutes";
 import { clearDraft } from "@/domain/onboardingDraft";
 import { AccountGate } from "@/components/orbita/AccountGate";
 import { WebLayoutProvider } from "@/components/web/web-layout-provider";
@@ -53,11 +53,8 @@ function SignInSurface() {
   const [hydrateFailed, setHydrateFailed] = useState(false);
   const [retrying, setRetrying] = useState(false);
 
-  // Sin backend configurado no existe login: volver a la entrada. Con el alta
-  // auth-first esa entrada es `SIGN_UP_ROUTE`, no el onboarding: los pasos
-  // inmersivos ya no se montan sin sesión, así que mandar ahí a quien no pudo
-  // loguearse lo dejaba en una superficie que el resolver rebota.
-  if (!flow || !hydrate) return <Redirect href={SIGN_UP_ROUTE} />;
+  // Sin backend configurado no existe login: volver a la entrada.
+  if (!flow || !hydrate) return <Redirect href="/onboarding" />;
   if (!fontsLoaded) return <View style={styles.fill} />;
 
   /**
@@ -89,10 +86,9 @@ function SignInSurface() {
    *    borrador remoto ya no se vuelve a escribir.
    *
    * Se borra en las tres vías de esta pantalla (código, contraseña y Google):
-   * `SignInScreen` las hace pasar a todas por `onSignedIn`. Salir a crear una
-   * cuenta también lo borra (ver `createAccount`): con el alta auth-first ese
-   * borrador sólo puede ser legacy y una cuenta nueva no debe adoptarlo. Volver
-   * atrás NO borra nada.
+   * `SignInScreen` las hace pasar a todas por `onSignedIn`. Volver atrás o
+   * salir a crear una cuenta NO borra nada: ahí el alta sigue siendo de quien
+   * la empezó.
    */
   const enter = async () => {
     clearDraft();
@@ -124,39 +120,25 @@ function SignInSurface() {
   };
 
   // El arranque puede REDIRIGIR acá (perfil con dueño y sin sesión): en ese
-  // caso no hay historia y `router.back()` no tendría a dónde volver. La salida
-  // siempre existente es la entrada auth-first, o sea el alta: sin sesión es la
-  // única superficie que el resolver deja montada además de este login.
+  // caso no hay historia y `router.back()` no tendría a dónde volver. La
+  // salida siempre existente es la entrada.
   const back = () =>
     void leaveWithoutSignIn(() => {
       if (router.canGoBack()) router.back();
-      else router.replace(SIGN_UP_ROUTE);
+      else router.replace(ONBOARDING_ROUTE);
     });
 
-  /**
-   * "Crear una cuenta" va al alta auth-first (`SIGN_UP_ROUTE`), no al
-   * onboarding: la cuenta se crea con la UI de Clerk ANTES de los pasos, así
-   * que cuando empiezan ya hay sesión donde persistir. El email tipeado viaja
-   * en query para prellenar el campo y no pedirlo dos veces.
-   *
-   * Se limpia el borrador ANTES de navegar. Con el alta auth-first el borrador
-   * anónimo ya no se produce, pero una instalación vieja puede tener uno
-   * colgado: al crear la cuenta, `completeSignupFromDraft` lo tomaría por id
-   * —no tiene dueño, así que pasa el control de pertenencia— y la cuenta recién
-   * creada nacería con los datos natales de otro. Se abandona acá, que es donde
-   * se declara "esta cuenta no es la del borrador".
-   *
-   * Va adentro del `go` a propósito: si el archivado del dueño anterior falla,
-   * `leaveWithoutSignIn` no navega y tampoco se borra nada.
-   */
+  // "Crear una cuenta" entra al alta completa, no a un formulario suelto: la
+  // cuenta se crea DENTRO de la secuencia, en su paso original. El email
+  // tipeado viaja para no pedirlo dos veces. La ruta ya no rebota a login:
+  // el onboarding se monta sin sesión y junta todo en el borrador local.
   const createAccount = (email: string) =>
-    void leaveWithoutSignIn(() => {
-      clearDraft();
+    void leaveWithoutSignIn(() =>
       router.replace({
-        pathname: SIGN_UP_ROUTE,
+        pathname: ONBOARDING_ROUTE,
         params: email ? { email } : undefined
-      } as never);
-    });
+      } as never)
+    );
 
   if (hydrateFailed) {
     return (

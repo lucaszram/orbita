@@ -141,95 +141,34 @@ test("el orden y la concurrencia del bootstrap se prueban ejecutándolo", () => 
   assert.ok(/<AccountBootstrapProvider>/.test(layout), "el provider va montado sobre el gate");
 });
 
-// --- "Crear una cuenta": la cuenta va PRIMERO --------------------------------
+// --- "Crear una cuenta" ------------------------------------------------------
 
-/** El bloque de `createAccount` del login, ya sin comentarios. */
-const bloqueCrearCuenta = () => {
+test('"Crear una cuenta" entra al alta completa, con el email ya cargado', () => {
+  // La cuenta se crea DENTRO de la secuencia, en su paso original: mandar a un
+  // formulario suelto se saltea la experiencia inmersiva entera.
   const login = sinComentarios(readFileSync(join(ROOT, "app/iniciar-sesion.tsx"), "utf8"));
-  const inicio = login.indexOf("const createAccount");
-  assert.ok(inicio >= 0, "el login sigue ofreciendo crear una cuenta");
-  return login.slice(inicio, inicio + 400);
-};
-
-test('"Crear una cuenta" abre el alta auth-first, con el email ya cargado', () => {
-  // El alta es auth-first: la cuenta se crea con la UI oficial de Clerk
-  // (`/crear-cuenta`) ANTES de los pasos, así que cuando empiezan ya hay sesión
-  // donde persistir. Mandar acá al onboarding montaba los pasos inmersivos sin
-  // cuenta, y el resolver —que sin sesión resuelve `sign-in`— los rebotaba.
-  const bloque = bloqueCrearCuenta();
-  assert.ok(/SIGN_UP_ROUTE/.test(bloque), "debe abrir el alta auth-first");
-  assert.ok(!/ONBOARDING_ROUTE/.test(bloque), "los pasos inmersivos no son la entrada sin sesión");
+  const bloque = login.slice(login.indexOf("const createAccount"), login.indexOf("const createAccount") + 400);
+  assert.ok(/ONBOARDING_ROUTE/.test(bloque), "debe abrir el alta completa");
+  assert.ok(!/SIGN_UP_ROUTE/.test(bloque), "el formulario suelto no es la entrada del alta");
   assert.ok(/params: email \? \{ email \}/.test(bloque), "el email tipeado viaja: no se pide dos veces");
-
-  // Y esa constante es la pantalla de Clerk, no un alias del onboarding.
-  const rutas = sinComentarios(readFileSync(join(ROOT, "src/domain/appRoutes.ts"), "utf8"));
-  assert.match(rutas, /export const SIGN_UP_ROUTE = "\/crear-cuenta";/);
-});
-
-test("crear una cuenta ABANDONA el borrador antes de navegar", () => {
-  // Con el alta auth-first ya no se produce borrador anónimo, pero una
-  // instalación vieja puede tener uno colgado: no tiene dueño, así que pasa el
-  // control de pertenencia y la cuenta recién creada nacería con los datos
-  // natales de otra persona. Se abandona acá, que es donde se declara "esta
-  // cuenta no es la del borrador".
-  const bloque = bloqueCrearCuenta();
-  const salida = bloque.indexOf("leaveWithoutSignIn");
-  const borrado = bloque.indexOf("clearDraft()");
-  const navegacion = bloque.indexOf("router.replace");
-  assert.ok(salida >= 0, "sigue archivando lo del dueño anterior antes de soltar el teléfono");
-  assert.ok(borrado > salida, "el borrado va DENTRO del `go`: si el archivado falla, no se borra nada");
-  assert.ok(navegacion > borrado, "primero se abandona el borrador, después se navega");
-
-  const login = sinComentarios(readFileSync(join(ROOT, "app/iniciar-sesion.tsx"), "utf8"));
-  assert.match(login, /import \{ clearDraft \} from "@\/domain\/onboardingDraft";/);
 });
 
 // --- El onboarding sin restos de autenticación -------------------------------
 
-test("el onboarding ya no crea la cuenta: sólo carga los datos natales", () => {
+test("el alta vive dentro del onboarding, como su primera superficie", () => {
   const flow = sinComentarios(readFileSync(join(ROOT, "src/onboarding/OnboardingFlow.tsx"), "utf8"));
-  // Trece pasos: Align (0) → cierre (12). Sin portada y sin paso de cuenta. Los
-  // índices se prueban a propósito: el camino de escritura depende de ellos y un
-  // renumerado silencioso ya costó datos.
-  assert.match(flow, /const TOTAL = 13;/);
-  assert.match(flow, /const FINAL_STEP = 12;/);
-  // Ni la pantalla de alta ni su cableado sobreviven acá. Un resto que volviera
-  // a crear una cuenta sería un SEGUNDO camino de alta corriendo sobre una
-  // sesión que ya existe.
-  for (const resto of [
-    "AccountScreen",
-    "STEP_ACCOUNT",
-    "prepareSignupDraft",
-    "useOnboardingFinalize",
+  // Flujo canónico aprobado: crear cuenta o ingresar es el paso 0, y la
+  // experiencia inmersiva y los datos natales continúan con la sesión activa.
+  assert.match(flow, /const TOTAL = ONBOARDING_TOTAL;/);
+  assert.match(flow, /case STEP_AUTH:[\s\S]{0,400}<AuthScreen/);
+  // El cableado del acceso: los hooks oficiales de Clerk, el marcador remoto de
+  // alta en curso y el id estable del borrador.
+  for (const pieza of [
     "useAccountFlow",
-    "sessionActivated"
+    "useSignInFlow",
+    "useAnonymousSignupMarker",
+    "ensureClientDraftId"
   ]) {
-    assert.ok(!new RegExp(resto).test(flow), `el paso de cuenta ya no vive acá: ${resto}`);
-  }
-});
-
-test("el cierre persiste los datos natales contra la cuenta ya activa", () => {
-  const flow = sinComentarios(readFileSync(join(ROOT, "src/onboarding/OnboardingFlow.tsx"), "utf8"));
-  // Una sola escritura, y va contra la sesión que ya existe: no hay borrador
-  // remoto que confirmar después del alta.
-  assert.match(flow, /const persistBirthData = useOnboardingBirthDataPersist\(\);/);
-  // Nada sale del dispositivo sin sesión confirmada: si el token está en vuelo
-  // no se escribe ni se navega, y lo cargado queda intacto para reintentar.
-  assert.match(flow, /if \(persistBirthData && !auth\?\.isSignedIn\)/);
-  // El último caso del switch es el cierre, en el mismo índice que FINAL_STEP.
-  assert.match(flow, /case FINAL_STEP:\s*default:/);
-  // El id local del alta sobrevive, pero ya no adjunta ninguna fila anónima a la
-  // cuenta: le cobra a ese id el cupo de reintentos del cálculo de la tríada.
-  assert.match(flow, /ensureClientDraftId/);
-});
-
-test("la puerta del onboarding no es sticky: decide el resolver en cada render", () => {
-  const gate = sinComentarios(readFileSync(join(ROOT, "src/onboarding/OnboardingGate.tsx"), "utf8"));
-  assert.match(gate, /<AccountGate surface="onboarding"[\s\S]*?<OnboardingFlow \/>/);
-  // Una puerta que se "pega" —que recuerda haber entrado y sigue montando los
-  // pasos— deja el alta viva sobre una cuenta que ya resolvió Home o editor de
-  // datos, que es justo lo que `destinationAllows` existe para impedir.
-  for (const pegote of ["sticky", "useRef", "useState", "keepMounted", "everEntered"]) {
-    assert.ok(!new RegExp(pegote).test(gate), `la puerta no puede recordar nada: ${pegote}`);
+    assert.match(flow, new RegExp(pieza), `falta el cableado del acceso: ${pieza}`);
   }
 });
