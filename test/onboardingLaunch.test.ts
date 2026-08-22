@@ -359,7 +359,7 @@ test("el orden de cada paso es el original, y es UNO solo", () => {
   };
   // Align: header → título → subtítulo → grilla → nota → CTA.
   orden("src/onboarding/screens/AlignScreen.tsx", [
-    "<Header step={1}", "<Title", "<Body", "<View style={styles.gridZone}>", "<TileGrid />", "<Caption", "<CTA"
+    "<Header step={0}", "<Title", "<Body", "<View style={styles.gridZone}>", "<TileGrid />", "<Caption", "<CTA"
   ]);
   // Fecha: header → título → subtítulo → error → picker → privacidad → CTA.
   orden("src/onboarding/screens/BirthdateScreen.tsx", [
@@ -507,7 +507,7 @@ test("«Guardá tu carta»: una columna, el sello compacto y Clerk oficial", () 
 });
 
 test("el alta NO tiene formulario propio ni pide nombre", () => {
-  const cuenta = sinComentarios(leer("src/onboarding/screens/AccountScreen.tsx"));
+  const cuenta = sinComentarios(leer("src/onboarding/screens/SignUpGateScreen.tsx"));
   const flow = sinComentarios(leer("src/onboarding/OnboardingFlow.tsx"));
   // El formulario propio reimplementaba la máquina de estados de Clerk
   // (create → prepare → attempt → setActive) y quedaba desfasado con cada
@@ -527,7 +527,7 @@ test("el alta NO tiene formulario propio ni pide nombre", () => {
   }
   // Nombre y apellido son OPCIONALES: no se piden ni existe un paso para eso.
   for (const rel of [
-    "src/onboarding/screens/AccountScreen.tsx",
+    "src/onboarding/screens/SignUpGateScreen.tsx",
     "src/onboarding/OnboardingFlow.tsx",
     "src/domain/onboardingReadiness.ts"
   ]) {
@@ -535,9 +535,11 @@ test("el alta NO tiene formulario propio ni pide nombre", () => {
     assert.doesNotMatch(codigo, /needs_name/, `${rel}: no existe un estado de nombre`);
     assert.doesNotMatch(codigo, /firstName|lastName|Apellido/, `${rel}: el alta no pide nombre`);
   }
-  // Y el paso 13 sigue siendo UNO solo: 15 pasos, sin agregados.
-  assert.match(flow, /const TOTAL = 15;/);
-  assert.match(flow, /const STEP_ACCOUNT = 13;/);
+  // La cuenta vive antes del alta natal: quedan trece pasos y ninguno monta Clerk.
+  assert.match(flow, /const TOTAL = 13;/);
+  assert.doesNotMatch(flow, /STEP_ACCOUNT|AccountScreen|ClerkSignUp/);
+  assert.match(cuenta, /<AuthModeSwitch/);
+  assert.match(cuenta, /<ClerkSignUp email=\{email\} \/>/);
 });
 
 test("la UI oficial de Clerk se resuelve por plataforma", () => {
@@ -579,13 +581,9 @@ test("el email ya escrito PRELLENA el campo de Clerk, y sólo si es real", () =>
     /initialValues=\{prefill \? \{ emailAddress: prefill \} : undefined\}/,
     "sólo se prellena con un email real"
   );
-  // Y las dos superficies lo cablean hasta Clerk.
+  // Sólo la superficie auth lo cablea hasta Clerk. El onboarding ya no recibe email.
   const flow = sinComentarios(leer("src/onboarding/OnboardingFlow.tsx"));
-  assert.match(flow, /<AccountScreen[\s\S]{0,200}email=\{email\}/, "el paso 13 recibe el email del flujo");
-  assert.match(
-    sinComentarios(leer("src/onboarding/screens/AccountScreen.tsx")),
-    /<ClerkSignUp email=\{email\} \/>/
-  );
+  assert.doesNotMatch(flow, /email\?: string|AccountScreen|ClerkSignUp/);
   const ruta = sinComentarios(leer("app/crear-cuenta.tsx"));
   assert.match(ruta, /useLocalSearchParams<\{ email\?: string \}>\(\)/, "el link directo trae `?email=`");
   assert.match(ruta, /<SignUpGateScreen email=\{email\}/);
@@ -729,43 +727,19 @@ test("el color del enlace secundario pasa el contraste de texto chico", () => {
   assert.ok(contrast("#B4AEA6", BG) >= 4.5, "el gris tampoco fallaba por contraste puro");
 });
 
-test("«Ya tengo cuenta · Iniciar sesión» se ve y se alcanza en las dos superficies", () => {
-  // El estilo del enlace es un objeto LITERAL compartido, no una hoja
-  // registrada: `StyleSheet.create` se compila a una clase atómica y pierde
-  // contra `text-foreground`/`text-base` del `Text` compartido. Por eso el
-  // enlace salía casi negro y a 16px mientras el subrayado —que esas clases no
-  // tocan— sí se aplicaba. Ya rompió dos veces por este mismo motivo.
-  const tema = sinComentarios(leer("src/onboarding/theme.ts"));
-  assert.match(
-    tema,
-    /export const SIGN_IN_LINK_TEXT = \{\s*color: orbita\.copperSoft,\s*fontFamily: font\.sansBold,\s*fontSize: 15,\s*lineHeight: 22,\s*textAlign: "center",\s*textDecorationLine: "underline",\s*\} as const;/,
-    "el enlace necesita color, peso y subrayado en un literal compartido"
-  );
-  assert.match(tema, /export const SIGN_IN_LINK_ROW = \{[\s\S]*?minHeight: 44,/, "44px de alto real");
-  // No puede volver a ser una hoja registrada.
-  assert.doesNotMatch(tema, /StyleSheet/, "el literal no puede pasar por StyleSheet.create");
-
-  for (const rel of [
-    "src/onboarding/screens/SplashScreen.tsx",
-    "src/onboarding/screens/SignUpGateScreen.tsx"
-  ]) {
-    const codigo = sinComentarios(leer(rel));
-    // Las dos superficies usan EL MISMO literal: no pueden divergir.
-    assert.match(
-      codigo,
-      /<Text style=\{SIGN_IN_LINK_TEXT\}>Ya tengo cuenta · Iniciar sesión<\/Text>/,
-      `${rel}: línea plana con el literal compartido`
-    );
-    assert.match(codigo, /SIGN_IN_LINK_ROW/, `${rel}: y el objetivo táctil compartido`);
-    // Nada anidado ni ninguna hoja registrada que pueda perder contra Tailwind.
-    assert.doesNotMatch(codigo, /signInStrong|signInDot/, `${rel}: los tramos anidados no pueden volver`);
-    assert.doesNotMatch(codigo, /signInText:|signInLink:|signInRow:/, `${rel}: el enlace no puede volver a StyleSheet.create`);
-    // `Body` aplica su propio color en línea y le ganaría al del enlace.
-    assert.doesNotMatch(codigo, /<Body style=\{SIGN_IN_LINK_TEXT\}/, `${rel}: Body pisaría el color del enlace`);
-    // Nombre y rol accesibles.
-    assert.match(codigo, /accessibilityRole="link"/, `${rel}: es un enlace`);
-    assert.match(codigo, /accessibilityLabel="Ya tengo cuenta: iniciar sesión"/, `${rel}: con nombre`);
-  }
+test("Crear cuenta e Ingresar comparten un selector visible y accesible", () => {
+  const selector = sinComentarios(leer("src/onboarding/components/AuthModeSwitch.tsx"));
+  assert.match(selector, /label: "Crear cuenta"/);
+  assert.match(selector, /label: "Ingresar"/);
+  assert.match(selector, /accessibilityLabel=\{option\.label\}/);
+  assert.match(selector, /accessibilityState=\{\{ selected \}\}/);
+  assert.match(selector, /minHeight: 44/);
+  const alta = sinComentarios(leer("src/onboarding/screens/SignUpGateScreen.tsx"));
+  const login = sinComentarios(leer("src/onboarding/screens/SignInScreen.tsx"));
+  const loginWeb = sinComentarios(leer("src/onboarding/screens/SignInScreen.web.tsx"));
+  assert.match(alta, /<AuthModeSwitch[\s\S]*?mode="signUp"/);
+  assert.match(login, /<AuthModeSwitch[\s\S]*?mode="signIn"/);
+  assert.match(loginWeb, /<AuthModeSwitch[\s\S]*?mode="signIn"/);
 });
 
 // --- 5. El paso más denso: se lee entero y el CTA se alcanza ----------------

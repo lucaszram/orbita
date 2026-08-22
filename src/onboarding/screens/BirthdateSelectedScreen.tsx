@@ -24,7 +24,7 @@ type Props = {
 export function BirthdateSelectedScreen({ step, sign, element, dateLabel, onNext, onBack }: Props) {
   return (
     <Screen bg={A.dailyTexture} bgOpacity={0.55} wash={0.72}>
-      <Header step={step} total={15} onBack={onBack} />
+      <Header step={step} total={13} onBack={onBack} />
       <View style={styles.body}>
         <Title>Sol en {sign}.</Title>
         <Body style={styles.sub}>{dateLabel}</Body>

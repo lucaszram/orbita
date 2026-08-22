@@ -74,7 +74,7 @@ export function PersonalizingScreen({
 
   return (
     <Screen bg={A.transitsBg} wash={0.48}>
-      <Header step={step} total={15} onBack={onBack} />
+      <Header step={step} total={13} onBack={onBack} />
       <View style={styles.body}>
         <Title style={styles.title}>{failed ? "No pudimos armar tu carta" : "Alineando tu cielo…"}</Title>
         <Body style={styles.sub}>

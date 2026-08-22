@@ -7,10 +7,10 @@ import {
  * Único resolver de destino de cuenta. El estado REMOTO de la cuenta decide
  * adónde va cada superficie.
  *
- * La cuenta se crea DENTRO del alta, en su paso original (V4.4
- * `14 / Create Account`), con la UI oficial de Clerk: la experiencia inmersiva
- * va primero y recién se pide cuenta cuando ya hay una carta que guardar. Hasta
- * entonces todo vive en el borrador. Ver `destinationAllows`.
+ * El alta es auth-first: la cuenta se crea ANTES del onboarding, en la
+ * superficie `auth`, con la UI oficial de Clerk. Cuando empiezan los pasos
+ * inmersivos ya hay sesión y una cuenta donde persistir, así que la superficie
+ * `onboarding` no se monta sin sesión. Ver `destinationAllows`.
  *
  * Existe uno solo a propósito. Antes la decisión estaba repartida entre
  * `app/index.tsx`, `app/iniciar-sesion.tsx`, `RequireSession`, `app/empezar.tsx`
@@ -137,16 +137,17 @@ export function destinationAllows(
       // Login y alta: se permiten justo cuando todavía no hay sesión.
       return destination === "sign-in";
     case "onboarding":
-      // El alta empieza SIN sesión: los pasos inmersivos y los datos de
-      // nacimiento se juntan en el borrador local, y la cuenta se crea en su
-      // paso original de la secuencia V4.4. Por eso `sign-in` —que acá
-      // significa "todavía no hay sesión"— también puede montar el onboarding.
+      // El alta es auth-first: la cuenta ya existe cuando empiezan los pasos
+      // inmersivos. Sólo entra el destino `onboarding` —la cuenta con el alta
+      // en curso, y el build sin backend configurado, que no tiene estado
+      // remoto que consultar—. `sign-in`, que acá significa "todavía no hay
+      // sesión", va a `auth`: primero la cuenta, después el alta.
       //
-      // Lo que NO cambia es la protección que motivó todo esto: una cuenta ya
+      // Sigue intacta la protección que motivó todo esto: una cuenta ya
       // COMPLETA resuelve `app-home`, no entra acá, y por lo tanto no puede
       // sobrescribir sus datos natales desde el alta. Una cuenta preexistente
       // incompleta resuelve `edit-birth-data` y tampoco entra.
-      return destination === "onboarding" || destination === "sign-in";
+      return destination === "onboarding";
     case "edit-birth-data":
       // El editor sirve para dos casos: completar una cuenta que quedó a medias
       // y editar los datos de una cuenta ya completa desde Perfil.

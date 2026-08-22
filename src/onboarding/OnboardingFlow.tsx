@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Easing, Image, Platform, StyleSheet, View } from "react-native";
+import { Animated, Easing, Image, StyleSheet, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
@@ -11,7 +11,7 @@ import { useLiveApp } from "@/hooks/useLiveApp";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { WebLayoutProvider } from "@/components/web/web-layout-provider";
-import { backendConfig } from "@/services/backendProviders";
+import { BirthPayloadError, birthPayloadMessage } from "@/domain/birthPayload";
 import { clearDraft, ensureClientDraftId, readDraft, writeDraft } from "@/domain/onboardingDraft";
 import { resolveDebugStep } from "@/domain/onboardingDebug";
 import { RECEPTION_ROUTE } from "@/domain/appRoutes";
@@ -21,8 +21,7 @@ import { INTERNAL_TOOLS_ENABLED } from "@/services/internalTools";
 import { A } from "./assets";
 import { CTA } from "./components/CTA";
 import { Screen } from "./components/Screen";
-import { Body, Title } from "./components/Type";
-import { AccountScreen } from "./screens/AccountScreen";
+import { Body } from "./components/Type";
 import { AlignScreen } from "./screens/AlignScreen";
 import { BaseChartScreen } from "./screens/BaseChartScreen";
 import { BeforeAfterScreen } from "./screens/BeforeAfterScreen";
@@ -37,53 +36,41 @@ import { DailyGuidanceScreen } from "./screens/DailyGuidanceScreen";
 import { type Identity, IdentifyScreen } from "./screens/IdentifyScreen";
 import { PaywallScreen, type PlanId } from "./screens/PaywallScreen";
 import { PersonalizingScreen } from "./screens/PersonalizingScreen";
-import { SplashScreen } from "./screens/SplashScreen";
 import { orbita } from "./theme";
 import {
   describeTriadError,
-  useAccountFlow,
+  useOnboardingBirthDataPersist,
   useOnboardingChart,
   useOnboardingCompletion,
-  useOnboardingComputeTriad,
-  useOnboardingFinalize,
-  useOnboardingSignupDraft
+  useOnboardingComputeTriad
 } from "./useAccount";
 import type { OnboardingChart, TriadStatus } from "./useAccount";
 
-// El alta de cuenta vuelve a su lugar en la secuencia V4.4 (`14 / Create
-// Account`): la experiencia inmersiva engancha primero y la cuenta se pide
-// cuando ya hay algo que guardar. Los índices se nombran a propósito: el camino
-// de escritura depende de ellos y un renumerado silencioso ya costó datos.
-const TOTAL = 15;
+// El flujo ya no contiene portada ni alta de cuenta: la cuenta se crea ANTES de
+// entrar acá y este archivo es sólo la carga de datos natales. Empieza en
+// AlignScreen (paso 0) y termina en el cierre (paso 12). Los índices se nombran
+// a propósito: el camino de escritura depende de ellos y un renumerado
+// silencioso ya costó datos.
+const TOTAL = 13;
 /** Primer paso que ya puede calcular la tríada real (necesita lugar). */
-const STEP_COMPUTE_TRIAD = 11;
-/** Paso de cuenta: penúltimo. Antes de él NADA sale del dispositivo. */
-const STEP_ACCOUNT = 13;
+const STEP_COMPUTE_TRIAD = 10;
 /** Último paso: cierra el onboarding (paywall si estuviera activo). */
-const FINAL_STEP = TOTAL - 1;
+const FINAL_STEP = 12;
+/** Primer paso del flujo normal. */
+const ENTRY_STEP = 0;
 
-// Con backend hay puerta "Ya tengo cuenta" en la entrada (paso 0).
-const HAS_BACKEND = backendConfig.hasConvex && backendConfig.hasClerk;
-
-// La web pública NO monta la portada nativa (SplashScreen: video de intro +
-// "Órbita · Tu cielo, todos los días"): la landing de `/` YA es la portada, y
-// repetirla dejaba dos portadas seguidas. El alta web arranca DIRECTO en
-// AlignScreen (paso 1, CTA "Empezar el viaje") y "volver" desde ahí regresa a
-// `/`. El nativo conserva su paso 0 tal cual. `debugStep=0` sigue montando la
-// portada, pero sólo por el camino de inspección interna (sólo lectura).
-const IS_WEB = Platform.OS === "web";
-/** Primer paso del flujo normal por plataforma. */
-const ENTRY_STEP = IS_WEB ? 1 : 0;
-/** Un borrador web guardado en el paso 0 (versión anterior) se normaliza al 1. */
-const normalizeEntryStep = (s: number) => (IS_WEB && s === 0 ? ENTRY_STEP : s);
+// La web pública no monta una portada propia: la landing de `/` YA es la
+// entrada, así que "volver" desde el primer paso regresa ahí en vez de bajar a
+// un paso que no existe. El nativo se queda en su primer paso.
+const IS_WEB = process.env.EXPO_OS === "web";
 
 // Paso donde arranca la carga de datos de nacimiento (continuación del alta
 // post-login para una cuenta sin birthData: `/onboarding?resume=datos`).
-const STEP_BIRTHDATE = 4;
+const STEP_BIRTHDATE = 3;
 
 // Paywall temporalmente DESACTIVADO (2-3 semanas, mientras refinamos el onboarding
 // y el flujo). Con `false`, al terminar el onboarding se entra DIRECTO a la app sin
-// pasar por el paso de pago (step 14). Para reactivar: PAYWALL_ENABLED = true.
+// pasar por el paso de pago (step 12). Para reactivar: PAYWALL_ENABLED = true.
 const PAYWALL_ENABLED = false;
 
 const ELEMENTS: Record<ZodiacSign, string> = {
@@ -108,18 +95,6 @@ function to24hFromParts(t: BirthTime): string {
   return `${String(t.hour).padStart(2, "0")}:${String(t.minute).padStart(2, "0")}`;
 }
 
-/**
- * La identidad de la UI usa guiones y el contrato Convex usa guiones bajos
- * (`v.literal("prefiero_no_decirlo")`). La traducción vive acá, en el borde de
- * escritura: mandarla tal cual la rechazaba el validador y el borrador remoto
- * nunca llegaba a guardarse.
- */
-const IDENTITY_TO_BACKEND: Record<Identity, "ella" | "el" | "prefiero_no_decirlo"> = {
-  ella: "ella",
-  el: "el",
-  "prefiero-no-decirlo": "prefiero_no_decirlo",
-};
-
 /** Onboarding container — owns flow state and navigation, dispatches screens. */
 export function OnboardingFlow({
   inspectStep,
@@ -132,21 +107,18 @@ export function OnboardingFlow({
   const params = useLocalSearchParams<{
     debugStep?: string;
     resume?: string;
-    email?: string;
   }>();
 
   // `resume=datos`: sesión activa sin datos de nacimiento → continuar el alta
-  // desde la fecha, sin repetir splash/pitch ni crear una segunda cuenta.
-  // `nuevo=1`: viene de "Crear una cuenta" en el login → arranca el alta en su
-  // primer paso; la entrada (paso 0) ya la pasó.
-  // Borrador de sesión: en web, crear la cuenta hace que Clerk vuelva a
-  // `/empezar` y el remonte borraba todo lo cargado. Los params explícitos
-  // (`resume`, `nuevo`) mandan sobre el borrador: son una intención del usuario.
-  // En nativo `readDraft` devuelve null (no hay sessionStorage) y nada cambia.
+  // desde la fecha, sin repetir el tramo inmersivo.
+  // Borrador de sesión: en web cualquier remonte de `/empezar` (una vuelta de
+  // Clerk, un refresh) borraba todo lo cargado. El param explícito (`resume`)
+  // manda sobre el borrador: es una intención del usuario. En nativo `readDraft`
+  // devuelve null (no hay sessionStorage) y nada cambia.
   const saved = useMemo(() => readDraft(TOTAL), []);
 
   const [step, setStep] = useState(() =>
-    params.resume === "datos" ? STEP_BIRTHDATE : normalizeEntryStep(saved?.step ?? ENTRY_STEP)
+    params.resume === "datos" ? STEP_BIRTHDATE : saved?.step ?? ENTRY_STEP
   );
   const [identity, setIdentity] = useState<Identity>((saved?.identity as Identity) ?? "ella");
   const [birthDate, setBirthDate] = useState<BirthDateParts>(
@@ -158,26 +130,15 @@ export function OnboardingFlow({
   );
   const [birthTime, setBirthTime] = useState<BirthTime>(saved?.birthTime ?? { hour: 12, minute: 0 });
   const [timeUnknown, setTimeUnknown] = useState(saved?.timeUnknown ?? false);
-  // Email tipeado en el login y traído por "Crear una cuenta" (`?email=`). El
-  // alta ya no tiene campo de email propio —lo pide la UI oficial de Clerk—:
-  // sólo viaja al paso 13 como PRELLENADO y se conserva en el borrador para no
-  // perderlo en la vuelta. Nunca se escribe ni se valida acá.
-  const [email] = useState(() =>
-    typeof params.email === "string" && params.email ? params.email : saved?.email ?? ""
-  );
   const [plan, setPlan] = useState<PlanId>("annual");
-  const account = useAccountFlow();
-  // Identidad del borrador REMOTO de este alta. Se genera una sola vez y
-  // sobrevive a la vuelta de Clerk: es lo que permite adjuntar a la cuenta
-  // recién creada el borrador guardado anónimo (`flowOrigin: anonymous_signup`).
+  // Identidad LOCAL de este alta. Ya no adjunta ninguna fila anónima a una
+  // cuenta recién creada —la cuenta existe antes de entrar acá—: se conserva
+  // porque el cálculo público de la tríada le cobra a ese id su cupo de
+  // reintentos, y porque viaja con el borrador local para sobrevivir un remonte.
   const clientDraftId = useMemo(() => (inspectStep != null ? null : ensureClientDraftId()), [inspectStep]);
-  const prepareSignupDraft = useOnboardingSignupDraft();
-  const finalizeOnboarding = useOnboardingFinalize();
-  // Autoridad ÚNICA de acceso: ni `isSignedIn` ni el retorno de las escrituras.
-  const completion = useOnboardingCompletion(clientDraftId ?? undefined);
-  const [draftPhase, setDraftPhase] = useState<"preparing" | "error" | "ready">("preparing");
-  const [draftError, setDraftError] = useState<string | null>(null);
-  const [draftTick, setDraftTick] = useState(0);
+  const persistBirthData = useOnboardingBirthDataPersist();
+  // Autoridad ÚNICA de acceso: ni `isSignedIn` ni el retorno de la escritura.
+  const completion = useOnboardingCompletion();
   const chartPreview = useOnboardingChart();
   const computeTriad = useOnboardingComputeTriad();
   const [computed, setComputed] = useState<OnboardingChart | undefined>();
@@ -209,9 +170,6 @@ export function OnboardingFlow({
   // confirmación puede volver a emitirse mientras la navegación está en vuelo.
   const enterLock = useRef(false);
   const computedSig = useRef<string | null>(null);
-  // La sesión se activó EN este flujo (verify/oauth ok): fuente de verdad
-  // inmediata, porque `useAuth` puede seguir stale en el render siguiente.
-  const sessionActivated = useRef(false);
 
   // Salto de paso SÓLO con herramientas internas encendidas. En producción el
   // param se ignora y el onboarding arranca normal: era un control de
@@ -230,8 +188,8 @@ export function OnboardingFlow({
    * escribir nada — ni datos natales, ni perfil, ni carta, ni cuenta, ni
    * checkout, ni el submit final con su navegación.
    *
-   * Motivo real: el paso 14 auto-ejecutaba `submit()` al montarse, así que
-   * abrir `?debugStep=14` con sesión activa PERSISTÍA los valores por defecto
+   * Motivo real: el paso 12 auto-ejecutaba `submit()` al montarse, así que
+   * abrir `?debugStep=12` con sesión activa PERSISTÍA los valores por defecto
    * del flujo encima de los datos natales de la cuenta y recalculaba la carta.
    */
   const inspeccion = debugStep !== null;
@@ -241,26 +199,16 @@ export function OnboardingFlow({
 
   // Respaldo del resume: si los params llegan un render después del mount,
   // el useState inicial no los vio. Solo salta si todavía está en la entrada.
+  //
+  // Este es el ÚNICO salto a la carga de datos, y es explícito: lo pide
+  // `resume=datos`. Antes había además un salto automático "si hay sesión", pero
+  // en auth-first la sesión SIEMPRE existe cuando el flujo se monta, así que ese
+  // efecto se disparaba en todas las altas y dejaba Align, Identify y
+  // DailyGuidance inalcanzables. Sin sesión no se entra acá; con sesión, el
+  // tramo inmersivo se ve igual salvo que se pida continuar.
   useEffect(() => {
     if (params.resume === "datos") setStep((s) => (s === ENTRY_STEP ? STEP_BIRTHDATE : s));
   }, [params.resume]);
-
-  // Cuenta con sesión y SIN datos natales que abre el alta: se continúa desde la
-  // fecha, no desde la entrada. El arranque nativo ya lo hacía con
-  // `resume=datos`, pero en web el gate redirige a `/empezar` SIN ese param, así
-  // que una cuenta incompleta volvía al splash a mirar el tramo inmersivo otra
-  // vez. El destino ya está resuelto cuando el flujo se monta: si hubiera datos
-  // natales, el gate habría mandado a Home y esto no correría.
-  //
-  // Sólo desde la entrada: nunca pisa un paso ya avanzado ni un borrador, y por
-  // eso tampoco afecta a quien acaba de crear su cuenta en el paso 13.
-  const sesionActiva = !!auth?.isSignedIn || !!account?.isSignedIn;
-  useEffect(() => {
-    if (inspeccion || !sesionActiva) return;
-    setStep((s) => (s === ENTRY_STEP ? STEP_BIRTHDATE : s));
-  }, [sesionActiva, inspeccion]);
-
-
 
   useEffect(() => {
     // En inspección no se guarda: un salto arranca con los valores por defecto
@@ -274,18 +222,17 @@ export function OnboardingFlow({
       birthPlace,
       birthTime,
       timeUnknown,
-      email,
-      // El id del borrador remoto viaja con el borrador local: es lo único que
-      // permite reencontrar la fila anónima después de que Clerk remonte.
+      // El id del alta viaja con el borrador local: un remonte no puede
+      // cambiarlo sin gastar de nuevo el cupo de reintentos de la tríada.
       clientDraftId: clientDraftId ?? undefined
     });
-  }, [step, identity, birthDate, placeQuery, birthPlace, birthTime, timeUnknown, email, clientDraftId, inspeccion]);
+  }, [step, identity, birthDate, placeQuery, birthPlace, birthTime, timeUnknown, clientDraftId, inspeccion]);
 
   const next = () => setStep((s) => Math.min(TOTAL - 1, s + 1));
   const back = () => {
-    // En web el paso 1 ES la entrada del alta: "volver" no baja al paso 0 (la
-    // portada nativa, que la web no monta) sino que devuelve a la landing. En
-    // inspección no: `debugStep` tiene el paso fijado y no navega fuera.
+    // En web, "volver" desde el primer paso devuelve a la landing (`/`), que es
+    // la portada real: no hay un paso anterior al que bajar. En inspección no:
+    // `debugStep` tiene el paso fijado y no navega fuera.
     if (IS_WEB && !inspeccion && step <= ENTRY_STEP) {
       router.replace("/");
       return;
@@ -308,7 +255,7 @@ export function OnboardingFlow({
     : `${String(birthTime.hour).padStart(2, "0")}:${String(birthTime.minute).padStart(2, "0")}`;
   const placeShort = birthPlace?.label.split(",")[0] ?? "";
 
-  // Tríada real SIN login: al llegar a "Personalizing"(11) calculamos la carta con
+  // Tríada real SIN login: al llegar a "Personalizing"(10) calculamos la carta con
   // la acción pública `publicOnboarding.computeTriad`, para que el preview muestre
   // Luna/Ascendente reales aunque el usuario no se haya logueado todavía. Requiere
   // lugar (coords del geocoding; la zona la deriva el backend de esas coordenadas).
@@ -376,64 +323,6 @@ export function OnboardingFlow({
     setRetryTick((t) => t + 1);
   };
 
-  // ANTES de abrir Clerk: el borrador del alta tiene que estar guardado y
-  // CONFIRMADO en el backend, con su `flowOrigin: "anonymous_signup"`. Crear
-  // primero la identidad y escribir después es lo que dejaba cuentas sin datos
-  // que ninguna pantalla sabía recuperar.
-  //
-  // `confirmSignupDraft` exige contexto anónimo, así que esto corre sólo
-  // mientras no hay sesión; con la sesión ya activa el paso se saltea entero.
-  useEffect(() => {
-    if (inspeccion) return;
-    if (step !== STEP_ACCOUNT) return;
-    if (!prepareSignupDraft || !clientDraftId) {
-      // Sin backend configurado el alta es local: no hay borrador remoto que
-      // confirmar y Clerk tampoco se monta.
-      setDraftPhase("ready");
-      return;
-    }
-    if (sesionActiva) return;
-    let cancelled = false;
-    setDraftPhase("preparing");
-    setDraftError(null);
-    prepareSignupDraft({
-      clientDraftId,
-      currentStep: STEP_ACCOUNT,
-      identity: IDENTITY_TO_BACKEND[identity],
-      birthDate: birthDateISO,
-      birthTime: timeUnknown ? undefined : to24hFromParts(birthTime),
-      birthTimePrecision: timeUnknown ? "unknown" : "known",
-      birthPlaceLabel: birthPlace?.label,
-      latitude: birthPlace?.latitude,
-      longitude: birthPlace?.longitude,
-      timezone: birthPlace?.timezone
-    })
-      .then(() => {
-        if (!cancelled) setDraftPhase("ready");
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setDraftPhase("error");
-        setDraftError(
-          "Tus datos siguen acá. No pudimos guardarlos todavía; probá de nuevo antes de crear la cuenta."
-        );
-      });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, clientDraftId, prepareSignupDraft, sesionActiva, draftTick, inspeccion]);
-
-  // La UI oficial de Clerk activa la sesión por su cuenta: cuando eso pasa, el
-  // alta avanza al cierre. No hay callback propio ni segunda cuenta.
-  useEffect(() => {
-    if (inspeccion) return;
-    if (step !== STEP_ACCOUNT || !sesionActiva) return;
-    sessionActivated.current = true;
-    next();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, sesionActiva, inspeccion]);
-
   /**
    * Salida del alta: perfil local + recepción. La llama `enterApp`, que es
    * quien pone el candado —una sola vez— y quien atiende su fallo. Con backend
@@ -443,13 +332,13 @@ export function OnboardingFlow({
    */
   const abrirOrbita = async () => {
     const birthTimeValue = timeUnknown ? undefined : timeLabel;
-    // Con sesión activa el perfil queda marcado con su dueño: el próximo
-    // arranque lo reconoce como propio en vez de mandarlo a reconciliar.
-    // Carrera post-verify: si useAuth sigue stale (userId todavía no llegó), el
-    // perfil se crea sin dueño con ADOPCIÓN PENDIENTE y se marca solo apenas
-    // aparece el userId (resolveProfileOwnerAtCreation + AppState).
+    // El perfil local queda marcado con su dueño: el próximo arranque lo
+    // reconoce como propio en vez de mandarlo a reconciliar. La sesión es la
+    // única fuente de verdad —el alta ya entra autenticada—, y si `useAuth`
+    // todavía no publicó el userId el perfil se crea con ADOPCIÓN PENDIENTE y
+    // se marca solo apenas aparece (resolveProfileOwnerAtCreation + AppState).
     const owner = resolveProfileOwnerAtCreation({
-      sessionActive: sessionActivated.current || !!auth?.isSignedIn || !!account?.isSignedIn,
+      sessionActive: !!auth?.isSignedIn,
       knownUserId: auth?.userId ?? null,
     });
     await createProfile(
@@ -513,39 +402,51 @@ export function OnboardingFlow({
     if (submitLock.current) return;
     submitLock.current = true;
 
-    // NADA sale del dispositivo sin una cuenta confirmada.
+    // NADA sale del dispositivo sin una sesión confirmada.
     //
-    // Hasta el paso de cuenta el alta vive entera en el borrador local: es lo
-    // que permite que la experiencia inmersiva enganche antes de pedir nada.
-    // El precio es que este cierre es el ÚNICO punto donde eso se vuelve un
-    // dato remoto, y sólo puede hacerlo si hay un usuario Clerk activo. Sin él
-    // se vuelve al paso de cuenta con el borrador intacto — jamás se escribe
+    // El alta es auth-first: la cuenta ya existe cuando este flujo se monta y
+    // acá no se crea ninguna. Si aun así la sesión no está lista (token en
+    // vuelo, restauración a medias), no se escribe ni se navega: se dice qué
+    // falta y el borrador local queda intacto para reintentar. Jamás se escribe
     // "por si acaso" ni se pierde lo cargado.
-    const cuentaActiva = sessionActivated.current || !!auth?.isSignedIn || !!account?.isSignedIn;
-    if (finalizeOnboarding && !cuentaActiva) {
+    if (persistBirthData && !auth?.isSignedIn) {
       submitLock.current = false;
-      setStep(STEP_ACCOUNT);
+      setSubmitError(
+        "Necesitamos confirmar tu sesión antes de guardar tus datos. Tus datos siguen acá; probá de nuevo en un momento."
+      );
       return;
     }
 
     // Sin backend configurado (builds locales) no hay nada remoto que esperar.
-    if (!finalizeOnboarding) {
+    if (!persistBirthData) {
       await enterApp();
       return;
     }
 
-    // Escritura idempotente y atómica desde el borrador remoto confirmado. NO
-    // navega: quien autoriza entrar es `getCompletionStatus`, y su confirmación
-    // llega por la query reactiva.
+    // Escritura idempotente contra la cuenta ya activa. NO navega: quien
+    // autoriza entrar es `getCompletionStatus`, y su confirmación llega por la
+    // query reactiva.
     setSubmitError(null);
     setSubmitting(true);
     try {
-      if (!clientDraftId) throw new Error("ONBOARDING_DRAFT_ID_MISSING");
-      await finalizeOnboarding({ clientDraftId });
-    } catch {
+      await persistBirthData({
+        birthDate: birthDateISO,
+        birthTime: timeUnknown ? undefined : to24hFromParts(birthTime),
+        birthPlaceLabel: birthPlace?.label,
+        latitude: birthPlace?.latitude,
+        longitude: birthPlace?.longitude,
+        timezone: birthPlace?.timezone
+      });
+    } catch (e) {
       // Nada de perfil local, nada de limpiar el borrador, nada de navegar: la
-      // persona ve el error y puede reintentar sin perder lo cargado.
-      setSubmitError("Tus datos siguen acá. No pudimos sincronizarlos todavía; revisá la conexión y probá de nuevo.");
+      // persona ve el error y puede reintentar sin perder lo cargado. Un dato
+      // natal que falta se nombra por su motivo —la salida es volver un paso y
+      // completarlo— en vez de culpar a la conexión.
+      setSubmitError(
+        e instanceof BirthPayloadError
+          ? birthPayloadMessage(e.problem)
+          : "Tus datos siguen acá. No pudimos sincronizarlos todavía; revisá la conexión y probá de nuevo."
+      );
       setSubmitting(false);
       submitLock.current = false;
       return;
@@ -553,52 +454,46 @@ export function OnboardingFlow({
     setSubmitting(false);
   };
 
-  // Sin paywall: al llegar al paso de pago (step 14) se entra directo a la app.
+  // Sin paywall: al llegar al paso de pago (step 12) se entra directo a la app.
   useEffect(() => {
     if (inspeccion) return;
     if (step === FINAL_STEP && !PAYWALL_ENABLED) void submit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, inspeccion]);
 
-  // La puerta de salida exige cuenta y datos natales PERSISTIDOS. Una carta en
-  // `chart_pending` ya no retiene a la persona en el alta.
+  // La puerta de salida exige sesión y datos natales PERSISTIDOS. Una carta en
+  // `chart_pending` ya no retiene a la persona en el alta. Sin backend
+  // configurado no hay estado autoritativo que esperar: ahí la entrada la hace
+  // `submit` con el cierre local.
   useEffect(() => {
-    if (inspeccion || !finalizeOnboarding) return;
+    if (inspeccion || !persistBirthData) return;
     if (step !== FINAL_STEP) return;
     if (!isBirthDataReady(completion)) return;
     void enterApp();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, completion, finalizeOnboarding, inspeccion]);
+  }, [step, completion, persistBirthData, inspeccion]);
 
   if (!fontsLoaded) return <View style={styles.fill} />;
 
   let screen: ReactNode;
   switch (step) {
     case 0:
-      screen = (
-        <SplashScreen
-          onNext={next}
-          onSignIn={HAS_BACKEND ? () => router.push("/iniciar-sesion") : undefined}
-        />
-      );
-      break;
-    case 1:
       screen = <AlignScreen onNext={next} onBack={back} />;
       break;
-    case 2:
+    case 1:
       screen = (
         <IdentifyScreen step={step} identity={identity} onSelect={setIdentity} onNext={next} onBack={back} />
       );
       break;
-    case 3:
+    case 2:
       screen = <DailyGuidanceScreen step={step} onNext={next} onBack={back} />;
       break;
-    case 4:
+    case 3:
       screen = (
         <BirthdateScreen step={step} value={birthDate} onChange={setBirthDate} onNext={next} onBack={back} />
       );
       break;
-    case 5:
+    case 4:
       screen = (
         <BirthdateSelectedScreen
           step={step}
@@ -610,7 +505,7 @@ export function OnboardingFlow({
         />
       );
       break;
-    case 6:
+    case 5:
       screen = (
         <BirthplaceSearchScreen
           step={step}
@@ -618,13 +513,13 @@ export function OnboardingFlow({
           onQuery={setPlaceQuery}
           onSelect={(p) => {
             setBirthPlace(p);
-            setStep(7);
+            setStep(6);
           }}
           onBack={back}
         />
       );
       break;
-    case 7:
+    case 6:
       screen = (
         <BirthplaceSelectedScreen
           step={step}
@@ -634,7 +529,7 @@ export function OnboardingFlow({
         />
       );
       break;
-    case 8:
+    case 7:
       screen = (
         <BirthTimeScreen
           step={step}
@@ -642,15 +537,15 @@ export function OnboardingFlow({
           onChange={setBirthTime}
           unknown={timeUnknown}
           onToggleUnknown={() => setTimeUnknown((v) => !v)}
-          onNext={() => setStep(timeUnknown ? 10 : 9)}
+          onNext={() => setStep(timeUnknown ? 9 : 8)}
           onBack={back}
         />
       );
       break;
-    case 9:
+    case 8:
       screen = <BirthTimeSelectedScreen step={step} timeLabel={timeLabel} onNext={next} onBack={back} />;
       break;
-    case 10:
+    case 9:
       screen = (
         <BaseChartScreen
           step={step}
@@ -662,7 +557,7 @@ export function OnboardingFlow({
         />
       );
       break;
-    case 11:
+    case 10:
       screen = (
         <PersonalizingScreen
           step={step}
@@ -675,27 +570,12 @@ export function OnboardingFlow({
         />
       );
       break;
-    case 12:
+    case 11:
       screen = <BeforeAfterScreen step={step} onNext={next} onBack={back} />;
-      break;
-    case STEP_ACCOUNT:
-      // La cuenta se crea con la UI OFICIAL de Clerk. La pantalla sólo aporta
-      // el escenario y la puerta: Clerk no se monta hasta que el borrador del
-      // alta está guardado y confirmado en el backend.
-      screen = (
-        <AccountScreen
-          step={step}
-          phase={draftPhase}
-          error={draftError}
-          email={email}
-          onRetry={() => setDraftTick((t) => t + 1)}
-          onBack={back}
-        />
-      );
       break;
     case FINAL_STEP:
     default:
-      // Paso 14 = paywall único. La tríada real va arriba como gancho (antes era
+      // Paso 12 = paywall único. La tríada real va arriba como gancho (antes era
       // una pantalla de preview aparte, que hacía parecer que pagabas dos veces).
       // Desactivado temporalmente (PAYWALL_ENABLED=false): el useEffect de arriba
       // entra directo a la app; acá solo mostramos loading para no flashear el pago.
@@ -735,7 +615,7 @@ export function OnboardingFlow({
   }
 
   return (
-    // El provider va en la RAÍZ del alta: los quince pasos comparten un solo
+    // El provider va en la RAÍZ del alta: los trece pasos comparten un solo
     // modo responsive, igual que el shell de la app autenticada.
     <WebLayoutProvider width={inspectWidth}>
       <View className="dark" style={styles.fill}>

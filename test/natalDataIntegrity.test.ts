@@ -40,7 +40,7 @@ test("montar el ÚLTIMO paso por debugStep no escribe nada", () => {
   // El paso de cierre se nombra (`FINAL_STEP`) en vez de ir por número: el
   // camino de escritura depende del índice y un renumerado silencioso ya costó
   // datos cuando el alta salió del onboarding.
-  assert.ok(/const FINAL_STEP = TOTAL - 1;/.test(FLOW), "el último paso debe estar nombrado");
+  assert.ok(/const FINAL_STEP = 12;/.test(FLOW), "el último paso debe estar nombrado");
   const autoSubmit = bloqueDesde(FLOW, "if (step === FINAL_STEP && !PAYWALL_ENABLED)");
   assert.ok(
     /if \(inspeccion\) return;/.test(
@@ -56,33 +56,17 @@ test("montar el ÚLTIMO paso por debugStep no escribe nada", () => {
   assert.ok(/if \(inspeccion\) return;/.test(primerasLineas), "submit debe cortar en la primera línea");
 });
 
-test("el alta vive en el flujo, y la inspección nunca crea una cuenta", () => {
-  assert.ok(/AccountScreen/.test(FLOW_CODE), "la cuenta es un paso del onboarding");
-  // La cuenta la crea la UI OFICIAL de Clerk. Los caminos propios de email,
-  // código y OAuth ya no existen: reimplementaban la máquina de estados de
-  // Clerk y eran, además, dos superficies más que la inspección podía disparar.
-  const cuenta = readFileSync(join(ROOT, "src/onboarding/screens/AccountScreen.tsx"), "utf8");
-  assert.ok(/<ClerkSignUp\b/.test(cuenta), "el paso monta la UI oficial");
+test("el alta auth-first no monta ni crea una cuenta desde los pasos natales", () => {
+  assert.ok(!/AccountScreen/.test(FLOW_CODE), "la cuenta no puede ser un paso del onboarding");
+  assert.ok(!/ClerkSignUp/.test(FLOW_CODE), "Clerk sólo vive en la superficie auth");
+  assert.ok(/const TOTAL = 13;/.test(FLOW_CODE));
+  assert.ok(/const FINAL_STEP = 12;/.test(FLOW_CODE));
   for (const viejo of ["accountOAuth", "accountNext", "account.oauth(", "account.verify("]) {
     assert.ok(!FLOW_CODE.includes(viejo), `el camino custom no puede volver: ${viejo}`);
   }
-  // Los dos efectos del paso de cuenta —guardar el borrador remoto y avanzar
-  // cuando Clerk activa la sesión— cortan ANTES de nada bajo inspección:
-  // `debugStep` puede DIBUJAR el paso, nunca escribir ni crear una cuenta.
-  for (const ancla of [
-    "if (step !== STEP_ACCOUNT) return;",
-    "if (step !== STEP_ACCOUNT || !sesionActiva) return;"
-  ]) {
-    const i = FLOW_CODE.indexOf(ancla);
-    assert.ok(i > 0, `falta el efecto: ${ancla}`);
-    const antes = FLOW_CODE.slice(Math.max(0, i - 120), i);
-    assert.ok(/if \(inspeccion\) return;/.test(antes), `${ancla} debe cortar en inspección primero`);
+  for (const viejo of ["STEP_ACCOUNT", "prepareSignupDraft", "useOnboardingFinalize", "completeSignupFromDraft"]) {
+    assert.ok(!FLOW_CODE.includes(viejo), `el camino tardío no puede volver: ${viejo}`);
   }
-  // Y ni el borrador remoto ni la cadena de cierre se disparan en inspección.
-  assert.ok(
-    FLOW_CODE.indexOf("if (inspeccion) return;") < FLOW_CODE.indexOf("prepareSignupDraft({"),
-    "el borrador remoto no se guarda en inspección"
-  );
   const cierre = bloqueDesde(FLOW_CODE, "const submit = async () => {");
   assert.ok(
     /if \(inspeccion\) return;/.test(cierre.split("\n").slice(0, 4).join("\n")),
@@ -90,18 +74,17 @@ test("el alta vive en el flujo, y la inspección nunca crea una cuenta", () => {
   );
 });
 
-test("nada sale del dispositivo antes de que haya una cuenta activa", () => {
-  // El alta junta TODO en el borrador local. El cierre es el único punto que
-  // convierte eso en dato remoto, y sólo con un usuario Clerk confirmado: si no
-  // hay cuenta vuelve al paso de cuenta con el borrador intacto.
-  const guard = FLOW_CODE.slice(FLOW_CODE.indexOf("const cuentaActiva"), FLOW_CODE.indexOf("const cuentaActiva") + 320);
+test("nada se persiste sin una cuenta activa", () => {
+  const guard = FLOW_CODE.slice(
+    FLOW_CODE.indexOf("if (persistBirthData && !auth?.isSignedIn)"),
+    FLOW_CODE.indexOf("if (persistBirthData && !auth?.isSignedIn)") + 420
+  );
   assert.ok(guard.length > 0, "falta el guard de cuenta activa antes de persistir");
-  assert.match(guard, /if \(finalizeOnboarding && !cuentaActiva\) \{/);
-  assert.match(guard, /setStep\(STEP_ACCOUNT\);/, "sin cuenta se vuelve al paso de cuenta");
-  assert.match(guard, /submitLock\.current = false;/, "y se libera el lock para poder reintentar");
-  // El guard va ANTES de cualquier llamada de la cadena de cierre.
+  assert.match(guard, /if \(persistBirthData && !auth\?\.isSignedIn\) \{/);
+  assert.match(guard, /setSubmitError\(/, "sin sesión se muestra recuperación");
+  assert.match(guard, /submitLock\.current = false;/, "se libera el lock para reintentar");
   assert.ok(
-    FLOW_CODE.indexOf("const cuentaActiva") < FLOW_CODE.indexOf("await finalizeOnboarding("),
+    FLOW_CODE.indexOf("if (persistBirthData && !auth?.isSignedIn)") < FLOW_CODE.indexOf("await persistBirthData("),
     "el guard tiene que preceder a la escritura"
   );
 });
@@ -126,7 +109,7 @@ test("en inspección no se calcula carta ni se pisa el borrador", () => {
 });
 
 test("sin herramientas internas no hay inspección posible", () => {
-  assert.equal(resolveDebugStep({ raw: "14", total: 15, internalToolsEnabled: false }), null);
+  assert.equal(resolveDebugStep({ raw: "12", total: 13, internalToolsEnabled: false }), null);
 });
 
 // --- Separación de endpoints -------------------------------------------------
@@ -167,20 +150,17 @@ test("la persistencia compartida ya no genera el día con la fecha del dispositi
 
 // --- Una cuenta con datos no vuelve al alta ---------------------------------
 
-test("web y nativo rechazan una cuenta completa por el MISMO gate", () => {
+test("web y nativo pasan primero por auth y comparten el gate del onboarding", () => {
   const sinComentarios = (x: string) =>
     x.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
-  for (const [nombre, src] of [
-    ["app/empezar.tsx (web)", EMPEZAR],
-    ["app/onboarding.tsx (nativo)", ONBOARDING]
-  ] as const) {
-    const codigo = sinComentarios(src);
-    assert.ok(/OnboardingGate/.test(codigo), `${nombre} debe pasar por el gate compartido`);
-    assert.ok(
-      !/OnboardingFlow/.test(codigo),
-      `${nombre} no puede montar el flujo directo: se saltearía el gate`
-    );
-  }
+  const empezar = sinComentarios(EMPEZAR);
+  assert.match(empezar, /SIGN_UP_ROUTE/);
+  assert.ok(!/OnboardingGate/.test(empezar), "sin sesión no se monta el onboarding");
+  const onboarding = sinComentarios(ONBOARDING);
+  assert.ok(/OnboardingGate/.test(onboarding));
+  assert.ok(!/OnboardingFlow/.test(onboarding), "la ruta no saltea el gate");
+  const alta = sinComentarios(readFileSync(join(ROOT, "app/crear-cuenta.tsx"), "utf8"));
+  assert.match(alta, /AccountGate surface="auth"/);
   // El gate delega en el resolver único; la consulta del estado autoritativo y
   // la redirección viven ahí, no duplicadas en cada superficie.
   assert.ok(/AccountGate surface="onboarding"/.test(GATE), "el gate usa la puerta compartida");
@@ -205,10 +185,9 @@ test("web y nativo rechazan una cuenta completa por el MISMO gate", () => {
 // El efecto era el que persistía los valores por defecto en un salto directo.
 
 test("existe exactamente UNA llamada de cierre en el flujo", () => {
-  const llamadas = FLOW_CODE.match(/await finalizeOnboarding\(\{/g) ?? [];
+  const llamadas = FLOW_CODE.match(/await persistBirthData\(\{/g) ?? [];
   assert.equal(llamadas.length, 1, `se esperaba una sola persistencia, hay ${llamadas.length}`);
-  // Y la que había antes no puede convivir: sería una escritura sin el vínculo
-  // del borrador anónimo, que es lo que distingue un alta de una recuperación.
+  assert.ok(!/finalizeOnboarding/.test(FLOW_CODE));
   assert.ok(!/persistBackend\(\{/.test(FLOW_CODE), "el camino viejo de persistencia no puede volver");
 });
 
@@ -220,7 +199,7 @@ test("no queda ningún cierre con `void` ni el ref calcFired", () => {
 
 test("el cierre se espera dentro de submit, y la salida espera sólo los datos", () => {
   const submit = bloqueDesde(FLOW, "const submit = async () => {");
-  const i = submit.indexOf("await finalizeOnboarding({");
+  const i = submit.indexOf("await persistBirthData({");
   assert.notEqual(i, -1, "la persistencia debe estar dentro de submit y con await");
   // `submit` no navega: el retorno de una llamada no reemplaza a la autoridad
   // reactiva. Perfil, limpieza y salida viven en `enterApp`, que corre sólo
@@ -244,7 +223,7 @@ test("el cierre se espera dentro de submit, y la salida espera sólo los datos",
 
 test("si la persistencia falla no se crea perfil, no se limpia el borrador y no se navega", () => {
   const submit = bloqueDesde(FLOW, "const submit = async () => {");
-  const catchBlock = submit.slice(submit.indexOf("} catch {"));
+  const catchBlock = submit.slice(submit.indexOf("} catch (e) {"));
   assert.ok(/setSubmitError\(/.test(catchBlock), "el fallo tiene que ser visible");
   assert.ok(/return;/.test(catchBlock), "y tiene que cortar el cierre");
   assert.ok(/submitLock\.current = false/.test(catchBlock), "el lock se libera para poder reintentar");
@@ -259,17 +238,16 @@ test("si la persistencia falla no se crea perfil, no se limpia el borrador y no 
 // --- El alta normal sigue funcionando ---------------------------------------
 
 test("el alta normal sigue creando datos natales una vez, y el reintento es idempotente", () => {
-  // El frontend sólo manda el id estable. Los datos —incluida la timezone ya
-  // enriquecida— se copian del borrador remoto dentro de la mutación atómica.
-  const inner = bloqueDesde(PERSIST, "function useOnboardingFinalizeInner()");
+  const inner = bloqueDesde(PERSIST, "function useBackendPersistInner()");
   assert.ok(!/Date\.now\(\)/.test(inner), "un valor por llamada rompería la idempotencia");
   assert.ok(!/Math\.random/.test(inner));
-  assert.match(inner, /clientDraftId: input\.clientDraftId/);
-  for (const campo of ["birthDate", "birthTime", "birthPlaceLabel", "latitude", "longitude", "timezone"]) {
-    assert.ok(!new RegExp(`input\\.${campo}`).test(inner), `${campo} no vuelve desde el navegador`);
-  }
-  // Y el flujo canónico usa el cierre del alta.
-  assert.ok(/useOnboardingFinalize\(\)/.test(FLOW));
+  assert.match(inner, /appApi\.onboarding\.completeBirthData/);
+  assert.match(inner, /timezoneLookupFor\(input\)/);
+  assert.match(inner, /withResolvedTimezone/);
+  assert.match(FLOW_CODE, /useOnboardingBirthDataPersist\(\)/);
+  assert.ok(!/useOnboardingFinalize\(\)/.test(FLOW_CODE));
+  const backend = readFileSync(join(ROOT, "convex/onboarding.ts"), "utf8");
+  assert.match(backend, /decideOnboardingBirthDataWrite/);
 });
 
 test("la cadena obligatoria es atómica y la carta queda en mejor esfuerzo", () => {
