@@ -286,15 +286,18 @@ test("una cuenta COMPLETA no puede entrar al alta, con o sin sesión", () => {
 });
 
 test("el onboarding ya montado conserva el cierre hasta paywall y Carta", () => {
-  // Secuencia real del build 26: la cuenta nueva empieza incompleta y el gate
-  // permite montar el flujo. `Preparar mi carta` persiste birthData y la query
-  // reactiva cambia a app-home ANTES de Antes/Después y la paywall.
+  // Secuencia real del build 27: la cuenta nueva empieza incompleta y el gate
+  // permite montar el flujo. `Preparar mi carta` persiste birthData, pero el
+  // perfil local todavía NO existe: se crea recién al salir de la paywall. La
+  // query reactiva cambia por eso a bootstrap ANTES de Antes/Después.
   const inicial = resolveAccountDestination(conCuenta(EN_ALTA, { localProfileReady: false }));
   assert.equal(inicial, "onboarding");
   assert.equal(destinationAllows(inicial, "onboarding"), true);
 
-  const despuesDeGuardar = resolveAccountDestination(conCuenta(SIN_CARTA));
-  assert.equal(despuesDeGuardar, "app-home");
+  const despuesDeGuardar = resolveAccountDestination(
+    conCuenta(SIN_CARTA, { localProfileReady: false })
+  );
+  assert.equal(despuesDeGuardar, "bootstrap");
   assert.equal(destinationAllows(despuesDeGuardar, "onboarding"), false);
   assert.equal(
     mountedOnboardingRetainsCompletion({
@@ -304,7 +307,20 @@ test("el onboarding ya montado conserva el cierre hasta paywall y Carta", () => 
       destination: despuesDeGuardar
     }),
     true,
-    "el cambio reactivo no expulsa el flujo que ya estaba en pantalla"
+    "bootstrap no puede desmontar el flujo antes de la paywall"
+  );
+
+  const conPerfilLocal = resolveAccountDestination(conCuenta(SIN_CARTA));
+  assert.equal(conPerfilLocal, "app-home");
+  assert.equal(
+    mountedOnboardingRetainsCompletion({
+      sticky: true,
+      mounted: true,
+      surface: "onboarding",
+      destination: conPerfilLocal
+    }),
+    true,
+    "la siguiente actualización reactiva tampoco expulsa el cierre"
   );
 });
 
@@ -314,6 +330,8 @@ test("la continuidad resuelta es exclusiva del onboarding sticky ya montado", ()
     { sticky: true, mounted: false, surface: "onboarding" as const, destination: "app-home" as const },
     { sticky: true, mounted: true, surface: "auth" as const, destination: "app-home" as const },
     { sticky: true, mounted: true, surface: "app" as const, destination: "app-home" as const },
+    { sticky: false, mounted: true, surface: "onboarding" as const, destination: "bootstrap" as const },
+    { sticky: true, mounted: false, surface: "onboarding" as const, destination: "bootstrap" as const },
     { sticky: true, mounted: true, surface: "onboarding" as const, destination: "edit-birth-data" as const }
   ]) {
     assert.equal(mountedOnboardingRetainsCompletion(caso), false, JSON.stringify(caso));
@@ -325,6 +343,12 @@ test("el gate cablea la continuidad sin ampliar destinationAllows", () => {
   const onboardingGate = sinComentarios(readFileSync(join(ROOT, "src/onboarding/OnboardingGate.tsx"), "utf8"));
   assert.match(gate, /mountedOnboardingRetainsCompletion\(\{/);
   assert.match(gate, /mounted: montado\.current/);
+  assert.match(gate, /if \(retieneCierreOnboarding\) return;/);
+  assert.ok(
+    gate.indexOf("if (retieneCierreOnboarding) return <>{children}</>;") <
+      gate.indexOf('if (destination === "bootstrap")'),
+    "la continuidad debe ganar antes de que bootstrap desmonte el onboarding"
+  );
   assert.match(onboardingGate, /surface="onboarding" sticky/);
   assert.equal(destinationAllows("app-home", "onboarding"), false);
 });

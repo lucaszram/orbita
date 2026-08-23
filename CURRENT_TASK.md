@@ -1,5 +1,78 @@
 # Current Task
 
+## P0 · cierre onboarding → paywall (2026-08-22) · BUILD 28 AUTORIZADO
+
+**Objetivo.** Corregir el fallo físico repetido en `1.0.0 (27)`: toda alta
+genuinamente nueva que mantiene el onboarding canónico montado debe atravesar
+Antes/Después y la paywall antes de entrar a la app.
+
+**Criterios de aceptación.** (1) El recorrido continuo llega a la paywall; (2)
+la transición real `onboarding → bootstrap → app-home` no desmonta un flujo ya
+montado; (3) una cuenta existente incompleta conserva su editor y una completa
+no puede reabrir el onboarding por deep link; (4) compra, restore y Seguir
+gratis salen a Carta; cancelar permanece en la paywall.
+
+**Owner y territorio.** Claude — `app/**`, `src/**` y regresiones frontend en
+`test/**`; Codex orquesta y revisa. `CURRENT_TASK.md` es compartido. Sin cambios
+en `convex/**`, contrato, schema ni datos. Base
+`7e932293c75be249b8df020b4c71d667e9371c1c`, rama
+`fix/onboarding-paywall-authority`, worktree `qa23-fixes`.
+
+**Riesgo.** Alto: identidad, navegación y pago. La excepción queda acotada al
+onboarding `sticky` ya montado; no puede convertir una cuenta legacy incompleta
+en alta nueva ni abrir el onboarding desde un deep link de cuenta completa.
+
+**Plan de pruebas.** Regresión conductual de la transición real —alta nueva sin
+perfil local → guardado → `bootstrap` retenido → `app-home` retenido—, cuenta
+completa/deep link, otras superficies y `sticky=false`; regresiones existentes
+de cancelación/compra/restore/Seguir gratis; focales, `pnpm typecheck`, suite
+completa con piso 2542 y `git diff --check`.
+
+**Rollout.** Autorizado el 2026-08-22: congelar fuente validada → commit
+identificable → integrar en `release/1.0.0` → repetir gates sobre el merge →
+generar e inspeccionar `1.0.0 (28)` → subir a TestFlight interno. Nunca una OTA
+sobre el 27. App Review y publicación siguen requiriendo autorización aparte.
+
+**Rollback.** Retirar únicamente la retención del estado `bootstrap`; sin
+migraciones ni backend que revertir. El build 27 permanece disponible mientras
+se valida el reemplazo.
+
+**Fuera de alcance.** App Review, publicación, Convex deploy/codegen, cambios
+de paywall/copy/precio, rediseño, otras features y cualquier build/TestFlight
+sin autorización nueva.
+
+### Evidencia inicial
+
+- QA física del build 27: un alta recorrió el onboarding y volvió a omitir la
+  paywall; el P0 sigue abierto.
+- Causa raíz confirmada: el fix del build 27 sólo retenía `app-home`, pero el
+  alta física llega primero a `bootstrap` porque el perfil local se crea recién
+  después de la paywall. `AccountGate` ejecutaba esa hidratación, desmontaba el
+  onboarding y terminaba en Hoy.
+- La regresión anterior fabricaba `localProfileReady: true` al guardar y por
+  eso nunca reprodujo el dispositivo real. La nueva prueba mantiene
+  `localProfileReady: false`, obtiene `bootstrap` del resolver productivo y
+  exige que el gate lo retenga antes de iniciar la hidratación.
+- Un remonte/relaunch completo sigue siendo un riesgo distinto: el `useRef` no
+  sobrevive al proceso. No se amplía este hotfix a persistencia por dueño sin
+  una reproducción física que demuestre ese camino.
+
+### Evidencia de validación
+
+- El helper de continuidad reconoce `bootstrap` y `app-home` únicamente cuando
+  coinciden `sticky`, superficie onboarding e instancia ya montada.
+- `AccountGate` evalúa esa continuidad antes de arrancar o renderizar
+  `bootstrap`; durante el cierre no ejecuta la hidratación que desmontaba el
+  flujo. El bootstrap normal de una cuenta completa o de otro dispositivo no
+  cambia.
+- Focales de destino/onboarding/pago: **74/74**. Suite completa:
+  **2762/2762**, 235 suites, piso **2542** aprobado. `pnpm typecheck` y
+  `git diff --check`: verdes.
+- Autorización recibida para integrar y producir el build 28/TestFlight. Sin
+  Convex ni deploy de backend. QA física prioritaria: revisar visualmente todo
+  el onboarding y confirmar el tramo Resumen → tríada → Antes/Después → paywall
+  → Carta.
+
 ## Hotfix post-QA build 26 → build 27/TestFlight (2026-08-22) · SUBIDO · APPLE PROCESANDO
 
 **Objetivo.** Corregir el cierre del onboarding observado físicamente en el

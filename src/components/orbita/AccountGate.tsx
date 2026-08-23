@@ -68,8 +68,9 @@ export function AccountGate({
    * un `loading` transitorio no la desmonta. Lo usa el onboarding.
    *
    * También sostiene el cierre después de persistir los datos natales: en ese
-   * momento el resolver ya dice `app-home`, pero el flujo todavía debe mostrar
-   * Antes/Después y la paywall y salir explícitamente a Carta.
+   * momento el resolver ya dice `bootstrap` —y luego `app-home`—, pero el flujo
+   * todavía debe mostrar Antes/Después y la paywall y salir explícitamente a
+   * Carta. El perfil local se crea recién en esa salida final.
    *
    * No debilita la protección: el destino resuelto sólo se retiene para un
    * onboarding que YA se montó de forma legítima. Una cuenta completa que abre
@@ -84,10 +85,20 @@ export function AccountGate({
   const montado = useRef(false);
   const permitido = destinationAllows(destination, surface);
   if (permitido) montado.current = true;
+  const retieneCierreOnboarding = mountedOnboardingRetainsCompletion({
+    sticky,
+    mounted: montado.current,
+    surface,
+    destination
+  });
 
   // Cuenta completa sin perfil local propio: se hidrata ANTES de entrar. Sin
   // esto, Home rebotaba a onboarding y el onboarding devolvía a Home.
   useEffect(() => {
+    // Durante el cierre de un alta real, la falta de perfil local es esperada:
+    // se crea al salir de la paywall. Hidratar acá desmontaría el onboarding y
+    // saltaría exactamente las superficies que todavía faltan.
+    if (retieneCierreOnboarding) return;
     if (destination !== "bootstrap") return;
     if (bootstrap.state !== "idle") return;
     // `incomplete` NO es un error: el aislamiento salió bien y la cuenta
@@ -95,7 +106,7 @@ export function AccountGate({
     // ya limpio y manda al onboarding.
     void bootstrap.run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [destination, bootstrap.state]);
+  }, [destination, bootstrap.state, retieneCierreOnboarding]);
 
   const mostrarError = (onRetry: () => void) =>
     error ? (
@@ -171,6 +182,10 @@ export function AccountGate({
     );
   }
 
+  // Debe evaluarse ANTES de `bootstrap`: ése es el destino real inmediatamente
+  // posterior a guardar los datos de un alta nueva.
+  if (retieneCierreOnboarding) return <>{children}</>;
+
   if (destination === "retry") return mostrarError(retry);
   if (destination === "bootstrap") {
     // La hidratación falló: reintento visible. NO se redirige a ningún lado —
@@ -187,16 +202,6 @@ export function AccountGate({
     // Ver `sticky`: el alta ya montada se sostiene, no se desmonta y se remonta.
     if (sticky && montado.current) return <>{children}</>;
     return mostrarCarga();
-  }
-  if (
-    mountedOnboardingRetainsCompletion({
-      sticky,
-      mounted: montado.current,
-      surface,
-      destination
-    })
-  ) {
-    return <>{children}</>;
   }
   if (permitido) return <>{children}</>;
 
