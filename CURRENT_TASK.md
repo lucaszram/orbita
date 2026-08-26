@@ -1,6 +1,6 @@
 # Current Task
 
-## P0 · activación automática Sandbox en TestFlight (2026-08-26) · LISTO PARA DEPLOY
+## P0 · activación automática Sandbox en TestFlight (2026-08-26) · DESPLEGADO Y VERIFICADO
 
 **Objetivo.** Hacer que cualquier compra Sandbox válida de RevenueCat realizada
 desde TestFlight contra Convex producción active Órbita Plus sin agregar el Clerk
@@ -25,7 +25,7 @@ compatible y luego activar `REVENUECAT_ACCEPT_ALL_SANDBOX=true` en
 `orbita_pro` reactivo. **Rollback:** poner la bandera en `false` o retirarla;
 vuelve inmediatamente el allowlist por Clerk id. **Fuera de alcance:** cambios
 de UI, productos/precios, StoreKit, RevenueCat Dashboard, EAS, build nativo,
-App Store, commit y push.
+App Store y push.
 
 **Causa reproducida.** La cuenta `demo` se borró y recreó: Clerk generó una
 identidad nueva. RevenueCat entregó `INITIAL_PURCHASE` Sandbox y el cliente
@@ -40,8 +40,15 @@ resolución de filas, por lo que no se duplicó ninguna excepción. Focales de
 pagos/entorno: **239/239**; suite completa: **2766/2766**; TypeScript y
 `git diff --check`: verdes. El dry-run apuntó explícitamente a producción
 `exciting-bat-311`, validó schema y confirmó cero índices eliminados y cero
-cambios de definiciones públicas. Todavía no hubo commit, push, deploy ni cambio
-de variables productivas.
+cambios de definiciones públicas.
+
+**Rollout completado.** Commit de código `4e43749`; funciones desplegadas en
+`exciting-bat-311` y `REVENUECAT_ACCEPT_ALL_SANDBOX=true` verificado. Se reabrió
+la reconciliación de la identidad `demo` vigente: terminó `resolved` en el
+primer intento y proyectó `orbita_pro`, `active`, `sandbox`, proveedor
+RevenueCat. La consulta autenticada que usa la app devolvió `isPro: true`, plan
+mensual y renovación activa. No hubo push, build nuevo, OTA ni cambio en App
+Store.
 
 ## P0 · cierre onboarding → paywall (2026-08-22) · BUILD 28 AUTORIZADO
 
