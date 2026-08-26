@@ -1,5 +1,48 @@
 # Current Task
 
+## P0 · activación automática Sandbox en TestFlight (2026-08-26) · LISTO PARA DEPLOY
+
+**Objetivo.** Hacer que cualquier compra Sandbox válida de RevenueCat realizada
+desde TestFlight contra Convex producción active Órbita Plus sin agregar el Clerk
+id manualmente, incluso después de borrar y recrear la cuenta de Órbita.
+
+**Criterios de aceptación.** (1) Con una bandera productiva explícita, los
+eventos y reconciliaciones Sandbox válidos se aplican para cualquier identidad
+local; (2) sin esa bandera se conserva el allowlist actual y el fallo cerrado;
+(3) recibos Production siguen aceptándose siempre en producción; (4) development
+sigue aceptando sólo Sandbox y un deployment desconocido no acepta nada; (5) la
+misma decisión gobierna webhook, reconciliación y lectura del entitlement.
+
+**Owner:** Codex. **Territorio:** `convex/lib/revenueCatEvents.ts`, pruebas de
+RevenueCat/entorno, `.env.example`, documentación operativa y esta ficha; sin
+`app/**`, `src/**`, schema ni firmas públicas. **Base:** build 28,
+`1f9c57a1f3325e257085bec8fe174fb82f2b4fcc`, rama
+`fix/testflight-sandbox-access`. **Cambio de contrato:** no. **Riesgo:** alto por
+pagos y producción. **Pruebas:** focales de entorno/webhook/reconcile,
+typecheck, suite completa y dry-run productivo. **Rollout:** desplegar el helper
+compatible y luego activar `REVENUECAT_ACCEPT_ALL_SANDBOX=true` en
+`exciting-bat-311`; reabrir la reconciliación de la cuenta vigente y verificar
+`orbita_pro` reactivo. **Rollback:** poner la bandera en `false` o retirarla;
+vuelve inmediatamente el allowlist por Clerk id. **Fuera de alcance:** cambios
+de UI, productos/precios, StoreKit, RevenueCat Dashboard, EAS, build nativo,
+App Store, commit y push.
+
+**Causa reproducida.** La cuenta `demo` se borró y recreó: Clerk generó una
+identidad nueva. RevenueCat entregó `INITIAL_PURCHASE` Sandbox y el cliente
+encoló tres `client_check`; webhook y reconciliaciones funcionaron, pero
+producción los descartó por `ignored_environment_mismatch`. No hubo defecto del
+botón: la política server-side negaba el recibo por no reconocer el nuevo id.
+
+**Implementación validada.** `REVENUECAT_ACCEPT_ALL_SANDBOX` sólo abre la puerta
+con el literal exacto `true`; cualquier otro valor conserva el allowlist y el
+fallo cerrado. El helper compartido ya gobierna webhook, REST reconcile y
+resolución de filas, por lo que no se duplicó ninguna excepción. Focales de
+pagos/entorno: **239/239**; suite completa: **2766/2766**; TypeScript y
+`git diff --check`: verdes. El dry-run apuntó explícitamente a producción
+`exciting-bat-311`, validó schema y confirmó cero índices eliminados y cero
+cambios de definiciones públicas. Todavía no hubo commit, push, deploy ni cambio
+de variables productivas.
+
 ## P0 · cierre onboarding → paywall (2026-08-22) · BUILD 28 AUTORIZADO
 
 **Objetivo.** Corregir el fallo físico repetido en `1.0.0 (27)`: toda alta

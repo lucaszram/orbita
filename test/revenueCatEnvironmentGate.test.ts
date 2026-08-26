@@ -5,9 +5,8 @@
  *
  * 1. sin entorno de deployment reconocido se falla CERRADO, no se asume
  *    development;
- * 2. producción tiene que aceptar recibos SANDBOX —TestFlight y App Review los
- *    generan con el binario productivo— pero SÓLO para las cuentas de QA/review
- *    allowlisted en un secreto, nunca de forma global;
+ * 2. producción acepta recibos SANDBOX de TestFlight/App Review mediante una
+ *    puerta global explícita o el allowlist legado por identidad;
  * 3. un evento sin `environment` (`TRANSFER`, `TEMPORARY_ENTITLEMENT_GRANT`) no
  *    se descarta antes de resolver, y `undefined` jamás se lee como production.
  */
@@ -17,6 +16,7 @@ import { describe, it } from "node:test";
 import { resolveDeploymentEnvironment } from "../convex/lib/environment";
 import {
   isRevenueCatEnvironmentAllowed,
+  revenueCatAcceptsAllSandbox,
   revenueCatEnvironment,
   revenueCatSandboxReviewers
 } from "../convex/lib/revenueCatEvents";
@@ -77,6 +77,28 @@ describe("qué recibo acepta cada deployment", () => {
     assert.equal(isRevenueCatEnvironmentAllowed("sandbox", { env, clerkUserId: "user_cualquiera" }), false);
     // Sin identidad resuelta no se abre la puerta.
     assert.equal(isRevenueCatEnvironmentAllowed("sandbox", { env }), false);
+  });
+
+  it("producción acepta cualquier sandbox con la puerta explícita de TestFlight", () => {
+    const env = { ...PROD, REVENUECAT_ACCEPT_ALL_SANDBOX: "true" };
+    assert.equal(revenueCatAcceptsAllSandbox(env), true);
+    assert.equal(isRevenueCatEnvironmentAllowed("sandbox", { env }), true);
+    assert.equal(
+      isRevenueCatEnvironmentAllowed("sandbox", { env, clerkUserId: "user_recreado" }),
+      true
+    );
+    assert.equal(isRevenueCatEnvironmentAllowed("production", { env }), true);
+  });
+
+  it("la puerta global falla cerrada con cualquier valor distinto de true", () => {
+    for (const value of [undefined, "false", "TRUE", "1", "yes"]) {
+      const env = { ...PROD, REVENUECAT_ACCEPT_ALL_SANDBOX: value };
+      assert.equal(revenueCatAcceptsAllSandbox(env), false);
+      assert.equal(
+        isRevenueCatEnvironmentAllowed("sandbox", { env, clerkUserId: "user_recreado" }),
+        false
+      );
+    }
   });
 
   it("la allowlist distingue mayúsculas y descarta vacíos", () => {

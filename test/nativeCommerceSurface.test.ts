@@ -139,7 +139,8 @@ describe("corte web/nativo — Stripe no carga el SDK de la tienda", () => {
       for (const secreto of [
         "REVENUECAT_SECRET_API_KEY",
         "REVENUECAT_WEBHOOK_AUTH",
-        "REVENUECAT_SANDBOX_REVIEW_USER_IDS"
+        "REVENUECAT_SANDBOX_REVIEW_USER_IDS",
+        "REVENUECAT_ACCEPT_ALL_SANDBOX"
       ]) {
         assert.equal(src.includes(secreto), false, `${rel}: nombra el secreto ${secreto}`);
       }
@@ -780,6 +781,7 @@ describe("C13/C14 — configuración sin duplicados ni credenciales de máquina"
       "REVENUECAT_WEBHOOK_AUTH",
       "REVENUECAT_SECRET_API_KEY",
       "REVENUECAT_SANDBOX_REVIEW_USER_IDS",
+      "REVENUECAT_ACCEPT_ALL_SANDBOX",
       "STRIPE_SECRET_KEY",
       "EXPO_PUBLIC_REVENUECAT_IOS_API_KEY"
     ]) {

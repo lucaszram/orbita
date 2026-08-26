@@ -223,6 +223,7 @@ EAS** (`eas credentials`), fuera del repositorio. En el archivo queda sólo
 | `REVENUECAT_WEBHOOK_AUTH` | Convex (secreto) | Header `Authorization` acordado con el webhook |
 | `REVENUECAT_SECRET_API_KEY` | Convex (secreto) | Sólo la reconciliación REST v1. Sin ella, `not_configured` y nada cambia |
 | `REVENUECAT_SANDBOX_REVIEW_USER_IDS` | Convex (secreto) | Clerk ids de QA/App Review habilitados a comprar en Sandbox contra producción |
+| `REVENUECAT_ACCEPT_ALL_SANDBOX` | Convex | `true` habilita compras Sandbox válidas para cualquier cuenta de TestFlight/App Review; cualquier otro valor conserva el allowlist |
 | `ORBITA_ENVIRONMENT` | Convex | Entorno declarado. Sin señal reconocida el comercio **no consume ningún recibo** |
 | `EXPO_PUBLIC_REVENUECAT_IOS_API_KEY` | Build (pública) | Configuración del SDK en iOS |
 | `EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY` | Build (pública) | Ídem Android |
@@ -234,13 +235,13 @@ TestFlight y App Review usan el **binario productivo** pero sus compras salen de
 **Sandbox**. Sin una puerta explícita, producción descarta esos eventos y quien
 revisa la app no ve Plus.
 
-- [ ] Antes de enviar a review, agregar el Clerk id de la cuenta de review a
-  `REVENUECAT_SANDBOX_REVIEW_USER_IDS`. Nunca una cuenta real de una persona.
+- [ ] Durante QA/TestFlight, definir `REVENUECAT_ACCEPT_ALL_SANDBOX=true` para
+  que borrar y recrear una cuenta no rompa la activación; como alternativa,
+  mantener `REVENUECAT_SANDBOX_REVIEW_USER_IDS` por identidad.
 - [ ] Verificar que la fila creada quede con `environment: "sandbox"` y que no
   pise ninguna fila productiva de la misma cuenta.
-- [ ] **Vaciar la lista al terminar la revisión.**
-- [ ] Confirmar que una cuenta común sigue sin poder activar Plus con un recibo
-  Sandbox contra producción.
+- [ ] Al cerrar QA/TestFlight, retirar la bandera global y vaciar la lista si ya
+  no hay revisión activa. Production receipts no se ven afectados.
 
 ### Revisiones separadas, fuera de este cierre
 

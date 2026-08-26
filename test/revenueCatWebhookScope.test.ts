@@ -819,6 +819,47 @@ describe("P1 6 — TRANSFER elige origen y destino por entorno", () => {
     );
   });
 
+  it("en producción con la puerta global, un TRANSFER sandbox entre cuentas recreadas sí corre", async () => {
+    await conEnv(
+      {
+        ORBITA_ENVIRONMENT: "production",
+        REVENUECAT_ACCEPT_ALL_SANDBOX: "true",
+        REVENUECAT_SANDBOX_REVIEW_USER_IDS: undefined
+      },
+      async () => {
+        const { ctx, rows } = harness({
+          users: [
+            { _id: "u_a", clerkUserId: "user_a_recreado" },
+            { _id: "u_b", clerkUserId: "user_b_recreado" }
+          ],
+          subscriptions: [
+            filaDe({
+              _id: "sub_a_sand_global",
+              userId: "u_a",
+              clerkUserId: "user_a_recreado",
+              environment: "sandbox"
+            })
+          ]
+        });
+
+        await apply(ctx, {
+          id: "rc_transfer_sandbox_global",
+          type: "TRANSFER",
+          event_timestamp_ms: EVENT_AT,
+          environment: "SANDBOX",
+          transferred_from: ["user_a_recreado"],
+          transferred_to: ["user_b_recreado"]
+        });
+
+        assert.deepEqual(outcomes(rows), ["applied_transfer"]);
+        assert.equal(
+          (rows.get("subscriptions") ?? []).find((f) => f.userId === "u_b")?.entitlement,
+          "orbita_pro"
+        );
+      }
+    );
+  });
+
   it("una sola punta fuera de la allowlist alcanza para no mover nada", async () => {
     await conEnv(
       { ORBITA_ENVIRONMENT: "production", REVENUECAT_SANDBOX_REVIEW_USER_IDS: "user_b" },

@@ -1,5 +1,17 @@
 # Contrato — CHANGELOG
 
+## 2026-08-26 — TestFlight Sandbox sin identidad descartable
+
+- Sin cambio de firma ni schema. `REVENUECAT_ACCEPT_ALL_SANDBOX=true` permite
+  que el deployment productivo aplique recibos Sandbox válidos de RevenueCat
+  para cualquier cuenta local de TestFlight/App Review.
+- Sin la bandera se conserva el allowlist por Clerk id y el fallo cerrado. Los
+  recibos Production siguen aceptándose siempre en producción; development y
+  deployments sin entorno mantienen sus cortes actuales.
+- La decisión compartida gobierna webhook, reconciliación REST y lectura del
+  entitlement, evitando que borrar/recrear una cuenta de QA vuelva a dejar la
+  compra en `ignored_environment_mismatch`.
+
 ## 2026-08-21 (QA23 · bloque 4) — tipo de vínculo declarado y lectura contextual neutral
 
 **Aditivo y compatible con builds 22/23. Sin codegen ni deploy autorizado.**

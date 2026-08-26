@@ -533,6 +533,12 @@ test("environment, timestamp y Authorization fallan cerrados", () => {
   const dev = { CONVEX_DEPLOYMENT: "dev:test" };
   assert.equal(isRevenueCatEnvironmentAllowed("production", { env: prod }), true);
   assert.equal(isRevenueCatEnvironmentAllowed("sandbox", { env: prod }), false);
+  assert.equal(
+    isRevenueCatEnvironmentAllowed("sandbox", {
+      env: { ...prod, REVENUECAT_ACCEPT_ALL_SANDBOX: "true" }
+    }),
+    true
+  );
   assert.equal(isRevenueCatEnvironmentAllowed("sandbox", { env: dev }), true);
   assert.equal(isRevenueCatEnvironmentAllowed("production", { env: dev }), false);
   // Y un deployment sin entorno declarado no consume nada.

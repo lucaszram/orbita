@@ -172,6 +172,21 @@ export function revenueCatSandboxReviewers(env: RevenueCatEnvSource = process.en
 }
 
 /**
+ * Puerta operativa para TestFlight/App Review contra el backend productivo.
+ *
+ * Cuando vale exactamente `true`, cualquier recibo Sandbox válido que
+ * RevenueCat atribuya a una identidad local puede sostener Plus. La bandera es
+ * server-side y falla cerrada: cualquier otro valor conserva el allowlist por
+ * Clerk id. Esto evita que borrar y recrear una cuenta de QA rompa el checkout
+ * por cambiar un identificador que no es estable.
+ */
+export function revenueCatAcceptsAllSandbox(
+  env: RevenueCatEnvSource = process.env
+): boolean {
+  return env.REVENUECAT_ACCEPT_ALL_SANDBOX === "true";
+}
+
+/**
  * ¿Este deployment puede consumir este recibo?
  *
  * Falla CERRADO en tres direcciones:
@@ -179,8 +194,8 @@ export function revenueCatSandboxReviewers(env: RevenueCatEnvSource = process.en
  * - un deployment sin entorno declarado (`unknown`) no acepta nada; antes se
  *   asumía development y consumía Sandbox;
  * - development sólo acepta Sandbox;
- * - producción acepta Production siempre y Sandbox **sólo** para una cuenta de
- *   review allowlisted, nunca de forma global y nunca sin identidad resuelta.
+ * - producción acepta Production siempre; Sandbox requiere la puerta global
+ *   explícita de TestFlight o una cuenta de review allowlisted.
  */
 export function isRevenueCatEnvironmentAllowed(
   eventEnvironment: "sandbox" | "production",
@@ -190,6 +205,7 @@ export function isRevenueCatEnvironmentAllowed(
   switch (resolveDeploymentEnvironment(env)) {
     case "production":
       if (eventEnvironment === "production") return true;
+      if (revenueCatAcceptsAllSandbox(env)) return true;
       return Boolean(
         options.clerkUserId && revenueCatSandboxReviewers(env).has(options.clerkUserId)
       );

@@ -546,6 +546,27 @@ describe("proyección — idempotente y sin pisar webhooks nuevos", () => {
     }
   });
 
+  it("producción concede el sandbox de una cuenta recreada con la puerta global", async () => {
+    const previoEnv = process.env.ORBITA_ENVIRONMENT;
+    const previoGlobal = process.env.REVENUECAT_ACCEPT_ALL_SANDBOX;
+    const previoLista = process.env.REVENUECAT_SANDBOX_REVIEW_USER_IDS;
+    process.env.ORBITA_ENVIRONMENT = "production";
+    process.env.REVENUECAT_ACCEPT_ALL_SANDBOX = "true";
+    delete process.env.REVENUECAT_SANDBOX_REVIEW_USER_IDS;
+    try {
+      const memory = memoryDb({ users: [user] });
+      await project({ db: memory.db }, { clerkUserId: "user_current", outcome: activo });
+      assert.equal(memory.rows.get("subscriptions")?.[0]?.entitlement, PRO_ENTITLEMENT);
+    } finally {
+      if (previoEnv === undefined) delete process.env.ORBITA_ENVIRONMENT;
+      else process.env.ORBITA_ENVIRONMENT = previoEnv;
+      if (previoGlobal === undefined) delete process.env.REVENUECAT_ACCEPT_ALL_SANDBOX;
+      else process.env.REVENUECAT_ACCEPT_ALL_SANDBOX = previoGlobal;
+      if (previoLista === undefined) delete process.env.REVENUECAT_SANDBOX_REVIEW_USER_IDS;
+      else process.env.REVENUECAT_SANDBOX_REVIEW_USER_IDS = previoLista;
+    }
+  });
+
   it("no concede si la lectura no permite verificar el entorno del recibo", async () => {
     const memory = memoryDb({ users: [user] });
     await project(
