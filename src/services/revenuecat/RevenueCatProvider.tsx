@@ -23,6 +23,7 @@ import {
   listenForCustomerInfo,
   logoutRevenueCatUser,
   presentNativeCustomerCenter,
+  presentNativeOfferCodeRedemption,
   purchaseNativePackage,
   refreshNativeCustomerInfo,
   restoreNativePurchases,
@@ -41,6 +42,7 @@ const NOOP: RevenueCatContextValue = {
   purchase: async () => "inactive",
   restore: async () => "inactive",
   presentCustomerCenter: async () => undefined,
+  redeemOfferCode: async () => undefined,
   retry: async () => undefined,
   refreshCustomerInfo: async () => false,
   trackPaywallImpression: async () => false
@@ -233,6 +235,23 @@ export function RevenueCatProvider({ children }: { children: ReactNode }) {
     [runOnStore]
   );
 
+  /**
+   * Canje de código de oferta: MISMA cola, mismo dueño capturado.
+   *
+   * No es una compra —no toca el marcador anti doble cobro— pero sí es una
+   * acción de tienda sobre una identidad: entra por `runOnStore` como el resto,
+   * así que no puede colarse entre un `logIn(B)` y su respuesta ni presentarse
+   * bajo una cuenta que ya cambió. Y no publica estado de tienda: no hay ningún
+   * resultado que Apple haya informado.
+   */
+  const redeemOfferCode = useCallback(
+    async () =>
+      await runOnStore(async (userId) => {
+        await presentNativeOfferCodeRedemption(userId);
+      }),
+    [runOnStore]
+  );
+
   const retry = useCallback(async () => {
     setPhase("loading_offering");
     // La recarga del Offering también entra en la cola y revalida adentro: ni
@@ -313,6 +332,7 @@ export function RevenueCatProvider({ children }: { children: ReactNode }) {
       purchase,
       restore,
       presentCustomerCenter,
+      redeemOfferCode,
       retry,
       refreshCustomerInfo,
       trackPaywallImpression
@@ -324,6 +344,7 @@ export function RevenueCatProvider({ children }: { children: ReactNode }) {
       offeringId,
       presentCustomerCenter,
       purchase,
+      redeemOfferCode,
       refreshCustomerInfo,
       restore,
       retry,

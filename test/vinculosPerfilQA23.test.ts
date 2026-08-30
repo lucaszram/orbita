@@ -21,7 +21,7 @@
  * 3. **Sin cálculo automático.** Ni la raíz ni el perfil montan `getComparison` o
  *    `refreshComparison`. El cálculo empieza cuando alguien abre la comparación.
  * 4. **Ownership.** El `profileId` de la URL se resuelve contra
- *    `relationships.list` ANTES de mostrar un dato, con la misma conversión que
+ *    `relationships.listWithAccess` ANTES de mostrar un dato, con la misma conversión que
  *    usan el formulario y la comparación. Un id ajeno o inexistente no publica
  *    nada de ninguna cuenta.
  * 5. **Accesibilidad.** Las dos acciones del perfil y el CTA legacy tienen rol,
@@ -316,8 +316,8 @@ test("con un id ajeno, el perfil no publica NINGÚN dato de esa persona", () => 
 
   // La resolución es la misma conversión autorizada que usan el formulario y la
   // comparación: entra el string de la URL, sale una persona de TU lista.
-  assert.match(live, /useQuery\(relationshipsApi\.list, \{\}\)/);
-  assert.match(live, /const persona = findRelationshipProfile\(personas, profileId\)/);
+  assert.match(live, /useQuery\(relationshipsApi\.listWithAccess, \{\}\)/);
+  assert.match(live, /const persona = findRelationshipProfile\(acceso\?\.profiles, profileId\)/);
   // Y nunca por conversión de tipos.
   assert.doesNotMatch(source, /profileId\s+as\s+(?:Id<|RelationshipProfile)/);
   assert.doesNotMatch(source, /as unknown as/);

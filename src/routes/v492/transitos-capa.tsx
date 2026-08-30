@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 import { Redirect, useLocalSearchParams } from "expo-router";
+import { TemporalPlusGate } from "@/components/v492/PlanGate";
 import {
   MOMENTO_ROUTE,
   sectionLayerDetail,
@@ -56,5 +57,11 @@ export default function CapaDetalleRoute() {
   const DetalleScreen = PANTALLA[capa];
   // `Tu momento` es el respaldo, no el camino normal: con historial —que es lo
   // que pasa al abrirlo desde la vista— manda el `pop` del stack.
-  return <DetalleScreen fallbackHref={MOMENTO_ROUTE} />;
+  return (
+    // Las cinco capas de esta tabla son temporales: con Free el enlace aterriza
+    // en el bloqueo de la sección antes de montar ninguna (build 30).
+    <TemporalPlusGate>
+      <DetalleScreen fallbackHref={MOMENTO_ROUTE} />
+    </TemporalPlusGate>
+  );
 }

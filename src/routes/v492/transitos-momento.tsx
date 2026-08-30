@@ -1,3 +1,4 @@
+import { TemporalPlusGate } from "@/components/v492/PlanGate";
 import { TransitosLayersScreen } from "@/screens/v492/TransitosLayersScreen";
 
 /**
@@ -9,5 +10,11 @@ import { TransitosLayersScreen } from "@/screens/v492/TransitosLayersScreen";
  * antes devolvía siempre a `Ahora` porque la vista era estado local.
  */
 export default function TransitosMomentoRoute() {
-  return <TransitosLayersScreen mode="momento" />;
+  return (
+    // Con Free los ciclos largos tampoco se calculan: el enlace cae en la raíz
+    // de la sección, que es donde vive el bloqueo con su oferta (build 30).
+    <TemporalPlusGate>
+      <TransitosLayersScreen mode="momento" />
+    </TemporalPlusGate>
+  );
 }

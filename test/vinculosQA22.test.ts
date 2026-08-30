@@ -652,8 +652,8 @@ test("la raíz muestra a las personas y no arranca NINGÚN cálculo (QA23-005)",
   // Lo que sí sigue estando: la lista real, dibujada sin esperar nada más.
   const live = /function VinculosHubLive\(\{[\s\S]*?\n\}\n/.exec(hub)?.[0] ?? "";
   assert.ok(live, "no se encontró el cuerpo de la raíz");
-  assert.match(live, /useQuery\(relationshipsApi\.list, \{\}\)/);
-  assert.match(live, /<PersonasBlock personas=\{personas\} \/>/, "la lista se dibuja igual");
+  assert.match(live, /useQuery\(relationshipsApi\.listWithAccess, \{\}\)/);
+  assert.match(live, /<PersonasBlock personas=\{personas\}/, "la lista se dibuja igual");
 
   // Y cada fila abre el perfil de SU persona, con el id que publicó el backend.
   assert.match(

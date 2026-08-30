@@ -1,5 +1,27 @@
 # Contrato — CHANGELOG
 
+## 2026-08-30 — Build 30 · acceso Free/Plus nativo protegido por servidor
+
+**Aditivo y compatible con el build 29. Sin cambios de schema ni migración.**
+
+- `relationships.listWithAccess()` conserva los perfiles completos y agrega
+  `currentCount`, `limit` y `canCreate`, resueltos con el plan vigente.
+- `relationships.savePersonWithAccess(args)` conserva la edición y la
+  idempotencia existentes; una creación Free sólo pasa con cantidad cero y el
+  rechazo estable es `RELATIONSHIP_PLUS_REQUIRED`.
+- `layers.getForDateWithAccess(args)` y `layers.refreshForDateWithAccess(args)`
+  conservan el sobre vigente para Plus. Para Free publican únicamente las capas
+  natales que usa Carta y sobres temporales cerrados; el refresh corta antes de
+  consultar o persistir el cielo temporal.
+- `layers.getTransitArcWithAccess(args)` y
+  `layers.refreshTransitArcWithAccess(args)` aplican el mismo corte a los
+  detalles de tránsito.
+- Las seis funciones anteriores son nuevas. Los endpoints sin sufijo permanecen
+  publicados sin cambio para los builds anteriores.
+
+No se agregan tablas, índices ni campos persistidos. El rollback del cliente
+puede conservar estas funciones sin afectar al build 29.
+
 ## 2026-08-26 — TestFlight Sandbox sin identidad descartable
 
 - Sin cambio de firma ni schema. `REVENUECAT_ACCEPT_ALL_SANDBOX=true` permite

@@ -251,12 +251,13 @@ test("un usuario con sesión no puede montar la pantalla de login", () => {
   assert.equal(resolveAccountDestination(conCuenta(EN_ALTA, { localProfileReady: false })), "onboarding");
   assert.ok(!destinationAllows("onboarding", "auth"), "una cuenta incompleta tampoco");
 
-  // Y estructuralmente: la ruta envuelve la UI de ingreso en el gate.
+  // Y estructuralmente: la ruta no tiene UI de ingreso propia. Es un alias
+  // detrás del gate que reenvía a la puerta única del onboarding, así que no
+  // queda ninguna pantalla de login que un usuario con sesión pueda montar.
   const login = readFileSync(join(ROOT, "app/iniciar-sesion.tsx"), "utf8");
-  const antesDeLaUI = login.slice(0, login.indexOf("function SignInSurface"));
-  assert.ok(/surface="auth"/.test(antesDeLaUI), "la ruta debe montar el gate antes de la UI");
+  assert.ok(/<AccountGate surface="auth">/.test(login), "la ruta debe montar el gate");
   // Se mira el USO en JSX, no el import ni el docstring.
-  assert.ok(!/<SignInScreen/.test(antesDeLaUI), "SignInScreen no puede renderizarse antes del gate");
+  assert.ok(!/<SignInScreen/.test(login), "la ruta no puede volver a montar una pantalla de login");
 });
 
 test("home-local sólo vale sin backend configurado", () => {

@@ -5,6 +5,7 @@ import { MoonDial, TemporalMandalaDial } from "@/components/v492/Dials";
 import { MANDALA_SIZE } from "@/components/v492/mandalaGeometry";
 import { Legend, LinkRow, MetaRow, SectionHeader } from "@/components/v492/Layout";
 import { MeterBar } from "@/components/v492/Meter";
+import { PlanLockBlock } from "@/components/v492/PlanLock";
 import { LayerScreen, Section } from "@/components/v492/Screen";
 import { Segmented } from "@/components/v492/Segmented";
 import { FreshnessNotice } from "@/components/v492/Status";
@@ -33,7 +34,9 @@ import {
 } from "@/domain/layers";
 import { ACTION_HEADING, seasonMeaning, yearMeaning } from "@/domain/layerMeaning";
 import { MANDALA_TRACE, SEASON_TRACE, YEAR_TRACE } from "@/domain/layerReading";
+import { TRANSITOS_FREE_INTRO, TRANSITOS_FREE_LOCK } from "@/domain/planAccess";
 import { useLayers } from "@/hooks/useLayers";
+import { usePlanAccess } from "@/hooks/usePlanAccess";
 import type {
   AnalysisEnvelope,
   AnalysisPrecision,
@@ -78,6 +81,7 @@ const RUTA_VISTA: Record<VistaTransitos, string> = {
 
 export function TransitosLayersScreen({ mode = "ahora" }: { mode?: VistaTransitos }) {
   const layers = useLayers();
+  const acceso = usePlanAccess();
   const { phase, bundle, yesterday, nowMs, localDate, timezone, refresh, refreshing, refreshFailed } =
     layers;
   const irAVista = (vista: VistaTransitos) => {
@@ -92,6 +96,34 @@ export function TransitosLayersScreen({ mode = "ahora" }: { mode?: VistaTransito
       accessibilityLabel="Elegí qué ver: los tránsitos de ahora o tus ciclos largos"
     />
   );
+
+  /**
+   * Free: la sección entera queda cerrada (frame `1249:1633`).
+   *
+   * Sin datos y SIN SELECTOR: `Ahora` y `Tu momento` son las dos vistas del
+   * mismo cálculo, así que ofrecer el cambio de vista sería mover a la persona
+   * entre dos bloqueos idénticos. Los deep links a un tránsito y a `Tu momento`
+   * aterrizan acá antes de montar nada, y el bloqueo lo dice.
+   */
+  if (acceso === "free") {
+    return (
+      <Shell
+        nowMs={nowMs}
+        timezone={timezone}
+        mode="ahora"
+        pills={null}
+        capas={null}
+        intro={TRANSITOS_FREE_INTRO}
+      >
+        <Section>
+          <PlanLockBlock
+            line={TRANSITOS_FREE_LOCK}
+            ctaVoice="Ver Órbita Plus para abrir Tránsitos"
+          />
+        </Section>
+      </Shell>
+    );
+  }
 
   if (phase === "cargando") {
     return (
@@ -204,7 +236,12 @@ function Shell({
   timezone: string;
   mode: VistaTransitos;
   pills: ReactNode;
-  capas?: string;
+  /**
+   * El contador del encabezado. `null` es "ninguno, a propósito": lo usa el
+   * bloqueo por plan, donde `CAMBIA A DIARIO` anunciaría una cadencia de datos
+   * que esta cuenta no recibe.
+   */
+  capas?: string | null;
   intro?: string;
   onRefresh?: () => void;
   refreshing?: boolean;
@@ -214,7 +251,7 @@ function Shell({
       eyebrow={mode === "ahora" ? "TRÁNSITOS · AHORA" : "TU MOMENTO · EL CAPÍTULO ACTUAL"}
       title={mode === "ahora" ? "Tránsitos" : "Tu momento"}
       meta={nowMs > 0 && timezone ? formatWeekdayDate(nowMs, timezone).toLocaleUpperCase("es") : undefined}
-      capas={capas ?? (mode === "ahora" ? "CAMBIA A DIARIO" : undefined)}
+      capas={capas === null ? undefined : capas ?? (mode === "ahora" ? "CAMBIA A DIARIO" : undefined)}
       pills={pills}
       intro={intro}
       refreshHint={

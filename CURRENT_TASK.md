@@ -1,5 +1,183 @@
 # Current Task
 
+## P0 · build 30 — acceso Free/Plus nativo (2026-08-30) · PROMOCIÓN AUTORIZADA
+
+**Objetivo.** Congelar la implementación validada de acceso Free/Plus sobre la
+fuente exacta del build 29, desplegar el contrato/backend Convex aditivo y
+compatible, generar `1.0.0 (30)` contra producción y enviarlo únicamente a
+TestFlight interno.
+
+**Criterios de aceptación.** (1) Free abre en Carta; Hoy y Tránsitos quedan
+bloqueados sin pedir contenido temporal; (2) Plus conserva las superficies
+vigentes; (3) Vínculos Free puede crear una persona mientras no tenga ninguna,
+conserva y edita todas las históricas y no puede agregar otra; (4) el servidor
+aplica la misma política en las seis funciones `…WithAccess`; (5) Carta y
+Umbral conservan sus límites vigentes; (6) deep links temporales Free aterrizan
+en Tránsitos bloqueado; (7) compra, restauración y canje no conceden acceso sin
+confirmación autoritativa; (8) build, commit, backend y rollback quedan
+identificados.
+
+**Owner y territorio.** Codex cierra contrato/backend, release, Git, Convex y
+EAS. La implementación de `app/**`, `src/**`, `modules/**` y `assets/**` es la
+ya ejecutada y validada por Claude; en este cierre sólo se congela, audita y
+empaqueta. Worktree `free-plus-build30-current`, rama
+`feat/free-plus-build30-current`, base `ad16ebd`. Cambio de contrato: sí,
+aditivo y documentado en `convex/CHANGELOG.md`.
+
+**Riesgo.** Alto: navegación de arranque, auth heredado del build 29, comercio,
+entitlement, funciones Convex productivas y distribución iOS. El cliente falla
+cerrado mientras el remoto no confirma el plan y el backend mantiene los
+endpoints anteriores para el build 29.
+
+**Plan de pruebas.** `pnpm typecheck`, suite completa con piso, `git diff
+--check`, export iOS, revisión del contrato productivo, dry-run/deploy Convex
+aditivo, smoke read-only, build local EAS firmado e inspección del IPA. QA
+TestFlight: Free/Plus, Vínculos 0/1/histórico, deep links, Apple/Google,
+compra/restore/canje y relanzamiento.
+
+**Rollout autorizado.** Commit(s) identificables → verificación completa →
+deploy compatible a Convex producción → build productivo `1.0.0 (30)` → submit
+a TestFlight interno. No incluye App Review, tester externo, OTA ni publicación
+pública.
+
+**Rollback.** El backend aditivo puede permanecer. Retirar el build 30 y volver
+al 29; si aparece un defecto server-side, revertir sólo la lógica nueva
+manteniendo las firmas `…WithAccess` compatibles. No hay migración ni datos que
+recuperar.
+
+**Estado inicial de promoción.** Typecheck verde; suite completa **2906/2906**;
+`git diff --check` y export iOS verdes. El contrato productivo todavía no
+publicaba las seis funciones nuevas al iniciar este cierre. La cuenta usada en
+la prueba de canje seguía autoritativamente Free: abrir/cerrar la hoja no cambió
+el entitlement; el estado Plus observado quedó clasificado como visual/local y
+debe revalidarse en el RC físico.
+
+## P0 · build 29 — Apple nativo, canje StoreKit 2 y marcas oficiales (2026-08-28) · TESTFLIGHT INTERNO LISTO
+
+**Objetivo.** Dejar el binario iOS `1.0.0 (29)` listo para TestFlight con tres
+cierres: (1) el acceso con Apple deja de aproximarse y pasa a ser el botón y la
+hoja NATIVOS de Apple, con la identidad entrando por Clerk nativo; (2) el canje
+de códigos de oferta usa la API vigente de StoreKit 2 sin perder iOS 15.1; (3)
+las marcas de Apple y Google del acceso quedan tomadas de los archivos oficiales
+y no de una tipografía de íconos. Es un cierre de riesgo de App Review sobre
+superficies que ya existían, no una feature nueva.
+
+**Criterios de aceptación.** (1) En iOS el botón de Apple es
+`AppleAuthenticationButton` (`CONTINUE`, `WHITE`, radio 27, alto 54, ancho de la
+columna) y su texto, localización, tipografía, logo y accesibilidad los pone el
+sistema; (2) sólo se dibuja si `isAvailableAsync()` lo confirma y la fila no
+salta mientras se resuelve; (3) la identidad entra por `useSignInWithApple` de
+`@clerk/expo/apple` conservando EXACTAMENTE `classifySsoOutcome`, el descarte
+del marcador antes de `setActive` y la protección de teléfono compartido; (4)
+cerrar la hoja (`ERR_REQUEST_CANCELED`) sale en silencio; (5) Google no cambia
+de vía, de marca ni de geometría; (6) el canje presenta
+`AppStore.presentOfferCodeRedeemSheet(in:)` en iOS 16+ sobre una escena
+`.foregroundActive`, falla cerrado sin escena y conserva
+`SKPaymentQueue.presentCodeRedemptionSheet()` en 15.1–15.x, todo en `@MainActor`;
+(7) el bundle web nunca importa `expo-apple-authentication`.
+
+**Owner y territorio.** Claude — `app/**`, `src/**`, `modules/**`, `app.json`,
+`package.json`, `assets/**` y regresiones en `test/**`; Codex orquesta, revisa y
+corre los comandos que requieren aprobación. `CURRENT_TASK.md` es compartido.
+**Sin cambios en `convex/**`**, contrato, schema ni datos. Rama
+`qa/build29-offer-code-brand-local`, worktree `build29-offer-code-brand-local`,
+base `ad16ebd`. **Cambio de contrato:** no.
+
+**Riesgo.** Alto: toca identidad (Apple) y comercio (canje). Acotado por
+construcción — Google queda intacto, la clasificación de sesión y el orden
+`clasificar → descartar marcador → activar` no se movieron, y el canje sigue sin
+leer, validar ni transportar ningún código.
+
+**Cambios.**
+- `src/onboarding/components/AppleAuthButton.ios.tsx` (nuevo): botón nativo de
+  Apple. Sin SVG, texto, tipografía, tinte ni borde propios; geometría tomada de
+  `PROVIDER_HEIGHT`/`PROVIDER_RADIUS`. Reserva el marco de 54 mientras
+  `isAvailableAsync()` responde y lo cierra sólo con un `false` explícito.
+- `src/onboarding/components/AppleAuthButton.tsx` (nuevo): fallback no-iOS. Web
+  con `EXPO_PUBLIC_ORBITA_APPLE_AUTH` sigue resolviendo Apple por navegador con
+  la pastilla de Órbita. La separación es por archivo de plataforma para que el
+  bundle web no importe el módulo nativo.
+- `src/onboarding/components/ProviderButton.tsx` (nuevo): la pastilla custom sale
+  de `AuthScreen` porque el fallback la necesita y la pantalla no puede ser su
+  dueña sin un ciclo de imports. Geometría (54/27) en una fuente única, que es
+  de donde la toma también el botón nativo.
+- `src/onboarding/useAccount.ts`: `APPLE_NATIVE_SIGN_IN` y la bifurcación de una
+  línea — Apple en iOS por `startAppleAuthenticationFlow()`, todo lo demás por
+  `startSSOFlow`. Las dos vías devuelven la misma forma, así que la
+  clasificación, el descarte y la activación son el mismo código.
+- `src/onboarding/authGate.ts`: `APPLE_SIGN_IN_CANCELLED` + `isSsoCancellation`,
+  puras, para que cerrar la hoja no muestre un error que no existió.
+- `app.json`: plugin `expo-apple-authentication` y
+  `CFBundleAllowMixedLocalizations: true` (el botón del sistema habla el idioma
+  del teléfono). `usesAppleSignIn` y el plugin de Clerk quedan como estaban.
+- `package.json`: `expo-apple-authentication ~8.0.8` y `expo-crypto ~15.0.9`
+  (el hook de Clerk arma el `nonce` con `Crypto.randomUUID()`).
+- `modules/orbita-offer-codes/ios/OrbitaOfferCodesModule.swift`: StoreKit 2 en
+  iOS 16+ sobre la `UIWindowScene` `.foregroundActive`, con rechazo explícito si
+  no hay escena y si Apple falla la presentación; fallback StoreKit 1 en
+  15.1–15.x. Todo dentro de `Task { @MainActor in }`, además del
+  `.runOnQueue(.main)`. El podspec sigue en `:ios => '15.1'`.
+
+**Plan de pruebas.** Nuevas regresiones en `test/appleNativeSignIn.test.ts`
+(config, plugin, localización, geometría, disponibilidad sin salto, prohibición
+de dibujo propio, Clerk nativo, orden de la transición, cancelación silenciosa,
+separación por plataforma, Google intacto); `test/offerCodeRedemption.test.ts`
+ampliado con StoreKit 2 + escena + fallback; `test/authProviderBrandMarks.test.ts`,
+`test/accountScreenLayout.test.ts` y `test/onboardingLaunch.test.ts` reapuntados
+a los archivos movidos. Después: `pnpm typecheck`, suite completa con
+`pnpm check:test-count`, `git diff --check` y export iOS.
+
+**Estado de verificación.** Completo: dependencias instaladas; `pnpm typecheck`
+verde; **2853/2853** pruebas verdes en 241 suites y piso de pruebas aprobado;
+`git diff --check` verde; export iOS correcto; CocoaPods resolvió
+`ExpoAppleAuthentication 8.0.8` y `OrbitaOfferCodes 1.0.0`; compilación Xcode de
+simulador terminada con `BUILD SUCCEEDED`. El archivo de distribución fue
+inspeccionado como `com.lucasssram.orbita`, versión `1.0.0 (29)`, `arm64`,
+`CFBundleAllowMixedLocalizations=true`, Sign in with Apple `Default`, perfil de
+distribución sin `get-task-allow` y backend productivo `exciting-bat-311`. No
+hay cambios en `convex/**`. Advertencia no bloqueante ya existente: Expo Doctor
+queda 17/18 por desajustes de parches del baseline (`expo`, `expo-constants` y
+`expo-updates`), fuera del alcance de este cierre.
+
+**Rollout.** Build nativo generado y subido con autorización a TestFlight
+interno. IPA local: `/private/tmp/orbita-1.0.0-29.ipa`, SHA-256
+`79ca2d36cbdf507412dfdf6de071a99615481df6fa76e3666d36b68c73995f28`.
+Submission EAS: `3764a3e3-b274-47a8-94a3-aea6d824023c`. App Store Connect
+terminó el procesamiento sin errores y muestra el build 29 asociado al grupo
+interno `Own` (3 testers), disponible durante 90 días. Quedan pendientes sólo
+las pruebas físicas de Apple/Google, canje Sandbox y retorno de entitlement.
+Sin commit, sin push, sin App Review y sin publicación.
+
+**Rollback.** Revertir el commit del build 29 y volver a `buildNumber` 28: el
+acceso vuelve a la pastilla custom por `oauth_apple` y el canje a StoreKit 1.
+Nada de esto tiene estado persistido que deshacer.
+
+**Fuera de alcance.** `convex/**`, contrato, schema, precios, RevenueCat
+Dashboard, callbacks OAuth, Google, backend, publicación y push.
+
+### Configuración externa del build 29 (App Store Connect / RevenueCat)
+
+Identificadores y parámetros de la oferta de QA. **Los códigos NO se registran
+acá ni en ningún archivo del repositorio.**
+
+| Concepto | Valor |
+| --- | --- |
+| App (App Store Connect) | `6788918249` |
+| Suscripción | `6803253452` |
+| Producto | `orbita_plus_monthly` |
+| Entitlement (RevenueCat) | `orbita_pro` |
+| Offering (RevenueCat) | `orbita_plus` |
+| Oferta de código | `QA_BUILD29_1M_FREE` |
+| Códigos emitidos · producción | 0 |
+| Códigos emitidos · sandbox | 10 |
+| Vencimiento de la oferta | 2027-02-27 |
+
+El CSV con los códigos vive **fuera del repositorio**, en `~/Downloads`. No se
+copia, no se cita y no se commitea: el código lo tipea la persona dentro de la
+hoja de Apple y nunca viaja por JavaScript. El canje aterriza como transacción
+de StoreKit, RevenueCat la convierte en `CustomerInfo` y el entitlement lo sigue
+decidiendo Convex — presentar la hoja no concede nada.
+
 ## P0 · activación automática Sandbox en TestFlight (2026-08-26) · DESPLEGADO Y VERIFICADO
 
 **Objetivo.** Hacer que cualquier compra Sandbox válida de RevenueCat realizada

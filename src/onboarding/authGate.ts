@@ -60,6 +60,34 @@ export function classifySsoOutcome(args: {
 }
 
 /**
+ * Código con el que Apple informa que la persona CERRÓ la hoja del sistema.
+ *
+ * Lo publica `expo-apple-authentication` (`ASAuthorizationError.canceled`) y es
+ * el mismo literal que reconoce el hook nativo de Clerk. Vive acá, junto a la
+ * clasificación, porque es la otra mitad de la misma decisión: cancelar no es
+ * un fallo.
+ */
+export const APPLE_SIGN_IN_CANCELLED = "ERR_REQUEST_CANCELED";
+
+/**
+ * ¿Este error es una CANCELACIÓN y no un fallo?
+ *
+ * Cerrar la hoja de Apple tiene que salir en silencio: la pantalla vuelve como
+ * estaba, sin cartel rojo y sin perder nada — exactamente igual que cerrar el
+ * navegador del proveedor, que ya salía por `createdSessionId: null`.
+ *
+ * El hook nativo de Clerk normalmente ya traduce esta cancelación a un
+ * resultado sin sesión, así que esta guarda es la red de abajo: si el error
+ * llegara crudo (otra versión del hook, o un `signInAsync` que se rechace por
+ * fuera de ese camino), el acceso igual no muestra un error que no existió.
+ * Función pura para poder demostrarlo sin montar la pantalla.
+ */
+export function isSsoCancellation(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  return (error as { code?: unknown }).code === APPLE_SIGN_IN_CANCELLED;
+}
+
+/**
  * Qué `clientDraftId` recibe `getCompletionStatus`.
  *
  * Con el marcador DESCARTADO (ingreso, alta que cayó a sign-in, SSO que
@@ -92,4 +120,46 @@ export async function startSignupGate(args: {
   }
   await args.createAccount();
   return "started";
+}
+
+// ---------------------------------------------------------------------------
+// Teléfono compartido: liberar el teléfono ANTES de empezar un alta real
+// ---------------------------------------------------------------------------
+
+/**
+ * Prepara un teléfono COMPARTIDO antes de crear una cuenta nueva.
+ *
+ * Si este teléfono tiene un perfil con dueño, quien va a crear una cuenta NO
+ * probó ser ese dueño: lo suyo se archiva BAJO SU CUENTA —recuperable al
+ * volver a entrar, no se destruye— y recién entonces se limpia la vista local.
+ * Sin esto la cuenta nueva hereda las guardadas y el diario del anterior:
+ * `createProfile` sólo reemplaza perfil + dueño, no el resto del estado local.
+ *
+ * Esta garantía existía en la puerta legada de `/iniciar-sesion`
+ * (`leaveWithoutSignIn`, el camino "Crear una cuenta"). Al unificar el acceso
+ * en `AuthScreen` quedó sin dueño; acá vuelve al flujo canónico, enganchada al
+ * ÚNICO punto donde efectivamente empieza un alta (`onBeforeSignup`, la
+ * `seedMarker` de `startSignupGate`). Cambiar de modo, volver, cancelar o
+ * entrar por el camino de ingreso no la disparan.
+ *
+ * **Falla cerrado.** Si el archivado o la limpieza fallan, esto RECHAZA: el
+ * marcador no se siembra, Clerk no se invoca y la pantalla muestra su error de
+ * alta con reintento. Antes que dejar datos ajenos a la vista, no se empieza.
+ *
+ * `released` es el candado de la instancia (un `useRef` en el flujo): se cierra
+ * SÓLO después de una liberación completa, así que un fallo se puede reintentar
+ * y un alta reintentada después del éxito no vuelve a archivar.
+ */
+export async function releaseSharedDevice(args: {
+  released: { current: boolean };
+  /** Dueño del perfil local (clerkUserId), o null si no hay nada que liberar. */
+  profileOwner: string | null;
+  archiveAccountData: (userId: string) => Promise<void>;
+  resetApp: () => Promise<void>;
+}): Promise<void> {
+  if (args.released.current) return;
+  if (!args.profileOwner) return;
+  await args.archiveAccountData(args.profileOwner);
+  await args.resetApp();
+  args.released.current = true;
 }

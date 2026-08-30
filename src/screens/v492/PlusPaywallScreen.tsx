@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation } from "convex/react";
 import { router, useFocusEffect } from "expo-router";
-import { Linking, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Linking, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import { Text } from "@/components/ui/text";
 import { createOwnerGates, runExclusive } from "@/domain/exclusive";
@@ -42,7 +42,7 @@ import { font, GUTTER, orbita } from "@/onboarding/theme";
 const PRIVACY_URL = "https://orbitaastrologia.xyz/privacy";
 const TERMS_URL = "https://orbitaastrologia.xyz/terminos";
 
-type ActionPhase = "idle" | "purchasing" | "restoring" | "checking";
+type ActionPhase = "idle" | "purchasing" | "restoring" | "checking" | "redeeming";
 
 /** Paywall nativo propio: la oferta y todos sus importes llegan de la tienda. */
 export function PlusPaywallScreen() {
@@ -377,6 +377,21 @@ export function PlusPaywallScreen() {
   // la tienda Y el plan validado para ESTA cuenta. Con el entitlement de A
   // arrastrado, restaurar bajo B era una acción comercial sobre datos ajenos.
   const restoreReady = revenueCat.identifiedUserId !== null && entitlementResuelto;
+  /**
+   * El canje se ofrece EXACTAMENTE donde se ofrece la oferta, y sólo en iOS.
+   *
+   * Mismas condiciones que dibujan el plan —plan validado para esta cuenta,
+   * `activation === "idle"` (ni Pro confirmado ni compra ya aceptada) y Offering
+   * listo— más la identidad de la tienda resuelta, porque la hoja de Apple ata
+   * el canje al app user id vigente. No incluye el foco: eso gobierna la
+   * impresión, no si el botón existe. Fuera de iOS no hay hoja que abrir.
+   */
+  const offerCodeVisible =
+    Platform.OS === "ios" &&
+    entitlementResuelto &&
+    activation === "idle" &&
+    revenueCat.phase === "ready" &&
+    identifiedUserId !== null;
   const primary = nativePrimaryAction({
     offeringReady: revenueCat.phase === "ready" && Boolean(selected),
     backendIsPro,
@@ -547,6 +562,60 @@ export function PlusPaywallScreen() {
     });
   };
 
+  /**
+   * Canje de código de oferta: se abre la hoja de Apple y NO se infiere nada.
+   *
+   * Tres cosas que este handler deliberadamente NO hace:
+   *
+   * 1. **No toca el marcador anti doble cobro.** Abrir la hoja de códigos no es
+   *    empezar la compra de un paquete: no hay cargo en vuelo que proteger, y
+   *    armar el marcador acá dejaría a la persona empujada a "Restaurar" después
+   *    de cerrar una hoja que nunca cobró nada.
+   * 2. **No afirma éxito.** Apple no informa si hubo canje —la hoja se cierra
+   *    igual si la persona se arrepintió—, así que resolver no prueba nada.
+   * 3. **No concede acceso.** Lo único que puede encender Plus es el
+   *    `CustomerInfo` de la tienda y, con autoridad final, Convex.
+   *
+   * Lo que sí hace después de presentar es pedir las dos lecturas autoritativas
+   * que ya existen: la reconciliación server-side y el refresh de CustomerInfo.
+   * Si el canje ocurrió, `storeIsPro` se enciende y la activación de siempre
+   * toma el control. Si no, se dice lo único cierto, sin prometer nada.
+   */
+  const redeemOfferCode = async () => {
+    if (!offerCodeVisible) return;
+    const userId = identifiedUserId;
+    await runExclusive(gate, async () => {
+      setNotice(userId, null);
+      setAction(userId, "redeeming");
+      try {
+        await revenueCat.redeemOfferCode();
+      } catch {
+        setNotice(userId, "No pudimos abrir el canje de códigos de Apple. Probá de nuevo en un momento.");
+        setAction(userId, "idle");
+        return;
+      }
+      // Seguimiento seguro: ninguna de las dos lecturas puede fallar hacia
+      // "tenés acceso", y las dos son las que ya reparan una compra normal.
+      try {
+        if (stillOwner(userId)) await askBackendToReconcile();
+        const activo = await revenueCat.refreshCustomerInfo();
+        if (!activo) {
+          setNotice(
+            userId,
+            "Si canjeaste el código, Apple lo está procesando. Tu acceso se actualiza solo; si no aparece, probá Restaurar."
+          );
+        }
+      } catch {
+        setNotice(
+          userId,
+          "Si canjeaste el código, Apple lo está procesando. Tu acceso se actualiza solo; si no aparece, probá Restaurar."
+        );
+      } finally {
+        setAction(userId, "idle");
+      }
+    });
+  };
+
   const openCustomerCenter = async () => {
     const userId = identifiedUserId;
     await runExclusive(gate, async () => {
@@ -619,6 +688,22 @@ export function PlusPaywallScreen() {
             onSelect={setSelectedPlan}
             onRetry={() => void revenueCat.retry().catch(() => undefined)}
           />
+        ) : null}
+
+        {/* Un solo toque abre la hoja de Apple, donde la persona tipea el
+            código una vez. No hay campo propio: el código nunca pasa por acá.
+            El título de esa hoja lo pone Apple y no se toca. */}
+        {offerCodeVisible ? (
+          <Pressable
+            onPress={busy ? undefined : () => void redeemOfferCode()}
+            disabled={busy}
+            accessibilityRole="button"
+            accessibilityLabel="Canjear código de descuento"
+            accessibilityState={{ disabled: busy }}
+            style={styles.offerCodeButton}
+          >
+            <Text style={[styles.offerCodeText, busy && styles.dimmed]}>Canjear código de descuento</Text>
+          </Pressable>
         ) : null}
 
         <View style={styles.benefitsCard}>
@@ -851,6 +936,7 @@ function primaryLabel({
   if (action === "purchasing") return "CONFIRMANDO CON LA TIENDA…";
   if (action === "restoring") return "RESTAURANDO…";
   if (action === "checking") return "COMPROBANDO CON LA TIENDA…";
+  if (action === "redeeming") return "ABRIENDO EL CANJE…";
 
   if (primary === "leave") return "VOLVER A ÓRBITA";
   if (primary === "restore") return "RESTAURAR MI COMPRA";
@@ -918,6 +1004,19 @@ const styles = StyleSheet.create({
   inlineAction: { alignSelf: "flex-start", justifyContent: "center", minHeight: 44, paddingTop: 10 },
   inlineActionText: { color: orbita.copperSoft, fontFamily: font.sansBold, fontSize: 12, letterSpacing: 0.8, textDecorationLine: "underline" },
   benefitsCard: { backgroundColor: "rgba(18,20,26,0.78)", borderColor: orbita.line, borderRadius: 18, borderWidth: 1, marginTop: 18, padding: 18 },
+  offerCodeButton: {
+    alignItems: "center",
+    alignSelf: "stretch",
+    borderColor: orbita.lineStrong,
+    borderCurve: "continuous",
+    borderRadius: 27,
+    borderWidth: 1,
+    justifyContent: "center",
+    marginTop: 12,
+    minHeight: 54,
+    paddingHorizontal: 20
+  },
+  offerCodeText: { color: orbita.bone, fontFamily: font.sansBold, fontSize: 15, textAlign: "center" },
   sectionTitle: { color: orbita.bone, fontFamily: font.serif, fontSize: 22, marginBottom: 8 },
   benefitRow: { alignItems: "flex-start", flexDirection: "row", gap: 10, marginTop: 11 },
   tick: { color: orbita.copperSoft, fontFamily: font.sansBold, fontSize: 14 },

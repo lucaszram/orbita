@@ -26,7 +26,7 @@ import { CARTA_TAB_ROUTE, EDIT_BIRTH_DATA_ROUTE, HOME_ROUTE } from "@/domain/app
 import { INTERNAL_TOOLS_ENABLED } from "@/services/internalTools";
 
 import { resolveAuthStepExit } from "./authExit";
-import { completionDraftIdFor } from "./authGate";
+import { completionDraftIdFor, releaseSharedDevice } from "./authGate";
 import { MONTHS } from "./months";
 import { observeTriadComputation, triadAutoAdvances } from "./triadSurface";
 import { AlignScreen } from "./screens/AlignScreen";
@@ -96,12 +96,21 @@ export function OnboardingFlow({
 }: { inspectStep?: number; inspectWidth?: number } = {}) {
   const fontsLoaded = useOrbitaFonts();
   const router = useRouter();
-  const { createProfile } = useAppState();
+  // `profileOwner` / `archiveAccountData` / `resetApp` son SÓLO para el
+  // teléfono compartido: liberar lo del dueño anterior antes de un alta real
+  // (ver `releaseSharedDevice` y el `onBeforeSignup` del paso de acceso).
+  const { createProfile, profileOwner, archiveAccountData, resetApp } = useAppState();
   const { auth } = useLiveApp();
   const params = useLocalSearchParams<{
     debugStep?: string;
     resume?: string;
     email?: string;
+    /**
+     * Con qué modo abre el paso de acceso. Lo trae `/iniciar-sesion`, que es un
+     * alias de esta misma puerta: `?mode=signin` abre en "Ingresar". Cualquier
+     * otro valor (o ninguno) deja el default del alta, "Crear cuenta".
+     */
+    mode?: string;
   }>();
 
   // Borrador de sesión (web): sobrevive la vuelta de Clerk y las recargas de la
@@ -142,6 +151,12 @@ export function OnboardingFlow({
    * recuperación (`/editar-datos`). Sembrar de nuevo (modo alta) lo repone.
    */
   const [markerDiscarded, setMarkerDiscarded] = useState(false);
+  /**
+   * Candado del teléfono compartido: se cierra SÓLO después de archivar y
+   * limpiar de verdad. Un fallo lo deja abierto (el alta se puede reintentar) y
+   * un alta reintentada después del éxito no vuelve a archivar.
+   */
+  const deviceReleased = useRef(false);
   // Autoridad ÚNICA post-acceso: ni `isSignedIn` ni el retorno de las escrituras.
   const completion = useOnboardingCompletion(completionDraftIdFor({ markerDiscarded, clientDraftId }));
   const computeTriad = useOnboardingComputeTriad();
@@ -519,11 +534,28 @@ export function OnboardingFlow({
           signUp={signUpFlow}
           signIn={signInFlow}
           initialEmail={email || undefined}
+          // `/iniciar-sesion` reenvía acá con `mode=signin`: la puerta abre en
+          // "Ingresar". Sin el param no se pasa nada y queda el default del
+          // alta — el prop no cambia ninguna otra conducta de la pantalla.
+          initialMode={params.mode === "signin" ? "signin" : undefined}
           entering={!inspeccion && sesionActiva}
           onBeforeSignup={
             inspeccion || !clientDraftId || !markSignup
               ? undefined
               : async () => {
+                  // Teléfono compartido, PRIMERO: si este teléfono tiene un
+                  // perfil con dueño, lo suyo se archiva bajo su cuenta
+                  // (recuperable) y la vista local se limpia antes de que la
+                  // cuenta nueva pueda heredar diario y guardadas. Falla
+                  // cerrado: si no se puede, esto RECHAZA y no avanza ni el
+                  // marcador ni Clerk. Sólo corre en un alta real: cambiar de
+                  // modo, volver, cancelar o ingresar no pasan por acá.
+                  await releaseSharedDevice({
+                    released: deviceReleased,
+                    profileOwner,
+                    archiveAccountData,
+                    resetApp
+                  });
                   // El id sobrevive al redirect de Clerk (sessionStorage) y el
                   // marcador remoto clasifica la cuenta nueva como alta en
                   // curso. Si el marcador no se guarda, esto RECHAZA y la

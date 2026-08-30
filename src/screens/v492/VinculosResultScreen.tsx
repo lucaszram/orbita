@@ -214,13 +214,15 @@ function Shell({
  * persona encontrada, y su `profileId` ya tipado, se pide la comparación.
  */
 function VinculosResultLive({ profileId, timezone }: { profileId: string; timezone: string }) {
-  const personas = useQuery(relationshipsApi.list, {});
+  // La lista autorizada, ahora con el cupo del plan al lado. La comparación no
+  // depende del cupo: una persona guardada se lee igual con Free (build 30).
+  const acceso = useQuery(relationshipsApi.listWithAccess, {});
   // Al borrar, la lista reactiva deja de traer a esta persona un instante antes
   // de que la navegación ocurra. Sin esta marca, ese instante mostraría "este
   // enlace no corresponde a ninguna persona", que es exactamente lo contrario de
   // lo que acaba de pasar.
   const [borrada, setBorrada] = useState(false);
-  const persona = findRelationshipProfile(personas, profileId);
+  const persona = findRelationshipProfile(acceso?.profiles, profileId);
   const volverAlPerfil = relationshipProfileHref(profileId);
 
   if (borrada) {

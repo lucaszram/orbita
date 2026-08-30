@@ -22,15 +22,25 @@ import type { AnalysisEnvelope } from "@/services/layersApi";
 export function ModuleHeader({
   module,
   cadence,
-  intro
+  intro,
+  gap = v492.space.lg
 }: {
   module: string;
   cadence: string;
   /** Una a tres frases que explican qué muestra el módulo. */
   intro?: string;
+  /**
+   * Aire hasta lo que el módulo dibuja abajo. El default es el del canon —16—,
+   * así que ningún módulo existente se mueve un punto.
+   *
+   * Existe por el patrón relacional cerrado por plan (`1250:1651`, `1253:1665`):
+   * ahí abajo del encabezado no hay un bloque de contenido sino una frase corta,
+   * y el frame la acerca a 12.
+   */
+  gap?: number;
 }) {
   return (
-    <View style={styles.header}>
+    <View style={{ marginBottom: gap }}>
       <Divider style={styles.headerRule} />
       <View
         accessible
@@ -183,7 +193,6 @@ const styles = StyleSheet.create({
   // columna de dos caracteres cuando el rótulo se lleva el ancho.
   dataValue: { flex: 1, minWidth: 140 },
   dataValueStacked: { minWidth: 0, width: "100%" },
-  header: { marginBottom: v492.space.lg },
   headerRow: {
     alignItems: "flex-start",
     flexDirection: "row",

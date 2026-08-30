@@ -11,6 +11,7 @@ const WEB_DISABLED: RevenueCatContextValue = {
   purchase: async () => "inactive",
   restore: async () => "inactive",
   presentCustomerCenter: async () => undefined,
+  redeemOfferCode: async () => undefined,
   retry: async () => undefined,
   refreshCustomerInfo: async () => false,
   trackPaywallImpression: async () => false

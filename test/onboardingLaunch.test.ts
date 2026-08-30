@@ -586,17 +586,27 @@ test("los proveedores sociales se encienden por configuración, nunca se simulan
   // El acceso dibuja cada botón SOLO detrás de su flag: sin conexión externa
   // habilitada no se muestra — no se simula un proveedor que no está.
   const acceso = sinComentarios(leer("src/onboarding/screens/AuthScreen.tsx"));
-  assert.match(acceso, /APPLE_AUTH_ENABLED \?[\s\S]{0,200}Continuar con Apple/, "Apple sólo con su flag");
+  // Apple ya no trae su copy acá: en iOS el texto lo pone el sistema (botón
+  // nativo) y fuera de iOS lo pone `AppleAuthButton`. Lo que la pantalla sigue
+  // garantizando es que la vía exista SÓLO detrás de su flag.
+  assert.match(acceso, /APPLE_AUTH_ENABLED \?[\s\S]{0,200}<AppleAuthButton/, "Apple sólo con su flag");
+  assert.match(
+    sinComentarios(leer("src/onboarding/components/AppleAuthButton.tsx")),
+    /const LABEL = "Continuar con Apple";/,
+    "el copy de Apple vive donde Órbita todavía tiene que escribirlo: fuera de iOS"
+  );
   assert.match(acceso, /GOOGLE_AUTH_ENABLED \?[\s\S]{0,200}Continuar con Google/, "Google sólo con su flag");
   assert.match(acceso, /if \(!APPLE_AUTH_ENABLED && !GOOGLE_AUTH_ENABLED\) return null;/, "sin proveedores no hay bloque social");
 });
 
 test("«Continuar con Google» va arriba del divisor, con marca real y accesible", () => {
   const btn = sinComentarios(leer("src/onboarding/components/GoogleButton.tsx"));
-  // Marca real de un paquete de íconos que ya está en el proyecto: ni dibujo
-  // a mano ni emoji.
-  assert.match(btn, /from "@expo\/vector-icons"/);
-  assert.match(btn, /<FontAwesome name="google"/);
+  // Marca REAL: el vector oficial de Google, no la "G" monocroma de una
+  // tipografía de íconos. Ni dibujo a mano ni emoji.
+  assert.doesNotMatch(btn, /from "@expo\/vector-icons"/, "la marca no sale de una fuente de íconos");
+  assert.doesNotMatch(btn, /FontAwesome/);
+  assert.match(btn, /from "@\/components\/brand\/ProviderMarks"/);
+  assert.match(btn, /<GoogleMark \/>/);
   // Accesible y tocable.
   assert.match(btn, /accessibilityRole="button"/);
   assert.match(btn, /accessibilityLabel=\{label\}/);

@@ -4,6 +4,7 @@ import { router } from "expo-router";
 import { CycleRing, MoonDial } from "@/components/v492/Dials";
 import { Legend, LinkRow, MetaRow, SectionHeader } from "@/components/v492/Layout";
 import { MeterBar } from "@/components/v492/Meter";
+import { PlanLockBlock } from "@/components/v492/PlanLock";
 import { LayerScreen, Section } from "@/components/v492/Screen";
 import { FreshnessNotice } from "@/components/v492/Status";
 import { EmptyBlock, ErrorBlock, GuestBlock, LoadingBlock } from "@/components/v492/States";
@@ -28,7 +29,9 @@ import {
   topTransits,
   type CumplelunaToday
 } from "@/domain/layers";
+import { HOY_FREE_INTRO, HOY_FREE_LOCK } from "@/domain/planAccess";
 import { useLayers } from "@/hooks/useLayers";
+import { usePlanAccess } from "@/hooks/usePlanAccess";
 import type {
   AnalysisEnvelope,
   AnalysisPrecision,
@@ -66,7 +69,33 @@ import type {
 
 export function HoyScreen() {
   const layers = useLayers();
+  const acceso = usePlanAccess();
   const { phase, bundle, yesterday, nowMs, timezone, refresh, refreshing, refreshFailed } = layers;
+
+  /**
+   * Free: la pestaña no se calcula, así que no hay nada que esperar ni que
+   * refrescar (frame `1248:1617`).
+   *
+   * Va ANTES que las fases del ciclo de datos a propósito: con Free el sobre
+   * llega con sus capas temporales cerradas, y dejarlo caer en el cuerpo normal
+   * dibujaría tres bloques vacíos explicando cada uno por separado por qué le
+   * falta el dato. El bloqueo es UNO y dice lo que de verdad pasa.
+   *
+   * `loading` no entra acá: mientras el plan no resolvió, el ciclo mantiene la
+   * fase en `cargando` y esta pantalla espera como siempre.
+   */
+  if (acceso === "free") {
+    return (
+      <Shell timezone={timezone} nowMs={nowMs} intro={HOY_FREE_INTRO}>
+        <Section>
+          <PlanLockBlock
+            line={HOY_FREE_LOCK}
+            ctaVoice="Ver Órbita Plus para abrir Hoy"
+          />
+        </Section>
+      </Shell>
+    );
+  }
 
   if (phase === "cargando") {
     return (

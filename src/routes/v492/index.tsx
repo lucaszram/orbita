@@ -3,6 +3,8 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 import { Redirect } from "expo-router";
 import { usePendingDeletionGate } from "@/components/PendingDeletionBoundary";
 import { bootGateSurface } from "@/domain/accountDeletion";
+import { CARTA_TAB_ROUTE } from "@/domain/appRoutes";
+import { startTab } from "@/domain/planAccess";
 import {
   isAccountSwitch,
   onboardingInputFromBirthData,
@@ -12,6 +14,7 @@ import {
 } from "@/domain/sessionStart";
 import { useAppState } from "@/hooks/useAppState";
 import { useLiveApp } from "@/hooks/useLiveApp";
+import { usePlanAccess } from "@/hooks/usePlanAccess";
 import { useSessionResilience } from "@/hooks/useSessionResilience";
 import { useSignInHydrate } from "@/onboarding/useAccount";
 import { backendConfig } from "@/services/backendProviders";
@@ -31,6 +34,14 @@ const CLERK_LOAD_TIMEOUT_MS = 8000;
  * Esta es la variante NATIVA: la landing pública y su gate de sesión viven en
  * `index.web.tsx` (el archivo que Metro resuelve solo en web), así que acá no se
  * importa nada del árbol web para no arrastrarlo al bundle nativo.
+ *
+ * **Qué cambia en el build 30.** `resolveStart` sigue decidiendo exactamente lo
+ * mismo —qué superficie corresponde—, pero cuando esa superficie es el producto
+ * ya no se entra por una pestaña fija. Este es el arranque REAL de una cuenta ya
+ * dada de alta: el relanzamiento normal entra por acá y no por la raíz de las
+ * pestañas, así que un `/hoy` escrito a mano dejaba a una cuenta Órbita Free
+ * mirando un bloqueo como primera pantalla. La pestaña la elige `startTab`
+ * (`@/domain/planAccess`), la MISMA función pura que aplica `tabs-index.tsx`.
  */
 export default function IndexRoute() {
   // El arranque ya no purga nada por sí solo. `archiveAccountData`/`resetApp`
@@ -57,6 +68,18 @@ export default function IndexRoute() {
    * entero de alguien cuya cuenta sí se puede probar en este teléfono.
    */
   const { confidence } = useSessionResilience();
+  /**
+   * El acceso de la cuenta, con la regla única de `@/domain/planAccess`: sólo
+   * autoriza el remoto confirmado para el dueño vigente.
+   *
+   * Esta ruta no nombra ningún plan ni dibuja ningún bloqueo —el arranque no
+   * puede afirmar Free ni Plus—: lo único que hace con esto es elegir con qué
+   * pestaña abre el shell. Y como la autoridad es el remoto y no el snapshot
+   * local, un cambio de cuenta o un vencimiento no pueden mandar a Hoy con un
+   * plan que el servidor ya no reconoce: mientras el remoto de ESTA cuenta no
+   * llegue, el acceso es `loading` y el arranque espera.
+   */
+  const acceso = usePlanAccess();
   const hydrate = useSignInHydrate();
   const [recovery, setRecovery] = useState<RecoveryState>("idle");
   const [hasRemoteBirthData, setHasRemoteBirthData] = useState(false);
@@ -99,6 +122,20 @@ export default function IndexRoute() {
     profileAdoptionPending,
     recovery,
     hasRemoteBirthData
+  });
+
+  /**
+   * Con qué pestaña abre el shell cuando la decisión es entrar al producto.
+   *
+   * Las tres señales son las mismas que aplica la raíz de las pestañas y la
+   * regla vive en un solo lugar: acá no se vuelve a comparar el plan ni se
+   * copia la decisión. Sin backend configurado `startTab` conserva el arranque
+   * histórico en Hoy, que es el de los builds locales sin cuenta.
+   */
+  const destino = startTab({
+    access: acceso,
+    degraded: confidence === "degraded-local",
+    backendConfigured: BACKEND_CONFIGURED
   });
 
   // Sesión activa sin perfil local PROPIO (upgrade/reinstalación/perfil guest
@@ -162,17 +199,40 @@ export default function IndexRoute() {
   // nunca, y si se alcanzara igual no se dibuja producto.
   const surface = bootGateSurface({ pendingDeletion: pendingDeletionBlocking, isWeb: false });
 
-  if (surface === "pending-deletion") {
-    return (
-      <View style={styles.loading}>
-        <ActivityIndicator color={BOOT_ACCENT} />
-      </View>
+  /**
+   * La espera del arranque: UNA sola superficie oscura, neutral, para todos los
+   * estados que todavía no afirman nada (ver QA23-006).
+   */
+  const espera = (
+    <View style={styles.loading}>
+      <ActivityIndicator color={BOOT_ACCENT} />
+    </View>
+  );
+
+  /**
+   * La salida al producto, ya resuelta.
+   *
+   * `esperar` es un instante —la sesión está viva y el plan viaja— y se dibuja
+   * con esa misma espera: elegir una pestaña "por las dudas" sería afirmar un
+   * plan que todavía no se sabe, y las dos versiones de ese error se ven (a
+   * quien paga se le mueve el arranque, a quien no le aparece un bloqueo).
+   */
+  const arranque =
+    destino === "esperar" ? (
+      espera
+    ) : (
+      <Redirect href={(destino === "hoy" ? "/hoy" : CARTA_TAB_ROUTE) as never} />
     );
+
+  if (surface === "pending-deletion") {
+    return espera;
   }
 
   switch (decision) {
     case "home":
-      return <Redirect href="/hoy" />;
+      // La cuenta está completa: entra al shell por la pestaña que le
+      // corresponde, no por una fija.
+      return arranque;
     case "resume-onboarding":
       // Cuenta activa sin datos de nacimiento: continuar el alta desde los
       // datos (el paso de cuenta se saltea solo; no se crea una segunda).
@@ -209,7 +269,12 @@ export default function IndexRoute() {
       // Sin esa prueba —instalación nueva, perfil de invitado, perfil ajeno,
       // llavero ilegible o web— el bloqueo se conserva tal cual, y sigue siendo
       // no destructivo: sin confirmación de Clerk no se toca NADA local.
-      if (confidence === "degraded-local") return <Redirect href="/hoy" />;
+      //
+      // Y entra por la MISMA puerta que el arranque normal: la sesión degradada
+      // nunca va a resolver el plan, así que `startTab` la manda a su carta —lo
+      // que el shell degradado sí puede sostener con los últimos datos de esta
+      // misma cuenta—, y no a una pestaña que ni siquiera se calcula.
+      if (confidence === "degraded-local") return arranque;
       return (
         <AuthTimeout
           onRetry={() => {
@@ -221,11 +286,7 @@ export default function IndexRoute() {
     case "loading":
     case "recover":
     default:
-      return (
-        <View style={styles.loading}>
-          <ActivityIndicator color={BOOT_ACCENT} />
-        </View>
-      );
+      return espera;
   }
 }
 

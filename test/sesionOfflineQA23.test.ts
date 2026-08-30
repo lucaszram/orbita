@@ -1485,7 +1485,13 @@ test("QA23-007 · el arranque en frío deja pasar al shell degradado", () => {
   // `resolveStart` contesta `auth-timeout` en el arranque sin red y esa pantalla
   // tapaba el producto entero antes de que ningún gate opinara.
   assert.match(ARRANQUE, /useSessionResilience/);
-  assert.match(ARRANQUE, /if \(confidence === "degraded-local"\) return <Redirect href="\/hoy" \/>;/);
+  // El destino ya no es `/hoy` fijo (build 30): la sesión degradada entra por la
+  // misma puerta que el arranque normal, y esa puerta la resuelve `startTab`,
+  // que con la sesión sin confirmar abre la carta. Lo que se fija acá es que la
+  // rama sigue DEJANDO PASAR al shell degradado, que es lo de QA23-007.
+  assert.match(ARRANQUE, /if \(confidence === "degraded-local"\) return arranque;/);
+  assert.match(ARRANQUE, /const arranque =\s*destino === "esperar"/);
+  assert.doesNotMatch(ARRANQUE, /href="\/hoy"/, "ninguna rama del arranque fija la pestaña");
   // El bloqueo se conserva para todo lo demás: es la salida no destructiva de
   // una instalación nueva, un perfil ajeno o un llavero que no se pudo leer.
   assert.match(ARRANQUE, /<AuthTimeout/);

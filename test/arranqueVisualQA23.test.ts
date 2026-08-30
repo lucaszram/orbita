@@ -296,14 +296,17 @@ test("no queda un solo color de arranque distinto del canónico", () => {
   assert.equal(expo.android.adaptiveIcon.backgroundColor, "#0D0E12");
 });
 
-test("la promoción autorizada conserva 1.0.0 y prepara exactamente el build 28", () => {
+test("la promoción autorizada conserva 1.0.0 y prepara exactamente el build 30", () => {
   // Esta tanda toca `app.json`, así que el efecto nativo aparece recién con un
   // build nuevo — y la política de runtime es `fingerprint`, o sea que el
   // fingerprint cambió. Lucas autorizó explícitamente la promoción: se conserva
   // la versión comercial y se fija el número exacto del nuevo RC.
+  //
+  // 30 y no 29: el acceso Free/Plus protegido, sus rutas nuevas y el módulo de
+  // canje forman el RC siguiente al build 29 ya distribuido.
   assert.equal(APP_JSON.expo.runtimeVersion.policy, "fingerprint");
   assert.equal(APP_JSON.expo.version, "1.0.0");
-  assert.equal(APP_JSON.expo.ios.buildNumber, "28");
+  assert.equal(APP_JSON.expo.ios.buildNumber, "30");
 });
 
 // ---------------------------------------------------------------------------

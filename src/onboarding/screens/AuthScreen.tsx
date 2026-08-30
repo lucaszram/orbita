@@ -1,15 +1,16 @@
 import { useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
-import { FontAwesome } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 
 import { Text } from "@/components/ui/text";
 
 import { A } from "../assets";
 import { startSignupGate } from "../authGate";
+import { AppleAuthButton } from "../components/AppleAuthButton";
 import { CodeHelp } from "../components/CodeHelp";
 import { CodeInput } from "../components/CodeInput";
 import { CTA } from "../components/CTA";
+import { ProviderButton } from "../components/ProviderButton";
 import { Screen } from "../components/Screen";
 import { Body, Caption, Label } from "../components/Type";
 import { font, GUTTER, orbita } from "../theme";
@@ -32,7 +33,10 @@ import {
  *
  * Los botones de proveedor sólo existen si la conexión está habilitada
  * externamente (`GOOGLE_AUTH_ENABLED` / `APPLE_AUTH_ENABLED`): no se simula un
- * proveedor que no está.
+ * proveedor que no está. Google es la pastilla de Órbita
+ * (`components/ProviderButton`); Apple, en iOS, es el botón NATIVO de Apple
+ * (`components/AppleAuthButton`, resuelto por plataforma) y ahí el texto, la
+ * localización y la accesibilidad las pone el sistema.
  *
  * La pantalla NO navega: cuando la sesión queda activa, el flujo decide con el
  * estado autoritativo (cuenta completa → destino autoritativo; nueva o
@@ -46,6 +50,15 @@ type Props = {
   signIn: SignInFlow | null;
   /** Email prellenado (el login lo trae por `?email=`, o el borrador). */
   initialEmail?: string;
+  /**
+   * Con qué modo ABRE la puerta. Sin el prop abre en "Crear cuenta", que es la
+   * entrada natural del alta. `/iniciar-sesion` es un alias de esta misma
+   * pantalla y llega con `?mode=signin`: quien tocó "Ya tengo cuenta" tiene que
+   * ver "Ingresar" seleccionado, no tener que cambiar de modo a mano.
+   *
+   * Sólo decide el estado INICIAL: el selector sigue mandando después.
+   */
+  initialMode?: AuthMode;
   /** Sesión ya activa: se espera la autoridad de readiness para decidir. */
   entering: boolean;
   /**
@@ -71,13 +84,14 @@ export function AuthScreen({
   signUp,
   signIn,
   initialEmail,
+  initialMode,
   entering,
   onBeforeSignup,
   onSignInPath,
   onBack
 }: Props) {
   const router = useRouter();
-  const [mode, setMode] = useState<AuthMode>("signup");
+  const [mode, setMode] = useState<AuthMode>(initialMode ?? "signup");
   const [email, setEmail] = useState(initialEmail ?? "");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
@@ -444,10 +458,15 @@ function Providers({
         <Text style={styles.dividerTxt}>o</Text>
         <View style={styles.dividerLine} />
       </View>
+      {/*
+        Apple no es un `ProviderButton`: en iOS lo dibuja el sistema
+        (`AppleAuthenticationButton`) y fuera de iOS cae en la pastilla custom.
+        La elección la hace el bundler por archivo de plataforma, no un
+        `Platform.OS` acá — así el bundle web nunca importa el módulo nativo.
+        El label también vive adentro: en iOS lo pone Apple.
+      */}
       {APPLE_AUTH_ENABLED ? (
-        <ProviderButton
-          icon="apple"
-          label="Continuar con Apple"
+        <AppleAuthButton
           busy={oauthBusy === "apple"}
           disabled={disabled}
           onPress={() => onPress("apple")}
@@ -463,36 +482,6 @@ function Providers({
         />
       ) : null}
     </>
-  );
-}
-
-/** Botón de proveedor: contorno hueso silencioso sobre oscuro. Nunca cobre. */
-function ProviderButton({
-  icon,
-  label,
-  busy,
-  disabled,
-  onPress
-}: {
-  icon: "apple" | "google";
-  label: string;
-  busy: boolean;
-  disabled: boolean;
-  onPress: () => void;
-}) {
-  const off = busy || disabled;
-  return (
-    <Pressable
-      onPress={off ? undefined : onPress}
-      disabled={off}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ busy, disabled: off }}
-      style={[styles.provider, off && styles.providerOff]}
-    >
-      <FontAwesome name={icon} size={18} color={orbita.bone} />
-      <Text style={styles.providerTxt}>{busy ? "Un momento…" : label}</Text>
-    </Pressable>
   );
 }
 
@@ -533,19 +522,6 @@ const styles = StyleSheet.create({
   divider: { alignItems: "center", flexDirection: "row", gap: 12 },
   dividerLine: { backgroundColor: orbita.line, flex: 1, height: 1 },
   dividerTxt: { color: orbita.faint, fontFamily: font.sans, fontSize: 14 },
-  provider: {
-    alignItems: "center",
-    backgroundColor: orbita.bgElev,
-    borderColor: orbita.bone,
-    borderRadius: 27,
-    borderWidth: 1,
-    flexDirection: "row",
-    gap: 10,
-    height: 54,
-    justifyContent: "center"
-  },
-  providerOff: { opacity: 0.55 },
-  providerTxt: { color: orbita.bone, fontFamily: font.sansMed, fontSize: 16 },
   errorCard: {
     backgroundColor: "#181B22",
     borderColor: "#E38A62",

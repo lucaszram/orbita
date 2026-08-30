@@ -16,7 +16,16 @@ const CODE = SRC.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 
 describe("AuthScreen — la primera superficie del onboarding", () => {
   it("crear cuenta e ingresar son modos de la MISMA pantalla", () => {
-    assert.match(CODE, /useState<AuthMode>\("signup"\)/, "el alta es la puerta por defecto");
+    // El alta sigue siendo el default. `initialMode` sólo cambia con qué modo
+    // ABRE la puerta, y lo usa el alias `/iniciar-sesion` (`?mode=signin`): quien
+    // vino a ingresar no tiene que cambiar de modo a mano. Nada más: el selector
+    // manda igual después.
+    assert.match(CODE, /initialMode\?: AuthMode;/, "el modo inicial es un prop opcional");
+    assert.match(
+      CODE,
+      /useState<AuthMode>\(initialMode \?\? "signup"\)/,
+      "el alta es la puerta por defecto"
+    );
     assert.match(CODE, /cambiarModo\("signup"\)/);
     assert.match(CODE, /cambiarModo\("signin"\)/);
     // El selector es un grupo accesible con estado por puerta.
@@ -60,7 +69,13 @@ describe("AuthScreen — la primera superficie del onboarding", () => {
     assert.match(CODE, /minHeight: 44/);
     // CTA de 54 y campos de 62 ya superan el mínimo por diseño.
     assert.match(CODE, /minHeight: 62/);
-    assert.match(CODE, /height: 54/);
+    // Los 54 de la fila de proveedores viven en su componente: es la fuente
+    // única de la que también sale el alto del botón NATIVO de Apple.
+    const pastilla = readFileSync(
+      path.join(process.cwd(), "src/onboarding/components/ProviderButton.tsx"),
+      "utf8"
+    );
+    assert.match(pastilla, /export const PROVIDER_HEIGHT = 54;/);
   });
 
   it("los términos y la privacidad se declaran y se alcanzan", () => {

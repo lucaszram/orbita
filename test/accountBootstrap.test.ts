@@ -106,11 +106,14 @@ test("el gate no redirige en el estado bootstrap: muestra carga o reintento", ()
 // --- Un solo camino de bootstrap --------------------------------------------
 
 test("la entrada con sesión activa y el login usan el MISMO bootstrap", () => {
-  const login = readFileSync(join(ROOT, "app/iniciar-sesion.tsx"), "utf8");
+  // El bootstrap tiene UN dueño: `AccountGate`. `/iniciar-sesion` ya no monta
+  // UI de ingreso —es un alias que reenvía a la puerta única del onboarding—,
+  // así que ni siquiera queda un segundo lugar donde pudiera duplicarse.
   const gate = readFileSync(join(ROOT, "src/components/orbita/AccountGate.tsx"), "utf8");
-  for (const [nombre, src] of [["login", login], ["gate", gate]] as const) {
-    assert.ok(/useAccountBootstrap/.test(src), `${nombre} debe usar el bootstrap compartido`);
-  }
+  assert.ok(/useAccountBootstrap/.test(gate), "el gate debe usar el bootstrap compartido");
+
+  const login = readFileSync(join(ROOT, "app/iniciar-sesion.tsx"), "utf8");
+  assert.ok(/<AccountGate surface="auth">/.test(login), "el alias pasa por el mismo gate");
   // Y la lógica de archivar/restaurar/hidratar ya no está duplicada en el login.
   const loginCodigo = sinComentarios(login);
   for (const fn of ["isAccountSwitch", "onboardingInputFromBirthData", "restoreAccountData", "createProfile"]) {
@@ -143,14 +146,24 @@ test("el orden y la concurrencia del bootstrap se prueban ejecutándolo", () => 
 
 // --- "Crear una cuenta" ------------------------------------------------------
 
-test('"Crear una cuenta" entra al alta completa, con el email ya cargado', () => {
+test('"Crear una cuenta" entra al alta completa, no a un formulario suelto', () => {
   // La cuenta se crea DENTRO de la secuencia, en su paso original: mandar a un
   // formulario suelto se saltea la experiencia inmersiva entera.
+  //
+  // Ya no hay una salida "Crear una cuenta" en el login porque ya no hay un
+  // login aparte: `/iniciar-sesion` reenvía al alta, donde crear cuenta e
+  // ingresar son dos modos de la MISMA pantalla. Pasar de uno al otro es tocar
+  // el selector, no navegar — y por eso el email tipeado tampoco se pierde.
   const login = sinComentarios(readFileSync(join(ROOT, "app/iniciar-sesion.tsx"), "utf8"));
-  const bloque = login.slice(login.indexOf("const createAccount"), login.indexOf("const createAccount") + 400);
-  assert.ok(/ONBOARDING_ROUTE/.test(bloque), "debe abrir el alta completa");
-  assert.ok(!/SIGN_UP_ROUTE/.test(bloque), "el formulario suelto no es la entrada del alta");
-  assert.ok(/params: email \? \{ email \}/.test(bloque), "el email tipeado viaja: no se pide dos veces");
+  assert.ok(/ONBOARDING_ROUTE/.test(login), "debe abrir el alta completa");
+  assert.ok(!/SIGN_UP_ROUTE/.test(login), "el formulario suelto no es la entrada del alta");
+  assert.ok(/params: \{ mode: "signin" \}/.test(login), "y abre en «Ingresar», que es lo que se pidió");
+
+  const acceso = sinComentarios(readFileSync(join(ROOT, "src/onboarding/screens/AuthScreen.tsx"), "utf8"));
+  const cambiar = /const cambiarModo = \(next: AuthMode\) => \{([\s\S]*?)\n  \};/.exec(acceso);
+  assert.ok(cambiar, "el selector de modo sigue siendo el que cambia de puerta");
+  assert.ok(!/setEmail\(/.test(cambiar![1]), "cambiar de modo no borra el email ya tipeado");
+  assert.ok(!/router\./.test(cambiar![1]), "y no navega a ninguna otra pantalla");
 });
 
 // --- El onboarding sin restos de autenticación -------------------------------

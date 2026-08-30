@@ -7,7 +7,7 @@ import {
 } from "convex/server";
 import { v, type Infer } from "convex/values";
 import { internal } from "./_generated/api";
-import type { QueryCtx } from "./_generated/server";
+import type { ActionCtx, QueryCtx } from "./_generated/server";
 import { getAnalysisDefinition, getSourceRefs, type AnalysisId } from "./content/astrologySources";
 import { runAstrologyApiPlanetsTropical } from "./lib/astrologyApi";
 import { findCurrentBirthData, findExactNatalChart } from "./lib/birthDataConsistency";
@@ -43,7 +43,9 @@ import {
   type ElementMapResult,
   type EphemerisPosition,
   type LunarTypeResult,
+  type LayerBundle,
   type MoonOnChartResult,
+  type NatalBaseBundle,
   type NormalizedChartSnapshot,
   type ProgressedLunationResult,
   type RelationshipPatternResult,
@@ -151,6 +153,7 @@ const natalEphemerisSnapshotValidator = v.object({
 
 const refreshStateValidator = v.object({
   userId: v.id("users"),
+  isPro: v.boolean(),
   birthDataId: v.union(v.id("birthData"), v.null()),
   natalChartId: v.union(v.id("natalCharts"), v.null()),
   birthData: v.union(birthDataSnapshotValidator, v.null()),
@@ -3067,13 +3070,45 @@ export const getNatalChartBase = query({
   },
 });
 
-export const getForDate = query({
-  args: {
-    localDate: v.string(),
-    timezone: v.string(),
-  },
-  returns: v.union(layerBundleValidator, v.null()),
-  handler: async (ctx, args) => {
+function lockedLayerBundle(
+  natal: NatalBaseBundle,
+  baseHash: string,
+  args: { localDate: string; timezone: string },
+  observedAt: number,
+): LayerBundle {
+  const scope = { localDate: args.localDate, timezone: args.timezone, access: "orbita_plus" };
+  const locked = <T extends AnalysisResult>(analysisId: AnalysisId): T =>
+    unavailableResult(
+      analysisId,
+      resultHash(baseHash, analysisId, scope),
+      observedAt,
+      ["orbita_plus"],
+      { limitations: ["Esta capa está disponible con Órbita Plus."] },
+    ) as T;
+  return {
+    natal: {
+      ...natal,
+      relationshipPattern: locked<RelationshipPatternResult>("ORB-REL-001"),
+    },
+    today: {
+      transitRanking: locked<TransitRankingResult>("ORB-TRN-002"),
+      transitArc: locked<TransitArcResult>("ORB-TRN-001"),
+      moonOnChart: locked<MoonOnChartResult>("ORB-LUN-003"),
+      cumpleluna: locked<CumplelunaResult>("ORB-LUN-002"),
+    },
+    moment: {
+      progressedLunation: locked<ProgressedLunationResult>("ORB-CYC-002"),
+      annualProfection: locked<AnnualProfectionResult>("ORB-CYC-001"),
+      temporalMandala: locked<TemporalMandalaResult>("ORB-CYC-007"),
+    },
+  };
+}
+
+async function getForDateForPlan(
+  ctx: QueryCtx,
+  args: { localDate: string; timezone: string },
+  enforcePlan: boolean,
+): Promise<LayerBundle | null> {
     assertLocalDate(args.localDate);
     assertTimezone(args.timezone);
     const now = Date.now();
@@ -3086,6 +3121,9 @@ export const getForDate = query({
       cached: state.snapshots,
       observedAt: now,
     });
+    if (enforcePlan && !(await isUserPro(ctx, state.userId))) {
+      return lockedLayerBundle(natal.bundle, natal.baseHash, args, now);
+    }
     const dailyScope = { localDate: args.localDate, timezone: args.timezone };
     const cachedOrUnavailable = (
       analysisId: AnalysisId,
@@ -3100,9 +3138,6 @@ export const getForDate = query({
       ) ?? unavailableResult(analysisId, resultHash(natal.baseHash, analysisId, dailyScope), now, missingInputs, options);
 
     const transitRanking = cachedOrUnavailable("ORB-TRN-002", ["current_ephemeris"]) as TransitRankingResult;
-    // Los dos sobres se rescatan del cache por separado, así que una fila vieja
-    // del arco puede describir otro contacto que el que encabeza este ranking.
-    // La lectura pura no calcula nada: si no corresponden, el arco se descarta.
     const transitArc = coherentTransitArc({
       ranking: transitRanking,
       arc: cachedOrUnavailable("ORB-TRN-001", ["active_transit_arc"]) as TransitArcResult,
@@ -3185,7 +3220,24 @@ export const getForDate = query({
       today: { transitRanking, transitArc, moonOnChart, cumpleluna },
       moment: { progressedLunation, annualProfection, temporalMandala },
     };
+}
+
+export const getForDate = query({
+  args: {
+    localDate: v.string(),
+    timezone: v.string(),
   },
+  returns: v.union(layerBundleValidator, v.null()),
+  handler: async (ctx, args) => getForDateForPlan(ctx, args, false),
+});
+
+export const getForDateWithAccess = query({
+  args: {
+    localDate: v.string(),
+    timezone: v.string(),
+  },
+  returns: v.union(layerBundleValidator, v.null()),
+  handler: async (ctx, args) => getForDateForPlan(ctx, args, true),
 });
 
 /**
@@ -3211,14 +3263,11 @@ function transitArcScope(args: { localDate: string; timezone: string; arcId: str
  * hecho distinto de "ese tránsito ya no está activo"
  * (`requested_transit_arc`).
  */
-export const getTransitArc = query({
-  args: {
-    localDate: v.string(),
-    timezone: v.string(),
-    arcId: v.string(),
-  },
-  returns: v.union(transitArcResultValidator, v.null()),
-  handler: async (ctx, args) => {
+async function getTransitArcForPlan(
+  ctx: QueryCtx,
+  args: { localDate: string; timezone: string; arcId: string },
+  enforcePlan: boolean,
+): Promise<TransitArcResult | null> {
     assertLocalDate(args.localDate);
     assertTimezone(args.timezone);
     assertArcId(args.arcId);
@@ -3233,6 +3282,11 @@ export const getTransitArc = query({
       observedAt: now,
     });
     const arcHash = resultHash(natal.baseHash, "ORB-TRN-001", transitArcScope(args));
+    if (enforcePlan && !(await isUserPro(ctx, state.userId))) {
+      return unavailableResult("ORB-TRN-001", arcHash, now, ["orbita_plus"], {
+        limitations: ["Esta capa está disponible con Órbita Plus."],
+      }) as TransitArcResult;
+    }
     const cached = latestMatching(state.snapshots, "ORB-TRN-001", arcHash, now);
     if (cached && arcResultMatchesArcId(cached, args.arcId)) {
       return cached as TransitArcResult;
@@ -3248,7 +3302,26 @@ export const getTransitArc = query({
         ],
       },
     ) as TransitArcResult;
+}
+
+export const getTransitArc = query({
+  args: {
+    localDate: v.string(),
+    timezone: v.string(),
+    arcId: v.string(),
   },
+  returns: v.union(transitArcResultValidator, v.null()),
+  handler: async (ctx, args) => getTransitArcForPlan(ctx, args, false),
+});
+
+export const getTransitArcWithAccess = query({
+  args: {
+    localDate: v.string(),
+    timezone: v.string(),
+    arcId: v.string(),
+  },
+  returns: v.union(transitArcResultValidator, v.null()),
+  handler: async (ctx, args) => getTransitArcForPlan(ctx, args, true),
 });
 
 /**
@@ -3264,14 +3337,11 @@ export const getTransitArc = query({
  * salió de la lista, el sobre lo dice; si falla el proveedor o el seguimiento,
  * queda `stale`, `partial` o `error` con su motivo.
  */
-export const refreshTransitArc = action({
-  args: {
-    localDate: v.string(),
-    timezone: v.string(),
-    arcId: v.string(),
-  },
-  returns: transitArcResultValidator,
-  handler: async (ctx, args): Promise<TransitArcResult> => {
+async function refreshTransitArcForPlan(
+  ctx: ActionCtx,
+  args: { localDate: string; timezone: string; arcId: string },
+  enforcePlan: boolean,
+): Promise<TransitArcResult> {
     assertLocalDate(args.localDate);
     assertTimezone(args.timezone);
     assertArcId(args.arcId);
@@ -3304,6 +3374,11 @@ export const refreshTransitArc = action({
       observedAt,
     });
     const arcHash = resultHash(natal.baseHash, "ORB-TRN-001", transitArcScope(args));
+    if (enforcePlan && !state.isPro) {
+      return unavailableResult("ORB-TRN-001", arcHash, observedAt, ["orbita_plus"], {
+        limitations: ["Esta capa está disponible con Órbita Plus."],
+      }) as TransitArcResult;
+    }
     const cached = latestMatching(state.snapshots, "ORB-TRN-001", arcHash, observedAt);
     if (cached && cached.status !== "stale" && cached.data !== null && arcResultMatchesArcId(cached, args.arcId)) {
       // Dentro de la vigencia horaria del cielo, repetir la búsqueda de pasadas
@@ -3422,7 +3497,26 @@ export const refreshTransitArc = action({
       natalEphemeris: null,
     });
     return envelope;
+}
+
+export const refreshTransitArc = action({
+  args: {
+    localDate: v.string(),
+    timezone: v.string(),
+    arcId: v.string(),
   },
+  returns: transitArcResultValidator,
+  handler: async (ctx, args) => refreshTransitArcForPlan(ctx, args, false),
+});
+
+export const refreshTransitArcWithAccess = action({
+  args: {
+    localDate: v.string(),
+    timezone: v.string(),
+    arcId: v.string(),
+  },
+  returns: transitArcResultValidator,
+  handler: async (ctx, args) => refreshTransitArcForPlan(ctx, args, true),
 });
 
 export const getRefreshState = internalQuery({
@@ -3472,6 +3566,7 @@ export const getRefreshState = internalQuery({
     )[0] ?? null;
     return {
       userId: user._id,
+      isPro: await isUserPro(ctx, user._id),
       birthDataId: birthData?._id ?? null,
       natalChartId: natalChart?._id ?? null,
       birthData: birthDataSnapshot,
@@ -3661,13 +3756,11 @@ export const persistRefresh = internalMutation({
   },
 });
 
-export const refreshForDate = action({
-  args: {
-    localDate: v.string(),
-    timezone: v.string(),
-  },
-  returns: layerBundleValidator,
-  handler: async (ctx, args) => {
+async function refreshForDateForPlan(
+  ctx: ActionCtx,
+  args: { localDate: string; timezone: string },
+  enforcePlan: boolean,
+): Promise<LayerBundle> {
     assertLocalDate(args.localDate);
     assertTimezone(args.timezone);
     const identity = await ctx.auth.getUserIdentity();
@@ -3705,6 +3798,20 @@ export const refreshForDate = action({
       observedAt,
       providerAttemptFailed: natalProviderFailed,
     });
+    if (enforcePlan && !state.isPro) {
+      await ctx.runMutation(internalApi.layers.persistRefresh, {
+        userId: state.userId,
+        birthDataId: state.birthDataId,
+        natalChartId: state.natalChartId,
+        expectedInputFingerprint,
+        localDate: args.localDate,
+        timezone: args.timezone,
+        results: [natal.bundle.lunarType, natal.bundle.elementMap],
+        sky: null,
+        natalEphemeris: natalEphemerisToPersist,
+      });
+      return lockedLayerBundle(natal.bundle, natal.baseHash, args, observedAt);
+    }
     const samples = natal.samples;
 
     const profectionBuild = buildAnnualProfectionLayerData({
@@ -4120,5 +4227,22 @@ export const refreshForDate = action({
       today: { transitRanking, transitArc, moonOnChart, cumpleluna },
       moment: { progressedLunation, annualProfection, temporalMandala },
     };
+}
+
+export const refreshForDate = action({
+  args: {
+    localDate: v.string(),
+    timezone: v.string(),
   },
+  returns: layerBundleValidator,
+  handler: async (ctx, args) => refreshForDateForPlan(ctx, args, false),
+});
+
+export const refreshForDateWithAccess = action({
+  args: {
+    localDate: v.string(),
+    timezone: v.string(),
+  },
+  returns: layerBundleValidator,
+  handler: async (ctx, args) => refreshForDateForPlan(ctx, args, true),
 });

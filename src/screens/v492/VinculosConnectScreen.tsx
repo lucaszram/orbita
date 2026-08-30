@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Pressable, ActivityIndicator, Keyboard, StyleSheet, TextInput, View } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { Redirect, router, useLocalSearchParams } from "expo-router";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { Card, ModuleHeader } from "@/components/v492/Module";
 import { DetailLayerScreen, Section } from "@/components/v492/Screen";
@@ -38,6 +38,11 @@ import {
   type RelationshipSaveIntent,
   type RelationshipSignKey
 } from "@/domain/relationships";
+import {
+  PLUS_PAYWALL_ROUTE,
+  relationshipAddIntent,
+  relationshipPlusRequired
+} from "@/domain/planAccess";
 import {
   RELATIONSHIP_TYPE_FIELD_HINT,
   RELATIONSHIP_TYPE_FIELD_LABEL,
@@ -183,10 +188,33 @@ function Shell({ children, editando }: { children: ReactNode; editando: boolean 
  * ofrece el alta explícitamente.
  */
 function ConnectFlow({ pedido }: { pedido: string | null }) {
-  const personas = useQuery(relationshipsApi.list, pedido ? {} : "skip");
-  const persona = findRelationshipProfile(personas, pedido);
+  /**
+   * La lista autorizada se pide SIEMPRE (build 30).
+   *
+   * Antes sólo hacía falta con un id para validar; ahora también sin él,
+   * porque el cupo del plan vive en la misma respuesta y un alta directa
+   * —`/vinculos/conectar` a secas, que es lo que abre un deep link o un enlace
+   * viejo— tiene que respetarlo antes de montar un formulario que el backend va
+   * a rechazar.
+   */
+  const acceso = useQuery(relationshipsApi.listWithAccess, {});
+  const persona = findRelationshipProfile(acceso?.profiles, pedido);
+  const alta = relationshipAddIntent(acceso);
 
-  if (!pedido) return <ConnectForm persona={null} />;
+  if (!pedido) {
+    // Sin cupo el formulario no se abre: se ofrece lo que lo abre. Con el cupo
+    // todavía sin resolver se espera — abrir y rebotar después sería pedirle a
+    // alguien que cargue datos que no se van a poder guardar.
+    if (alta === "esperar") {
+      return (
+        <Shell editando={false}>
+          <LoadingBlock message="Buscando tus personas guardadas…" />
+        </Shell>
+      );
+    }
+    if (alta === "paywall") return <Redirect href={PLUS_PAYWALL_ROUTE as never} />;
+    return <ConnectForm persona={null} />;
+  }
   if (persona === undefined) {
     return (
       <Shell editando>
@@ -222,7 +250,7 @@ function ConnectFlow({ pedido }: { pedido: string | null }) {
 }
 
 function ConnectForm({ persona }: { persona: RelationshipProfile | null }) {
-  const savePerson = useMutation(relationshipsApi.savePerson);
+  const savePerson = useMutation(relationshipsApi.savePersonWithAccess);
   // La zona horaria del LUGAR, derivada de sus coordenadas en el backend. El
   // buscador devuelve etiqueta y coordenadas, nunca la zona.
   const resolveTimezone = useAction(appApi.placeTimezone.atCoordinates);
@@ -489,7 +517,21 @@ function ConnectForm({ persona }: { persona: RelationshipProfile | null }) {
         return;
       }
       router.replace(destino as never);
-    } catch {
+    } catch (error) {
+      /**
+       * El cupo Free ya estaba tomado (`RELATIONSHIP_PLUS_REQUIRED`).
+       *
+       * No es un fallo de red ni un dato mal cargado, así que no se dice como
+       * tal ni se ofrece reintentar: no hay nada que reintentar hasta que el
+       * plan cambie. Se va a la paywall, que es lo que desbloquea el alta. El
+       * caso llega acá cuando el cupo se toma DESPUÉS de abrir el formulario
+       * —otro dispositivo, otra pestaña—: el camino normal ni siquiera lo
+       * abre (`relationshipAddIntent`).
+       */
+      if (relationshipPlusRequired(error)) {
+        router.replace(PLUS_PAYWALL_ROUTE as never);
+        return;
+      }
       setSaveError(
         persona
           ? "No pudimos guardar los datos de esta persona. No se cambió nada: revisá tu conexión y probá de nuevo."

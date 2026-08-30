@@ -8,6 +8,7 @@ import {
 import { v, type Infer } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
+import type { MutationCtx } from "./_generated/server";
 import { getAnalysisDefinition, getSourceRefs } from "./content/astrologySources";
 import {
   comparisonLevelValidator,
@@ -40,6 +41,7 @@ import {
 } from "./lib/relationshipLayers";
 import { extractNormalizedChartFromPayload, type NormalizedAstroChart } from "./lib/orbita";
 import { stableInputHash } from "./lib/stableHash";
+import { isUserPro } from "./lib/subscriptionAccess";
 import {
   findCurrentUser,
   findUserByTokenIdentifier,
@@ -72,6 +74,19 @@ const savePersonArgs = {
   timezone: v.optional(nullableString),
   zodiacSign: v.optional(nullableString),
 };
+const savePersonValidator = v.object(savePersonArgs);
+type SavePersonArgs = Infer<typeof savePersonValidator>;
+
+const relationshipListWithAccessValidator = v.object({
+  profiles: v.array(relationshipProfileValidator),
+  currentCount: v.number(),
+  limit: v.union(v.number(), v.null()),
+  canCreate: v.boolean(),
+});
+
+export function relationshipCanCreate(isPro: boolean, currentCount: number): boolean {
+  return isPro || currentCount === 0;
+}
 
 const relationshipPlacementWireValidator = v.object({
   key: v.string(),
@@ -1479,10 +1494,34 @@ export const list = query({
   },
 });
 
-export const savePerson = mutation({
-  args: savePersonArgs,
-  returns: relationshipProfileValidator,
-  handler: async (ctx, args) => {
+export const listWithAccess = query({
+  args: {},
+  returns: relationshipListWithAccessValidator,
+  handler: async (ctx) => {
+    const user = await findCurrentUser(ctx);
+    if (!user) {
+      return { profiles: [], currentCount: 0, limit: 1, canCreate: false };
+    }
+    const rows = await ctx.db
+      .query("relationshipProfiles")
+      .withIndex("by_user", (q: any) => q.eq("userId", user._id))
+      .collect();
+    const profiles = rows
+      .sort((left: Doc<"relationshipProfiles">, right: Doc<"relationshipProfiles">) =>
+        left.createdAt - right.createdAt || String(left._id).localeCompare(String(right._id)),
+      )
+      .map(toPublicProfile);
+    const isPro = await isUserPro(ctx, user._id);
+    return {
+      profiles,
+      currentCount: profiles.length,
+      limit: isPro ? null : 1,
+      canCreate: relationshipCanCreate(isPro, profiles.length),
+    };
+  },
+});
+
+async function savePersonForPlan(ctx: MutationCtx, args: SavePersonArgs, enforcePlan: boolean) {
     const user = await requireUser(ctx);
     const normalized = normalizeRelationshipPersonInput(args);
     const normalizedIdempotencyKey = normalizeRelationshipIdempotencyKey(args.idempotencyKey);
@@ -1532,6 +1571,16 @@ export const savePerson = mutation({
           return toPublicProfile(existingRequest);
         }
       }
+      if (enforcePlan) {
+        const isPro = await isUserPro(ctx, user._id);
+        const existingProfile = await ctx.db
+          .query("relationshipProfiles")
+          .withIndex("by_user", (q: any) => q.eq("userId", user._id))
+          .first();
+        if (!relationshipCanCreate(isPro, existingProfile ? 1 : 0)) {
+          throw new Error("RELATIONSHIP_PLUS_REQUIRED");
+        }
+      }
       const active = await ctx.db
         .query("relationshipProfiles")
         .withIndex("by_user_active", (q: any) => q.eq("userId", user._id).eq("isActive", true))
@@ -1548,7 +1597,18 @@ export const savePerson = mutation({
     const saved = await ctx.db.get(profileId);
     if (!saved || saved.userId !== user._id) throw new Error("RELATIONSHIP_PROFILE_SAVE_FAILED");
     return toPublicProfile(saved);
-  },
+}
+
+export const savePerson = mutation({
+  args: savePersonArgs,
+  returns: relationshipProfileValidator,
+  handler: async (ctx, args) => savePersonForPlan(ctx, args, false),
+});
+
+export const savePersonWithAccess = mutation({
+  args: savePersonArgs,
+  returns: relationshipProfileValidator,
+  handler: async (ctx, args) => savePersonForPlan(ctx, args, true),
 });
 
 export const removePerson = mutation({

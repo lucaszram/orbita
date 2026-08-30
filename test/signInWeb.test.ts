@@ -1,7 +1,7 @@
 /**
- * El login WEB usa la UI oficial de Clerk.
+ * El ingreso WEB usa la UI oficial de Clerk.
  *
- * `/iniciar-sesion` montaba en las dos plataformas el mismo formulario propio
+ * El ingreso montaba en las dos plataformas el mismo formulario propio
  * (`SignInScreen.tsx`): email → contraseña o código, reenvío, botón de Google y
  * mensajes de error escritos por Órbita. Eso es la máquina de estados de Clerk
  * reimplementada a mano, y cada requisito nuevo de la instancia la dejaba fuera
@@ -11,6 +11,10 @@
  * El nativo NO cambia: ahí la superficie oficial es otra y el formulario propio
  * sigue siendo el camino. Por eso la separación es por plataforma (`.web.tsx`),
  * la misma que usan `BirthPicker` y `ClerkSignUp`.
+ *
+ * Quién lo monta cambió: ya no `/iniciar-sesion` —hoy un alias del acceso único
+ * del onboarding— sino `PendingDeletionBoundary`, la única superficie que
+ * todavía necesita un ingreso propio. Las garantías de forma son las mismas.
  *
  * La salida al alta es UNA y está DENTRO de la tarjeta oficial: su pie «¿No
  * tenés cuenta? Registrate», apuntado al onboarding canónico. Hubo un momento
@@ -30,21 +34,53 @@ const leer = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
 const sinComentarios = (x: string) => x.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 
 const RUTA = "app/iniciar-sesion.tsx";
+/**
+ * Quién monta hoy `SignInScreen`.
+ *
+ * `/iniciar-sesion` ya no: el acceso de Órbita es UNO —la primera superficie
+ * del onboarding, con "Crear cuenta" e "Ingresar" como modos de la misma
+ * pantalla— y la ruta quedó como alias que reenvía ahí (ver
+ * `accesoSinLoginLegado.test.ts`). La única superficie que todavía necesita un
+ * ingreso propio es el boundary de eliminación pendiente: el `Stack` está
+ * desmontado y no hay a dónde navegar, así que el login se monta ahí adentro.
+ *
+ * Todo lo que este archivo garantiza sigue valiendo para ESA superficie: en web
+ * es la UI oficial de Clerk, en nativo el formulario propio, y ninguna de las
+ * dos recrea el login de la otra.
+ */
+const DUENO = "src/components/PendingDeletionBoundary.tsx";
 const WEB = "src/onboarding/screens/SignInScreen.web.tsx";
 const NATIVO = "src/onboarding/screens/SignInScreen.tsx";
 
 // --- Qué entra al paquete web ------------------------------------------------
 
-test("al empaquetar para web, /iniciar-sesion llega a la pantalla oficial y NO al formulario manual", () => {
+test("al empaquetar para web, el ingreso llega a la pantalla oficial y NO al formulario manual", () => {
   // Es la pregunta del bundler, no una búsqueda de texto: se recorren los
   // imports reales con las mismas reglas de resolución (alias `@/` y la
   // variante `.web.tsx` que Metro prefiere al empaquetar para web).
-  const alcanzables = reachableFrom([RUTA]);
-  assert.ok(alcanzables.has(WEB), "la ruta web tiene que resolver a la pantalla con la UI oficial");
+  const alcanzables = reachableFrom([DUENO]);
+  assert.ok(alcanzables.has(WEB), "en web tiene que resolver a la pantalla con la UI oficial");
   assert.ok(
     !alcanzables.has(NATIVO),
     "el formulario manual no puede entrar al paquete web: sería el segundo login"
   );
+  // Y en nativo, exactamente al revés.
+  const nativos = reachableFrom([DUENO], "native");
+  assert.ok(nativos.has(NATIVO), "en nativo tiene que resolver al formulario propio");
+  assert.ok(!nativos.has(WEB), "el entrypoint de web no puede entrar al paquete nativo");
+});
+
+test("la ruta de login ya no arrastra NINGUNA de las dos pantallas al paquete", () => {
+  // El alias no monta UI: si volviera a hacerlo, volvería el segundo login.
+  for (const plataforma of ["web", "native"] as const) {
+    const alcanzables = reachableFrom([RUTA], plataforma);
+    for (const pantalla of [WEB, NATIVO]) {
+      assert.ok(
+        !alcanzables.has(pantalla),
+        `${plataforma}: la ruta alias no puede alcanzar ${pantalla}`
+      );
+    }
+  }
 });
 
 test("la pantalla web monta el componente oficial de Clerk, sin tema ni rutas propias", () => {
@@ -186,15 +222,15 @@ test("el escenario de Órbita y la salida de volver se conservan", () => {
     /<Screen bg=\{A\.splashBg\} bgOpacity=\{0\.9\} wash=\{0\.55\} scroll>/,
     "el fondo inmersivo y el scroll del shell tienen que quedar"
   );
-  // Volver sigue siendo de Órbita: pasa por `leaveWithoutSignIn`, que archiva
-  // los datos del dueño anterior antes de soltar el equipo (ruta).
+  // Volver sigue siendo de Órbita: la pantalla no decide adónde, lo decide
+  // quien la monta (el boundary la manda a soporte).
   assert.match(web, /onPress=\{onBack\}/, "el control de volver sigue existiendo");
   assert.match(web, /minHeight: 44/, "sin `hitSlop` en web, el objetivo táctil va declarado");
 });
 
-test("la ruta no cambia: sigue detrás del gate y sin montar Clerk por su cuenta", () => {
+test("la ruta sigue detrás del gate y sin montar Clerk por su cuenta", () => {
   const ruta = leer(RUTA);
-  assert.match(ruta, /<AccountGate surface="auth">/, "la UI de ingreso sigue detrás del gate");
+  assert.match(ruta, /<AccountGate surface="auth">/, "la ruta sigue detrás del gate");
   const codigo = sinComentarios(ruta);
   assert.doesNotMatch(
     codigo,
@@ -202,7 +238,20 @@ test("la ruta no cambia: sigue detrás del gate y sin montar Clerk por su cuenta
     "quien elige la UI por plataforma es Metro, no un `Platform.OS` en la ruta"
   );
   assert.doesNotMatch(codigo, /Platform\.OS/, "la ruta es la misma en las dos plataformas");
-  assert.match(codigo, /useSignInHydrate/, "la hidratación de la cuenta sigue igual");
+  // Y la hidratación de la cuenta no vive acá: la resuelve el bootstrap del
+  // gate, que es su dueño único (`test/accountBootstrap.test.ts`).
+  assert.doesNotMatch(codigo, /useSignInHydrate/, "la ruta no hidrata por su cuenta");
+});
+
+test("el boundary de eliminación pendiente monta el ingreso sin alta ni SSO", () => {
+  // Es la razón por la que `SignInScreen` sigue existiendo, y también la razón
+  // por la que NO se unificó con la puerta del onboarding: acá no puede haber
+  // cuenta nueva ni proveedor —los dos pueden terminar con OTRA cuenta viva
+  // sobre un marcador ajeno—, y el `Stack` está desmontado.
+  const dueno = sinComentarios(leer(DUENO));
+  assert.match(dueno, /import \{ SignInScreen \} from "@\/onboarding\/screens\/SignInScreen"/);
+  assert.match(dueno, /allowSignup=\{false\}/, "no se ofrece crear una cuenta");
+  assert.match(dueno, /allowOAuth=\{false\}/, "ni entrar por un proveedor");
 });
 
 // --- La separación por plataforma es sana ------------------------------------

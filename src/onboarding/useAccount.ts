@@ -15,7 +15,7 @@ import {
   runSessionAttempts,
   type SignInPhase
 } from "@/domain/sessionStart";
-import { classifySsoOutcome, type SsoOutcome } from "@/onboarding/authGate";
+import { classifySsoOutcome, isSsoCancellation, type SsoOutcome } from "@/onboarding/authGate";
 import { planResend, type ResendResult } from "@/onboarding/resend";
 import {
   interpretSignInAttempt,
@@ -54,6 +54,20 @@ export const GOOGLE_AUTH_ENABLED =
 export const APPLE_AUTH_ENABLED =
   Platform.OS === "ios" ||
   (Platform.OS === "web" && process.env.EXPO_PUBLIC_ORBITA_APPLE_AUTH === "true");
+
+/**
+ * En iOS, Apple se resuelve NATIVAMENTE: la hoja del sistema
+ * (`expo-apple-authentication`) más el intercambio del `identityToken` con
+ * Clerk (`useSignInWithApple`, estrategia `oauth_token_apple`). No hay
+ * navegador, no hay `redirectUrl` y no hay callback que allowlistear.
+ *
+ * Apple exige el botón y la hoja nativos cuando la app corre en su plataforma,
+ * y el camino nativo es además el que no puede quedarse a mitad de un redirect.
+ * Fuera de iOS el hook de Clerk es un stub que TIRA al invocarse, así que la
+ * vía sigue siendo el SSO por navegador (`oauth_apple`) y esta constante es lo
+ * único que decide entre las dos.
+ */
+export const APPLE_NATIVE_SIGN_IN = Platform.OS === "ios";
 
 
 /**
@@ -114,7 +128,13 @@ function useSSOOauth(
   setOauthBusy: (v: OAuthProvider | null) => void,
 ): (provider: OAuthProvider, hooks?: SsoHooks) => Promise<SsoOutcome> {
   const { useSSO } = require("@clerk/expo") as typeof import("@clerk/expo");
+  // Apple nativo en iOS. El subpath resuelve por plataforma: en iOS trae el
+  // hook real (hoja del sistema + `oauth_token_apple`), y fuera de iOS un stub
+  // que sólo tira si alguien lo invoca — llamar al hook es inocuo, así que el
+  // orden de hooks es el mismo en todas las plataformas.
+  const { useSignInWithApple } = require("@clerk/expo/apple") as typeof import("@clerk/expo/apple");
   const { startSSOFlow } = useSSO();
+  const { startAppleAuthenticationFlow } = useSignInWithApple();
   const redirectUrl =
     Platform.OS === "web"
       ? AuthSession.makeRedirectUri()
@@ -127,10 +147,16 @@ function useSSOOauth(
         // Estrategias oficiales de Clerk; el botón de cada proveedor sólo se
         // dibuja cuando su conexión está habilitada externamente.
         const strategy = provider === "apple" ? ("oauth_apple" as const) : ("oauth_google" as const);
-        const { createdSessionId, setActive, signIn, signUp } = await startSSOFlow({
-          strategy,
-          redirectUrl
-        });
+        // Apple en iOS entra por la hoja del sistema; Google —y Apple fuera de
+        // iOS— siguen entrando por el navegador, sin un solo cambio. Las dos
+        // vías devuelven la MISMA forma (`createdSessionId` + los recursos
+        // `signIn`/`signUp` + `setActive`), así que todo lo de abajo —la
+        // clasificación, el descarte del marcador y la activación— es idéntico
+        // para los dos proveedores y para las dos vías.
+        const { createdSessionId, setActive, signIn, signUp } =
+          provider === "apple" && APPLE_NATIVE_SIGN_IN
+            ? await startAppleAuthenticationFlow()
+            : await startSSOFlow({ strategy, redirectUrl });
         // Cuenta nueva vs. existente: EXCLUSIVAMENTE por coincidencia del id
         // de la sesión creada con su recurso (`classifySsoOutcome`, pura y con
         // tests conductuales) — los `status` pueden arrastrar un intento
@@ -151,6 +177,9 @@ function useSSOOauth(
         await setActive({ session: createdSessionId });
         return outcome;
       } catch (e) {
+        // Cerrar la hoja de Apple sale en SILENCIO: es una cancelación, no un
+        // fallo, y tiene que dejar la pantalla como estaba.
+        if (isSsoCancellation(e)) return "cancelled";
         setError(clerkErrorMessage(e));
         return "cancelled";
       } finally {
@@ -158,7 +187,7 @@ function useSSOOauth(
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [redirectUrl, startSSOFlow]
+    [redirectUrl, startSSOFlow, startAppleAuthenticationFlow]
   );
 }
 

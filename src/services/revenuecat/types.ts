@@ -27,6 +27,14 @@ export type RevenueCatContextValue = {
   purchase: (planId: string) => Promise<RevenueCatActionResult>;
   restore: () => Promise<Exclude<RevenueCatActionResult, "cancelled">>;
   presentCustomerCenter: () => Promise<void>;
+  /**
+   * Abre la hoja de canje de códigos de oferta de Apple.
+   *
+   * Resuelve cuando la hoja se presentó — NO cuando se canjeó algo. Apple no
+   * informa el resultado del canje, así que la pantalla no puede leer esta
+   * resolución como acceso concedido: espera al `CustomerInfo` y a Convex.
+   */
+  redeemOfferCode: () => Promise<void>;
   retry: () => Promise<void>;
   refreshCustomerInfo: () => Promise<boolean>;
   /**

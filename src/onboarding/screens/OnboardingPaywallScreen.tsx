@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation } from "convex/react";
 import { useFocusEffect } from "expo-router";
-import { Linking, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Linking, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import { Text } from "@/components/ui/text";
 import { createOwnerGates, runExclusive } from "@/domain/exclusive";
@@ -37,7 +37,7 @@ import { font, GUTTER, orbita } from "../theme";
 const PRIVACY_URL = "https://orbitaastrologia.xyz/privacy";
 const TERMS_URL = "https://orbitaastrologia.xyz/terminos";
 
-type ActionPhase = "idle" | "purchasing" | "restoring";
+type ActionPhase = "idle" | "purchasing" | "restoring" | "redeeming";
 
 /**
  * 11 — Paywall del onboarding, con el COMERCIO REAL.
@@ -201,6 +201,21 @@ export function OnboardingPaywallScreen({ onEnterCarta, onBack, entryFailed, ins
     backendIsPro !== true &&
     !storeConfirmed &&
     revenueCat.phase === "ready";
+  /**
+   * El canje se ofrece donde se ofrece la oferta, y sólo en iOS.
+   *
+   * Mismas condiciones que `offeringVisible` salvo el foco —que sólo gobierna
+   * la impresión— más la identidad de la tienda resuelta: la hoja de Apple ata
+   * el canje al app user id vigente. En inspección no se ofrece nada.
+   */
+  const offerCodeVisible =
+    Platform.OS === "ios" &&
+    !inspect &&
+    entitlementResuelto &&
+    backendIsPro !== true &&
+    !storeConfirmed &&
+    revenueCat.phase === "ready" &&
+    identifiedUserId !== null;
   const trackImpression = revenueCat.trackPaywallImpression;
   useEffect(() => {
     if (!offeringVisible || !identifiedUserId || !paywallOfferingId) return;
@@ -301,6 +316,51 @@ export function OnboardingPaywallScreen({ onEnterCarta, onBack, entryFailed, ins
     });
   };
 
+  /**
+   * Canje de código de oferta: se abre la hoja de Apple y NO se infiere nada.
+   *
+   * NO toca el marcador anti doble cobro —abrir la hoja de códigos no es
+   * empezar la compra de un paquete—, NO afirma que se canjeó algo (Apple no
+   * informa ese resultado) y NO concede acceso. Después de presentar pide las
+   * dos lecturas autoritativas que ya existen; si el canje ocurrió, `storeIsPro`
+   * se enciende y la activación de siempre toma el control.
+   *
+   * A diferencia de comprar y restaurar, un canje NO sale a la Carta por su
+   * cuenta: nada demostró todavía que haya acceso nuevo.
+   */
+  const redeemOfferCode = async () => {
+    if (inspect || !offerCodeVisible) return;
+    const userId = identifiedUserId;
+    await runExclusive(gate, async () => {
+      setNotice(userId, null);
+      setAction(userId, "redeeming");
+      try {
+        await revenueCat.redeemOfferCode();
+      } catch {
+        setNotice(userId, "No pudimos abrir el canje de códigos de Apple. Probá de nuevo en un momento.");
+        setAction(userId, "idle");
+        return;
+      }
+      try {
+        if (stillOwner(userId)) await askBackendToReconcile();
+        const activo = await revenueCat.refreshCustomerInfo();
+        if (!activo) {
+          setNotice(
+            userId,
+            "Si canjeaste el código, Apple lo está procesando. Tu acceso se actualiza solo; si no aparece, probá Restaurar."
+          );
+        }
+      } catch {
+        setNotice(
+          userId,
+          "Si canjeaste el código, Apple lo está procesando. Tu acceso se actualiza solo; si no aparece, probá Restaurar."
+        );
+      } finally {
+        setAction(userId, "idle");
+      }
+    });
+  };
+
   // Con el acceso ya resuelto (Plus activo) o la compra confirmada, el primario
   // es entrar a la Carta. `nativePrimaryAction` decide el resto con las mismas
   // reglas del paywall in-app (guard cargado, resultado ambiguo → Restaurar).
@@ -369,6 +429,22 @@ export function OnboardingPaywallScreen({ onEnterCarta, onBack, entryFailed, ins
             onRetry={() => void revenueCat.retry().catch(() => undefined)}
           />
         )}
+
+        {/* Un solo toque abre la hoja de Apple, donde la persona tipea el
+            código una vez. No hay campo propio: el código nunca pasa por acá.
+            El título de esa hoja lo pone Apple y no se toca. */}
+        {offerCodeVisible ? (
+          <Pressable
+            onPress={busy ? undefined : () => void redeemOfferCode()}
+            disabled={busy}
+            accessibilityRole="button"
+            accessibilityLabel="Canjear código de descuento"
+            accessibilityState={{ disabled: busy }}
+            style={styles.offerCodeButton}
+          >
+            <Text style={[styles.offerCodeText, busy && styles.dimmed]}>Canjear código de descuento</Text>
+          </Pressable>
+        ) : null}
 
         <View style={styles.benefitsCard}>
           <Text style={styles.sectionTitle}>Qué incluye</Text>
@@ -555,6 +631,7 @@ function primaryLabel({
 }): string {
   if (action === "purchasing") return "Confirmando tu compra…";
   if (action === "restoring") return "Restaurando…";
+  if (action === "redeeming") return "Abriendo el canje…";
   if (primary === "leave") return "Entrar a mi carta";
   if (primary === "restore") return "Restaurar mi compra";
   if (primary === "purchase") {
@@ -616,6 +693,19 @@ const styles = StyleSheet.create({
   inlineAction: { alignSelf: "flex-start", justifyContent: "center", minHeight: 44, paddingTop: 10 },
   inlineActionText: { color: orbita.copperSoft, fontFamily: font.sansBold, fontSize: 12, letterSpacing: 0.8, textDecorationLine: "underline" },
   benefitsCard: { backgroundColor: "rgba(18,20,26,0.78)", borderColor: orbita.line, borderRadius: 18, borderWidth: 1, marginTop: 18, padding: 18 },
+  offerCodeButton: {
+    alignItems: "center",
+    alignSelf: "stretch",
+    borderColor: orbita.lineStrong,
+    borderCurve: "continuous",
+    borderRadius: 27,
+    borderWidth: 1,
+    justifyContent: "center",
+    marginTop: 12,
+    minHeight: 54,
+    paddingHorizontal: 20
+  },
+  offerCodeText: { color: orbita.bone, fontFamily: font.sansBold, fontSize: 15, textAlign: "center" },
   stepsCard: { backgroundColor: "rgba(18,20,26,0.6)", borderColor: orbita.line, borderRadius: 18, borderWidth: 1, marginTop: 14, padding: 18 },
   sectionTitle: { color: orbita.bone, fontFamily: font.serif, fontSize: 22, marginBottom: 8 },
   benefitRow: { alignItems: "flex-start", flexDirection: "row", gap: 10, marginTop: 11 },

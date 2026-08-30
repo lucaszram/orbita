@@ -16,6 +16,7 @@ import {
   type StoreTrialEligibility
 } from "@/domain/nativeCommerce";
 import type { RevenueCatActionResult } from "@/services/revenuecat/types";
+import { presentOfferCodeRedemptionSheet } from "../../../modules/orbita-offer-codes";
 
 export type NativeOffering = {
   offering: PurchasesOffering;
@@ -198,6 +199,23 @@ export async function refreshNativeCustomerInfo(userId: string): Promise<Custome
 export async function presentNativeCustomerCenter(userId: string): Promise<void> {
   await requireMatchingUser(userId);
   await RevenueCatUI.presentCustomerCenter();
+}
+
+/**
+ * Abre la hoja de canje de códigos de oferta de Apple.
+ *
+ * Revalida la identidad como cualquier otra acción de tienda: un canje aterriza
+ * como transacción del app user id vigente del SDK, así que presentarla bajo una
+ * identidad que ya no es la de Clerk ataría el beneficio a la cuenta equivocada.
+ *
+ * No devuelve nada porque no hay nada honesto que devolver: Apple no informa si
+ * hubo canje. Quien llama NO puede leer la resolución como éxito — el acceso lo
+ * sigue decidiendo el `CustomerInfo` que llega por el listener y, sobre todo,
+ * Convex.
+ */
+export async function presentNativeOfferCodeRedemption(userId: string): Promise<void> {
+  await requireMatchingUser(userId);
+  await presentOfferCodeRedemptionSheet();
 }
 
 export async function trackNativePaywall(offering: PurchasesOffering): Promise<void> {

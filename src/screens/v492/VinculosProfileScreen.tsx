@@ -134,8 +134,11 @@ function Shell({ children }: { children: ReactNode }) {
  * ella. En los dos casos la pantalla no publica nada de nadie.
  */
 function VinculosProfileLive({ profileId }: { profileId: string }) {
-  const personas = useQuery(relationshipsApi.list, {});
-  const persona = findRelationshipProfile(personas, profileId);
+  // `listWithAccess` trae la misma lista autorizada más el cupo del plan; acá
+  // sólo interesan las personas: un perfil ya guardado se abre, se edita y se
+  // compara igual con Free y con Plus (build 30).
+  const acceso = useQuery(relationshipsApi.listWithAccess, {});
+  const persona = findRelationshipProfile(acceso?.profiles, profileId);
   // Qué guardado acaba de terminar, si es que se viene de guardar uno. Es un
   // string de URL y sólo vale si es uno de los dos modos; un parámetro repetido
   // llega como arreglo y un modo ambiguo no es un modo.

@@ -22,6 +22,7 @@ import { createRefreshQueue, type RefreshRequest } from "@/domain/refreshQueue";
 import { sessionPhase, type SessionPhase } from "@/domain/screenPhase";
 import { sessionPhaseUnderConfidence } from "@/domain/sessionResilience";
 import { useLiveApp } from "@/hooks/useLiveApp";
+import { usePlanAccess } from "@/hooks/usePlanAccess";
 import { useSessionResilience } from "@/hooks/useSessionResilience";
 import { layersApi, type LayerBundle, type NatalBaseBundle } from "@/services/layersApi";
 import { backendConfig } from "@/services/backendProviders";
@@ -210,7 +211,22 @@ function LayersProviderInner({ children }: { children: ReactNode }) {
    */
   const { confidence, retry } = useSessionResilience();
   const session = sessionPhaseUnderConfidence(sessionPhase(live), confidence);
-  const accountKey = live.isLive ? live.auth?.userId ?? "live" : null;
+  /**
+   * El plan de la cuenta, con la regla única de `@/domain/planAccess` (build 30).
+   *
+   * El ciclo NO arranca hasta que el plan resolvió, y por eso entra en la misma
+   * llave que la cuenta: mientras el remoto no contestó, este sobre no se pide
+   * ni se recalcula. Las funciones que se usan son las `…WithAccess` —el
+   * servidor decide qué manda—, así que esto no es lo que protege el dato: es
+   * lo que evita pedirlo antes de saber para quién, que es lo que dejaba salir
+   * una acción del día por cada arranque de una cuenta Free.
+   *
+   * Free SÍ pide el sobre una vez resuelto: `getForDateWithAccess` le devuelve
+   * las capas natales —tipo lunar y mapa elemental, que son de su carta y las
+   * lee Carta— con los sobres temporales cerrados.
+   */
+  const access = usePlanAccess();
+  const accountKey = live.isLive && access !== "loading" ? live.auth?.userId ?? "live" : null;
   // El reintento por sección pasa por la resiliencia: reintenta la fila `users`
   // y, cuando corresponde, rearma el plazo. En el shell degradado no lo rearma,
   // para no devolver la pantalla entera a un spinner.
@@ -232,7 +248,7 @@ function LayersProviderInner({ children }: { children: ReactNode }) {
     return () => clearInterval(id);
   }, [syncClock]);
 
-  const refreshForDate = useAction(layersApi.refreshForDate);
+  const refreshForDate = useAction(layersApi.refreshForDateWithAccess);
   // La acción viaja por un ref para que la cola sobreviva a los cambios de
   // identidad del binding: la cola se crea UNA vez y nunca pierde lo que tenía
   // en vuelo.
@@ -343,7 +359,7 @@ function LayersProviderInner({ children }: { children: ReactNode }) {
   }, [accountKey, clock.localDate, clock.timezone, clock.civilHour, intentoEspejo, ciclo]);
 
   const bundle = useQuery(
-    layersApi.getForDate,
+    layersApi.getForDateWithAccess,
     accountKey && clock.localDate && clock.timezone
       ? { localDate: clock.localDate, timezone: clock.timezone }
       : "skip"
@@ -355,7 +371,7 @@ function LayersProviderInner({ children }: { children: ReactNode }) {
   // `unavailable` y la UI simplemente no dice el cambio.
   const ayer = previousCivilDate(clock.localDate);
   const yesterday = useQuery(
-    layersApi.getForDate,
+    layersApi.getForDateWithAccess,
     accountKey && ayer && clock.timezone ? { localDate: ayer, timezone: clock.timezone } : "skip"
   );
 
@@ -411,10 +427,13 @@ function LayersProviderInner({ children }: { children: ReactNode }) {
 
   const phase: LayersPhase = useMemo(() => {
     if (session !== "live") return session;
+    // Sesión viva y plan en vuelo: se espera. Publicar `vacio` acá le diría a
+    // una cuenta con datos que no tiene carta, sólo porque su plan tarda.
+    if (access === "loading") return "cargando";
     if (bundle === undefined) return "cargando";
     if (bundle === null) return "vacio";
     return "listo";
-  }, [session, bundle]);
+  }, [session, access, bundle]);
 
   const value = useMemo<LayersState>(
     () => ({

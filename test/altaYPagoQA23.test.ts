@@ -253,30 +253,45 @@ test("QA23-008 · el alta nunca se monta para una cuenta ya completa", () => {
 // 3. Cableado: la puerta de login abandona el alta anónima
 // ---------------------------------------------------------------------------
 
-test("QA23-008 · `/iniciar-sesion` borra el borrador al confirmar la sesión", () => {
-  const fuente = leer("app/iniciar-sesion.tsx");
-  const codigo = sinComentarios(fuente);
+test("QA23-008 · el camino de INGRESO abandona el borrador anónimo", () => {
+  // La responsabilidad se movió con la puerta. `/iniciar-sesion` ya no tiene UI
+  // ni borrador propio: es un alias que reenvía al acceso único del onboarding
+  // con `mode=signin`. Quien abandona el alta anónima es el flujo, en el mismo
+  // punto de siempre —el camino de INGRESO—, y ahora cubre también el alias.
+  const alias = sinComentarios(leer("app/iniciar-sesion.tsx"));
+  assert.doesNotMatch(alias, /clearDraft/, "el alias no decide nada sobre el borrador");
+  assert.match(alias, /params: \{ mode: "signin" \}/, "abre la puerta única en «Ingresar»");
 
+  const flujo = sinComentarios(leer("src/onboarding/OnboardingFlow.tsx"));
   assert.match(
-    codigo,
-    /import \{ clearDraft \} from "@\/domain\/onboardingDraft"/,
-    "la puerta tiene que poder abandonar el alta anónima"
+    flujo,
+    /import \{[\s\S]*?\bclearDraft\b[\s\S]*?\} from "@\/domain\/onboardingDraft"/,
+    "el flujo tiene que poder abandonar el alta anónima"
   );
-  // `SignInScreen` hace pasar las TRES vías —código, contraseña y Google— por
-  // `onSignedIn`, y acá `onSignedIn` es `enter`.
-  const enter = /const enter = async \(\) => \{([\s\S]*?)\n  \};/.exec(codigo);
-  assert.ok(enter, "`enter` sigue siendo el callback de sesión confirmada");
-  assert.match(enter![1], /clearDraft\(\)/, "el borrador se abandona AL entrar");
-  assert.match(codigo, /onSignedIn=\{enter\}/);
+  const descartar = /const discardSignupMarker = \(\) => \{([\s\S]*?)\n  \};/.exec(flujo);
+  assert.ok(descartar, "`discardSignupMarker` sigue siendo el descarte del camino de ingreso");
+  assert.match(descartar![1], /clearDraft\(\)/, "el borrador se abandona al entrar por ingreso");
+  assert.match(flujo, /onSignInPath=\{inspeccion \? undefined : discardSignupMarker\}/);
 
-  // Volver atrás o salir a crear una cuenta NO abandonan nada: ahí el alta
-  // sigue siendo de quien la empezó.
-  const salir = /const leaveWithoutSignIn = async \(go: \(\) => void\) => \{([\s\S]*?)\n  \};/.exec(codigo);
-  assert.ok(salir, "la salida sin iniciar sesión sigue existiendo");
+  // `AuthScreen` hace pasar por ahí las vías de ingreso: email (que es también
+  // la que lleva a la contraseña legacy) y proveedor. Y el alta que CAE a
+  // sign-in porque el email ya tenía cuenta, por `onExistingAccount`.
+  const acceso = sinComentarios(leer("src/onboarding/screens/AuthScreen.tsx"));
+  assert.equal(
+    (acceso.match(/onSignInPath\?\.\(\)/g) ?? []).length,
+    2,
+    "las dos vías de ingreso —email y proveedor— avisan"
+  );
+  assert.match(acceso, /onExistingAccount: onSignInPath/, "y el alta que cae a ingreso también");
+
+  // Cambiar de modo NO abandona nada: ahí el alta sigue siendo de quien la
+  // empezó, igual que antes lo era salir del login a crear una cuenta.
+  const cambiar = /const cambiarModo = \(next: AuthMode\) => \{([\s\S]*?)\n  \};/.exec(acceso);
+  assert.ok(cambiar, "el selector de modo sigue existiendo");
   assert.doesNotMatch(
-    salir![1],
-    /clearDraft/,
-    "salir a crear la cuenta conserva lo cargado: es la misma persona"
+    cambiar![1],
+    /clearDraft|onSignInPath/,
+    "volver a «Crear cuenta» conserva lo cargado: es la misma persona"
   );
 });
 
@@ -393,13 +408,19 @@ test("QA23-008 · toda acción de tienda exige identidad viva y alineada", () =>
     provider,
     /const requireIdentity = useCallback\(\(\) => \{\s*if \(!live\.isLive \|\| !liveUserId \|\| identityRef\.current !== liveUserId\)/
   );
-  // Comprar, restaurar, el Customer Center, el reintento del Offering, la
-  // impresión y el refresh: los seis pasan por ella, y no hay ningún séptimo
-  // camino al SDK.
+  // Comprar, restaurar, el Customer Center, el canje de códigos de oferta, el
+  // reintento del Offering, la impresión y el refresh: los siete pasan por
+  // ella, y no hay ningún octavo camino al SDK.
+  //
+  // `redeemOfferCode` se sumó con la hoja de canje de Apple. No es una compra
+  // —no toca el marcador anti doble cobro— pero sí presenta una hoja de tienda
+  // atada al app user id vigente, así que tiene exactamente las mismas razones
+  // que el resto para entrar por la cola con el dueño capturado.
   const acciones = [
     "purchase",
     "restore",
     "presentCustomerCenter",
+    "redeemOfferCode",
     "retry",
     "trackPaywallImpression",
     "refreshCustomerInfo"

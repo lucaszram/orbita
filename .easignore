@@ -16,6 +16,14 @@ node_modules/
 # Generated/native outputs
 android/
 ios/
+
+# `android/` e `ios/` no llevan barra inicial, así que matchean un directorio con
+# ese nombre a CUALQUIER profundidad — incluido `modules/<mod>/ios/`, donde vive
+# el puente Apple del módulo local. Sin esta reexclusión el podspec y el Swift
+# quedaban fuera del repositorio (y del tarball de EAS): la suite seguía en verde
+# y el build nativo salía sin el módulo.
+!modules/**/ios/
+
 dist/
 # Exports temporales de las auditorías nativas: se generan para auditar el
 # bundle y se retiran en la misma corrida. `.gitignore` ya los excluía, pero EAS

@@ -112,17 +112,25 @@ test("el cliente de Vínculos deriva argumentos y resultados del API generado", 
   const source = sinComentarios(leer("src/services/relationshipsApi.ts"));
 
   assert.match(source, /import \{ api \} from ["'][^"']*convex\/_generated\/api["']/);
-  for (const method of ["list", "savePerson", "removePerson", "getComparison", "refreshComparison"]) {
+  for (const method of [
+    // Build 30: la lista y el alta pasan por las variantes que resuelven el plan
+    // en el servidor; editar, borrar y comparar siguen igual.
+    "listWithAccess",
+    "savePersonWithAccess",
+    "removePerson",
+    "getComparison",
+    "refreshComparison"
+  ]) {
     assert.match(source, new RegExp(`api\\.relationships\\.${method}\\b`), method);
   }
   assert.match(
     source,
-    /FunctionReturnType<\s*typeof api\.relationships\.(?:list|getComparison)\s*>/,
+    /FunctionReturnType<\s*typeof api\.relationships\.(?:listWithAccess|getComparison)\s*>/,
     "los datos de salida deben derivarse del contrato generado"
   );
   assert.match(
     source,
-    /FunctionArgs<\s*typeof api\.relationships\.(?:savePerson|getComparison|refreshComparison)\s*>/,
+    /FunctionArgs<\s*typeof api\.relationships\.(?:savePersonWithAccess|getComparison|refreshComparison)\s*>/,
     "los argumentos públicos deben derivarse del contrato generado"
   );
   assert.doesNotMatch(source, /\banyApi\b|\bFunctionReference\b|\bv\.any\b|\bas any\b/);
@@ -133,8 +141,8 @@ test("la raíz muestra el patrón propio y la lista real de personas guardadas",
 
   assert.match(source, /useLayers\s*\(/);
   assert.match(source, /\.natal\.relationshipPattern\b/);
-  assert.match(source, /relationshipsApi\.list\b/);
-  assert.match(source, /useQuery\s*\(\s*relationshipsApi\.list\s*,\s*\{\s*\}\s*\)/);
+  assert.match(source, /relationshipsApi\.listWithAccess\b/);
+  assert.match(source, /useQuery\s*\(\s*relationshipsApi\.listWithAccess\s*,\s*\{\s*\}\s*\)/);
   assert.match(source, /(?:profile|person|persona)\.name\b/);
   assert.match(source, /(?:profile|person|persona)\.profileId\b/);
   assert.match(source, /TraceAccordion\b/, "ORB-REL-001 debe exponer su trazabilidad");
@@ -149,8 +157,8 @@ test("Conectar ofrece signo, fecha y carta completa sin fabricar precisión", ()
   for (const level of ["sign_to_sign", "date_to_date", "chart_to_chart"]) {
     assert.match(source, new RegExp(`["]${level}["]`), `falta el nivel ${level}`);
   }
-  assert.match(source, /relationshipsApi\.savePerson\b/);
-  assert.match(source, /useMutation\s*\(\s*relationshipsApi\.savePerson\s*\)/);
+  assert.match(source, /relationshipsApi\.savePersonWithAccess\b/);
+  assert.match(source, /useMutation\s*\(\s*relationshipsApi\.savePersonWithAccess\s*\)/);
   assert.match(source, /birthTimePrecision\b/);
   assert.match(source, /(?:searchPlaces|geocod|Photon)/i, "la carta completa debe resolver el lugar real");
   assert.match(source, /(?:placeTimezone|atCoordinates|withResolvedTimezone)/, "la carta completa debe resolver la zona del lugar");
@@ -170,7 +178,7 @@ test("el perfil valida profileId y no monta ningún cálculo (QA23-005)", () => 
   const source = fuenteNativa(RUTA_PERFIL);
 
   assert.match(source, /useLocalSearchParams\s*</);
-  assert.match(source, /relationshipsApi\.list\b/);
+  assert.match(source, /relationshipsApi\.listWithAccess\b/);
   assert.match(source, /\.find\s*\(/, "el id del deep link debe resolverse contra la lista autorizada");
   assert.doesNotMatch(
     source,
@@ -192,7 +200,7 @@ test("la comparación valida profileId y usa la comparación persistida", () => 
   const source = fuenteNativa(RUTA_COMPARACION);
 
   assert.match(source, /useLocalSearchParams\s*</);
-  assert.match(source, /relationshipsApi\.list\b/);
+  assert.match(source, /relationshipsApi\.listWithAccess\b/);
   assert.match(source, /\.find\s*\(/, "el id del deep link debe resolverse contra la lista autorizada");
   assert.match(source, /relationshipsApi\.getComparison\b/);
   assert.match(source, /relationshipsApi\.refreshComparison\b/);
@@ -448,7 +456,11 @@ test("la edición desde el resultado completa a la MISMA persona, no crea otra",
   const conectar = sinComentarios(leer("src/screens/v492/VinculosConnectScreen.tsx"));
 
   assert.match(conectar, /useLocalSearchParams<\{\s*profileId\?:\s*string\s*\}>/);
-  assert.match(conectar, /findRelationshipProfile\(personas,\s*pedido\)/, "el id se valida contra tu lista");
+  assert.match(
+    conectar,
+    /findRelationshipProfile\(acceso\?\.profiles,\s*pedido\)/,
+    "el id se valida contra tu lista"
+  );
   assert.match(
     conectar,
     /const perfilEditado = persona \? persona\.profileId : null/,

@@ -304,8 +304,16 @@ test("el detalle pide el ORB-TRN-001 del arcId y sólo usa el ranking para el ad
 test("el hook del arco lee la query reactiva y pide la acción una sola vez por pedido", () => {
   const source = sinComentarios(leer(HOOK));
 
-  assert.match(source, /useQuery\(\s*layersApi\.getTransitArc/, "la lectura es la query tipada");
-  assert.match(source, /useAction\(layersApi\.refreshTransitArc\)/, "el cálculo es la acción tipada");
+  assert.match(
+    source,
+    /useQuery\(\s*layersApi\.getTransitArcWithAccess/,
+    "la lectura es la query tipada, y desde el build 30 la que resuelve el plan"
+  );
+  assert.match(
+    source,
+    /useAction\(layersApi\.refreshTransitArcWithAccess\)/,
+    "el cálculo es la acción tipada, también con el plan resuelto en el servidor"
+  );
   assert.match(source, /gate\.start\(key\)/, "cada pedido pasa por el coordinador");
   assert.match(
     source,

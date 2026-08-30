@@ -82,7 +82,7 @@ export function useTransitArc(arcId: string | null): TransitArcState {
 
 function useTransitArcInner(arcId: string | null): TransitArcState {
   const { phase, localDate, timezone, nowMs } = useLayers();
-  const refreshTransitArc = useAction(layersApi.refreshTransitArc);
+  const refreshTransitArc = useAction(layersApi.refreshTransitArcWithAccess);
 
   const [attempt, setAttempt] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
@@ -123,7 +123,7 @@ function useTransitArcInner(arcId: string | null): TransitArcState {
   const civilHour = timezone && nowMs > 0 ? civilHourInTimezone(nowMs, timezone) : "";
 
   const envelope = useQuery(
-    layersApi.getTransitArc,
+    layersApi.getTransitArcWithAccess,
     activo ? { localDate, timezone, arcId } : "skip"
   );
 

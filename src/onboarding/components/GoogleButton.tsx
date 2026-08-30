@@ -1,13 +1,17 @@
-import { FontAwesome } from "@expo/vector-icons";
 import { Pressable, Text as RNText, View, type StyleProp, type ViewStyle } from "react-native";
+
+import { GoogleMark } from "@/components/brand/ProviderMarks";
 
 import { font, orbita } from "../theme";
 
 /**
  * "Continuar con Google" — el camino más corto para guardar la carta.
  *
- * La marca sale de `@expo/vector-icons` (FontAwesome `google`), que ya está en
- * el proyecto: no se dibuja un logo a mano ni se usa un emoji como ícono.
+ * La marca es el vector OFICIAL de Google (`@/components/brand/ProviderMarks`,
+ * copiado del bundle de Google Identity que vive en
+ * `assets/orbita/auth/vendor/google/`). Antes salía de `@expo/vector-icons`
+ * (FontAwesome `google`), que dibuja una "G" monocroma de una tipografía de
+ * íconos: no es la marca de Google y Google no permite recolorearla.
  *
  * Estilos en objetos LITERALES, no `StyleSheet.create`: en react-native-web una
  * hoja registrada se compila a clase y pierde contra las clases de Tailwind que
@@ -33,6 +37,22 @@ const ROW = {
 } as const;
 
 const ROW_DISABLED = { ...ROW, opacity: 0.55 } as const;
+
+// Fila de ancho fijo con slot de marca fijo: el logo arranca en la misma x y el
+// texto en la misma x que en el botón de proveedor de la puerta de acceso.
+const CONTENT = {
+  alignItems: "center",
+  flexDirection: "row",
+  gap: 10,
+  width: 220,
+} as const;
+
+const ICON_SLOT = {
+  alignItems: "center",
+  height: 44,
+  justifyContent: "center",
+  width: 40,
+} as const;
 
 const LABEL = {
   color: orbita.ink,
@@ -61,8 +81,12 @@ export function GoogleButton({
       accessibilityState={{ busy, disabled: busy }}
       style={[busy ? ROW_DISABLED : ROW, style]}
     >
-      <FontAwesome name="google" size={18} color={orbita.ink} />
-      <RNText style={LABEL}>{busy ? "Un momento…" : label}</RNText>
+      <View style={CONTENT}>
+        <View style={ICON_SLOT}>
+          <GoogleMark />
+        </View>
+        <RNText style={LABEL}>{busy ? "Un momento…" : label}</RNText>
+      </View>
     </Pressable>
   );
 }

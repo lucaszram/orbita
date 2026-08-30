@@ -5,11 +5,26 @@ import { api } from "../../convex/_generated/api";
  * Capa de datos del front para las capas de tiempo V4.9.2.
  *
  * A diferencia de `appRefs.ts` —que enlaza por `anyApi` y declara las firmas a
- * mano— acá el contrato ES el generado: `convex/_generated/api` ya conoce
- * `layers.getNatalBase`, `layers.getForDate` y `layers.refreshForDate`, así que
- * los tipos de argumentos y de sobre salen del backend y no de una copia
- * paralela que se puede desincronizar. Si Codex cambia el contrato, esto deja
- * de compilar: es exactamente lo que queremos.
+ * mano— acá el contrato ES el generado: `convex/_generated/api` ya conoce estas
+ * funciones, así que los tipos de argumentos y de sobre salen del backend y no
+ * de una copia paralela que se puede desincronizar. Si Codex cambia el
+ * contrato, esto deja de compilar: es exactamente lo que queremos.
+ *
+ * ## Sólo `…WithAccess` (build 30)
+ *
+ * Las cuatro funciones del día y del arco son las que RESUELVEN EL PLAN EN EL
+ * SERVIDOR: Plus recibe el payload de siempre y Free recibe las capas natales
+ * que su carta ya incluye más sobres temporales vacíos, sin ningún dato
+ * personal del cielo. Las versiones sin sufijo siguen existiendo en `convex/`
+ * para la convivencia con el build 29, pero el front nativo NO las enlaza: si
+ * una pantalla pudiera elegir el endpoint sin gate, el gating volvería a
+ * depender de qué componente pregunta. Las claves espejan el nombre REAL de
+ * cada función —sufijo incluido— para que leer un `useQuery` alcance para saber
+ * qué endpoint se está pidiendo.
+ *
+ * Las dos funciones natales (`getNatalBase`, `getNatalChartBase`) no cambian:
+ * la carta natal es lo que Free tiene entero y su recorte —casas, aspectos,
+ * capítulos— ya lo aplica el propio read-model de Carta.
  *
  * Regla de la tanda: cero mocks. Ninguna pantalla de capas puede rellenar con
  * datos de maqueta; si el sobre no trae `data`, la UI explica la limitación.
@@ -23,28 +38,35 @@ export const layersApi = {
    * Es el ÚNICO origen de posiciones, grados, precisión y acceso de Carta.
    */
   getNatalChartBase: api.layers.getNatalChartBase,
-  /** Sobre completo del día civil pedido (natal + hoy + tu momento). Reactiva. */
-  getForDate: api.layers.getForDate,
-  /** Recalcula el día: pega al proveedor, persiste y devuelve el sobre nuevo. */
-  refreshForDate: api.layers.refreshForDate,
+  /**
+   * Sobre completo del día civil pedido (natal + hoy + tu momento), ya resuelto
+   * contra el plan de la cuenta. Reactiva.
+   */
+  getForDateWithAccess: api.layers.getForDateWithAccess,
+  /**
+   * Recalcula el día: con Plus pega al proveedor, persiste y devuelve el sobre
+   * nuevo; con Free persiste sólo las capas natales y devuelve los sobres
+   * temporales cerrados, sin consultar el cielo.
+   */
+  refreshForDateWithAccess: api.layers.refreshForDateWithAccess,
   /**
    * `ORB-TRN-001` de UN arco concreto del día, tal como quedó calculado.
    * Reactiva y pura. El sobre del bundle sólo trae el arco PRINCIPAL; cualquier
    * otro tránsito de la lista se pide por acá con su `arcId`.
    */
-  getTransitArc: api.layers.getTransitArc,
+  getTransitArcWithAccess: api.layers.getTransitArcWithAccess,
   /**
    * Calcula el `ORB-TRN-001` del `arcId` pedido: verifica las pasadas de ESE
    * contacto y persiste el sobre en su propio alcance.
    */
-  refreshTransitArc: api.layers.refreshTransitArc
+  refreshTransitArcWithAccess: api.layers.refreshTransitArcWithAccess
 } as const;
 
 // ---------------------------------------------------------------------------
 // Tipos derivados del contrato generado (no se declaran a mano)
 // ---------------------------------------------------------------------------
 
-export type LayerBundle = NonNullable<FunctionReturnType<typeof api.layers.getForDate>>;
+export type LayerBundle = NonNullable<FunctionReturnType<typeof api.layers.getForDateWithAccess>>;
 export type NatalBaseBundle = NonNullable<FunctionReturnType<typeof api.layers.getNatalBase>>;
 
 /**
@@ -92,7 +114,7 @@ export type TransitPass = TransitArcData["passes"][number];
  * `getForDate`.
  */
 export type TransitArcEnvelope = NonNullable<
-  FunctionReturnType<typeof api.layers.getTransitArc>
+  FunctionReturnType<typeof api.layers.getTransitArcWithAccess>
 >;
 
 export type MoonOnChartResult = TodayLayers["moonOnChart"];

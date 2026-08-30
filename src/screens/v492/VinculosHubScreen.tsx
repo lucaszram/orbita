@@ -3,6 +3,7 @@ import { StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import { useQuery } from "convex/react";
 import { Card, CardButton, Chip, ChipRow, DataRow, ModuleHeader } from "@/components/v492/Module";
+import { PlanLockBlock } from "@/components/v492/PlanLock";
 import { LayerScreen, Section } from "@/components/v492/Screen";
 import { LimitationList, MissingBlock, StaleNotice, StatusLine } from "@/components/v492/Status";
 import { Touchable } from "@/components/v492/Touchable";
@@ -26,6 +27,15 @@ import {
   VINCULOS_FORM_ROUTE
 } from "@/domain/relationships";
 import {
+  relationshipAddIntent,
+  VINCULOS_ADD_BLOCKED_LABEL,
+  VINCULOS_ADD_LABEL,
+  VINCULOS_FREE_QUOTA_NOTE,
+  VINCULOS_PATTERN_AND_QUOTA_LOCK,
+  VINCULOS_PATTERN_LOCK,
+  PLUS_PAYWALL_ROUTE
+} from "@/domain/planAccess";
+import {
   readRelationshipType,
   RELATIONSHIP_TYPE_DEFINE_CTA,
   RELATIONSHIP_TYPE_DEFINE_HINT,
@@ -34,13 +44,18 @@ import {
   relationshipTypeNeedsDefinition
 } from "@/domain/relationshipType";
 import { useLayers } from "@/hooks/useLayers";
+import { usePlanAccess } from "@/hooks/usePlanAccess";
 import type {
   RelationshipAxis,
   RelationshipPatternData,
   RelationshipPatternFacet,
   RelationshipPatternResult
 } from "@/services/layersApi";
-import { relationshipsApi, type RelationshipProfile } from "@/services/relationshipsApi";
+import {
+  relationshipsApi,
+  type RelationshipAccess,
+  type RelationshipProfile
+} from "@/services/relationshipsApi";
 
 /**
  * Vínculos — raíz de la pestaña (sistema V4.9.2).
@@ -54,9 +69,10 @@ import { relationshipsApi, type RelationshipProfile } from "@/services/relations
  * existe no se estima ni se deja el hueco: el módulo declara su estado y la
  * lista de límites dice por qué falta.
  *
- * Las personas salen de `relationships.list`, que es la lista autorizada de la
- * cuenta. De ahí sale el `profileId` con el que se abre cada perfil: un id nunca
- * se arma en el front.
+ * Las personas salen de `relationships.listWithAccess`, que es la lista
+ * autorizada de la cuenta y, desde el build 30, también su cupo: `canCreate`
+ * decide si se puede agregar a alguien más. De ahí sale el `profileId` con el
+ * que se abre cada perfil: un id nunca se arma en el front.
  *
  * **Acá NO termina el guardado (QA23-005).** Hasta el build 23 el alta volvía a
  * esta raíz con un `?guardada=`, y esta pantalla confirmaba el guardado y
@@ -140,8 +156,25 @@ function Shell({
 }
 
 /**
- * La lista de personas sólo se pide con sesión confirmada: `relationships.list`
- * necesita la fila `users` creada, y la fase ya la garantizó.
+ * La lista de personas sólo se pide con sesión confirmada:
+ * `relationships.listWithAccess` necesita la fila `users` creada, y la fase ya
+ * la garantizó.
+ *
+ * ## Free y Plus en esta pantalla (build 30)
+ *
+ * Lo que cambia con el plan es exactamente esto, y nada más:
+ *
+ * - **Las personas guardadas se conservan enteras.** Una cuenta Free con una
+ *   —o con varias, si venía de antes— sigue viendo cada fila, sigue pudiendo
+ *   abrir su perfil, editar sus datos y leer su comparación. El cupo limita
+ *   crear, no tener.
+ * - **`AGREGAR` cambia de destino, no de lugar.** Con cupo libre abre el
+ *   formulario; con el cupo tomado, la paywall. Quién puede crear lo dice el
+ *   backend (`canCreate`), nunca una cuenta hecha acá con `profiles.length`.
+ * - **El patrón relacional queda cerrado directo.** No se muestra su estado ni
+ *   su trazabilidad —no hay cálculo que trazar—: se dice qué abre Plus y se
+ *   ofrece la salida, con la frase del frame, que nombra también el cupo cuando
+ *   el cupo ya está tomado.
  */
 function VinculosHubLive({
   pattern,
@@ -156,15 +189,38 @@ function VinculosHubLive({
   refreshFailed: boolean;
   onRefresh: () => void;
 }) {
-  const personas = useQuery(relationshipsApi.list, {});
+  const acceso = useQuery(relationshipsApi.listWithAccess, {});
+  const personas = acceso?.profiles;
+  const plan = usePlanAccess();
+  /**
+   * La composición Free del frame (`1250:1651` y `1253:1665`).
+   *
+   * No es "Plus con menos cosas": el frame mueve la retícula vertical de la
+   * pantalla porque cambia lo que hay arriba de cada corte —una nota en vez de
+   * un bloque, un toque en vez de una tarjeta—. Con Plus no se corre un punto.
+   */
+  const free = plan === "free";
+  /** El patrón relacional entero es Plus: con Free se cierra directo. */
+  const patronBloqueado = free;
+  // El cupo es del BACKEND. Mientras la lista viaja no se afirma ninguno de los
+  // dos destinos: el botón espera (`relationshipAddIntent`).
+  const alta = relationshipAddIntent(acceso);
+  /**
+   * Free con al menos una persona guardada: lo último antes del alta es el
+   * toque de "editar datos", que ya reserva 44 de alto con su rótulo centrado,
+   * así que el frame acerca el alta a 16 y el patrón a 24. Con el cupo todavía
+   * libre lo último es una nota de texto y las dos medidas vuelven a 24 y 32.
+   */
+  const freeConFila = free && personas !== undefined && personas.length > 0;
 
   return (
     <Shell meta={metaPersonas(personas)} onRefresh={onRefresh} refreshing={refreshing}>
       {/* El patrón puede llegar `stale` sin que el recálculo de esta sesión
           haya fallado: el backend ya lo había marcado. En los dos casos lo que
           se lee es el último cálculo guardado, así que en los dos se avisa y se
-          lo fecha. */}
-      {refreshFailed || anyStale([pattern]) ? (
+          lo fecha. Con el patrón cerrado por plan no hay cálculo que fechar: un
+          aviso de frescura ahí hablaría de un dato que esta cuenta no recibe. */}
+      {!patronBloqueado && (refreshFailed || anyStale([pattern])) ? (
         <Section>
           <StaleNotice
             observedAt={latestObservedAt([pattern])}
@@ -174,45 +230,83 @@ function VinculosHubLive({
         </Section>
       ) : null}
 
-      <Section>
+      {/* Con Free el encabezado cierra con sus 16 y el frame agrega 24 antes de
+          la primera línea fina (151 → 175 en los dos frames). */}
+      <Section style={free ? styles.freeTop : undefined}>
         {/* Las personas primero: lo primero del hub es la ACCIÓN — elegir o
             agregar a alguien. El patrón relacional es contexto natal que no
             cambia, y se lee después (decisión de producto, 2026-08-19). */}
         <ModuleHeader
           module="Personas guardadas"
           cadence="se actualiza al guardar"
-          intro="Cada persona guardada abre su perfil, y desde ahí, su comparación. Qué se puede comparar depende de los datos que tengas de ella: con el signo alcanza para el estilo general, con la fecha entran las posiciones del día y con hora y lugar exactos, también las casas."
+          intro={
+            patronBloqueado
+              ? undefined
+              : "Cada persona guardada abre su perfil, y desde ahí, su comparación. Qué se puede comparar depende de los datos que tengas de ella: con el signo alcanza para el estilo general, con la fecha entran las posiciones del día y con hora y lugar exactos, también las casas."
+          }
         />
-        <PersonasBlock personas={personas} />
-        <View style={styles.cta}>
+        <PersonasBlock personas={personas} flushFirst={free} />
+        {/* Lo que Free SÍ incluye, dicho mientras todavía se puede usar. Con la
+            persona ya guardada la frase se retira: repetir "incluye una
+            persona" sería contarle un permiso que acaba de ejercer, y lo que
+            queda por decir lo dice el bloque de abajo. */}
+        {patronBloqueado && alta === "formulario" ? (
+          <Note style={styles.cupo}>{VINCULOS_FREE_QUOTA_NOTE}</Note>
+        ) : null}
+        <View style={freeConFila ? styles.ctaTrasFila : styles.cta}>
           <PrimaryButton
-            label="AGREGAR UNA PERSONA"
-            accessibilityLabel="Agregar una persona a Vínculos"
-            onPress={() => router.push(VINCULOS_FORM_ROUTE as never)}
+            label={alta === "paywall" ? VINCULOS_ADD_BLOCKED_LABEL : VINCULOS_ADD_LABEL}
+            accessibilityLabel={
+              alta === "paywall"
+                ? "Ver Órbita Plus para guardar más personas"
+                : "Agregar una persona a Vínculos"
+            }
+            disabled={alta === "esperar"}
+            onPress={() =>
+              router.push((alta === "paywall" ? PLUS_PAYWALL_ROUTE : VINCULOS_FORM_ROUTE) as never)
+            }
           />
         </View>
 
-        <View style={styles.module}>
+        <View style={freeConFila ? styles.moduleTrasFila : styles.module}>
+          {/* `gap`: abajo del encabezado cerrado no hay un bloque de contenido
+              sino una frase corta, y el frame la acerca a 12. Abierto, el
+              encabezado conserva el aire del canon. */}
           <ModuleHeader
             module="Tu patrón relacional"
             cadence="natal · no cambia"
-            intro="Reúne los tres puntos de tu carta que describen cómo te vinculás: la Luna, Venus y Marte. Con hora de nacimiento exacta suma el Descendente y la casa 7."
+            gap={patronBloqueado ? v492.space.md : undefined}
+            intro={
+              patronBloqueado
+                ? undefined
+                : "Reúne los tres puntos de tu carta que describen cómo te vinculás: la Luna, Venus y Marte. Con hora de nacimiento exacta suma el Descendente y la casa 7."
+            }
           />
-          <StatusLine status={pattern.status} precision={pattern.precision} />
-          {hasData(pattern) && pattern.data ? (
-            <>
-              <PatternBody data={pattern.data} />
-              <LimitationList limitations={pattern.limitations} />
-            </>
+          {patronBloqueado ? (
+            <PlanLockBlock
+              rule={false}
+              line={alta === "paywall" ? VINCULOS_PATTERN_AND_QUOTA_LOCK : VINCULOS_PATTERN_LOCK}
+              ctaVoice="Ver Órbita Plus para abrir tu patrón relacional"
+            />
           ) : (
-            <MissingBlock envelope={pattern} />
+            <>
+              <StatusLine status={pattern.status} precision={pattern.precision} />
+              {hasData(pattern) && pattern.data ? (
+                <>
+                  <PatternBody data={pattern.data} />
+                  <LimitationList limitations={pattern.limitations} />
+                </>
+              ) : (
+                <MissingBlock envelope={pattern} />
+              )}
+              <TraceAccordion
+                envelope={pattern}
+                timezone={timezone}
+                calculatedDatum="El signo de tu Luna, de tu Venus y de tu Marte y, sólo con hora exacta y doce casas verificadas, el signo de tu Descendente y los planetas que caen en tu casa 7."
+                interpretiveRule="Cada punto describe una tendencia distinta: la Luna, cómo procesás lo emocional; Venus, cómo das y recibís afecto; Marte, cómo vas hacia el deseo. Es un mapa de tendencias de tu carta, no un diagnóstico de tu forma de vincularte."
+              />
+            </>
           )}
-          <TraceAccordion
-            envelope={pattern}
-            timezone={timezone}
-            calculatedDatum="El signo de tu Luna, de tu Venus y de tu Marte y, sólo con hora exacta y doce casas verificadas, el signo de tu Descendente y los planetas que caen en tu casa 7."
-            interpretiveRule="Cada punto describe una tendencia distinta: la Luna, cómo procesás lo emocional; Venus, cómo das y recibís afecto; Marte, cómo vas hacia el deseo. Es un mapa de tendencias de tu carta, no un diagnóstico de tu forma de vincularte."
-          />
         </View>
       </Section>
     </Shell>
@@ -220,7 +314,7 @@ function VinculosHubLive({
 }
 
 /** "3 personas guardadas" — el recuento real, o nada mientras la lista viaja. */
-function metaPersonas(personas: RelationshipProfile[] | undefined): string | undefined {
+function metaPersonas(personas: RelationshipAccess["profiles"] | undefined): string | undefined {
   if (personas === undefined) return undefined;
   if (personas.length === 0) return undefined;
   return personas.length === 1 ? "1 persona guardada" : `${personas.length} personas guardadas`;
@@ -282,7 +376,19 @@ function AxisCard({ axis }: { axis: RelationshipAxis }) {
   );
 }
 
-function PersonasBlock({ personas }: { personas: RelationshipProfile[] | undefined }) {
+function PersonasBlock({
+  personas,
+  flushFirst
+}: {
+  personas: readonly RelationshipProfile[] | undefined;
+  /**
+   * La primera fila arranca pegada al encabezado del módulo, sin su separación
+   * propia (`1253:1665`: el encabezado cierra en 226 y la tarjeta abre en 242,
+   * que son los 16 del encabezado y nada más). Sólo la composición Free lo
+   * pide; con Plus la lista conserva su respiro de siempre.
+   */
+  flushFirst: boolean;
+}) {
   if (personas === undefined) return <LoadingBlock message="Buscando tus personas guardadas…" />;
   if (personas.length === 0) {
     return (
@@ -296,8 +402,8 @@ function PersonasBlock({ personas }: { personas: RelationshipProfile[] | undefin
   }
   return (
     <View>
-      {personas.map((persona) => (
-        <PersonaRow key={persona.profileId} persona={persona} />
+      {personas.map((persona, index) => (
+        <PersonaRow key={persona.profileId} persona={persona} flush={flushFirst && index === 0} />
       ))}
     </View>
   );
@@ -318,7 +424,14 @@ function PersonasBlock({ personas }: { personas: RelationshipProfile[] | undefin
  * acción aparte y fuera de la tarjeta: la tarjeta entera abre el perfil, y un
  * botón adentro de otro botón no se puede alcanzar con un lector de pantalla.
  */
-function PersonaRow({ persona }: { persona: RelationshipProfile }) {
+function PersonaRow({
+  persona,
+  flush = false
+}: {
+  persona: RelationshipProfile;
+  /** Sin la separación de arriba: es la primera fila de la composición Free. */
+  flush?: boolean;
+}) {
   const nivel = RELATIONSHIP_LEVEL_LABEL[persona.availableLevel];
   const datos = relationshipBirthLine(persona);
   // El tipo declarado, leído sin exigir que el contrato ya lo publique: un
@@ -327,7 +440,7 @@ function PersonaRow({ persona }: { persona: RelationshipProfile }) {
   const tipo = readRelationshipType(persona);
   const tipoChip = relationshipTypeChip(tipo);
   return (
-    <View style={styles.personaRow}>
+    <View style={[styles.personaRow, flush ? styles.personaRowFlush : null]}>
       <CardButton
         onPress={() => router.push(relationshipProfileHref(persona.profileId) as never)}
         accessibilityLabel={`${persona.name}. ${nivel}.`}
@@ -376,12 +489,24 @@ function PersonaRow({ persona }: { persona: RelationshipProfile }) {
 }
 
 const styles = StyleSheet.create({
+  // Después de una NOTA de texto: el canon de la pantalla, y lo que Plus
+  // conserva siempre.
   cta: { marginTop: v492.space.xl },
+  // Después del toque de "editar datos": sus 44 de alto ya dejan aire debajo
+  // del rótulo, así que el frame acerca el alta (`1253:1665`, 507 → 523).
+  ctaTrasFila: { marginTop: v492.space.lg },
+  cupo: { marginTop: v492.space.lg },
   facet: { marginTop: v492.space.md },
   facetSigns: { marginTop: v492.space.sm },
   facetText: { marginTop: v492.space.md },
   facetTitle: { marginTop: v492.space.xs },
+  // Los 24 que el frame Free pone entre el encabezado de la pantalla y la
+  // primera línea fina (151 → 175). El encabezado ya cerró con sus 16.
+  freeTop: { paddingTop: v492.space.xl },
   module: { marginTop: v492.space.xxl },
+  // Con una fila guardada el módulo del patrón sube con el alta (`1253:1665`,
+  // 567 → 591: 24 desde el CTA hasta su línea fina).
+  moduleTrasFila: { marginTop: v492.space.xl },
   personaChips: { marginTop: v492.space.md },
   // El CTA de definir el tipo pesa más que "editar datos": es una invitación a
   // completar algo que falta, no una acción de mantenimiento.
@@ -396,6 +521,9 @@ const styles = StyleSheet.create({
   personaMeta: { marginTop: v492.space.xs },
   personaNote: { marginTop: v492.space.md },
   personaRow: { marginTop: v492.space.md },
+  // La primera fila de la composición Free no se separa: el aire lo puso el
+  // encabezado del módulo (`1253:1665`, tarjeta en 242).
+  personaRowFlush: { marginTop: 0 },
   pressed: { opacity: 0.7 },
   scope: { marginTop: v492.space.lg },
   scopeNote: { marginTop: v492.space.md }

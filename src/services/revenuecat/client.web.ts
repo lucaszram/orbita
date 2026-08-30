@@ -41,6 +41,11 @@ export async function presentNativeCustomerCenter(): Promise<never> {
   throw new Error(NATIVE_ONLY);
 }
 
+/** El canje de códigos de oferta es de Apple: en web no existe esa hoja. */
+export async function presentNativeOfferCodeRedemption(): Promise<never> {
+  throw new Error(NATIVE_ONLY);
+}
+
 export async function nativeTrialEligibility(): Promise<"no_offer"> {
   return "no_offer";
 }

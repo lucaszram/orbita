@@ -2,7 +2,9 @@ import { Redirect } from "expo-router";
 import { DetailLayerScreen } from "@/components/v492/Screen";
 import { LoadingBlock } from "@/components/v492/States";
 import { TRANSIT_DETAIL_EYEBROW } from "@/domain/layerMeaning";
+import { TRANSITOS_ROUTE } from "@/domain/detailOrigin";
 import { useLayers } from "@/hooks/useLayers";
+import { usePlanAccess } from "@/hooks/usePlanAccess";
 
 /**
  * `/hoy/arco` — **sólo compatibilidad de deep links**.
@@ -27,6 +29,13 @@ import { useLayers } from "@/hooks/useLayers";
  */
 export default function ArcoPrincipalRoute() {
   const { phase, bundle } = useLayers();
+  const acceso = usePlanAccess();
+
+  // Con Free no hay arco principal que traducir —el sobre del día llega con sus
+  // capas temporales cerradas—, así que el enlace viejo cae directo en el
+  // bloqueo de la sección en vez de esperar un `arcId` que nunca va a existir
+  // (build 30).
+  if (acceso === "free") return <Redirect href={TRANSITOS_ROUTE as never} />;
 
   if (phase === "cargando") {
     return (

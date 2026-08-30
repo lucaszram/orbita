@@ -1,4 +1,5 @@
 import { Redirect, useLocalSearchParams } from "expo-router";
+import { TemporalPlusGate } from "@/components/v492/PlanGate";
 import { detailFallbackHref } from "@/domain/detailOrigin";
 import { ArcoDetailScreen } from "@/screens/v492/ArcoDetailScreen";
 
@@ -33,5 +34,13 @@ import { ArcoDetailScreen } from "@/screens/v492/ArcoDetailScreen";
 export default function TransitoDetalleRoute() {
   const { arcId, desde } = useLocalSearchParams<{ arcId?: string; desde?: string }>();
   if (typeof arcId !== "string" || arcId.length === 0) return <Redirect href="/transitos" />;
-  return <ArcoDetailScreen arcId={arcId} fallbackHref={detailFallbackHref(desde, "/transitos")} />;
+  return (
+    // El detalle de un tránsito es la superficie temporal más enlazada —Hoy, la
+    // lista y `Tu momento` la abren—, así que es la que más deep links viejos
+    // puede recibir. Con Free ninguno monta el cálculo: todos aterrizan en el
+    // bloqueo de la sección (build 30).
+    <TemporalPlusGate>
+      <ArcoDetailScreen arcId={arcId} fallbackHref={detailFallbackHref(desde, "/transitos")} />
+    </TemporalPlusGate>
+  );
 }
