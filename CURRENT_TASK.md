@@ -1,6 +1,6 @@
 # Current Task
 
-## P0 · build 30 — acceso Free/Plus nativo (2026-08-30) · PROMOCIÓN AUTORIZADA
+## P0 · build 30 — acceso Free/Plus nativo (2026-08-30) · TESTFLIGHT INTERNO DISPONIBLE
 
 **Objetivo.** Congelar la implementación validada de acceso Free/Plus sobre la
 fuente exacta del build 29, desplegar el contrato/backend Convex aditivo y
@@ -51,6 +51,43 @@ publicaba las seis funciones nuevas al iniciar este cierre. La cuenta usada en
 la prueba de canje seguía autoritativamente Free: abrir/cerrar la hoja no cambió
 el entitlement; el estado Plus observado quedó clasificado como visual/local y
 debe revalidarse en el RC físico.
+
+**Cierre ejecutado.** La fuente exacta del binario quedó congelada en el commit
+local `8fc5cc47f6bcd9300e1fd541bfae48a454c1aeac` (`feat(release): prepare native
+free plus build 30`). Sobre ese commit pasaron TypeScript, **241 suites y
+2906/2906 pruebas**, `git diff --check` y export iOS. Expo Doctor conserva la
+advertencia no bloqueante del baseline —17/18 por tres parches Expo atrasados—,
+idéntica a los builds 24–29.
+
+**Backend productivo.** Antes del deploy se exportó el backup completo
+`/private/tmp/orbita-convex-prod-pre-build30-8fc5cc4.zip` —563349 bytes,
+SHA-256 `dd1d027955e5b673bc878632892353e843e78239db762b00dce9d20756c47f31`—.
+El dry-run confirmó schema válido y cero índices eliminados. Convex producción
+`exciting-bat-311` recibió el contrato aditivo; el spec posterior expone las
+seis funciones `relationships:listWithAccess`,
+`relationships:savePersonWithAccess`, `layers:getForDateWithAccess`,
+`layers:refreshForDateWithAccess`, `layers:getTransitArcWithAccess` y
+`layers:refreshTransitArcWithAccess`. El smoke read-only
+`void:suggestedToday` terminó correctamente.
+
+**Binario y TestFlight.** IPA local `/private/tmp/orbita-1.0.0-30.ipa` —46584151
+bytes, SHA-256
+`7dd3e906bff34c563ed641bb5fbdf3da456b2b08cad824a37b4052693cf6e137`—.
+La inspección verificó `com.lucasssram.orbita`, `1.0.0 (30)`, `arm64`, backend
+productivo y ausencia del backend dev, `beta-reports-active=true`, Apple Sign-In
+`Default` y `get-task-allow=false`. EAS/App Store Connect aceptó la entrega
+`da8de090-8114-4556-b07e-291df1e2ce52`; luego del procesamiento, la consulta
+directa devolvió `processingState=VALID`, `internalState=IN_BETA_TESTING` y
+`expired=false`. Detalle:
+<https://expo.dev/accounts/lucasssram/projects/orbita/submissions/da8de090-8114-4556-b07e-291df1e2ce52>.
+TestFlight:
+<https://appstoreconnect.apple.com/apps/6788918249/testflight/ios>.
+
+**Estado final.** Build 30 disponible únicamente para prueba interna. No hubo
+push, OTA, tester externo, selección para App Review ni publicación. Queda
+pendiente la QA física indicada arriba, especialmente revalidar que una cuenta
+Free siga Free después de abrir/cerrar canje y relanzar, y que Plus aparezca
+sólo tras confirmación autoritativa de compra, restauración o canje.
 
 ## P0 · build 29 — Apple nativo, canje StoreKit 2 y marcas oficiales (2026-08-28) · TESTFLIGHT INTERNO LISTO
 
