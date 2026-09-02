@@ -136,3 +136,25 @@ test("el panel loguea TODO rechazo, incluido el esperable", () => {
   assert.doesNotMatch(pull, /!==\s*"limite_free"/);
   assert.match(pull, /setRevealError\(kind\)/);
 });
+
+test("el bloque del límite tiene la superficie del frame T5", () => {
+  // Sin contenedor propio los dos textos se confunden con la textura del fondo.
+  // Valores leídos del frame `1887:4643`, no inventados.
+  const s = src("src/components/web/umbral-tarot.tsx");
+  const bloque = s.slice(s.indexOf("  limite: {"), s.indexOf("  limiteTitulo:"));
+  assert.match(bloque, /backgroundColor: "#12141A"/);
+  assert.match(bloque, /borderRadius: 18/);
+  assert.match(bloque, /borderWidth: 1/);
+  assert.match(bloque, /paddingHorizontal: 22/);
+});
+
+test("el aviso de fallo no sobrevive a que la carta se revele por otra vía", () => {
+  // `getStrip` es reactiva: la carta puede revelarse desde el nativo o desde
+  // otra pestaña, y la pantalla no puede quedar mostrando la cara revelada con
+  // «no pudimos darla vuelta» debajo.
+  const s = src("src/components/web/umbral-tarot.tsx");
+  assert.match(s, /useEffect\(\(\) => \{\s*setRevealError/);
+  assert.match(s, /\}, \[view\.mode, today\]\)/);
+  // El límite sí sobrevive: es vitalicio, no por período.
+  assert.match(s, /prev === "limite_free" \? prev : null/);
+});

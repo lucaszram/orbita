@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
@@ -80,6 +80,15 @@ export function UmbralTarot({ selector }: { selector: ReactNode }) {
   });
 
   const revealCard = useMutation(proposedApi.revealCard);
+
+  // El aviso de fallo desconocido se borra solo cuando el mundo cambia: la
+  // carta puede revelarse desde el nativo o desde otra pestaña (`getStrip` es
+  // reactiva), y ahí la pantalla se contradecía a sí misma —cara revelada con
+  // «no pudimos darla vuelta» debajo—. El límite NO se limpia acá: es
+  // vitalicio, no por período, y sigue siendo cierto mañana.
+  useEffect(() => {
+    setRevealError((prev) => (prev === "limite_free" ? prev : null));
+  }, [view.mode, today]);
 
   async function pull(): Promise<boolean> {
     // Con el límite alcanzado el dorso ya no gira: es la salida a Plus, y no
@@ -189,7 +198,19 @@ const styles = StyleSheet.create({
     textAlign: "center"
   },
   state: { marginTop: orbita.spacing.xxl },
-  limite: { alignItems: "center", marginTop: orbita.spacing.xl },
+  // Superficie tomada del frame T5 (`1887:4643`): fill #12141A, hairline hueso
+  // al 14%, radio 18 y padding 24/22. No es decoración: sin contenedor el
+  // bloque se confunde con la textura del fondo.
+  limite: {
+    alignItems: "center",
+    backgroundColor: "#12141A",
+    borderColor: "rgba(244,238,228,0.14)",
+    borderRadius: 18,
+    borderWidth: 1,
+    marginTop: orbita.spacing.xl,
+    paddingHorizontal: 22,
+    paddingVertical: 24
+  },
   limiteTitulo: {
     color: orbita.colors.bone,
     fontFamily: orbita.fonts.serif,
