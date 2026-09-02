@@ -36,3 +36,20 @@ export function umbralTarotView(input: {
   if (input.revealed) return { mode: "revelada", disabled: true };
   return { mode: "cerrada", disabled: false };
 }
+
+/** Encabezado del panel. Cerrado anuncia el ritual; revelado nombra la carta,
+ *  como en los frames T2 y T3. El numeral romano sólo existe en los arcanos
+ *  mayores del catálogo, así que los menores caen a la línea sin arcano. */
+export function umbralTarotHero(input: {
+  mode: TarotPanelMode;
+  nombre?: string;
+  roman?: string;
+}): { tagline: string; micro: string } {
+  if (input.mode === "revelada" && input.nombre) {
+    return {
+      tagline: input.nombre,
+      micro: input.roman ? `ARCANO ${input.roman} · CARTA DEL DÍA` : "CARTA DEL DÍA"
+    };
+  }
+  return { tagline: "Tu carta de hoy.", micro: "UNA CARTA POR DÍA" };
+}

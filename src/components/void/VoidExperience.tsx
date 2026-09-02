@@ -164,7 +164,16 @@ function VoidLive({ showBack, sectionLabel, belowHeader }: { showBack: boolean }
     );
   }
 
-  return <VoidView ask={ask} today={today} categories={categories} showBack={showBack} />;
+  return (
+    <VoidView
+      ask={ask}
+      today={today}
+      categories={categories}
+      showBack={showBack}
+      sectionLabel={sectionLabel}
+      belowHeader={belowHeader}
+    />
+  );
 }
 
 function VoidView({ ask, today, categories, showBack, sectionLabel, belowHeader }: VoidViewProps) {

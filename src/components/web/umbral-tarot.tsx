@@ -1,7 +1,6 @@
 import { type ReactNode, useState } from "react";
 import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { router } from "expo-router";
 import { useMutation, useQuery } from "convex/react";
 import { CartaDelDia } from "@/components/home/CartaDelDia";
 import { ContentCanvas } from "@/components/orbita/ContentCanvas";
@@ -12,7 +11,8 @@ import { useCanonicalLocalDate } from "@/hooks/useDailyContext";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { useDailyGuide } from "@/services/dailyGuideStore";
 import { proposedApi } from "@/services/appRefs";
-import { umbralTarotView } from "@/components/web/umbral-tarot-state";
+import { cardById } from "@/content/tarotDeck";
+import { umbralTarotHero, umbralTarotView } from "@/components/web/umbral-tarot-state";
 import { orbita } from "@/theme/orbita";
 
 // La misma textura que ya usa el Umbral: las dos secciones son una sola
@@ -63,6 +63,13 @@ export function UmbralTarot({ selector }: { selector: ReactNode }) {
     revealed
   });
 
+  // Revelada, el encabezado nombra la carta en vez de anunciar el ritual (T3).
+  const hero = umbralTarotHero({
+    mode: view.mode,
+    nombre: carta?.nombre,
+    roman: carta ? cardById(carta.id)?.roman : undefined
+  });
+
   const revealCard = useMutation(proposedApi.revealCard);
 
   async function pull(): Promise<boolean> {
@@ -95,8 +102,8 @@ export function UmbralTarot({ selector }: { selector: ReactNode }) {
           <ReadingBlock center>
             <View style={styles.head}>
               <Text style={styles.eyebrow}>EL UMBRAL · TAROT</Text>
-              <Text style={styles.tagline}>Tu carta de hoy.</Text>
-              <Text style={styles.micro}>UNA CARTA POR DÍA</Text>
+              <Text style={styles.tagline}>{hero.tagline}</Text>
+              <Text style={styles.micro}>{hero.micro}</Text>
             </View>
 
             {/* El selector va debajo del encabezado de la sección, como en el frame. */}
@@ -114,6 +121,7 @@ export function UmbralTarot({ selector }: { selector: ReactNode }) {
                 revealed={view.mode === "revelada"}
                 onReveal={pull}
                 disabled={view.disabled}
+                ctaLabel="TOCÁ PARA DARLA VUELTA"
               />
             )}
           </ReadingBlock>
