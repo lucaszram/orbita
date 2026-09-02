@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import test from "node:test";
-import { revealErrorNote, umbralTarotHero } from "../src/components/web/umbral-tarot-state";
+import {
+  TAROT_LIMITE_FREE,
+  revealErrorNote,
+  umbralTarotHero
+} from "../src/components/web/umbral-tarot-state";
 
 /**
  * Red sobre el CABLEADO, no sobre la lógica.
@@ -62,11 +66,9 @@ test("el panel de Tarot dibuja el selector que recibe", () => {
 });
 
 test("el ritual conserva el copy del frame", () => {
-  // El gesto es la carta: `CartaDelDia` no recibe `ctaMode="unlock"` ni ningún
-  // botón aparte. El rótulo va encima de la carta, con el texto del frame T2.
+  // El rótulo va encima de la carta, con el texto del frame T2.
   const props = jsxProps(src("src/components/web/umbral-tarot.tsx"), "CartaDelDia");
-  assert.match(props, /ctaLabel="TOCÁ PARA DARLA VUELTA"/);
-  assert.doesNotMatch(props, /ctaMode=/);
+  assert.match(props, /TOCÁ PARA DARLA VUELTA/);
 });
 
 test("el encabezado anuncia el ritual mientras la carta está cerrada", () => {
@@ -98,12 +100,31 @@ test("revelada sin nombre todavía no puede anunciar la carta", () => {
   assert.equal(umbralTarotHero({ mode: "revelada" }).tagline, "Tu carta de hoy.");
 });
 
-test("un tirón rechazado se nombra en vez de fallar mudo", () => {
-  // El bug que costó una sesión de depuración: el límite de Free se tragaba en
+test("un fallo desconocido se nombra en vez de fallar mudo", () => {
+  // El bug que costó una sesión de depuración: el rechazo se tragaba en
   // silencio, la carta volvía al dorso y era indistinguible de un bug.
-  assert.equal(revealErrorNote("limite_free"), "Usaste tus siete cartas de Órbita Free.");
   assert.equal(revealErrorNote("desconocido"), "No pudimos dar vuelta tu carta. Probá de nuevo.");
   assert.equal(revealErrorNote(null), null);
+  // El límite ya no usa la línea suelta: tiene el bloque del frame T5.
+  assert.equal(revealErrorNote("limite_free"), null);
+});
+
+test("con el límite alcanzado el encabezado explica por qué no gira", () => {
+  const h = umbralTarotHero({ mode: "cerrada", limite: true });
+  assert.deepEqual(h, { tagline: "Usaste tus siete cartas.", micro: "FREE · SIETE DE SIETE" });
+  // Gana sobre el estado revelado: es lo único que explica el bloqueo.
+  assert.equal(umbralTarotHero({ mode: "revelada", nombre: "El Sol", roman: "XIX", limite: true }).tagline,
+               "Usaste tus siete cartas.");
+});
+
+test("el bloque del límite explica el plan sin agregar un segundo botón", () => {
+  assert.match(TAROT_LIMITE_FREE.titulo, /siete cartas/);
+  assert.match(TAROT_LIMITE_FREE.detalle, /una carta cada día/);
+  assert.equal(TAROT_LIMITE_FREE.cta, "DESBLOQUEAR TAROT DIARIO");
+  const s = src("src/components/web/umbral-tarot.tsx");
+  // La salida es el dorso: `ctaMode="unlock"`, y ningún Pressable propio.
+  assert.match(jsxProps(s, "CartaDelDia"), /ctaMode=\{limite \? "unlock" : "reveal"\}/);
+  assert.doesNotMatch(s, /<Pressable/);
 });
 
 test("el panel loguea TODO rechazo, incluido el esperable", () => {

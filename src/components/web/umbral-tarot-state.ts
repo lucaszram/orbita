@@ -44,7 +44,12 @@ export function umbralTarotHero(input: {
   mode: TarotPanelMode;
   nombre?: string;
   roman?: string;
+  /** El backend ya rechazó el tirón por el tope de siete de Free. */
+  limite?: boolean;
 }): { tagline: string; micro: string } {
+  // El límite gana sobre todo lo demás: es lo único que explica por qué la
+  // carta no se da vuelta (frame T5).
+  if (input.limite) return { tagline: "Usaste tus siete cartas.", micro: "FREE · SIETE DE SIETE" };
   if (input.mode === "revelada" && input.nombre) {
     return {
       tagline: input.nombre,
@@ -65,7 +70,16 @@ export function umbralTarotHero(input: {
  * plan) es otra tarjeta; acá sólo se nombra lo que pasó, con la verdad.
  */
 export function revealErrorNote(kind: "limite_free" | "desconocido" | null): string | null {
-  if (kind === "limite_free") return "Usaste tus siete cartas de Órbita Free.";
+  // El límite ya no se resuelve con una línea suelta: tiene su propio bloque.
   if (kind === "desconocido") return "No pudimos dar vuelta tu carta. Probá de nuevo.";
   return null;
 }
+
+/** El bloque del frame T5. Explica el límite y ofrece la salida SIN agregar un
+ *  segundo botón: la única salida es el dorso, rotulado como desbloqueo. */
+export const TAROT_LIMITE_FREE = {
+  titulo: "Órbita Free incluye siete cartas.",
+  detalle:
+    "Con Órbita Plus seguís sacando una carta cada día, y tus cartas anteriores quedan guardadas.",
+  cta: "DESBLOQUEAR TAROT DIARIO"
+} as const;

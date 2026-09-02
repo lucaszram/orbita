@@ -1,6 +1,7 @@
 import { type ReactNode, useState } from "react";
 import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { router } from "expo-router";
 import { useMutation, useQuery } from "convex/react";
 import { CartaDelDia } from "@/components/home/CartaDelDia";
 import { ContentCanvas } from "@/components/orbita/ContentCanvas";
@@ -12,7 +13,12 @@ import { useLiveApp } from "@/hooks/useLiveApp";
 import { useDailyGuide } from "@/services/dailyGuideStore";
 import { proposedApi } from "@/services/appRefs";
 import { cardById } from "@/content/tarotDeck";
-import { revealErrorNote, umbralTarotHero, umbralTarotView } from "@/components/web/umbral-tarot-state";
+import {
+  TAROT_LIMITE_FREE,
+  revealErrorNote,
+  umbralTarotHero,
+  umbralTarotView
+} from "@/components/web/umbral-tarot-state";
 import { orbita } from "@/theme/orbita";
 
 // La misma textura que ya usa el Umbral: las dos secciones son una sola
@@ -64,18 +70,24 @@ export function UmbralTarot({ selector }: { selector: ReactNode }) {
   });
 
   // Revelada, el encabezado nombra la carta en vez de anunciar el ritual (T3).
+  const [revealError, setRevealError] = useState<"limite_free" | "desconocido" | null>(null);
+  const limite = revealError === "limite_free";
   const hero = umbralTarotHero({
     mode: view.mode,
     nombre: carta?.nombre,
-    roman: carta ? cardById(carta.id)?.roman : undefined
+    roman: carta ? cardById(carta.id)?.roman : undefined,
+    limite
   });
 
   const revealCard = useMutation(proposedApi.revealCard);
-  // El tirón rechazado se NOMBRA. Antes se tragaba en silencio y la carta
-  // volvía al dorso sin explicación, indistinguible de un bug.
-  const [revealError, setRevealError] = useState<"limite_free" | "desconocido" | null>(null);
 
   async function pull(): Promise<boolean> {
+    // Con el límite alcanzado el dorso ya no gira: es la salida a Plus, y no
+    // se finge un tirón que sabemos imposible.
+    if (limite) {
+      router.push("/paywall");
+      return false;
+    }
     if (view.mode !== "cerrada" || !today) return false;
     setRevealError(null);
     try {
@@ -125,12 +137,20 @@ export function UmbralTarot({ selector }: { selector: ReactNode }) {
                 revealed={view.mode === "revelada"}
                 onReveal={pull}
                 disabled={view.disabled}
-                ctaLabel="TOCÁ PARA DARLA VUELTA"
+                ctaLabel={limite ? TAROT_LIMITE_FREE.cta : "TOCÁ PARA DARLA VUELTA"}
+                ctaMode={limite ? "unlock" : "reveal"}
               />
             )}
 
-            {/* El motivo, en una línea. La salida a Plus con su diseño completo
-                es otra tarjeta; lo que no puede pasar es que falle en silencio. */}
+            {/* Límite de Free: se explica, pero NO se agrega un segundo botón.
+                El dorso —ya rotulado como desbloqueo— es la única salida. */}
+            {limite ? (
+              <View style={styles.limite}>
+                <Text style={styles.limiteTitulo}>{TAROT_LIMITE_FREE.titulo}</Text>
+                <Text style={styles.limiteDetalle}>{TAROT_LIMITE_FREE.detalle}</Text>
+              </View>
+            ) : null}
+
             {revealErrorNote(revealError) ? (
               <Text style={styles.revealError}>{revealErrorNote(revealError)}</Text>
             ) : null}
@@ -169,6 +189,21 @@ const styles = StyleSheet.create({
     textAlign: "center"
   },
   state: { marginTop: orbita.spacing.xxl },
+  limite: { alignItems: "center", marginTop: orbita.spacing.xl },
+  limiteTitulo: {
+    color: orbita.colors.bone,
+    fontFamily: orbita.fonts.serif,
+    fontSize: 22,
+    marginBottom: orbita.spacing.sm,
+    textAlign: "center"
+  },
+  limiteDetalle: {
+    color: orbita.colors.muted,
+    fontFamily: orbita.fonts.body,
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: "center"
+  },
   revealError: {
     color: orbita.colors.copper,
     fontFamily: orbita.fonts.body,
