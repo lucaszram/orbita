@@ -12,7 +12,7 @@ import { useLiveApp } from "@/hooks/useLiveApp";
 import { useDailyGuide } from "@/services/dailyGuideStore";
 import { proposedApi } from "@/services/appRefs";
 import { cardById } from "@/content/tarotDeck";
-import { umbralTarotHero, umbralTarotView } from "@/components/web/umbral-tarot-state";
+import { revealErrorNote, umbralTarotHero, umbralTarotView } from "@/components/web/umbral-tarot-state";
 import { orbita } from "@/theme/orbita";
 
 // La misma textura que ya usa el Umbral: las dos secciones son una sola
@@ -71,19 +71,23 @@ export function UmbralTarot({ selector }: { selector: ReactNode }) {
   });
 
   const revealCard = useMutation(proposedApi.revealCard);
+  // El tirón rechazado se NOMBRA. Antes se tragaba en silencio y la carta
+  // volvía al dorso sin explicación, indistinguible de un bug.
+  const [revealError, setRevealError] = useState<"limite_free" | "desconocido" | null>(null);
 
   async function pull(): Promise<boolean> {
     if (view.mode !== "cerrada" || !today) return false;
+    setRevealError(null);
     try {
       await revealCard({ localDate: today });
       return true;
     } catch (e) {
-      // El límite Free de siete cartas lo nombra su propia tarjeta. Acá, como
-      // ante cualquier otro fallo, la carta vuelve al dorso: nada se muestra
-      // como si el giro hubiera salido bien.
-      if (revealFailureKind(e) !== "limite_free") {
-        console.warn("[orbita] daily.revealCard falló:", e instanceof Error ? e.message : e);
-      }
+      // SIEMPRE se loguea, incluido el límite: si no, un rechazo esperable es
+      // indistinguible de un bug para quien está mirando la consola.
+      const kind = revealFailureKind(e);
+      console.warn("[orbita] daily.revealCard rechazó el tirón:", kind, e instanceof Error ? e.message : e);
+      setRevealError(kind);
+      // La carta vuelve al dorso: nada se muestra como si el giro hubiera salido bien.
       return false;
     }
   }
@@ -124,6 +128,12 @@ export function UmbralTarot({ selector }: { selector: ReactNode }) {
                 ctaLabel="TOCÁ PARA DARLA VUELTA"
               />
             )}
+
+            {/* El motivo, en una línea. La salida a Plus con su diseño completo
+                es otra tarjeta; lo que no puede pasar es que falle en silencio. */}
+            {revealErrorNote(revealError) ? (
+              <Text style={styles.revealError}>{revealErrorNote(revealError)}</Text>
+            ) : null}
           </ReadingBlock>
         </ContentCanvas>
       </ScrollView>
@@ -158,5 +168,12 @@ const styles = StyleSheet.create({
     marginTop: orbita.spacing.sm,
     textAlign: "center"
   },
-  state: { marginTop: orbita.spacing.xxl }
+  state: { marginTop: orbita.spacing.xxl },
+  revealError: {
+    color: orbita.colors.copper,
+    fontFamily: orbita.fonts.body,
+    fontSize: 14,
+    marginTop: orbita.spacing.lg,
+    textAlign: "center"
+  }
 });

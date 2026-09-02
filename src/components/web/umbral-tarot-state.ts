@@ -53,3 +53,19 @@ export function umbralTarotHero(input: {
   }
   return { tagline: "Tu carta de hoy.", micro: "UNA CARTA POR DÍA" };
 }
+
+/**
+ * Qué se le dice a la persona cuando el tirón NO se persistió.
+ *
+ * Existe porque la primera versión se tragaba el rechazo en silencio: la carta
+ * giraba, volvía al dorso y no decía nada, y encima el caso del límite ni
+ * siquiera se logueaba. Un gesto que falla mudo es peor que uno que falla.
+ *
+ * El diseño completo de la salida a Plus (el dorso como CTA, el bloque de
+ * plan) es otra tarjeta; acá sólo se nombra lo que pasó, con la verdad.
+ */
+export function revealErrorNote(kind: "limite_free" | "desconocido" | null): string | null {
+  if (kind === "limite_free") return "Usaste tus siete cartas de Órbita Free.";
+  if (kind === "desconocido") return "No pudimos dar vuelta tu carta. Probá de nuevo.";
+  return null;
+}

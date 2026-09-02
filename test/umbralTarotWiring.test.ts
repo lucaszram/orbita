@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import test from "node:test";
-import { umbralTarotHero } from "../src/components/web/umbral-tarot-state";
+import { revealErrorNote, umbralTarotHero } from "../src/components/web/umbral-tarot-state";
 
 /**
  * Red sobre el CABLEADO, no sobre la lógica.
@@ -96,4 +96,22 @@ test("un arcano menor no tiene numeral y no inventa uno", () => {
 
 test("revelada sin nombre todavía no puede anunciar la carta", () => {
   assert.equal(umbralTarotHero({ mode: "revelada" }).tagline, "Tu carta de hoy.");
+});
+
+test("un tirón rechazado se nombra en vez de fallar mudo", () => {
+  // El bug que costó una sesión de depuración: el límite de Free se tragaba en
+  // silencio, la carta volvía al dorso y era indistinguible de un bug.
+  assert.equal(revealErrorNote("limite_free"), "Usaste tus siete cartas de Órbita Free.");
+  assert.equal(revealErrorNote("desconocido"), "No pudimos dar vuelta tu carta. Probá de nuevo.");
+  assert.equal(revealErrorNote(null), null);
+});
+
+test("el panel loguea TODO rechazo, incluido el esperable", () => {
+  const s = src("src/components/web/umbral-tarot.tsx");
+  const pull = s.slice(s.indexOf("async function pull"), s.indexOf("return (", s.indexOf("async function pull")));
+  assert.match(pull, /console\.warn/);
+  // La regresión concreta: el `console.warn` no puede quedar detrás de un
+  // condicional que excluya el límite.
+  assert.doesNotMatch(pull, /!==\s*"limite_free"/);
+  assert.match(pull, /setRevealError\(kind\)/);
 });
