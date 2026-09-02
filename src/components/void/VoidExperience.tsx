@@ -52,6 +52,21 @@ type VoidViewProps = {
   categories: VoidPromptCategory[];
   /** false cuando es raíz de tab (sin botón "volver"). */
   showBack: boolean;
+} & UmbralSectionSlot;
+
+/**
+ * El Umbral de la web vive dentro de un selector Preguntar · Tarot, y el frame
+ * lo pone DEBAJO de este encabezado — que es de esta pantalla, no del envoltorio.
+ * Estas dos props son la única forma de dibujarlo ahí sin duplicar el encabezado.
+ *
+ * Las dos son opcionales y sin ellas nada cambia: el nativo, que monta esta misma
+ * pantalla desde `app/(tabs)/vacio.tsx`, sigue viéndose exactamente igual.
+ */
+export type UmbralSectionSlot = {
+  /** Se agrega al eyebrow: `EL UMBRAL · PREGUNTAR`. Sin esto queda `EL UMBRAL`. */
+  sectionLabel?: string;
+  /** Se inserta debajo del encabezado, antes de las categorías. */
+  belowHeader?: ReactNode;
 };
 
 /**
@@ -59,7 +74,7 @@ type VoidViewProps = {
  * por el tab `app/(tabs)/vacio.tsx` (showBack=false) y por la ruta `app/reading/void.tsx`
  * (showBack=true). Live con sesión (cupo + sugeridas personalizadas); invitado → estado honesto.
  */
-export function VoidExperience({ showBack = true }: { showBack?: boolean }) {
+export function VoidExperience({ showBack = true, sectionLabel, belowHeader }: { showBack?: boolean } & UmbralSectionSlot) {
   const live = useLiveApp();
   const phase = sessionPhase(live);
   // Sin mocks: invitado confirmado → estado honesto; sesión resolviendo →
@@ -91,7 +106,7 @@ export function VoidExperience({ showBack = true }: { showBack?: boolean }) {
       </VoidStateFrame>
     );
   }
-  return <VoidLive showBack={showBack} />;
+  return <VoidLive showBack={showBack} sectionLabel={sectionLabel} belowHeader={belowHeader} />;
 }
 
 /** Marco mínimo (fondo Órbita) para los estados de carga/error del Umbral. */
@@ -104,7 +119,7 @@ function VoidStateFrame({ children }: { children: ReactNode }) {
   );
 }
 
-function VoidLive({ showBack }: { showBack: boolean }) {
+function VoidLive({ showBack, sectionLabel, belowHeader }: { showBack: boolean } & UmbralSectionSlot) {
   const ask = useAction(proposedApi.voidAsk);
   const today = useQuery(proposedApi.voidToday, {});
   const suggested = useAction(proposedApi.voidSuggested);
@@ -152,7 +167,7 @@ function VoidLive({ showBack }: { showBack: boolean }) {
   return <VoidView ask={ask} today={today} categories={categories} showBack={showBack} />;
 }
 
-function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
+function VoidView({ ask, today, categories, showBack, sectionLabel, belowHeader }: VoidViewProps) {
   const insets = useSafeAreaInsets();
   const fontsLoaded = useOrbitaFonts();
   const [phase, setPhase] = useState<Phase>("entrada");
@@ -273,10 +288,12 @@ function VoidView({ ask, today, categories, showBack }: VoidViewProps) {
         <ReadingBlock fill center>
         <View style={styles.entrada}>
           <View style={styles.entradaHead}>
-            <Text style={styles.eyebrow}>EL UMBRAL</Text>
+            <Text style={styles.eyebrow}>{sectionLabel ? `EL UMBRAL · ${sectionLabel}` : "EL UMBRAL"}</Text>
             <Text style={styles.tagline}>Cruzá con una pregunta.</Text>
             <Text style={[styles.microMono, noneLeft && styles.microMonoCopper]}>{counterLabel}</Text>
           </View>
+
+          {belowHeader}
 
           <View style={styles.tabs}>
             {categories.map((c) => {
