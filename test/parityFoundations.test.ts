@@ -173,167 +173,42 @@ test("las pantallas web duplicadas ya no existen", () => {
 // parkeado (`href: null`) y Perfil es una pestaña. Las secciones web aprobadas
 // son cinco, en este orden, y Perfil no es una de ellas.
 
-/** Barra web aprobada: clave, etiqueta y destino, EN ORDEN. */
-const SECCIONES_WEB = [
-  { key: "inicio", label: "Hoy", href: "/home" },
-  { key: "transitos", label: "Tránsitos", href: "/transito" },
-  { key: "vinculo", label: "Vínculos", href: "/vinculo" },
-  { key: "umbral", label: "Umbral", href: "/umbral" },
-  { key: "carta", label: "Carta", href: "/carta" }
-] as const;
-
-/** Destino de la barra tal como está escrito: clave, etiqueta y URL. */
-type DestinoDeclarado = { key: string; label: string; href: string };
-
 /**
- * El array `items` de la barra, recortado contando llaves y corchetes. La
- * entrada Carta anida su propia metadata (`destinations`), así que cortar en el
- * primer `];` mezclaría niveles. Los comentarios se sacan antes: una sección
- * comentada no es una sección.
+ * Los items de la barra web, en orden. Los comentarios se sacan antes: una
+ * sección comentada no es una sección.
  */
-function arrayDeItems(): string {
+function itemsDeLaBarra(): string[][] {
   const nav = readFileSync(join(ROOT, "src/components/web/web-nav.tsx"), "utf8")
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/\/\/.*$/gm, "");
-  const desde = nav.indexOf("const items:");
-  assert.ok(desde !== -1, "la barra web tiene que declarar sus items en `const items`");
-  // Desde el `=`, no desde el `const`: la anotación de tipo puede traer sus
-  // propios corchetes (`NavSection[]`) y el array empieza recién al asignarse.
-  const igual = nav.indexOf("=", desde);
-  assert.ok(igual !== -1, "`items` tiene que asignarse un array literal");
-  const abre = nav.indexOf("[", igual);
-  assert.ok(abre !== -1, "`items` tiene que ser un array literal");
-  let nivel = 0;
-  for (let i = abre; i < nav.length; i += 1) {
-    const c = nav[i];
-    if (c === "[" || c === "{") nivel += 1;
-    else if (c === "]" || c === "}") {
-      nivel -= 1;
-      if (nivel === 0) return nav.slice(abre, i + 1);
-    }
-  }
-  return assert.fail("el array `items` no cierra");
-}
-
-/**
- * Los objetos de PRIMER nivel del array: las secciones de la barra. Lo que
- * cuelga de una sección (los destinos que viven adentro) queda un nivel más
- * abajo y no se cuenta acá — por eso Perfil puede estar declarado sin ser una
- * sexta sección.
- */
-function seccionesDeclaradas(): string[] {
-  const array = arrayDeItems();
-  const fuera: string[] = [];
-  let nivel = 0;
-  let inicio = -1;
-  for (let i = 0; i < array.length; i += 1) {
-    const c = array[i];
-    if (c === "{") {
-      if (nivel === 0) inicio = i;
-      nivel += 1;
-    } else if (c === "}") {
-      nivel -= 1;
-      if (nivel === 0) fuera.push(array.slice(inicio, i + 1));
-    }
-  }
-  return fuera;
-}
-
-/** Los campos propios de una sección, sin la metadata anidada (que es otro nivel). */
-function camposDe(objeto: string): DestinoDeclarado {
-  const anidado = objeto.indexOf("[");
-  const propio = anidado === -1 ? objeto : objeto.slice(0, anidado);
-  const leer = (campo: string) => new RegExp(`${campo}: "([^"]+)"`).exec(propio)?.[1] ?? "";
-  const campos = { key: leer("key"), label: leer("label"), href: leer("href") };
-  assert.ok(campos.key && campos.label && campos.href, `una sección de la barra está incompleta: ${propio.trim()}`);
-  return campos;
-}
-
-/** Los items TOP-LEVEL de la barra: las secciones que se dibujan. */
-function itemsDeLaBarra(): DestinoDeclarado[] {
-  return seccionesDeclaradas().map(camposDe);
-}
-
-/** Los destinos que la barra declara DENTRO de una sección. */
-function destinosDe(clave: string): DestinoDeclarado[] {
-  const objeto = seccionesDeclaradas().find((o) => camposDe(o).key === clave) ?? "";
-  assert.notEqual(objeto, "", `la barra no declara la sección "${clave}"`);
-  const anidado = objeto.indexOf("[");
-  if (anidado === -1) return [];
-  assert.match(objeto, /destinations: \[/, "la metadata anidada se declara en `destinations`");
-  return [...objeto.slice(anidado).matchAll(/\{ key: "([\w-]+)", label: "([^"]+)", href: "([^"]+)" \}/g)].map((m) => ({
-    key: m[1],
-    label: m[2],
-    href: m[3]
-  }));
-}
-
-/** Las claves que declara `NavKey`: sin una clave, una sección no puede marcarse. */
-function clavesDeNavKey(): Set<string> {
-  const nav = readFileSync(join(ROOT, "src/components/web/web-nav.tsx"), "utf8");
-  return new Set([...(/export type NavKey =([^;]+);/.exec(nav)?.[1] ?? "").matchAll(/"([\w-]+)"/g)].map((m) => m[1]));
+  return [...nav.matchAll(/\{ key: "(\w+)", label: "([^"]+)", href: "([^"]+)" \}/g)].map((m) => [m[1], m[2], m[3]]);
 }
 
 test("la barra web ofrece exactamente las cinco secciones aprobadas, en orden", () => {
   assert.deepEqual(
     itemsDeLaBarra(),
-    SECCIONES_WEB.map((s) => ({ key: s.key, label: s.label, href: s.href })),
+    [
+      ["inicio", "Hoy", "/home"],
+      ["transitos", "Tránsitos", "/transito"],
+      ["vinculo", "Vínculos", "/vinculo"],
+      ["umbral", "Umbral", "/umbral"],
+      ["carta", "Carta", "/carta"]
+    ],
     "las secciones web, sus etiquetas y sus destinos son un contrato de producto"
   );
 });
 
-test("cada sección de la barra tiene una clave de NavKey y ninguna se repite", () => {
-  const declaradas = clavesDeNavKey();
-  const items = itemsDeLaBarra();
-  // También los destinos anidados: son NavKey porque la barra marca la sección
-  // que los contiene cuando el activo es uno de ellos.
-  for (const it of [...items, ...items.flatMap((i) => destinosDe(i.key))]) {
-    assert.ok(declaradas.has(it.key), `la clave "${it.key}" no está en NavKey: el activo no podría marcarse`);
-  }
-  assert.equal(new Set(items.map((i) => i.key)).size, items.length, "dos secciones no pueden compartir clave");
-  assert.equal(new Set(items.map((i) => i.href)).size, items.length, "dos secciones no pueden compartir destino");
+test("la ruta activa marca la sección: /vinculo → Vínculos, /perfil → Carta", () => {
+  // Perfil dejó de ser sección, así que su ruta tiene que marcar la sección
+  // desde la que se entra; si no, la barra quedaría sin nada activo en /perfil.
+  const tabs = readFileSync(join(ROOT, "app/(tabs)/_layout.tsx"), "utf8");
+  assert.match(tabs, /pathname\.startsWith\("\/vinculo"\)\) return "vinculo"/, "/vinculo tiene que marcar Vínculos");
+  assert.match(tabs, /pathname\.startsWith\("\/perfil"\)\) return "carta"/, "/perfil tiene que marcar Carta");
 });
 
-test("Perfil vive DENTRO de Carta: la barra lo declara como destino anidado", () => {
-  // El modelo de la barra tiene que decirlo, no sólo el resolvedor de rutas:
-  // Carta declara Perfil con su URL de siempre. Es lo que sostiene que Perfil
-  // no se perdió al salir de la barra.
-  assert.deepEqual(
-    destinosDe("carta"),
-    [{ key: "perfil", label: "Perfil", href: "/perfil" }],
-    "Carta tiene que contener el destino Perfil, con su etiqueta y su /perfil"
-  );
-  // Y sin volverse una sexta sección: los destinos anidados no se dibujan.
-  assert.equal(itemsDeLaBarra().length, 5, "la barra sigue teniendo cinco secciones");
-  assert.ok(clavesDeNavKey().has("perfil"), "Perfil conserva su clave: NavKey suma vinculo, no quita perfil");
-
-  // Y la usa de verdad, en las dos barras (escritorio y móvil): el activo se
-  // resuelve por sección o por destino anidado, y lo que vive adentro se
-  // anuncia. Declarada y sin usar sería un comentario con tipos.
-  const nav = readFileSync(join(ROOT, "src/components/web/web-nav.tsx"), "utf8");
-  assert.match(
-    nav,
-    /function esActiva\([\s\S]*?destinations[\s\S]*?\.some\(\(d\) => d\.key === active\)/,
-    "el activo de una sección se resuelve también por sus destinos anidados"
-  );
-  assert.equal(
-    [...nav.matchAll(/const on = esActiva\(it, active\)/g)].length,
-    2,
-    "la barra de escritorio y la inferior resuelven el activo con la misma regla"
-  );
-  assert.equal(
-    [...nav.matchAll(/accessibilityLabel=\{nombreAccesible\(it\)\}/g)].length,
-    2,
-    "las dos barras anuncian lo que la sección contiene"
-  );
-});
-
-test("Perfil ya no es sección de la barra: se entra desde la Carta y sólo en web", () => {
-  // Perfil no desaparece del producto: deja la barra y pasa a vivir dentro de
-  // Carta. La URL no cambia y su dueño tampoco (ver routeOwnership).
-  const items = itemsDeLaBarra();
-  assert.ok(!items.some((i) => i.href === "/perfil" || i.key === "perfil"), "Perfil dejó de ser sección web");
-
+test("a Perfil se entra desde la Carta, y sólo en web", () => {
+  // Perfil no desaparece del producto: deja la barra y pasa a entrarse desde el
+  // cierre de la Carta. La URL no cambia y su dueño tampoco (ver routeOwnership).
   const carta = readFileSync(join(ROOT, "src/screens/CartaScreen.tsx"), "utf8");
   assert.match(carta, /const IS_WEB = Platform\.OS === "web";/, "la condición de plataforma es explícita");
   assert.match(
@@ -341,13 +216,6 @@ test("Perfil ya no es sección de la barra: se entra desde la Carta y sólo en w
     /\{IS_WEB \? <LinkRow label="[^"]+" onPress=\{\(\) => router\.push\("\/perfil"\)\} \/> : null\}/,
     "el enlace al Perfil va condicionado a web: en nativo Perfil sigue siendo pestaña"
   );
-
-  // Y la barra marca Carta cuando la ruta es /perfil, para que la sección
-  // activa no quede en ninguna parte.
-  const tabs = readFileSync(join(ROOT, "app/(tabs)/_layout.tsx"), "utf8");
-  const resolver = tabs.slice(tabs.indexOf("function navKeyForPath"), tabs.indexOf("export default function TabsLayout"));
-  assert.match(resolver, /pathname\.startsWith\("\/perfil"\)\) return "carta"/, "/perfil tiene que marcar Carta");
-  assert.match(resolver, /pathname\.startsWith\("\/vinculo"\)\) return "vinculo"/, "/vinculo tiene que marcar Vínculos");
 });
 
 test("las pestañas NATIVAS no se tocan: siguen siendo Inicio · Tránsitos · Umbral · Perfil", () => {

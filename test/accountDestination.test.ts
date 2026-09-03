@@ -301,7 +301,18 @@ test("en móvil no hay barra superior, sólo la inferior fija con área segura",
   assert.ok(/contentSafeBottom/.test(shell), "y lo hace como padding del contenido, no con un View suelto");
 });
 
-test("Perfil es siempre /perfil, nunca el login", () => {
-  const nav = readFileSync(join(ROOT, "src/components/web/web-nav.tsx"), "utf8");
-  assert.ok(/\{ key: "perfil", label: "Perfil", href: "\/perfil" \}/.test(nav));
+test("Perfil sale de la barra sin dejar de ser /perfil ni volverse el login", () => {
+  // El destino de la cuenta no se movió: sigue siendo `/perfil`. Lo que cambió
+  // es desde dónde se entra — ya no es una de las cinco secciones de la barra,
+  // sino el cierre de la Carta.
+  const nav = sinComentarios(readFileSync(join(ROOT, "src/components/web/web-nav.tsx"), "utf8"));
+  for (const rastro of ['key: "perfil"', 'label: "Perfil"', 'href: "/perfil"']) {
+    assert.ok(!nav.includes(rastro), `Perfil ya no es una sección de la barra: ${rastro}`);
+  }
+  const carta = sinComentarios(readFileSync(join(ROOT, "src/screens/CartaScreen.tsx"), "utf8"));
+  assert.match(
+    carta,
+    /IS_WEB \?[\s\S]*?router\.push\("\/perfil"\)/,
+    "la cuenta se abre en /perfil desde la Carta, y sólo en web"
+  );
 });
