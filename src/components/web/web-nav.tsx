@@ -27,19 +27,29 @@ const colors = {
  */
 const APP_ICON = require("../../../assets/orbita/optimized/brand/orbita_app_icon_web.png");
 
-export type NavKey = "inicio" | "transitos" | "umbral" | "perfil" | "carta" | "diario";
+export type NavKey = "inicio" | "transitos" | "vinculo" | "umbral" | "carta" | "perfil" | "diario";
 
 /**
- * Misma arquitectura de información que el nativo (`app/(tabs)/_layout.tsx`):
- * Inicio · Tránsitos · Umbral · Perfil. La web tenía Hoy/Carta/Tránsitos/Diario,
- * que omitía el Umbral y promovía dos destinos secundarios a sección principal.
- * Carta y Diario siguen siendo destinos contextuales, no secciones.
+ * Las CINCO secciones de la web, en este orden: Hoy · Tránsitos · Vínculos ·
+ * Umbral · Carta.
+ *
+ * No copian la barra nativa (`app/(tabs)/_layout.tsx`), que responde a otras
+ * restricciones: ahí Vínculo está parkeado (`href: null`) y Perfil es pestaña.
+ * En web Vínculo ya tiene una ruta que se puede abrir, y Perfil dejó de ser
+ * sección: se entra desde el cierre de la Carta (`src/screens/CartaScreen.tsx`)
+ * y el layout marca Carta cuando la ruta es `/perfil`.
+ *
+ * La clave de la primera sección sigue siendo `inicio` porque es la que declaran
+ * las rutas web que montan el shell por su cuenta (`app/home.tsx`); la etiqueta
+ * aprobada es «Hoy». `perfil` y `diario` siguen en `NavKey` sin item: son
+ * destinos contextuales que un shell puede pasar como activo (`app/diario.tsx`).
  */
 const items: Array<{ key: NavKey; label: string; href: string }> = [
-  { key: "inicio", label: "Inicio", href: "/home" },
+  { key: "inicio", label: "Hoy", href: "/home" },
   { key: "transitos", label: "Tránsitos", href: "/transito" },
+  { key: "vinculo", label: "Vínculos", href: "/vinculo" },
   { key: "umbral", label: "Umbral", href: "/umbral" },
-  { key: "perfil", label: "Perfil", href: "/perfil" }
+  { key: "carta", label: "Carta", href: "/carta" }
 ];
 
 /**

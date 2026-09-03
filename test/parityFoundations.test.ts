@@ -167,12 +167,73 @@ test("las pantallas web duplicadas ya no existen", () => {
   }
 });
 
-test("la navegación web tiene la misma arquitectura que las pestañas nativas", () => {
-  const nav = readFileSync(join(ROOT, "src/components/web/web-nav.tsx"), "utf8");
-  const seccionesWeb = [...nav.matchAll(/\{ key: "(\w+)", label: "([^"]+)", href/g)].map((m) => m[2]);
+// --- El contrato de navegación de la web ------------------------------------
+// La web ya no copia la barra nativa. El nativo sigue siendo la autoridad de
+// producto, pero su barra responde a otras restricciones: ahí Vínculo está
+// parkeado (`href: null`) y Perfil es una pestaña. Las secciones web aprobadas
+// son cinco, en este orden, y Perfil no es una de ellas.
+
+/**
+ * Los items de la barra web, en orden. Los comentarios se sacan antes: una
+ * sección comentada no es una sección.
+ */
+function itemsDeLaBarra(): string[][] {
+  const nav = readFileSync(join(ROOT, "src/components/web/web-nav.tsx"), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/.*$/gm, "");
+  return [...nav.matchAll(/\{ key: "(\w+)", label: "([^"]+)", href: "([^"]+)" \}/g)].map((m) => [m[1], m[2], m[3]]);
+}
+
+test("la barra web ofrece exactamente las cinco secciones aprobadas, en orden", () => {
+  assert.deepEqual(
+    itemsDeLaBarra(),
+    [
+      ["inicio", "Hoy", "/home"],
+      ["transitos", "Tránsitos", "/transito"],
+      ["vinculo", "Vínculos", "/vinculo"],
+      ["umbral", "Umbral", "/umbral"],
+      ["carta", "Carta", "/carta"]
+    ],
+    "las secciones web, sus etiquetas y sus destinos son un contrato de producto"
+  );
+});
+
+test("la ruta activa marca la sección: /vinculo → Vínculos, /perfil → Carta", () => {
+  // Perfil dejó de ser sección, así que su ruta tiene que marcar la sección
+  // desde la que se entra; si no, la barra quedaría sin nada activo en /perfil.
   const tabs = readFileSync(join(ROOT, "app/(tabs)/_layout.tsx"), "utf8");
-  const seccionesNativas = [...tabs.matchAll(/<Tabs\.Screen name="\w+" options=\{\{ title: "([^"]+)" \}\} \/>/g)].map((m) => m[1]);
-  assert.deepEqual(seccionesWeb, seccionesNativas, "web y nativo deben ofrecer las mismas secciones, en el mismo orden");
+  assert.match(tabs, /pathname\.startsWith\("\/vinculo"\)\) return "vinculo"/, "/vinculo tiene que marcar Vínculos");
+  assert.match(tabs, /pathname\.startsWith\("\/perfil"\)\) return "carta"/, "/perfil tiene que marcar Carta");
+});
+
+test("a Perfil se entra desde la Carta, y sólo en web", () => {
+  // Perfil no desaparece del producto: deja la barra y pasa a entrarse desde el
+  // cierre de la Carta. La URL no cambia y su dueño tampoco (ver routeOwnership).
+  const carta = readFileSync(join(ROOT, "src/screens/CartaScreen.tsx"), "utf8");
+  assert.match(carta, /const IS_WEB = Platform\.OS === "web";/, "la condición de plataforma es explícita");
+  assert.match(
+    carta,
+    /\{IS_WEB \? <LinkRow label="[^"]+" onPress=\{\(\) => router\.push\("\/perfil"\)\} \/> : null\}/,
+    "el enlace al Perfil va condicionado a web: en nativo Perfil sigue siendo pestaña"
+  );
+});
+
+test("las pestañas NATIVAS no se tocan: siguen siendo Inicio · Tránsitos · Umbral · Perfil", () => {
+  // El contrato web es propio, pero no puede pagarse cambiando el nativo, que
+  // es la autoridad de producto (Build 30).
+  const tabs = readFileSync(join(ROOT, "app/(tabs)/_layout.tsx"), "utf8");
+  const seccionesNativas = [...tabs.matchAll(/<Tabs\.Screen name="\w+" options=\{\{ title: "([^"]+)" \}\} \/>/g)].map(
+    (m) => m[1]
+  );
+  assert.deepEqual(seccionesNativas, ["Inicio", "Tránsitos", "Umbral", "Perfil"]);
+  // Carta y Vínculo siguen fuera de la barra nativa, con ruta pero sin pestaña.
+  for (const fuera of ["carta", "vinculo"]) {
+    assert.match(
+      tabs,
+      new RegExp(`<Tabs\\.Screen name="${fuera}" options=\\{\\{ href: null \\}\\} />`),
+      `${fuera} tiene que seguir parkeado en la barra nativa`
+    );
+  }
 });
 
 test("el Umbral es una sección de la web, no una ruta olvidada", () => {
