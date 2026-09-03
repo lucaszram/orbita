@@ -1,5 +1,39 @@
 # Current Task
 
+## Umbral Tarot — el ritual sin la regla ni el rótulo repetidos (CORE-131, 2026-09-02)
+
+**Objetivo:** ocultar en el Umbral la regla superior y el rótulo
+`TU CARTA DE HOY` que `CartaDelDia` dibuja para sí: ahí partían al medio una
+sección que ya se encabeza con `EL UMBRAL · TAROT` y repetían lo mismo. Home y
+nativo no se ven afectados.
+
+**Implementación:** `CartaDelDia` suma la prop `variant`, con `section` por
+default —la presentación de siempre, regla superior más eyebrow— y `embedded`
+usada únicamente por `src/components/web/umbral-tarot.tsx`, que monta sólo el
+ritual. Gesto, copy, estados y contenido quedan iguales, y la regla sigue en el
+componente para la variante por default. `test/umbralTarotWiring.test.ts` suma
+regresiones: el Umbral pasa `variant="embedded"`, `embedded` es lo único que
+apaga esos dos elementos y la Home no opta por ocultar nada.
+
+**Verificación independiente:** en verde `pnpm typecheck`, suite completa
+**1077/1077**, `pnpm build:web` fresco y `pnpm check:web-export` con 31,99 MB de
+export, imagen máxima 479,3 KB y JS gzip 980,4 KB; `git diff --check` limpio.
+
+**Estado remoto:** el arreglo funcional quedó en el commit `634ec65` y está
+pusheado a la rama `orb/core-131-umbral-tarot-web`, la de la PR 85. La validación
+terminó exitosa en GitHub, en Vercel Preview Comments y en los dos Previews de
+Vercel, `orbita` y `horoscopo`. La PR está abierta, no es draft y GitHub la
+reporta `MERGEABLE` / `CLEAN`.
+
+**Pendiente:** la verificación visual del estado Free 7/7 en el Umbral no se
+ejecutó. No existe fixture ni modo local que lo reproduzca, y prepararlo exigiría
+una mutación externa en Convex Development que no está autorizada. Dada la
+instrucción de Lucas de dejar la PR lista para que él la mergee, y dado que esa
+verificación estaba condicionada a que existiera una vía segura, no se hizo
+ninguna mutación: queda registrada como pendiente y no bloquea este handoff.
+
+**Alcance:** producción, cuentas y datos siguen intactos. El merge lo hará Lucas.
+
 ## Tarot Free — la carta misma abre Plus al llegar al límite (2026-08-12)
 
 **Objetivo:** evitar el estado confuso donde la octava carta quedaba boca abajo

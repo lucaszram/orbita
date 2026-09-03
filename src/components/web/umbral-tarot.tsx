@@ -1,0 +1,239 @@
+import { type ReactNode, useEffect, useState } from "react";
+import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { router } from "expo-router";
+import { useMutation, useQuery } from "convex/react";
+import { CartaDelDia } from "@/components/home/CartaDelDia";
+import { ContentCanvas } from "@/components/orbita/ContentCanvas";
+import { ReadingBlock } from "@/components/orbita/Layout";
+import { ErrorState } from "@/components/orbita/states";
+import { revealFailureKind } from "@/domain/ritual";
+import { useCanonicalLocalDate } from "@/hooks/useDailyContext";
+import { useLiveApp } from "@/hooks/useLiveApp";
+import { useDailyGuide } from "@/services/dailyGuideStore";
+import { proposedApi } from "@/services/appRefs";
+import { cardById } from "@/content/tarotDeck";
+import {
+  TAROT_LIMITE_FREE,
+  revealErrorNote,
+  umbralTarotHero,
+  umbralTarotView
+} from "@/components/web/umbral-tarot-state";
+import { orbita } from "@/theme/orbita";
+
+// La misma textura que ya usa el Umbral: las dos secciones son una sola
+// superficie, no dos pantallas pegadas.
+const TEXTURE = require("../../../assets/orbita/optimized/core/orbita_daily_texture_b.jpg");
+
+/**
+ * Umbral › Tarot — una carta por día.
+ *
+ * No es una pantalla nueva de Tarot: es el ritual de siempre (`CartaDelDia`)
+ * montado en la web. Por eso no hay botón «Sacar mi carta» ni «Dar vuelta»: la
+ * carta boca abajo respira y se da vuelta tocándola en su propio lugar, con su
+ * flip 3D y el rótulo encima.
+ *
+ * Todo el dato es del backend: `daily.getGuide` sortea y redacta, `revealCard`
+ * persiste el tirón (idempotente, una vez por día). El cliente no sortea ni
+ * redacta nada.
+ *
+ * La tira de días anteriores y el estado de límite de Free son otras dos
+ * tarjetas: acá la carta que falla vuelve al dorso, sin inventar explicación.
+ */
+export function UmbralTarot({ selector }: { selector: ReactNode }) {
+  const { isLive, isAuthLoading, auth } = useLiveApp();
+  // El día lo decide el servidor (zona natal), no el reloj del navegador.
+  const today = useCanonicalLocalDate();
+
+  const userKey = isLive ? auth?.userId ?? null : null;
+  // Misma clave (usuario, fecha) que la Home: abrir el Umbral no dispara una
+  // segunda corrida de una action que en frío tarda ~25 segundos.
+  const { state: dailyState, retry: retryDaily } = useDailyGuide(
+    today ? userKey : null,
+    today ?? "",
+    isAuthLoading
+  );
+  const daily = dailyState.status === "ready" ? dailyState.payload : null;
+  const carta = daily?.carta;
+
+  // `revealedAt` sale de la misma query reactiva que ya usa la Home: después de
+  // `revealCard` la pantalla se entera sola.
+  const strip = useQuery(
+    proposedApi.dailyStrip,
+    isLive && today ? { from: today, to: today } : "skip"
+  );
+  const revealed = Boolean(strip?.find((d) => d.localDate === today)?.revealed);
+  const view = umbralTarotView({
+    status: dailyState.status,
+    hasCarta: carta != null,
+    revealed
+  });
+
+  // Revelada, el encabezado nombra la carta en vez de anunciar el ritual (T3).
+  const [revealError, setRevealError] = useState<"limite_free" | "desconocido" | null>(null);
+  const limite = revealError === "limite_free";
+  const hero = umbralTarotHero({
+    mode: view.mode,
+    nombre: carta?.nombre,
+    roman: carta ? cardById(carta.id)?.roman : undefined,
+    limite
+  });
+
+  const revealCard = useMutation(proposedApi.revealCard);
+
+  // El aviso de fallo desconocido se borra solo cuando el mundo cambia: la
+  // carta puede revelarse desde el nativo o desde otra pestaña (`getStrip` es
+  // reactiva), y ahí la pantalla se contradecía a sí misma —cara revelada con
+  // «no pudimos darla vuelta» debajo—. El límite NO se limpia acá: es
+  // vitalicio, no por período, y sigue siendo cierto mañana.
+  useEffect(() => {
+    setRevealError((prev) => (prev === "limite_free" ? prev : null));
+  }, [view.mode, today]);
+
+  async function pull(): Promise<boolean> {
+    // Con el límite alcanzado el dorso ya no gira: es la salida a Plus, y no
+    // se finge un tirón que sabemos imposible.
+    if (limite) {
+      router.push("/paywall");
+      return false;
+    }
+    if (view.mode !== "cerrada" || !today) return false;
+    setRevealError(null);
+    try {
+      await revealCard({ localDate: today });
+      return true;
+    } catch (e) {
+      // SIEMPRE se loguea, incluido el límite: si no, un rechazo esperable es
+      // indistinguible de un bug para quien está mirando la consola.
+      const kind = revealFailureKind(e);
+      console.warn("[orbita] daily.revealCard rechazó el tirón:", kind, e instanceof Error ? e.message : e);
+      setRevealError(kind);
+      // La carta vuelve al dorso: nada se muestra como si el giro hubiera salido bien.
+      return false;
+    }
+  }
+
+  return (
+    <View style={styles.screen}>
+      <Image source={TEXTURE} style={styles.bg} resizeMode="cover" />
+      <LinearGradient
+        colors={["rgba(10,11,14,0.3)", "rgba(10,11,14,0.55)", "rgba(10,11,14,0.82)"]}
+        locations={[0, 0.5, 1]}
+        style={StyleSheet.absoluteFill}
+      />
+
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <ContentCanvas variant="immersive">
+          <ReadingBlock center>
+            <View style={styles.head}>
+              <Text style={styles.eyebrow}>EL UMBRAL · TAROT</Text>
+              <Text style={styles.tagline}>{hero.tagline}</Text>
+              <Text style={styles.micro}>{hero.micro}</Text>
+            </View>
+
+            {/* El selector va debajo del encabezado de la sección, como en el frame. */}
+            {selector}
+
+            {view.mode === "error" ? (
+              <View style={styles.state}>
+                <ErrorState onRetry={retryDaily} />
+              </View>
+            ) : (
+              /* `CartaDelDia` es el ritual canónico, compartido con la Home. No
+                 se edita ni se reimplementa: se monta. `embedded` apaga el
+                 encabezado propio del bloque —la regla superior y el rótulo
+                 "TU CARTA DE HOY"—, que acá partía la sección al medio y repetía
+                 lo que ya dice "EL UMBRAL · TAROT" arriba. */
+              <CartaDelDia
+                carta={carta}
+                revealed={view.mode === "revelada"}
+                onReveal={pull}
+                disabled={view.disabled}
+                ctaLabel={limite ? TAROT_LIMITE_FREE.cta : "TOCÁ PARA DARLA VUELTA"}
+                ctaMode={limite ? "unlock" : "reveal"}
+                variant="embedded"
+              />
+            )}
+
+            {/* Límite de Free: se explica, pero NO se agrega un segundo botón.
+                El dorso —ya rotulado como desbloqueo— es la única salida. */}
+            {limite ? (
+              <View style={styles.limite}>
+                <Text style={styles.limiteTitulo}>{TAROT_LIMITE_FREE.titulo}</Text>
+                <Text style={styles.limiteDetalle}>{TAROT_LIMITE_FREE.detalle}</Text>
+              </View>
+            ) : null}
+
+            {revealErrorNote(revealError) ? (
+              <Text style={styles.revealError}>{revealErrorNote(revealError)}</Text>
+            ) : null}
+          </ReadingBlock>
+        </ContentCanvas>
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  screen: { backgroundColor: orbita.colors.background, flex: 1 },
+  bg: { ...StyleSheet.absoluteFillObject, height: "100%", opacity: 0.5, width: "100%" },
+  scroll: { paddingBottom: orbita.spacing.xxl, paddingTop: orbita.spacing.xl },
+  head: { alignItems: "center", marginBottom: orbita.spacing.lg },
+  eyebrow: {
+    color: orbita.colors.copper,
+    fontFamily: orbita.fonts.monoMedium,
+    fontSize: 11,
+    letterSpacing: 1.6,
+    textAlign: "center"
+  },
+  tagline: {
+    color: orbita.colors.bone,
+    fontFamily: orbita.fonts.serif,
+    fontSize: 26,
+    marginTop: orbita.spacing.sm,
+    textAlign: "center"
+  },
+  micro: {
+    color: orbita.colors.muted,
+    fontFamily: orbita.fonts.mono,
+    fontSize: 11,
+    letterSpacing: 1.6,
+    marginTop: orbita.spacing.sm,
+    textAlign: "center"
+  },
+  state: { marginTop: orbita.spacing.xxl },
+  // Superficie tomada del frame T5 (`1887:4643`): fill #12141A, hairline hueso
+  // al 14%, radio 18 y padding 24/22. No es decoración: sin contenedor el
+  // bloque se confunde con la textura del fondo.
+  limite: {
+    alignItems: "center",
+    backgroundColor: "#12141A",
+    borderColor: "rgba(244,238,228,0.14)",
+    borderRadius: 18,
+    borderWidth: 1,
+    marginTop: orbita.spacing.xl,
+    paddingHorizontal: 22,
+    paddingVertical: 24
+  },
+  limiteTitulo: {
+    color: orbita.colors.bone,
+    fontFamily: orbita.fonts.serif,
+    fontSize: 22,
+    marginBottom: orbita.spacing.sm,
+    textAlign: "center"
+  },
+  limiteDetalle: {
+    color: orbita.colors.muted,
+    fontFamily: orbita.fonts.body,
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: "center"
+  },
+  revealError: {
+    color: orbita.colors.copper,
+    fontFamily: orbita.fonts.body,
+    fontSize: 14,
+    marginTop: orbita.spacing.lg,
+    textAlign: "center"
+  }
+});

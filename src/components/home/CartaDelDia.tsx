@@ -38,7 +38,8 @@ export function CartaDelDia({
   disabled,
   ctaLabel,
   ctaSub,
-  ctaMode = "reveal"
+  ctaMode = "reveal",
+  variant = "section"
 }: {
   /** Carta del día, del backend. `undefined` mientras carga o sin sesión. */
   carta?: DailyCarta;
@@ -58,6 +59,13 @@ export function CartaDelDia({
   /** `unlock` convierte el dorso en la salida a Plus: ejecuta la acción sin
    *  fingir un nuevo giro ni dejar la carta en un estado intermedio. */
   ctaMode?: "reveal" | "unlock";
+  /** Cómo se presenta el bloque dentro de su pantalla. `section` (default) es la
+   *  Home y el nativo: regla superior que lo separa de la sección anterior, y el
+   *  rótulo "TU CARTA DE HOY" encima. `embedded` monta SOLO el ritual, para una
+   *  superficie que ya se presentó sola: el Umbral web encabeza con
+   *  "EL UMBRAL · TAROT" y ahí la regla partía su propia sección al medio y el
+   *  rótulo decía dos veces lo mismo. No cambia nada del gesto ni del contenido. */
+  variant?: "section" | "embedded";
 }) {
   // 0 = boca abajo, 1 = dada vuelta. Es la fuente de verdad de TODA la animación.
   const flip = useSharedValue(revealed && carta ? 1 : 0);
@@ -166,10 +174,13 @@ export function CartaDelDia({
       ? "Desbloquear el Tarot diario con Órbita Plus"
       : "Tocá para sacar tu carta de hoy";
   const closedActionDisabled = Boolean(disabled) || pulling || !carta;
+  // Montada dentro de una sección que ya tiene encabezado propio, el bloque no
+  // dibuja el suyo: ni la regla superior ni el rótulo.
+  const embedded = variant === "embedded";
 
   return (
-    <Section style={styles.section}>
-      <Eyebrow>TU CARTA DE HOY</Eyebrow>
+    <Section style={embedded ? undefined : styles.section}>
+      {embedded ? null : <Eyebrow>TU CARTA DE HOY</Eyebrow>}
 
       <View style={styles.center}>
         <View style={styles.stage}>
