@@ -23,6 +23,9 @@ import {
 
 const ROOT = resolve(import.meta.dirname, "..");
 const src = (p: string) => readFileSync(join(ROOT, p), "utf8");
+/** Un comentario no es conducta: una afirmación no puede pasar por citarlo. */
+const sinComentarios = (s: string) =>
+  s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
 /** El bloque JSX de `<Nombre ... />`, para mirar qué props recibe de verdad. */
 function jsxProps(source: string, component: string): string {
@@ -146,6 +149,33 @@ test("el bloque del límite tiene la superficie del frame T5", () => {
   assert.match(bloque, /borderRadius: 18/);
   assert.match(bloque, /borderWidth: 1/);
   assert.match(bloque, /paddingHorizontal: 22/);
+});
+
+test("el Umbral monta el ritual sin la regla ni el rótulo que ya dijo arriba", () => {
+  const s = sinComentarios(src("src/components/web/umbral-tarot.tsx"));
+  // Lo que el Umbral conserva: su encabezado de sección y el selector.
+  assert.match(s, /EL UMBRAL · TAROT/);
+  assert.match(s, /\{selector\}/);
+  // Y lo que deja de dibujar: el encabezado propio de `CartaDelDia`.
+  assert.match(jsxProps(s, "CartaDelDia"), /variant="embedded"/);
+});
+
+test("`embedded` es lo único que apaga la regla superior y el rótulo", () => {
+  const carta = sinComentarios(src("src/components/home/CartaDelDia.tsx"));
+  assert.match(carta, /const embedded = variant === "embedded"/);
+  // Los dos elementos del brief, cada uno detrás de la misma decisión.
+  assert.match(carta, /<Section style=\{embedded \? undefined : styles\.section\}>/);
+  assert.match(carta, /\{embedded \? null : <Eyebrow>TU CARTA DE HOY<\/Eyebrow>\}/);
+  // La regla no se borró del componente: sigue ahí para la variante de siempre.
+  assert.match(carta, /section: \{ borderTopColor: orbita\.colors\.line, borderTopWidth: 1 \}/);
+});
+
+test("el default conserva la variante existente: Home y nativo no cambian", () => {
+  // Si el default fuera `embedded`, este parche visual del Umbral se llevaría
+  // puesta la separación de la Home sin que nadie lo pidiera.
+  assert.match(sinComentarios(src("src/components/home/CartaDelDia.tsx")), /variant = "section"/);
+  const home = sinComentarios(src("src/screens/HomeScreen.tsx"));
+  assert.doesNotMatch(jsxProps(home, "CartaDelDia"), /variant=/, "la Home no opta por ocultar nada");
 });
 
 test("el aviso de fallo no sobrevive a que la carta se revele por otra vía", () => {

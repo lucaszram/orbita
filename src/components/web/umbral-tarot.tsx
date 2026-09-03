@@ -140,7 +140,10 @@ export function UmbralTarot({ selector }: { selector: ReactNode }) {
               </View>
             ) : (
               /* `CartaDelDia` es el ritual canónico, compartido con la Home. No
-                 se edita ni se reimplementa: se monta. */
+                 se edita ni se reimplementa: se monta. `embedded` apaga el
+                 encabezado propio del bloque —la regla superior y el rótulo
+                 "TU CARTA DE HOY"—, que acá partía la sección al medio y repetía
+                 lo que ya dice "EL UMBRAL · TAROT" arriba. */
               <CartaDelDia
                 carta={carta}
                 revealed={view.mode === "revelada"}
@@ -148,6 +151,7 @@ export function UmbralTarot({ selector }: { selector: ReactNode }) {
                 disabled={view.disabled}
                 ctaLabel={limite ? TAROT_LIMITE_FREE.cta : "TOCÁ PARA DARLA VUELTA"}
                 ctaMode={limite ? "unlock" : "reveal"}
+                variant="embedded"
               />
             )}
 
