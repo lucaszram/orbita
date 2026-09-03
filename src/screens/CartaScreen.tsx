@@ -6,7 +6,7 @@
  * fino sobre este módulo; no se duplica ninguna pantalla por plataforma.
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { useAction, useQuery } from "convex/react";
 
@@ -35,6 +35,14 @@ import {
   type ValuesMapPayload
 } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
+
+/**
+ * En web, Perfil dejó de ser una sección de la barra: vive dentro de la Carta,
+ * y el cierre de esta pantalla es su única entrada desde el chrome. En nativo
+ * Perfil sigue siendo una pestaña, así que ahí ese enlace no se dibuja: la
+ * pantalla compartida no cambia en nada más.
+ */
+const IS_WEB = Platform.OS === "web";
 
 /**
  * Carta natal — hub de entrada post-onboarding. Junta la carta (rueda real +
@@ -449,6 +457,7 @@ function CartaView({
       <Divider style={{ marginTop: 0 }} />
       <View style={styles.links}>
         <LinkRow label="TRÁNSITOS DE HOY" onPress={() => router.push("/(tabs)/transitos")} />
+        {IS_WEB ? <LinkRow label="PERFIL Y CUENTA" onPress={() => router.push("/perfil")} /> : null}
       </View>
       <Note>{payload.accuracy}</Note>
       {payload.limitations.map((l) => (

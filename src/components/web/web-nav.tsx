@@ -27,20 +27,69 @@ const colors = {
  */
 const APP_ICON = require("../../../assets/orbita/optimized/brand/orbita_app_icon_web.png");
 
-export type NavKey = "inicio" | "transitos" | "umbral" | "perfil" | "carta" | "diario";
+export type NavKey = "inicio" | "transitos" | "vinculo" | "umbral" | "carta" | "perfil" | "diario";
+
+/** Un destino de la navegación: con qué clave se marca, cómo se llama y a dónde va. */
+type NavDestination = { key: NavKey; label: string; href: string };
 
 /**
- * Misma arquitectura de información que el nativo (`app/(tabs)/_layout.tsx`):
- * Inicio · Tránsitos · Umbral · Perfil. La web tenía Hoy/Carta/Tránsitos/Diario,
- * que omitía el Umbral y promovía dos destinos secundarios a sección principal.
- * Carta y Diario siguen siendo destinos contextuales, no secciones.
+ * Una sección de la barra. `destinations` son los destinos que viven DENTRO de
+ * la sección: conservan su ruta y su dueño, se abren desde el contenido de la
+ * sección y no suman una entrada más a la barra. La barra los usa para dos
+ * cosas reales: marcar la sección cuando el activo es uno de ellos, y
+ * anunciarlos en el nombre accesible.
  */
-const items: Array<{ key: NavKey; label: string; href: string }> = [
-  { key: "inicio", label: "Inicio", href: "/home" },
+type NavSection = NavDestination & { destinations?: NavDestination[] };
+
+/**
+ * Las CINCO secciones de la web, en este orden: Hoy · Tránsitos · Vínculos ·
+ * Umbral · Carta.
+ *
+ * Ya no se copia la arquitectura de las pestañas nativas. El nativo (Build 30)
+ * es la autoridad de producto, pero su barra responde a otras restricciones:
+ * ahí Vínculo está parkeado —fuera de la barra, `href: null`— y Perfil es una
+ * pestaña. En web, Vínculo ya tiene una ruta que se puede abrir y Perfil dejó
+ * de ser sección: pasó a vivir dentro de Carta.
+ *
+ * La clave de la primera sección sigue siendo `inicio` porque es la que
+ * declaran las rutas web que montan el shell por su cuenta (`app/home.tsx`);
+ * la etiqueta aprobada es «Hoy». Diario tampoco es sección: es un destino
+ * contextual, así que su clave existe en `NavKey` pero no tiene item.
+ */
+const items: NavSection[] = [
+  { key: "inicio", label: "Hoy", href: "/home" },
   { key: "transitos", label: "Tránsitos", href: "/transito" },
+  { key: "vinculo", label: "Vínculos", href: "/vinculo" },
   { key: "umbral", label: "Umbral", href: "/umbral" },
-  { key: "perfil", label: "Perfil", href: "/perfil" }
+  {
+    key: "carta",
+    label: "Carta",
+    href: "/carta",
+    // Perfil no desapareció: dejó de ser sección y quedó DENTRO de Carta, con
+    // la misma URL y el mismo dueño de siempre. Se abre desde el cierre de la
+    // Carta (`src/screens/CartaScreen.tsx`), y el layout de `(tabs)` marca
+    // Carta cuando la ruta es `/perfil`. Declararlo acá es lo que hace que el
+    // modelo de la barra lo diga, en vez de que sólo lo sepa el resolvedor.
+    destinations: [{ key: "perfil", label: "Perfil", href: "/perfil" }]
+  }
 ];
+
+/**
+ * Una sección también queda activa por sus destinos anidados: parada en
+ * `/perfil`, la barra marca Carta, que es la sección donde Perfil vive.
+ */
+function esActiva(section: NavSection, active: NavKey): boolean {
+  return section.key === active || (section.destinations ?? []).some((d) => d.key === active);
+}
+
+/**
+ * Nombre accesible de la sección. Lo que vive adentro se anuncia: un lector de
+ * pantalla no tiene cómo adivinar que Perfil está bajo Carta.
+ */
+function nombreAccesible(section: NavSection): string {
+  const adentro = section.destinations ?? [];
+  return adentro.length === 0 ? section.label : `${section.label}. Incluye ${adentro.map((d) => d.label).join(", ")}`;
+}
 
 /**
  * Navegación de la APP autenticada. No lleva avatar, botón de entrar ni atajo de
@@ -83,11 +132,12 @@ export function WebNav({ active, meta }: { active: NavKey; meta?: string }) {
         <View style={styles.actions}>
           <View style={styles.nav}>
             {items.map((it) => {
-              const on = active === it.key;
+              const on = esActiva(it, active);
               return (
                 <Link key={it.key} href={it.href as never} asChild>
                   <Pressable
                     accessibilityRole="link"
+                    accessibilityLabel={nombreAccesible(it)}
                     accessibilityState={{ selected: on }}
                     style={styles.navItem}
                   >
@@ -110,17 +160,21 @@ export function WebNav({ active, meta }: { active: NavKey; meta?: string }) {
 function WebBottomNav({ active }: { active: NavKey }) {
   return (
     <View style={styles.bottombar}>
-      {items.map((it) => (
-        <Link key={it.key} href={it.href as never} asChild>
-          <Pressable
-            accessibilityRole="link"
-            accessibilityState={{ selected: active === it.key }}
-            style={styles.bottomItem}
-          >
-            <Text style={active === it.key ? styles.bottomActive : styles.bottomLink}>{it.label}</Text>
-          </Pressable>
-        </Link>
-      ))}
+      {items.map((it) => {
+        const on = esActiva(it, active);
+        return (
+          <Link key={it.key} href={it.href as never} asChild>
+            <Pressable
+              accessibilityRole="link"
+              accessibilityLabel={nombreAccesible(it)}
+              accessibilityState={{ selected: on }}
+              style={styles.bottomItem}
+            >
+              <Text style={on ? styles.bottomActive : styles.bottomLink}>{it.label}</Text>
+            </Pressable>
+          </Link>
+        );
+      })}
     </View>
   );
 }

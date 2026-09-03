@@ -27,9 +27,14 @@ const CLERK_LOAD_TIMEOUT_MS = 8000;
 /** Qué sección de la navegación web corresponde a la ruta actual. */
 function navKeyForPath(pathname: string): NavKey {
   if (pathname.startsWith("/transitos")) return "transitos";
+  // Vínculo es sección de la barra web aunque en nativo siga parkeado: la ruta
+  // ya existe y se entra, así que tiene que poder marcarse.
+  if (pathname.startsWith("/vinculo")) return "vinculo";
   if (pathname.startsWith("/vacio") || pathname.startsWith("/umbral")) return "umbral";
-  if (pathname.startsWith("/carta")) return "carta";
-  if (pathname.startsWith("/perfil")) return "perfil";
+  // Perfil dejó de ser sección: vive DENTRO de Carta. La URL no cambia —sigue
+  // siendo `/perfil`, con el mismo dueño— pero en la barra se marca Carta, que
+  // es desde donde se entra.
+  if (pathname.startsWith("/carta") || pathname.startsWith("/perfil")) return "carta";
   return "inicio";
 }
 

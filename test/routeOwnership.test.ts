@@ -96,11 +96,30 @@ test("la URL con grupo y la URL sin grupo son el MISMO destino", () => {
   assert.equal(destino("/(tabs)/carta"), destino("/carta"));
 });
 
-test("las secciones de la navegación web siguen resolviendo donde PR 1 las dejó", () => {
+test("las cinco secciones de la barra web resuelven a un destino único", () => {
+  // El orden es el de la barra (`src/components/web/web-nav.tsx`): Hoy,
+  // Tránsitos, Vínculos, Umbral, Carta. Vínculo y Carta viven dentro de
+  // `(tabs)`, así que su chrome lo monta el layout del grupo una sola vez; el
+  // resto son rutas web de primer nivel, como quedaron en PR 1.
   assert.equal(destino("/home"), "home");
   assert.equal(destino("/transito"), "transito");
+  assert.equal(destino("/vinculo"), "(tabs) > vinculo");
   assert.equal(destino("/umbral"), "umbral");
+  assert.equal(destino("/carta"), "(tabs) > carta");
+});
+
+test("Perfil sale de la barra sin perder su URL ni su dueño", () => {
+  // Perfil dejó de ser sección y pasó a entrarse desde Carta. Eso no mueve la
+  // ruta: `/perfil` sigue siendo del grupo de pestañas, igual que antes.
   assert.equal(destino("/perfil"), "(tabs) > perfil");
+  assert.equal(destino("/(tabs)/perfil"), destino("/perfil"));
+});
+
+test("Vínculo entra a la barra con un solo dueño, como la Carta", () => {
+  // Misma propiedad que se rompía con `/carta`: los segmentos de grupo son
+  // opcionales, así que un `app/vinculo.tsx` se disputaría la URL y montaría un
+  // segundo shell. La sección nueva entra por la ruta que ya existe.
+  assert.equal(destino("/(tabs)/vinculo"), destino("/vinculo"));
 });
 
 test("la entrada `/` sigue siendo el resolvedor de destino, no una pestaña", () => {
