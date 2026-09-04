@@ -319,6 +319,102 @@ export type VoidTodayPayload = { limit: number; used: number; remaining: number;
 export type VoidPromptCategory = { key: string; label: string; glyph: string; prompts: string[] };
 export type VoidSuggestedPayload = { categories: VoidPromptCategory[] };
 
+// --- CORE-192 · La Luna de hoy sobre la carta natal -------------------------
+//
+// Contrato de `home.getLunaSobreLaCarta`. La fuente de verdad es
+// `convex/home.ts` (sección «CORE-192»); acá se declara a mano, como el resto
+// de este archivo, porque `convex/_generated/` no se consume en el front.
+//
+// Alimenta los dos módulos que CORE-191 tiene que armar: LA LUNA EN TU CARTA
+// (por qué casa natal pasa hoy la Luna) y CUMPLELUNA (cuándo se repite la
+// distancia Sol→Luna del nacimiento).
+
+export type LunaSobreLaCartaStatus =
+  | "ready"
+  | "partial"
+  | "needs_session"
+  | "needs_daily_context"
+  | "needs_natal_chart"
+  | "not_configured"
+  | "provider_error";
+
+/** `exact` vale para el día completo; `range` avisa que el valor se mueve dentro del día. */
+export type LunaSobreLaCartaPrecision = "exact" | "estimated" | "range" | "not_applicable";
+
+export type LunarPhaseKey =
+  | "new"
+  | "waxing_crescent"
+  | "first_quarter"
+  | "waxing_gibbous"
+  | "full"
+  | "waning_gibbous"
+  | "last_quarter"
+  | "waning_crescent";
+
+export type MoonOnChartData = {
+  kind: "moon_on_chart";
+  /** Mediodía local del día pedido: el instante canónico del módulo. */
+  observedAt: number;
+  longitudeDegrees: number;
+  speedDegreesPerDay: number;
+  signKey: string;
+  sign: string;
+  degreeInSign: number;
+  phaseKey: LunarPhaseKey;
+  phaseName: string;
+  /** Fracción iluminada del disco, 0..1. */
+  illumination: number;
+  elongationDegrees: number;
+  /** `null` sin carta, sin hora exacta o sin las doce cúspides. */
+  natalHouse: number | null;
+  houseTheme: string | null;
+  /** Casas que la Luna recorre durante el día civil. Con más de una, `precision` es `range`. */
+  housesToday: number[];
+  signsToday: string[];
+  phasesToday: LunarPhaseKey[];
+  precision: LunaSobreLaCartaPrecision;
+  summary: string;
+};
+
+export type CumplelunaData = {
+  kind: "cumpleluna";
+  observedAt: number;
+  natalElongationDegrees: number;
+  /** Cuánto puede valer de más o de menos la elongación natal. 0 con hora exacta. */
+  natalElongationToleranceDegrees: number;
+  currentElongationDegrees: number;
+  elongationRateDegreesPerDay: number;
+  cycleDegrees: number;
+  cycleFraction: number;
+  cycleDay: number;
+  cycleDayWindowDays: { from: number; to: number };
+  cycleLengthDays: number;
+  daysRemaining: number;
+  daysRemainingWindowDays: { from: number; to: number };
+  previousExactAt: number;
+  previousExactAtWindow: { earliest: number; latest: number };
+  nextExactAt: number;
+  nextExactAtWindow: { earliest: number; latest: number };
+  /** Nunca `exact`: `nextExactAt` es una estimación y SIEMPRE viaja con su ventana. */
+  precision: "estimated" | "range";
+  summary: string;
+};
+
+export type LunaSobreLaCartaPayload = {
+  methodVersion: string;
+  providerVersion: string;
+  status: LunaSobreLaCartaStatus;
+  precision: LunaSobreLaCartaPrecision;
+  localDate: string;
+  timezone: string;
+  observedAt: number | null;
+  moonOnChart: MoonOnChartData | null;
+  cumpleluna: CumplelunaData | null;
+  /** Qué faltó (`exact_birth_time`, `natal_chart`…). La UI decide qué ofrecer. */
+  missingInputs: string[];
+  limitations: string[];
+};
+
 export type PlaceLookup = {
   status: "success" | "not_configured" | "error";
   places: Array<{
@@ -444,7 +540,22 @@ export const appApi = {
   home: {
     // Read path de la Home real (público-safe: null sin sesión). Se lee DESPUÉS de
     // llamar la action `transits.getToday`, que actualiza dailyReadings.
-    getDaily: anyApi.home.getDaily as FunctionReference<"query", "public", { localDate: string }, unknown>
+    getDaily: anyApi.home.getDaily as FunctionReference<"query", "public", { localDate: string }, unknown>,
+    // CORE-192: la Luna de hoy medida sobre la carta natal. Es una ACTION (pega
+    // al proveedor y cachea el cielo del día para todas las cuentas de esa
+    // zona), así que se invoca con `useAction`. Nunca devuelve null: sin sesión,
+    // sin carta, sin credenciales o con el proveedor caído responde el mismo
+    // sobre con un `status` explícito. `localDate`/`timezone` son opcionales y
+    // sólo CONFIRMAN el día canónico que resuelve el servidor: si se mandan,
+    // tienen que ser exactamente los de `daily.getTodayContext` —nunca los del
+    // dispositivo—; cualquier diferencia devuelve `needs_daily_context` sin
+    // medir nada. Omitirlos siempre es válido.
+    getLunaSobreLaCarta: anyApi.home.getLunaSobreLaCarta as FunctionReference<
+      "action",
+      "public",
+      { localDate?: string; timezone?: string },
+      LunaSobreLaCartaPayload
+    >
   },
   charts: {
     // Carta natal
