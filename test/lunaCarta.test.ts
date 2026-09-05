@@ -428,6 +428,29 @@ describe("cumplelunaVista — la ventana, nunca el instante", () => {
     assert.equal(cumplelunaVista(cumple({ nextExactAtWindow: null as never }), sobre(), null), null);
   });
 
+  it("un ciclo que el sobre no trajo (rellenado con 0) no se publica como dato", () => {
+    // El lector del sobre rellena con 0 los escalares ausentes. Un ciclo de
+    // 0 días no existe: sin largo no hay reloj, avance, franja ni «CICLO».
+    const vista = conVista(cumple({ cycleLengthDays: 0, cycleFraction: 0, cycleDay: 0 }), sobre(), null);
+    assert.equal(vista.relojDelCiclo, null);
+    assert.equal(vista.avance, null);
+    assert.equal(vista.banda, null);
+    assert.ok(!vista.meta.some((item) => item.startsWith("CICLO")));
+    assert.ok(!vista.meta.some((item) => item.includes("0,0")));
+    assert.ok(vista.limitaciones.some((linea) => linea.includes("largo de tu ciclo")));
+  });
+
+  it("un avance que no cuadra con el día del ciclo publicado no se dibuja; la franja sí", () => {
+    // `cycleFraction: 0` con la ventana en el día 18–19 es un hueco rellenado,
+    // no un ciclo recién empezado: el punto no se afirma y queda la franja.
+    const vista = conVista(cumple({ cycleFraction: 0, cycleDay: 0 }), sobre(), null);
+    assert.equal(vista.avance, null);
+    assert.ok(vista.banda !== null);
+    assert.equal(vista.relojDelCiclo, "DÍA ENTRE 17,9 Y 19,1 DE 29,5");
+    // Y un avance coherente con su ventana sí se conserva.
+    assert.equal(conVista(cumple(), sobre(), null).avance, 0.6234);
+  });
+
   it("una ventana contenida en un solo día sigue diciéndose como ventana", () => {
     const ventana = { earliest: hora(2026, 10, 12, 1), latest: hora(2026, 10, 12, 23) };
     const vista = conVista(cumple({ nextExactAtWindow: ventana }), sobre(), null);

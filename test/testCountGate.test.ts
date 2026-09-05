@@ -27,12 +27,12 @@ const resumen = (pass: number, fail = 0) =>
     ""
   ].join("\n");
 
-test("el piso es el del brief más lo que sumó CORE-191: 849 tests", () => {
-  // 745 + 104 casos nuevos de la sección Hoy (hoyPrincipal 22, lunaCarta 42,
-  // hoySection 40). El piso se sube con lo que se agregó DE VERDAD: los otros
+test("el piso es el del brief más lo que sumó CORE-191: 857 tests", () => {
+  // 745 + 112 casos nuevos de la sección Hoy (hoyPrincipal 25, lunaCarta 45,
+  // hoySection 42). El piso se sube con lo que se agregó DE VERDAD: los otros
   // archivos que la tarjeta tocó repuntaron sus afirmaciones a la superficie
   // nueva sin agregar ni borrar un solo caso.
-  assert.equal(DEFAULT_MINIMUM, 849);
+  assert.equal(DEFAULT_MINIMUM, 857);
 });
 
 test("una corrida completa por encima del piso pasa", () => {
@@ -42,12 +42,12 @@ test("una corrida completa por encima del piso pasa", () => {
   assert.deepEqual(verdict.failures, []);
 });
 
-test("el piso incluye su propio número: exactamente 849 pasa, 848 falla", () => {
-  assert.equal(evaluateTestRun(resumen(849)).ok, true);
+test("el piso incluye su propio número: exactamente 857 pasa, 856 falla", () => {
+  assert.equal(evaluateTestRun(resumen(857)).ok, true);
 
-  const abajo = evaluateTestRun(resumen(848));
+  const abajo = evaluateTestRun(resumen(856));
   assert.equal(abajo.ok, false);
-  assert.match(abajo.failures[0], /848/);
+  assert.match(abajo.failures[0], /856/);
   assert.match(abajo.failures[0], /falta/);
 });
 

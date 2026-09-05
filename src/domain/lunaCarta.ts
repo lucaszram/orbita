@@ -464,12 +464,20 @@ export function cumplelunaVista(
   // el módulo ya está contando un evento de hoy —incluida una ventana anterior
   // que termina hoy— esa cuenta no acompaña al titular y se omite.
   const faltan = hoy ? null : ventanaDeDias(data.daysRemainingWindowDays);
-  const largo = formatDecimal(data.cycleLengthDays);
-  const diaDelCiclo = ventanaDeNumeros(data.cycleDayWindowDays);
+
+  // El ciclo, fail-closed. El lector del sobre rellena con 0 los escalares
+  // que no vinieron (`cycleLengthDays`, `cycleFraction`, `cycleDay`), y un
+  // ciclo de 0 días o un avance que no cae dentro del día del ciclo que el
+  // propio sobre publica no son datos: son huecos. Sin largo no hay reloj, ni
+  // avance, ni franja, ni «CICLO»; con largo, el avance sólo se dibuja si es
+  // coherente con `cycleDayWindowDays`, que sí viene validado.
+  const largoDias = Number.isFinite(data.cycleLengthDays) && data.cycleLengthDays > 0 ? data.cycleLengthDays : null;
+  const largo = largoDias === null ? null : formatDecimal(largoDias);
+  const diaDelCiclo = largoDias === null ? null : ventanaDeNumeros(data.cycleDayWindowDays);
   const relojDelCiclo =
     diaDelCiclo && largo ? `DÍA ${diaDelCiclo.toLocaleUpperCase("es")} DE ${largo.toLocaleUpperCase("es")}` : null;
 
-  const avance = fraccion(data.cycleFraction);
+  const avance = largoDias === null ? null : avanceCoherente(data, largoDias);
   const banda = bandaDelCiclo(data);
 
   const meta = [
@@ -483,6 +491,7 @@ export function cumplelunaVista(
     data.precision === "range"
       ? "Sin hora exacta de nacimiento el ángulo de tu nacimiento tiene tolerancia, así que la ventana se abre todavía más."
       : null,
+    largoDias === null ? "El sobre no trajo el largo de tu ciclo personal: no mostramos el reloj ni el avance." : null,
     lineaDeOtroDia(data.observedAt, sobre)
   ].filter((linea): linea is string => linea !== null);
 
@@ -516,6 +525,24 @@ export function cumplelunaVista(
     limitaciones: unicas(limitaciones),
     voz
   };
+}
+
+/**
+ * El avance del ciclo, sólo si cuadra con el día del ciclo que el sobre publica.
+ *
+ * `cycleFraction` es un escalar que el lector rellena con 0 cuando falta;
+ * `cycleDayWindowDays` viene validado y es la misma magnitud en días. Si el
+ * avance cae fuera de esa ventana —con medio día de tolerancia por redondeo—
+ * no es el avance de este snapshot y no se dibuja: queda la franja, que sí es
+ * un dato del sobre.
+ */
+function avanceCoherente(data: CumplelunaData, largoDias: number): number | null {
+  const avance = fraccion(data.cycleFraction);
+  const rango = data.cycleDayWindowDays;
+  if (avance === null || !rango || !Number.isFinite(rango.from) || !Number.isFinite(rango.to)) return null;
+  const dia = avance * largoDias;
+  const tolerancia = 0.5;
+  return dia >= rango.from - tolerancia && dia <= rango.to + tolerancia ? avance : null;
 }
 
 function mismaVentana(a: VentanaInstantes | null | undefined, b: VentanaInstantes | null | undefined): boolean {
