@@ -1,18 +1,21 @@
 /**
  * **Hoy** — la sección canónica de Órbita, la misma en nativo y en web.
  *
- * La jerarquía es la de CORE-191 sobre el canon (Build 30, `HoyScreen` de la
- * V4.9.2 y los frames vigentes `1688:109` / `1688:112` / `1688:115` /
- * `1720:2050`): exactamente cuatro módulos numerados, en este orden.
+ * La jerarquía es la de los frames vigentes (Build 30 `1688:109` / `1688:112`
+ * / `1688:115` / `1720:2050` para contenido y jerarquía; WEB V1 `1718:2136` /
+ * `1991:2775` / `1718:1997` / `1718:2052` para la composición): cuatro
+ * módulos, con la síntesis arriba sin número y tres bloques numerados.
  *
- *     HOY · LO ACTIVO AHORA        ← encabezado con la fecha canónica y el contador
- *     01 LO PRINCIPAL HOY
- *     02 RANKING DE TRÁNSITOS
- *     03 LA LUNA EN TU CARTA
- *     04 CUMPLELUNA
+ *     HOY · LO ACTIVO AHORA   ·   SÁBADO 5 DE SEPTIEMBRE · 4 CAPAS
+ *     LO PRINCIPAL HOY             ← la frase del día y su contacto
+ *     01 RANKING DE TRÁNSITOS
+ *     02 LA LUNA EN TU CARTA
+ *     03 CUMPLELUNA
  *
  * Cuando el Cumpleluna cae hoy —o puede caer hoy— sube a la posición 01 y los
- * otros tres corren: el frame numera lo que se ve, en el orden en que se ve.
+ * otros dos corren: el frame numera lo que se ve, en el orden en que se ve. En
+ * escritorio, WEB V1 acompaña la columna de lectura con dos tarjetas —las
+ * cuatro capas y «Tu momento»— más la ficha del cálculo.
  *
  * ## De dónde sale cada cosa (cero maqueta)
  *
@@ -57,12 +60,16 @@ import {
   HoyBloque,
   HoyCargando,
   HoyEncabezado,
+  HoyEnlace,
   HoyError,
   HoyFalta,
-  HoyFicha
+  HoyFicha,
+  HoyTarjeta,
+  HoyTarjetaItem,
+  HoyTexto
 } from "@/components/home/hoy/HoyLayout";
 import { HoyCumplelunaBloque, HoyLunaBloque } from "@/components/home/hoy/HoyLuna";
-import { HoyPrincipalBloque } from "@/components/home/hoy/HoyPrincipal";
+import { HoyPrincipalBloque, HoyPrincipalEstado } from "@/components/home/hoy/HoyPrincipal";
 import { HoyRankingBloque } from "@/components/home/hoy/HoyRanking";
 import { ContentCanvas } from "@/components/orbita/ContentCanvas";
 import { Column, Columns, ReadingBlock } from "@/components/orbita/Layout";
@@ -107,33 +114,38 @@ const reintentosDeEspera = new Map<string, number>();
 
 /** Qué tan seguido cambia cada capa. Es parte del dato, no decoración. */
 const CADENCIA: Record<HoyBloqueKey, string> = {
-  principal: "CAMBIA A DIARIO",
   ranking: "CAMBIA A DIARIO",
   luna: "CADA 2–3 DÍAS",
   cumpleluna: "CICLO LUNAR"
 };
 
 const TITULO: Record<HoyBloqueKey, string> = {
-  principal: "LO PRINCIPAL HOY",
   ranking: "RANKING DE TRÁNSITOS",
   luna: "LA LUNA EN TU CARTA",
   cumpleluna: "CUMPLELUNA"
 };
 
 const INTRO: Record<HoyBloqueKey, string> = {
-  principal: "La síntesis del día: la lectura del contacto que hoy manda sobre tu carta.",
-  ranking: "El orden del día: primero el contacto que la lectura pone al frente, después el resto de lo activo.",
-  luna: "Por qué parte de tu carta está pasando la Luna y qué tema cotidiano activa estos días.",
-  cumpleluna: "Cuándo vuelve a repetirse la distancia entre el Sol y la Luna que había el día que naciste."
+  ranking: "Primero el contacto que la lectura pone al frente, después el resto de lo activo sobre tu carta.",
+  luna: "Muestra por qué parte de tu carta está pasando la Luna y qué tema cotidiano activa durante estos días.",
+  cumpleluna: "Repetición de tu fase natal: cuándo vuelve la distancia entre el Sol y la Luna que había cuando naciste."
 };
 
 /** Qué le falta a cada módulo cuando no hay sesión: cada uno lo dice por su cuenta. */
-const INVITADO: Record<HoyBloqueKey, string> = {
+const INVITADO: Record<HoyBloqueKey | "principal", string> = {
   principal: "La síntesis del día se escribe sobre tu carta natal: necesita una sesión iniciada.",
   ranking: "El ranking ordena los tránsitos sobre tu carta natal: necesita una sesión iniciada.",
   luna: "La Luna se mide sobre tu carta natal: necesita una sesión iniciada.",
   cumpleluna: "El cumpleluna sale del ángulo Sol–Luna de tu nacimiento: necesita una sesión iniciada."
 };
+
+/** La tarjeta lateral «Las cuatro capas de hoy» de WEB V1: nombre y cadencia de cada una. */
+const CAPAS: ReadonlyArray<{ nombre: string; detalle: string }> = [
+  { nombre: "Lo principal hoy", detalle: "Una frase, el contacto más fuerte." },
+  { nombre: "Ranking de tránsitos", detalle: "Cambia a diario." },
+  { nombre: "La Luna en tu carta", detalle: "Cada 2–3 días." },
+  { nombre: "Cumpleluna", detalle: "Cada ~29,5 días." }
+];
 
 const INTRO_SECCION = "Lo que se está moviendo sobre tu carta. Cada módulo cambia a su propio ritmo.";
 const INTRO_INVITADO = "Los cuatro módulos se calculan sobre tu carta natal real. Entrá para abrir el día.";
@@ -240,6 +252,22 @@ export function HomeScreen() {
   const ficha = hayFicha ? (
     <HoyFicha titulo="SOBRE ESTE CÁLCULO" lineas={basadoEn} nota={disclaimer} />
   ) : null;
+  // Las dos tarjetas de WEB V1 viven sólo en la columna lateral de escritorio:
+  // el frame móvil (`1718:1997`) no las tiene. Son texto fijo del producto, no
+  // datos: no agregan ninguna afirmación personal.
+  const tarjetas = desktop ? (
+    <>
+      <HoyTarjeta titulo="LAS CUATRO CAPAS DE HOY">
+        {CAPAS.map((capa) => (
+          <HoyTarjetaItem key={capa.nombre} nombre={capa.nombre} detalle={capa.detalle} />
+        ))}
+      </HoyTarjeta>
+      <HoyTarjeta titulo="TU MOMENTO">
+        <HoyTexto>Los ciclos lentos: tu estación vital, el tema de tu año y tus cuatro ritmos.</HoyTexto>
+        <HoyEnlace href="/transito">IR A TRÁNSITOS</HoyEnlace>
+      </HoyTarjeta>
+    </>
+  ) : null;
 
   if (!isReady || !profile || !fontsLoaded) {
     return <View style={styles.screen} />;
@@ -257,36 +285,32 @@ export function HomeScreen() {
   // «cargando» para siempre sería mentir sobre lo que está pasando.
   const sinFecha = !sessionPending && !userError && !guest && dailyContext.status === "error";
 
-  function cuerpoDe(key: HoyBloqueKey) {
+  /** El estado de la guía diaria para «lo principal» y el ranking, o `null` si hay dato. */
+  function estadoDeLaGuia(key: HoyBloqueKey | "principal") {
     // Invitado confirmado: cada módulo dice qué le falta. Cero datos inventados.
     if (guest) return <HoyFalta lineas={[INVITADO[key]]} />;
-    if (key === "principal" || key === "ranking") {
-      if (dailyState.status === "error")
-        return <HoyError mensaje={dailyState.message} onRetry={retryDaily} modulo={TITULO[key]} />;
-      if (esperaAgotada)
-        return (
-          <HoyError
-            mensaje="La lectura de hoy está tardando más de lo normal."
-            onRetry={retryDaily}
-            modulo={TITULO[key]}
-          />
-        );
-      if (dailyState.status !== "ready" || dailyPendiente)
-        return (
-          <HoyCargando
-            etiqueta={key === "principal" ? "Escribiendo la síntesis de hoy…" : "Leyendo los tránsitos de hoy…"}
-          />
-        );
-      if (key === "principal") {
-        return principal ? (
-          <HoyPrincipalBloque principal={principal} />
-        ) : (
-          <HoyFalta lineas={["La lectura de hoy no trajo una síntesis principal."]} />
-        );
-      }
+    const modulo = key === "principal" ? "LO PRINCIPAL HOY" : TITULO[key];
+    if (dailyState.status === "error")
+      return <HoyError mensaje={dailyState.message} onRetry={retryDaily} modulo={modulo} />;
+    if (esperaAgotada)
+      return <HoyError mensaje="La lectura de hoy está tardando más de lo normal." onRetry={retryDaily} modulo={modulo} />;
+    if (dailyState.status !== "ready" || dailyPendiente)
+      return (
+        <HoyCargando
+          etiqueta={key === "principal" ? "Escribiendo la síntesis de hoy…" : "Leyendo los tránsitos de hoy…"}
+        />
+      );
+    return null;
+  }
+
+  function cuerpoDe(key: HoyBloqueKey) {
+    if (key === "ranking") {
+      const estado = estadoDeLaGuia("ranking");
+      if (estado) return estado;
       if (ranking.length === 0) return <HoyFalta lineas={["La lectura de hoy no trajo tránsitos para ordenar."]} />;
       return <HoyRankingBloque filas={ranking} />;
     }
+    if (guest) return <HoyFalta lineas={[INVITADO[key]]} />;
     if (lunaState.status === "error")
       return <HoyError mensaje={lunaState.message} onRetry={retryLuna} modulo={TITULO[key]} />;
     if (lunaState.status === "loading") return <HoyCargando etiqueta="Midiendo la Luna sobre tu carta…" />;
@@ -344,7 +368,6 @@ export function HomeScreen() {
                   <ReadingBlock>
                     <HoyEncabezado
                       eyebrow="HOY · LO ACTIVO AHORA"
-                      titulo="Hoy"
                       fecha={today ? fechaCivilLarga(today) : null}
                       contador={contador}
                       intro={guest ? INTRO_INVITADO : intro}
@@ -360,6 +383,17 @@ export function HomeScreen() {
                         />
                       </View>
                     ) : null}
+                    {(() => {
+                      const estado = estadoDeLaGuia("principal");
+                      if (estado) return <HoyPrincipalEstado>{estado}</HoyPrincipalEstado>;
+                      return principal ? (
+                        <HoyPrincipalBloque principal={principal} />
+                      ) : (
+                        <HoyPrincipalEstado>
+                          <HoyFalta lineas={["La lectura de hoy no trajo una síntesis principal."]} />
+                        </HoyPrincipalEstado>
+                      );
+                    })()}
                     {orden.map((key, index) => (
                       <HoyBloque
                         key={key}
@@ -375,7 +409,10 @@ export function HomeScreen() {
                 </Column>
                 {/* En móvil `Column` es transparente: si esto no fuera
                     condicional, la ficha saldría acá Y otra vez al final. */}
-                <Column weight={2}>{fichaEnColumna ? ficha : null}</Column>
+                <Column weight={2}>
+                  {tarjetas}
+                  {fichaEnColumna ? ficha : null}
+                </Column>
               </Columns>
               {/* Cierre del scroll. Exactamente la negación de la condición de
                   la columna: la ficha se monta una sola vez, siempre. */}

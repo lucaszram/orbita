@@ -56,17 +56,63 @@ export type HoyRankingFila = {
   clave: string;
   /** Posición en la lista, 1-based. Es el orden del backend, no uno propio. */
   rango: number;
+  /** La línea completa tal como la escribió el backend. */
   aspecto: string;
+  /** `"Marte cuadratura tu Venus"`: el contacto sin el signo ni la casa, que van aparte. */
+  titulo: string;
+  /** `"MARTE"`, el planeta en tránsito. `null` si la línea no se pudo leer. */
+  planeta: string | null;
+  /** `"VENUS"`, el punto natal tocado. `null` si la línea no se pudo leer. */
+  punto: string | null;
+  /** La casa natal del contacto, si el backend la escribió. */
+  casa: number | null;
   /**
-   * La lectura del contacto, o `null` si el backend no escribió una. El
-   * contrato real manda los secundarios SIN lectura (`lectura: ""`): son
-   * contactos reales del día igual, y la fila los muestra sin inventarles una.
+   * La lectura del contacto, o `null` si el backend no escribió una de verdad.
+   * El contrato real manda los secundarios SIN lectura (`lectura: ""`), y en
+   * modo fallback escribe la plantilla `Hoy <contacto>.`, que repite el
+   * título: ninguna de las dos es una lectura y la fila no las muestra.
    */
   lectura: string | null;
 };
 
-/** Los cuatro módulos numerados de Hoy, identificados por su capa. */
-export type HoyBloqueKey = "principal" | "ranking" | "luna" | "cumpleluna";
+/**
+ * Los tres bloques numerados de Hoy, identificados por su capa. `LO PRINCIPAL
+ * HOY` va arriba sin número: así lo componen los frames vigentes (Build 30
+ * `1688:109` y WEB V1 `1718:2136`), que numeran ranking, Luna y Cumpleluna.
+ */
+export type HoyBloqueKey = "ranking" | "luna" | "cumpleluna";
+
+/**
+ * Las partes de una línea de contacto del backend, que tiene la forma
+ * `Planeta [en Signo] aspecto tu Punto [(casa N)]` (`aspectLine` en
+ * `convex/daily.ts`). No se inventa nada: lo que no se pudo leer queda `null`
+ * y la fila muestra la línea entera tal cual vino.
+ */
+export function partesDeContacto(aspecto: string): {
+  titulo: string;
+  planeta: string | null;
+  punto: string | null;
+  signo: string | null;
+  casa: number | null;
+} {
+  const limpio = aspecto.replace(/\s+/g, " ").trim();
+  const m = /^(\S+)(?: en (\S+))? (\S+) tu (.+?)(?: \(casa (\d{1,2})\))?$/u.exec(limpio);
+  if (!m) return { titulo: limpio, planeta: null, punto: null, signo: null, casa: null };
+  const [, planeta, signo, tipo, punto, casa] = m;
+  return {
+    titulo: `${planeta} ${tipo} tu ${punto}`,
+    planeta,
+    punto,
+    signo: signo ?? null,
+    casa: casa ? Number(casa) : null
+  };
+}
+
+/** ¿La «lectura» es la plantilla de fallback del backend, `Hoy <contacto>.`? */
+export function esLecturaPlantilla(lectura: string, aspecto: string): boolean {
+  const norm = (v: string) => v.toLocaleLowerCase("es").replace(/\s+/g, " ").trim().replace(/[.;,·]+$/u, "");
+  return norm(lectura) === norm(`hoy ${aspecto}`);
+}
 
 /**
  * ¿La guía del día todavía está en su primera respuesta, sin tránsitos?
@@ -94,9 +140,15 @@ export function guiaPendiente(payload: DailyGuidePayload | null | undefined): bo
 export function hoyPrincipal(payload: DailyGuidePayload | null | undefined): HoyPrincipal | null {
   if (guiaPendiente(payload)) return null;
   const destacado = payload?.destacado;
-  const titular = texto(destacado?.lectura) ?? texto(payload?.headline);
+  const aspecto = texto(destacado?.aspecto);
+  const lectura = texto(destacado?.lectura);
+  // La plantilla de fallback (`Hoy <contacto>.`) no es una síntesis: repite el
+  // contacto. En ese caso vale el `headline` del día, que al menos dice algo
+  // distinto de la línea de abajo.
+  const lecturaReal = lectura && aspecto && esLecturaPlantilla(lectura, aspecto) ? null : lectura;
+  const titular = lecturaReal ?? texto(payload?.headline);
   if (!titular) return null;
-  return { titular, aspecto: texto(destacado?.aspecto) };
+  return { titular, aspecto };
 }
 
 /**
@@ -125,23 +177,31 @@ export function hoyRanking(payload: DailyGuidePayload | null | undefined): HoyRa
     const clave = claveDeAspecto(aspecto);
     if (vistas.has(clave)) continue;
     vistas.add(clave);
-    filas.push({ clave, rango: filas.length + 1, aspecto, lectura });
+    const partes = partesDeContacto(aspecto);
+    filas.push({
+      clave,
+      rango: filas.length + 1,
+      aspecto,
+      titulo: partes.titulo,
+      planeta: partes.planeta,
+      punto: partes.punto,
+      casa: partes.casa,
+      lectura: lectura && esLecturaPlantilla(lectura, aspecto) ? null : lectura
+    });
   }
   return filas;
 }
 
 /**
- * El orden canónico de los cuatro módulos (CORE-191).
+ * El orden de los bloques numerados (frames Build 30 y WEB V1).
  *
- * Por defecto: lo principal, ranking, Luna y Cumpleluna. Cuando el Cumpleluna
- * cae hoy —o puede caer hoy— sube a la posición 01 y los otros tres corren un
- * lugar: el frame numera **lo que se ve, en el orden en que se ve**, no un
- * catálogo fijo de capas.
+ * Por defecto: ranking, Luna y Cumpleluna, con `LO PRINCIPAL HOY` arriba y sin
+ * número. Cuando el Cumpleluna cae hoy —o puede caer hoy— sube a la posición 01
+ * y los otros dos corren un lugar: el frame numera **lo que se ve, en el orden
+ * en que se ve**, no un catálogo fijo de capas.
  */
 export function hoyBloques(cumplelunaHoy: boolean): readonly HoyBloqueKey[] {
-  return cumplelunaHoy
-    ? ["cumpleluna", "principal", "ranking", "luna"]
-    : ["principal", "ranking", "luna", "cumpleluna"];
+  return cumplelunaHoy ? ["cumpleluna", "ranking", "luna"] : ["ranking", "luna", "cumpleluna"];
 }
 
 /** `0` → `"01"`. El índice que imprime el encabezado de cada bloque. */
@@ -166,9 +226,9 @@ export function contarModulos(input: {
   return [input.principal, input.ranking, input.luna, input.cumpleluna].filter(Boolean).length;
 }
 
-/** `"3 MÓDULOS"` · `"1 MÓDULO"` · `null` cuando no hay ninguno que contar. */
+/** `"4 CAPAS"` · `"1 CAPA"` · `null` cuando no hay ninguna que contar. El frame las llama capas. */
 export function etiquetaDeModulos(cantidad: number): string | null {
   if (!Number.isFinite(cantidad) || cantidad <= 0) return null;
   const entero = Math.trunc(cantidad);
-  return `${entero} ${entero === 1 ? "MÓDULO" : "MÓDULOS"}`;
+  return `${entero} ${entero === 1 ? "CAPA" : "CAPAS"}`;
 }

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Link, type Href } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { orbita } from "@/theme/orbita";
@@ -65,24 +66,25 @@ export function HoyNota({ children, style }: { children: ReactNode; style?: obje
 // ---------------------------------------------------------------------------
 
 /**
- * Encabezado de Hoy: `HOY · LO ACTIVO AHORA`, el título, la fecha canónica y el
- * contador de módulos con dato.
+ * Encabezado de Hoy, como lo componen los frames (Build 30 `1688:109`, WEB V1
+ * `1718:2136` y `1718:1997`): una sola fila mono con `HOY · LO ACTIVO AHORA` a
+ * la izquierda y la fecha canónica con el contador de capas a la derecha, la
+ * introducción debajo y una línea fina que cierra. No hay un título grande
+ * «Hoy»: la sección se nombra en la navegación.
  *
  * La fecha viene ya formateada desde el contexto canónico del servidor: esta
  * pantalla no mira el reloj del dispositivo en ningún punto.
  */
 export function HoyEncabezado({
   eyebrow,
-  titulo,
   fecha,
   contador,
   intro
 }: {
   eyebrow: string;
-  titulo: string;
   /** Día canónico ya en palabras (`viernes 4 de septiembre`), o `null`. */
   fecha: string | null;
-  /** `3 MÓDULOS`, o `null` cuando no hay ninguno con dato. */
+  /** `4 CAPAS`, o `null` cuando no hay ninguna con dato. */
   contador: string | null;
   intro: string | null;
 }) {
@@ -91,12 +93,17 @@ export function HoyEncabezado({
   );
   return (
     <View style={styles.encabezado}>
-      <View accessible accessibilityRole="header" accessibilityLabel={`${eyebrow}. ${titulo}.`}>
-        <HoyEtiqueta>{eyebrow}</HoyEtiqueta>
-        <Text style={styles.tituloPantalla}>{titulo}</Text>
+      <View
+        accessible
+        accessibilityRole="header"
+        accessibilityLabel={`${eyebrow}. ${meta.join(". ")}`}
+        style={styles.encabezadoFila}
+      >
+        <HoyEtiqueta style={styles.encabezadoEyebrow}>{eyebrow}</HoyEtiqueta>
+        {meta.length > 0 ? <HoyMeta items={meta} style={styles.encabezadoMeta} /> : null}
       </View>
-      {meta.length > 0 ? <HoyMeta items={meta} /> : null}
       {intro ? <HoyTexto style={styles.encabezadoIntro}>{intro}</HoyTexto> : null}
+      <View style={styles.encabezadoLinea} />
     </View>
   );
 }
@@ -152,11 +159,11 @@ export function HoyBloque({
 // ---------------------------------------------------------------------------
 
 /** Fila mono separada por `·`, con repliegue en vez de recorte. */
-export function HoyMeta({ items }: { items: readonly (string | null)[] }) {
+export function HoyMeta({ items, style }: { items: readonly (string | null)[]; style?: object }) {
   const visibles = items.filter((item): item is string => Boolean(item));
   if (visibles.length === 0) return null;
   return (
-    <View style={styles.meta}>
+    <View style={[styles.meta, style]}>
       {visibles.map((item, index) => (
         <View key={`${index}-${item}`} style={styles.metaCelda}>
           {index > 0 ? <HoyEtiqueta style={styles.metaSep}>·</HoyEtiqueta> : null}
@@ -214,6 +221,51 @@ export function HoyMedidor({
           <View style={{ flex: 1 - relleno }} />
         </>
       )}
+    </View>
+  );
+}
+
+/**
+ * Enlace mono cobre con la flecha del canon: `VER TODOS LOS TRÁNSITOS ›`.
+ *
+ * Sólo apunta a rutas que existen en la navegación canónica (CORE-113); un
+ * enlace a una pantalla que no está sería una promesa rota, y por eso los
+ * «Ver detalle» y «Ver tu momento» del frame no se dibujan todavía.
+ */
+export function HoyEnlace({ href, children }: { href: Href; children: string }) {
+  return (
+    <Link href={href} asChild>
+      <Pressable
+        accessibilityRole="link"
+        style={({ pressed }) => [styles.enlace, pressed && styles.presionado]}
+      >
+        <HoyEtiqueta>{`${children}  ›`}</HoyEtiqueta>
+      </Pressable>
+    </Link>
+  );
+}
+
+/**
+ * Tarjeta lateral de WEB V1 (`1718:2136`): un rótulo mono y su contenido, con
+ * borde fino y esquinas suaves. Es la única pieza de Hoy con borde: la columna
+ * de lectura sigue separando bloques con líneas, como el canon nativo. En
+ * móvil no se monta —el frame `1718:1997` no la tiene—.
+ */
+export function HoyTarjeta({ titulo, children }: { titulo: string; children: ReactNode }) {
+  return (
+    <View style={styles.tarjeta}>
+      <HoyEtiqueta accessibilityRole="header">{titulo}</HoyEtiqueta>
+      <View style={styles.tarjetaCuerpo}>{children}</View>
+    </View>
+  );
+}
+
+/** Un ítem de la tarjeta «Las cuatro capas de hoy»: nombre y cadencia. */
+export function HoyTarjetaItem({ nombre, detalle }: { nombre: string; detalle: string }) {
+  return (
+    <View style={styles.tarjetaItem}>
+      <Text style={styles.tarjetaNombre}>{nombre}</Text>
+      <HoyNota>{detalle}</HoyNota>
     </View>
   );
 }
@@ -359,14 +411,37 @@ const styles = StyleSheet.create({
 
   // --- encabezado ---------------------------------------------------------
   encabezado: { paddingHorizontal: HOY_GUTTER, paddingTop: orbita.spacing.xl },
-  tituloPantalla: {
-    color: orbita.colors.bone,
-    fontFamily: orbita.fonts.serif,
-    fontSize: 40,
-    lineHeight: 45,
-    marginTop: orbita.spacing.sm
+  encabezadoFila: {
+    alignItems: "flex-start",
+    columnGap: orbita.spacing.lg,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    rowGap: orbita.spacing.xs
   },
-  encabezadoIntro: { marginTop: orbita.spacing.lg },
+  encabezadoEyebrow: { flexShrink: 1 },
+  encabezadoMeta: { marginTop: 0 },
+  encabezadoIntro: { marginTop: orbita.spacing.md },
+  encabezadoLinea: { backgroundColor: orbita.colors.line, height: 1, marginTop: orbita.spacing.xl },
+
+  // --- enlaces y tarjetas -------------------------------------------------
+  enlace: { alignSelf: "flex-start", justifyContent: "center", marginTop: orbita.spacing.lg, minHeight: 44 },
+  tarjeta: {
+    backgroundColor: orbita.colors.surface,
+    borderColor: orbita.colors.line,
+    borderRadius: orbita.radius.md,
+    borderWidth: 1,
+    marginTop: orbita.spacing.xl,
+    padding: orbita.spacing.lg
+  },
+  tarjetaCuerpo: { marginTop: orbita.spacing.md },
+  tarjetaItem: { marginTop: orbita.spacing.md },
+  tarjetaNombre: {
+    color: orbita.colors.bone,
+    fontFamily: orbita.fonts.body,
+    fontSize: 15,
+    lineHeight: 21
+  },
 
   // --- bloques ------------------------------------------------------------
   bloque: { marginTop: orbita.spacing.xxl, paddingHorizontal: HOY_GUTTER },

@@ -339,7 +339,7 @@ test("la pieza lateral de Hoy se monta UNA sola vez, y en móvil al final del sc
     /const fichaEnColumna = desktop && hayFicha;/,
     "la condición tiene que combinar el modo de layout con la existencia del bloque"
   );
-  assert.match(codigo, /<Column weight=\{2\}>\{fichaEnColumna \? ficha : null\}<\/Column>/);
+    assert.match(codigo, /<Column weight=\{2\}>\s*\{tarjetas\}\s*\{fichaEnColumna \? ficha : null\}\s*<\/Column>/);
   assert.match(codigo, /\{fichaEnColumna \? null : ficha\}/);
 
   // Ningún montaje suelto: un `{ficha}` sin guarda es exactamente el bug.

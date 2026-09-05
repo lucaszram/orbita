@@ -11,12 +11,14 @@ import { describe, it } from "node:test";
 
 import {
   contarModulos,
+  esLecturaPlantilla,
   etiquetaDeModulos,
   guiaPendiente,
   hoyBloques,
   hoyPrincipal,
   hoyRanking,
-  numeroDeBloque
+  numeroDeBloque,
+  partesDeContacto
 } from "../src/domain/hoyPrincipal";
 import type { DailyGuidePayload } from "../src/services/appRefs";
 
@@ -88,7 +90,50 @@ describe("hoyRanking — el orden real, sin puntajes inventados", () => {
     // La regresión que este test impide: derivar una escala de cercanía a partir
     // de un contrato que no publica orbes. Sería un puntaje inventado.
     const [fila] = hoyRanking(guia());
-    assert.deepEqual(Object.keys(fila).sort(), ["aspecto", "clave", "lectura", "rango"]);
+    assert.deepEqual(
+      Object.keys(fila).sort(),
+      ["aspecto", "casa", "clave", "lectura", "planeta", "punto", "rango", "titulo"]
+    );
+  });
+
+  it("cada fila lee el planeta, el punto y la casa de la línea real del backend, sin inventar", () => {
+    const filas = hoyRanking(
+      guia({
+        destacado: { aspecto: "Marte en Cáncer cuadratura tu Venus (casa 6)", lectura: "Algo real." },
+        secundarios: [
+          { aspecto: "Saturno en Aries cuadratura tu Júpiter (casa 3)", lectura: "" },
+          { aspecto: "Venus en Libra cuadratura tu Ascendente (casa 10)", lectura: "" },
+          { aspecto: "Sol conjunción tu Medio Cielo", lectura: "" },
+          { aspecto: "una línea que no sigue el formato", lectura: "" }
+        ]
+      })
+    );
+    assert.deepEqual(
+      filas.map((f) => [f.planeta, f.punto, f.casa, f.titulo]),
+      [
+        ["Marte", "Venus", 6, "Marte cuadratura tu Venus"],
+        ["Saturno", "Júpiter", 3, "Saturno cuadratura tu Júpiter"],
+        ["Venus", "Ascendente", 10, "Venus cuadratura tu Ascendente"],
+        ["Sol", "Medio Cielo", null, "Sol conjunción tu Medio Cielo"],
+        [null, null, null, "una línea que no sigue el formato"]
+      ]
+    );
+    // `partesDeContacto` es puro y conserva el signo aparte.
+    assert.equal(partesDeContacto("Marte en Cáncer cuadratura tu Venus (casa 6)").signo, "Cáncer");
+  });
+
+  it("la plantilla de fallback del backend (`Hoy <contacto>.`) no es una lectura", () => {
+    const aspecto = "Marte en Cáncer cuadratura tu Venus (casa 6)";
+    assert.equal(esLecturaPlantilla(`Hoy ${aspecto}.`, aspecto), true);
+    assert.equal(esLecturaPlantilla("  hoy   marte en cáncer cuadratura tu venus (casa 6)", aspecto), true);
+    assert.equal(esLecturaPlantilla("Un texto escrito de verdad.", aspecto), false);
+
+    const filas = hoyRanking(guia({ destacado: { aspecto, lectura: `Hoy ${aspecto}.` } }));
+    assert.equal(filas[0].lectura, null);
+    // Y en «lo principal» cae al titular del día en vez de repetir el contacto.
+    const principal = hoyPrincipal(guia({ destacado: { aspecto, lectura: `Hoy ${aspecto}.` } }));
+    assert.equal(principal?.titular, "Un día para poner límites sin romper nada");
+    assert.equal(principal?.aspecto, aspecto);
   });
 
   it("el destacado repetido dentro de secundarios se muestra UNA sola vez", () => {
@@ -208,32 +253,30 @@ describe("guiaPendiente — la primera respuesta genérica no es el dato de hoy"
   });
 });
 
-describe("hoyBloques — los cuatro módulos canónicos, en orden", () => {
-  it("por defecto: lo principal, ranking, Luna y Cumpleluna", () => {
-    assert.deepEqual(hoyBloques(false), ["principal", "ranking", "luna", "cumpleluna"]);
+describe("hoyBloques — los bloques numerados del frame", () => {
+  it("por defecto: ranking, Luna y Cumpleluna; lo principal va arriba sin número", () => {
+    assert.deepEqual(hoyBloques(false), ["ranking", "luna", "cumpleluna"]);
   });
 
-  it("con Cumpleluna hoy el evento sube a 01 y los otros tres corren", () => {
-    assert.deepEqual(hoyBloques(true), ["cumpleluna", "principal", "ranking", "luna"]);
+  it("con Cumpleluna hoy el evento sube a 01 y los otros dos corren", () => {
+    assert.deepEqual(hoyBloques(true), ["cumpleluna", "ranking", "luna"]);
   });
 
-  it("los cuatro módulos están siempre, en los dos órdenes", () => {
+  it("los tres bloques están siempre, en los dos órdenes", () => {
     for (const orden of [hoyBloques(false), hoyBloques(true)]) {
-      assert.deepEqual([...orden].sort(), ["cumpleluna", "luna", "principal", "ranking"]);
+      assert.deepEqual([...orden].sort(), ["cumpleluna", "luna", "ranking"]);
     }
   });
 
   it("el índice acompaña a la posición, no a la capa", () => {
     const conEvento = hoyBloques(true);
     assert.equal(numeroDeBloque(conEvento.indexOf("cumpleluna")), "01");
-    assert.equal(numeroDeBloque(conEvento.indexOf("principal")), "02");
-    assert.equal(numeroDeBloque(conEvento.indexOf("ranking")), "03");
-    assert.equal(numeroDeBloque(conEvento.indexOf("luna")), "04");
+    assert.equal(numeroDeBloque(conEvento.indexOf("ranking")), "02");
+    assert.equal(numeroDeBloque(conEvento.indexOf("luna")), "03");
 
     const sinEvento = hoyBloques(false);
-    assert.equal(numeroDeBloque(sinEvento.indexOf("principal")), "01");
-    assert.equal(numeroDeBloque(sinEvento.indexOf("ranking")), "02");
-    assert.equal(numeroDeBloque(sinEvento.indexOf("cumpleluna")), "04");
+    assert.equal(numeroDeBloque(sinEvento.indexOf("ranking")), "01");
+    assert.equal(numeroDeBloque(sinEvento.indexOf("cumpleluna")), "03");
   });
 
   it("numeroDeBloque siempre da dos dígitos y tolera basura", () => {
@@ -251,14 +294,14 @@ describe("el contador del encabezado", () => {
     assert.equal(contarModulos({ principal: false, ranking: false, luna: false, cumpleluna: false }), 0);
   });
 
-  it("se omite cuando no hay ninguno: nunca «0 MÓDULOS»", () => {
+  it("se omite cuando no hay ninguno: nunca «0 CAPAS»", () => {
     assert.equal(etiquetaDeModulos(0), null);
     assert.equal(etiquetaDeModulos(-1), null);
     assert.equal(etiquetaDeModulos(Number.NaN), null);
   });
 
   it("concuerda en singular y plural", () => {
-    assert.equal(etiquetaDeModulos(1), "1 MÓDULO");
-    assert.equal(etiquetaDeModulos(3), "3 MÓDULOS");
+    assert.equal(etiquetaDeModulos(1), "1 CAPA");
+    assert.equal(etiquetaDeModulos(4), "4 CAPAS");
   });
 });

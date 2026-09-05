@@ -41,28 +41,37 @@ const SUPERFICIE_HOY: Array<[string, string]> = [
 // --- 1. La jerarquía del canon ----------------------------------------------
 
 describe("la jerarquía de Hoy", () => {
-  it("encabeza con `HOY · LO ACTIVO AHORA` y el título de la sección", () => {
+  it("encabeza con `HOY · LO ACTIVO AHORA`, la fecha y las capas en una fila, sin título grande", () => {
+    // Los frames (`1688:109`, `1718:2136`, `1718:1997`) no tienen un «Hoy» de 40
+    // puntos: el eyebrow va a la izquierda y la fecha con el contador a la
+    // derecha, la intro debajo y una línea fina que cierra.
     assert.match(HOME, /eyebrow="HOY · LO ACTIVO AHORA"/);
-    assert.match(HOME, /titulo="Hoy"/);
+    assert.doesNotMatch(HOME, /titulo="Hoy"/);
+    assert.match(LAYOUT, /encabezadoFila: \{[\s\S]*?justifyContent: "space-between"/);
+    assert.match(LAYOUT, /<View style=\{styles\.encabezadoLinea\} \/>/);
+    assert.match(HOME, /fecha=\{today \? fechaCivilLarga\(today\) : null\}/);
+    assert.match(HOME, /contador=\{contador\}/);
   });
 
-  it("`LO PRINCIPAL HOY` es el primer módulo numerado, no una síntesis aparte", () => {
-    // Los cuatro módulos pasan por el MISMO marco (`HoyBloque`): el primero se
-    // numera y se renumera igual que los otros tres, y su cuerpo resuelve
-    // carga, error y ausencia parcial dentro de `cuerpoDe`.
-    assert.match(HOME, /principal: "LO PRINCIPAL HOY"/);
-    assert.match(HOME, /key === "principal" \|\| key === "ranking"/);
-    assert.match(HOME, /key === "principal"[\s\S]*?<HoyPrincipalBloque principal=\{principal\} \/>/);
+  it("`LO PRINCIPAL HOY` es la síntesis superior, sin número, como en los frames", () => {
+    // Build 30 `1688:109` y WEB V1 `1718:2136`: la frase grande va arriba con su
+    // rótulo y el contacto debajo; los bloques numerados empiezan después. El
+    // marco sigue montado durante carga, error y ausencia parcial.
+    assert.match(PRINCIPAL, /<HoyEtiqueta accessibilityRole="header" style=\{styles\.rotulo\}>\s*LO PRINCIPAL HOY/);
+    assert.match(PRINCIPAL, /export function HoyPrincipalEstado/);
+    assert.match(PRINCIPAL, /items=\{\["CONTACTO", principal\.aspecto\.toLocaleUpperCase\("es"\)\]\}/);
+    assert.match(HOME, /estadoDeLaGuia\("principal"\)/);
+    assert.match(HOME, /<HoyPrincipalEstado>\{estado\}<\/HoyPrincipalEstado>/);
     assert.match(HOME, /<HoyFalta lineas=\{\["La lectura de hoy no trajo una síntesis principal\."\]\}/);
-    assert.doesNotMatch(HOME, /HoyPrincipalEstado/);
-    assert.doesNotMatch(PRINCIPAL, /LO PRINCIPAL HOY</);
+    // Si estuviera en la lista de bloques, el evento de hoy lo renumeraría.
+    assert.doesNotMatch(HOME, /hoyBloques\([^)]*"principal"/);
     for (const orden of [hoyBloques(false), hoyBloques(true)]) {
-      assert.ok(orden.includes("principal"));
+      assert.ok(!orden.includes("principal" as never));
     }
   });
 
-  it("los cuatro módulos numerados son los de la tarjeta, con su cadencia", () => {
-    for (const titulo of ["LO PRINCIPAL HOY", "RANKING DE TRÁNSITOS", "LA LUNA EN TU CARTA", "CUMPLELUNA"]) {
+  it("los tres bloques numerados son los del frame, con su cadencia", () => {
+    for (const titulo of ["RANKING DE TRÁNSITOS", "LA LUNA EN TU CARTA", "CUMPLELUNA"]) {
       const apariciones = HOME.split(titulo).length - 1;
       assert.equal(apariciones, 1, `«${titulo}» tiene que declararse una sola vez, hay ${apariciones}`);
     }
@@ -76,13 +85,32 @@ describe("la jerarquía de Hoy", () => {
     assert.match(HOME, /indice=\{numeroDeBloque\(index\)\}/);
   });
 
-  it("con Cumpleluna hoy el evento es 01 y los otros tres corren", () => {
+  it("con Cumpleluna hoy el evento es 01 y los otros dos corren", () => {
     const orden = hoyBloques(true);
     assert.equal(orden[0], "cumpleluna");
     assert.equal(numeroDeBloque(0), "01");
-    assert.equal(numeroDeBloque(orden.indexOf("principal")), "02");
-    assert.equal(numeroDeBloque(orden.indexOf("ranking")), "03");
-    assert.equal(numeroDeBloque(orden.indexOf("luna")), "04");
+    assert.equal(numeroDeBloque(orden.indexOf("ranking")), "02");
+    assert.equal(numeroDeBloque(orden.indexOf("luna")), "03");
+  });
+
+  it("el ranking compone cada fila como el frame: línea mono, contacto, casa y lectura real", () => {
+    assert.match(RANKING, /String\(fila\.rango\)/);
+    assert.match(RANKING, /fila\.planeta\.toLocaleUpperCase\("es"\)/);
+    assert.match(RANKING, /<Text style=\{styles\.contacto\}>\{fila\.titulo\}<\/Text>/);
+    assert.match(RANKING, /`CASA \$\{fila\.casa\}`/);
+    assert.match(RANKING, /fila\.lectura \? <HoyTexto/);
+    // El pie del frame: el enlace a la lista completa y «por qué este orden».
+    assert.match(RANKING, /<HoyEnlace href="\/transito">VER TODOS LOS TRÁNSITOS<\/HoyEnlace>/);
+    assert.match(RANKING, /POR QUÉ ESTE ORDEN/);
+  });
+
+  it("en escritorio, WEB V1 acompaña con las dos tarjetas laterales; en móvil no se montan", () => {
+    assert.match(HOME, /const tarjetas = desktop \? \(/);
+    assert.match(HOME, /<HoyTarjeta titulo="LAS CUATRO CAPAS DE HOY">/);
+    assert.match(HOME, /<HoyTarjeta titulo="TU MOMENTO">/);
+    assert.match(HOME, /<HoyEnlace href="\/transito">IR A TRÁNSITOS<\/HoyEnlace>/);
+    assert.equal((HOME.match(/\{tarjetas\}/g) ?? []).length, 1);
+    assert.match(LAYOUT, /export function HoyTarjeta/);
   });
 });
 
@@ -105,15 +133,16 @@ describe("responsive", () => {
     assert.match(HOME, /<ReadingBlock>/);
     const reading = HOME.slice(HOME.indexOf("<ReadingBlock>"), HOME.indexOf("</ReadingBlock>"));
     assert.match(reading, /<HoyEncabezado/);
-    // Los cuatro módulos —el principal incluido— viven en la misma columna de
-    // lectura, montados por el mismo mapa numerado.
+    // La síntesis y los tres bloques numerados viven en la misma columna de
+    // lectura; los numerados salen del mismo mapa.
+    assert.match(reading, /<HoyPrincipalBloque principal=\{principal\} \/>/);
     assert.match(reading, /\{orden\.map\(\(key, index\) => \(/);
     assert.match(reading, /\{cuerpoDe\(key\)\}/);
   });
 
   it("la composición lateral se monta UNA vez: una condición usada invertida", () => {
     assert.match(HOME, /const fichaEnColumna = desktop && hayFicha;/);
-    assert.match(HOME, /<Column weight=\{2\}>\{fichaEnColumna \? ficha : null\}<\/Column>/);
+    assert.match(HOME, /<Column weight=\{2\}>\s*\{tarjetas\}\s*\{fichaEnColumna \? ficha : null\}\s*<\/Column>/);
     assert.match(HOME, /\{fichaEnColumna \? null : ficha\}/);
     // Un `{ficha}` suelto es exactamente el bug: en móvil `Column` es
     // transparente y la sección saldría dos veces seguidas.
@@ -235,7 +264,7 @@ describe("estados y ausencia de maqueta", () => {
     // Nada reemplaza el tablero por un solo estado vacío: el encabezado y los
     // cuatro bloques se montan, cada uno dice qué necesita, y hay UN solo CTA.
     assert.doesNotMatch(HOME, /\) : guest \? \(/);
-    assert.match(HOME, /INVITADO: Record<HoyBloqueKey, string>/);
+    assert.match(HOME, /INVITADO: Record<HoyBloqueKey \| "principal", string>/);
     assert.match(HOME, /if \(guest\) return <HoyFalta lineas=\{\[INVITADO\[key\]\]\} \/>;/);
     assert.match(HOME, /intro=\{guest \? INTRO_INVITADO : intro\}/);
     const guestStates = HOME.match(/<GuestState/g) ?? [];
@@ -286,10 +315,12 @@ describe("estados y ausencia de maqueta", () => {
     }
   });
 
-  it("el canon no usa tarjetas: la separación es una línea fina", () => {
+  it("la columna de lectura no usa tarjetas: la separación es una línea fina; el borde vive sólo en la tarjeta lateral", () => {
     assert.match(LAYOUT, /linea: \{ backgroundColor: orbita\.colors\.line, height: 1/);
-    assert.doesNotMatch(LAYOUT, /borderRadius: orbita\.radius/);
+    // Un solo `borderRadius` en toda la maqueta de Hoy: el de `HoyTarjeta` (WEB V1).
+    assert.equal((LAYOUT.match(/borderRadius/g) ?? []).length, 2, "riel del medidor y tarjeta lateral");
     assert.doesNotMatch(RANKING, /borderRadius/);
+    assert.doesNotMatch(PRINCIPAL, /borderRadius/);
   });
 });
 
@@ -426,10 +457,8 @@ describe("resolveLunaReadKey — aislamiento de sesión del sobre", () => {
 describe("accesibilidad de la sección", () => {
   it("los encabezados son encabezados, con su cadencia dicha una sola vez", () => {
     assert.match(LAYOUT, /accessibilityRole="header"\s*accessibilityLabel=\{`\$\{titulo\}\. \$\{cadencia\}\.`\}/);
-    assert.match(LAYOUT, /accessibilityRole="header"\s*accessibilityLabel=\{`\$\{eyebrow\}\. \$\{titulo\}\.`\}/);
-    // El encabezado de «lo principal» lo pone `HoyBloque`, como a los otros
-    // tres: el cuerpo no declara un segundo header para el mismo módulo.
-    assert.doesNotMatch(PRINCIPAL, /accessibilityRole="header"/);
+    assert.match(LAYOUT, /accessibilityRole="header"\s*accessibilityLabel=\{`\$\{eyebrow\}\. \$\{meta\.join\("\. "\)\}`\}/);
+    assert.match(PRINCIPAL, /<HoyEtiqueta accessibilityRole="header" style=\{styles\.rotulo\}>/);
   });
 
   it("el medidor se anuncia con el valor en SUS unidades, no con un porcentaje", () => {
