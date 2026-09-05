@@ -22,14 +22,17 @@ export function HoyRankingBloque({ filas }: { filas: readonly HoyRankingFila[] }
     <View>
       {filas.map((fila, index) => (
         <View key={fila.clave} style={[styles.fila, index > 0 && styles.filaSiguiente]}>
-          <HoyMeta
-            items={[
-              String(fila.rango),
-              fila.planeta ? fila.planeta.toLocaleUpperCase("es") : null,
-              fila.punto ? fila.punto.toLocaleUpperCase("es") : null
-            ]}
-            style={styles.linea}
-          />
+          {/* `1 LUNA · MARTE`: el número en cobre y, aparte, planeta y punto en gris. */}
+          <View style={styles.linea}>
+            <HoyEtiqueta style={styles.rango}>{String(fila.rango)}</HoyEtiqueta>
+            <HoyMeta
+              items={[
+                fila.planeta ? fila.planeta.toLocaleUpperCase("es") : null,
+                fila.punto ? fila.punto.toLocaleUpperCase("es") : null
+              ]}
+              style={styles.lineaMeta}
+            />
+          </View>
           <Text style={styles.contacto}>{fila.titulo}</Text>
           {fila.casa !== null ? <HoyEtiqueta style={styles.casa}>{`CASA ${fila.casa}`}</HoyEtiqueta> : null}
           {fila.lectura ? <HoyTexto style={styles.lectura}>{fila.lectura}</HoyTexto> : null}
@@ -56,7 +59,9 @@ const styles = StyleSheet.create({
     marginTop: orbita.spacing.lg,
     paddingTop: orbita.spacing.lg
   },
-  linea: { marginTop: 0 },
+  linea: { alignItems: "center", flexDirection: "row", gap: orbita.spacing.md },
+  rango: { color: orbita.colors.copper },
+  lineaMeta: { marginTop: 0 },
   contacto: {
     color: orbita.colors.bone,
     fontFamily: orbita.fonts.body,

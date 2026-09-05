@@ -133,8 +133,10 @@ export function HoyBloque({
 }) {
   // La cadencia va a la derecha si entra en el renglón y debajo si no. Se decide
   // por largo de texto —lo único que se conoce sin medir—: una etiqueta mono
-  // partida en dos a la derecha se lee como un error de maquetación.
-  const apilada = titulo.length + cadencia.length > 34;
+  // partida en dos a la derecha se lee como un error de maquetación. El frame
+  // móvil (`1718:1997`, 390 de ancho) muestra `01 RANKING DE TRÁNSITOS · CAMBIA
+  // A DIARIO` en un solo renglón: 35 caracteres entran; el corte va más arriba.
+  const apilada = titulo.length + cadencia.length > 44;
   return (
     <View style={styles.bloque}>
       <View style={styles.linea} />
@@ -425,7 +427,7 @@ const styles = StyleSheet.create({
   encabezadoLinea: { backgroundColor: orbita.colors.line, height: 1, marginTop: orbita.spacing.xl },
 
   // --- enlaces y tarjetas -------------------------------------------------
-  enlace: { alignSelf: "flex-start", justifyContent: "center", marginTop: orbita.spacing.lg, minHeight: 44 },
+  enlace: { alignSelf: "flex-start", justifyContent: "center", marginTop: orbita.spacing.xl, minHeight: 44 },
   tarjeta: {
     backgroundColor: orbita.colors.surface,
     borderColor: orbita.colors.line,
