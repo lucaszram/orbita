@@ -44,7 +44,7 @@ const SHELLS = [
   "src/components/orbita/kit.tsx", // OrbitaScreen — Carta, Perfil, Tránsitos, Vínculo
   "src/components/home/DetailScreen.tsx", // detalles de la Home — Valores, Diario, lecturas
   "src/components/void/VoidExperience.tsx", // el Umbral
-  "src/screens/HomeScreen.tsx", // Inicio: shell propio (fondo full-bleed + ritual)
+  "src/screens/HomeScreen.tsx", // Hoy: shell propio (fondo full-bleed + módulos del día)
   "app/recepcion.tsx", // la ceremonia del día 1
   "app/carta-full.tsx" // la rueda a pantalla completa
 ] as const;
@@ -324,41 +324,34 @@ test("la composición de escritorio no reordena la pantalla del teléfono", () =
 
 // --- 1c. El shell web: negro, navegación legible, sin colchón blanco --------
 
-test("«También hoy» se monta UNA sola vez, y en móvil después de la lectura larga", () => {
-  // Regresión de PR 4: la sección se renderizaba dentro de la segunda `Column`
-  // de la composición de escritorio Y otra vez al final del scroll. En móvil
-  // `Column` es transparente, así que aparecía DOS veces seguidas.
+test("la pieza lateral de Hoy se monta UNA sola vez, y en móvil al final del scroll", () => {
+  // Regresión de PR 4, que la sección Hoy hereda tal cual (CORE-191): la pieza
+  // que acompaña en la composición de escritorio se renderizaba dentro de la
+  // segunda `Column` Y otra vez al final del scroll. En móvil `Column` es
+  // transparente, así que aparecía DOS veces seguidas.
   const codigo = sinComentarios(leer("src/screens/HomeScreen.tsx"));
 
-  // Una sola condición derivada del contexto de layout, usada invertida en los
-  // dos puntos de montaje: por construcción no puede duplicarse ni faltar.
+  // Una sola condición —el modo de layout y si hay algo que mostrar—, usada
+  // invertida en los dos puntos de montaje: por construcción no puede
+  // duplicarse ni faltar.
   assert.match(
     codigo,
-    /const composed = !sessionPending && !userError && !guest && dayReady && heroTriad !== null;/,
-    "la condición tiene que reflejar si el bloque compuesto llegó a montarse"
+    /const fichaEnColumna = desktop && hayFicha;/,
+    "la condición tiene que combinar el modo de layout con la existencia del bloque"
   );
-  // Y el reveal: antes de sacar la carta el bloque compuesto SÍ se monta, pero
-  // dentro del velo (opacidad 0.12 + `pointerEvents: "none"`). Los destinos
-  // secundarios no pueden quedar ahí adentro —invisibles y sin poder tocarse—
-  // mientras en móvil se ven y se tocan al final del scroll.
-  assert.match(codigo, /const tambienHoyEnColumna = desktop && composed && revealed;/);
-  assert.match(codigo, /<Column weight=\{2\}>\{tambienHoyEnColumna \? tambienHoy : null\}<\/Column>/);
-  assert.match(codigo, /\{tambienHoyEnColumna \? null : tambienHoy\}/);
+  assert.match(codigo, /<Column weight=\{2\}>\{fichaEnColumna \? ficha : null\}<\/Column>/);
+  assert.match(codigo, /\{fichaEnColumna \? null : ficha\}/);
 
-  // El velo sigue siendo lo que atenúa y bloquea; es la razón de la guarda.
-  assert.match(
-    codigo,
-    /style=\{revealed \? undefined : styles\.veiled\} pointerEvents=\{revealed \? "auto" : "none"\}/,
-    "el velo tiene que seguir atenuando y bloqueando el bloque compuesto"
-  );
+  // Ningún montaje suelto: un `{ficha}` sin guarda es exactamente el bug.
+  assert.doesNotMatch(codigo, /\{ficha\}/, "la pieza no puede montarse sin la guarda");
 
-  // Ningún montaje suelto: un `{tambienHoy}` sin guarda es exactamente el bug.
-  assert.doesNotMatch(codigo, /\{tambienHoy\}/, "la sección no puede montarse sin la guarda");
+  // Y el orden del teléfono: primero los bloques numerados, la ficha al cierre.
+  const bloques = codigo.indexOf("orden.map((key, index) =>");
+  const cierre = codigo.indexOf("{fichaEnColumna ? null : ficha}");
+  assert.ok(bloques > 0 && cierre > bloques, "en móvil la ficha va DESPUÉS de los módulos");
 
-  // Y el orden del teléfono: la lectura larga primero, la sección al final.
-  const longRead = codigo.indexOf("<LongReadEnd");
-  const cierre = codigo.indexOf("{tambienHoyEnColumna ? null : tambienHoy}");
-  assert.ok(longRead > 0 && cierre > longRead, "en móvil «También hoy» va DESPUÉS de la lectura larga");
+  // La columna principal queda a medida de lectura aunque el lienzo sea ancho.
+  assert.match(codigo, /<ReadingBlock>/, "en un lienzo de 1200 el texto no puede ir a ancho completo");
 });
 
 test("el documento y el shell son el mismo negro", () => {

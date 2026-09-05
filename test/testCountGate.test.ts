@@ -27,28 +27,32 @@ const resumen = (pass: number, fail = 0) =>
     ""
   ].join("\n");
 
-test("el piso es el del brief: 745 tests", () => {
-  assert.equal(DEFAULT_MINIMUM, 745);
+test("el piso es el del brief más lo que sumó CORE-191: 849 tests", () => {
+  // 745 + 104 casos nuevos de la sección Hoy (hoyPrincipal 22, lunaCarta 42,
+  // hoySection 40). El piso se sube con lo que se agregó DE VERDAD: los otros
+  // archivos que la tarjeta tocó repuntaron sus afirmaciones a la superficie
+  // nueva sin agregar ni borrar un solo caso.
+  assert.equal(DEFAULT_MINIMUM, 849);
 });
 
 test("una corrida completa por encima del piso pasa", () => {
-  const verdict = evaluateTestRun(resumen(764));
+  const verdict = evaluateTestRun(resumen(866));
   assert.equal(verdict.ok, true);
-  assert.equal(verdict.pass, 764);
+  assert.equal(verdict.pass, 866);
   assert.deepEqual(verdict.failures, []);
 });
 
-test("el piso incluye su propio número: exactamente 745 pasa, 744 falla", () => {
-  assert.equal(evaluateTestRun(resumen(745)).ok, true);
+test("el piso incluye su propio número: exactamente 849 pasa, 848 falla", () => {
+  assert.equal(evaluateTestRun(resumen(849)).ok, true);
 
-  const abajo = evaluateTestRun(resumen(744));
+  const abajo = evaluateTestRun(resumen(848));
   assert.equal(abajo.ok, false);
-  assert.match(abajo.failures[0], /744/);
+  assert.match(abajo.failures[0], /848/);
   assert.match(abajo.failures[0], /falta/);
 });
 
 test("un test fallado hace fallar el gate aunque sobre cobertura", () => {
-  const verdict = evaluateTestRun(resumen(800, 3));
+  const verdict = evaluateTestRun(resumen(900, 3));
   assert.equal(verdict.ok, false);
   assert.equal(verdict.fail, 3);
   assert.match(verdict.failures[0], /3 test\(s\) fallaron/);
@@ -62,19 +66,19 @@ test("una corrida sin resumen NO pasa: la ausencia de `fail` no es `fail 0`", ()
 });
 
 test("el formato TAP del runner también se lee", () => {
-  const tap = ["# tests 764", "# pass 764", "# fail 0", ""].join("\n");
+  const tap = ["# tests 866", "# pass 866", "# fail 0", ""].join("\n");
   const verdict = evaluateTestRun(tap);
   assert.equal(verdict.ok, true);
-  assert.equal(verdict.pass, 764);
+  assert.equal(verdict.pass, 866);
 });
 
 test("un nombre de test que imita el resumen no le gana al resumen real", () => {
   // El resumen va al final; se toma la última aparición, no la primera.
-  const salida = ["✔ pass 1 no debería contar (0.1ms)", resumen(764)].join("\n");
-  assert.equal(readCounter(salida, "pass"), 764);
+  const salida = ["✔ pass 1 no debería contar (0.1ms)", resumen(866)].join("\n");
+  assert.equal(readCounter(salida, "pass"), 866);
 });
 
 test("el mínimo es configurable para poder subir el piso sin tocar la lógica", () => {
-  assert.equal(evaluateTestRun(resumen(764), { minimum: 900 }).ok, false);
-  assert.equal(evaluateTestRun(resumen(764), { minimum: 700 }).ok, true);
+  assert.equal(evaluateTestRun(resumen(866), { minimum: 1000 }).ok, false);
+  assert.equal(evaluateTestRun(resumen(866), { minimum: 800 }).ok, true);
 });

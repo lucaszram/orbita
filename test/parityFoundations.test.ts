@@ -151,6 +151,13 @@ test("web y nativo resuelven a la MISMA pantalla canónica", () => {
         `${ruta} no renderiza la pantalla canónica ${nombre}`
       );
     }
+    // Y la exporta UN solo módulo. Rehacer una sección entera —como Hoy en
+    // CORE-191— es justo el momento en que aparece una segunda definición al
+    // lado de la vieja, y las dos rutas quedarían montando pantallas distintas.
+    const definiciones = SRC_FILES.filter((f) =>
+      new RegExp(`export function ${nombre}\\b`).test(readFileSync(f, "utf8"))
+    ).map((f) => f.replace(ROOT + "/", ""));
+    assert.deepEqual(definiciones, [modulo], `${nombre} está definida en más de un módulo`);
   }
 });
 
@@ -245,18 +252,40 @@ test("el Umbral es una sección de la web, no una ruta olvidada", () => {
 
 // --- La fecha del historial no puede volver al reloj del navegador -----------
 
-test("Home y Diario derivan el rango de la fecha canónica del servidor", () => {
-  for (const f of ["src/screens/HomeScreen.tsx", "src/screens/DiarioScreen.tsx"]) {
-    // Se mira el CÓDIGO, no los comentarios: los comentarios explican
-    // justamente de qué se migró y nombran las funciones viejas.
-    const s = readFileSync(join(ROOT, f), "utf8")
+test("Hoy y Diario toman el día del servidor, y la ventana del Diario sale de esa fecha", () => {
+  // Se mira el CÓDIGO, no los comentarios: los comentarios explican justamente
+  // de qué se migró y nombran las funciones viejas.
+  const codigo = (f: string) =>
+    readFileSync(join(ROOT, f), "utf8")
       .replace(/\/\*[\s\S]*?\*\//g, "")
       .replace(/\/\/.*$/gm, "");
-    assert.ok(/useCanonicalLocalDate/.test(s), `${f} debe tomar el día del servidor`);
-    assert.ok(/lastNDaysFrom/.test(s), `${f} debe derivar la ventana de esa fecha`);
+
+  const hoy = codigo("src/screens/HomeScreen.tsx");
+  assert.ok(/useDailyContext/.test(hoy), "Hoy debe tomar el contexto diario del servidor");
+  assert.ok(
+    /dailyContext\.status === "listo" \? dailyContext\.context\.localDate : null/.test(hoy),
+    "Hoy debe derivar fecha y estado del mismo snapshot canónico"
+  );
+
+  const diario = codigo("src/screens/DiarioScreen.tsx");
+  assert.ok(/useCanonicalLocalDate/.test(diario), "Diario debe tomar el día del servidor");
+
+  for (const [f, s] of [
+    ["src/screens/HomeScreen.tsx", hoy],
+    ["src/screens/DiarioScreen.tsx", diario]
+  ] as const) {
     assert.ok(!/\blastNDays\(/.test(s), `${f} sigue usando el reloj del navegador`);
     assert.ok(!/\btoLocalDate\(\)/.test(s), `${f} sigue usando el reloj del navegador`);
+    assert.ok(!/\bDate\.now\(/.test(s), `${f} decide el día con el reloj del dispositivo`);
   }
+
+  // La tira de días es del Diario: Hoy dejó de montarla (CORE-191) y por eso no
+  // deriva ningún rango. El historial que sí la tiene sigue derivándola de la
+  // fecha canónica, que es lo que este test existe para impedir que se pierda.
+  assert.ok(
+    /lastNDaysFrom/.test(codigo("src/screens/DiarioScreen.tsx")),
+    "el Diario debe derivar la ventana de la fecha canónica"
+  );
 });
 
 // --- ImageBackground en react-native-web ------------------------------------
