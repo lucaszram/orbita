@@ -1,5 +1,28 @@
 # Current Task
 
+## Lo principal de Hoy se lee como en el frame (CORE-237, 2026-09-06)
+
+**Objetivo:** que «Lo principal hoy» siga los frames WEB V1 `1718:2136` (1440)
+y `1718:1997` (390), que Lucas confirmó como autoridad también de contenido:
+la frase completa de la lectura, la línea `CONTEXTO · TU AÑO DE …`, el enlace
+`VER TU MOMENTO ›`, la tarjeta lateral con `IR A TRÁNSITOS › · TU MOMENTO ›` y
+la gutter de 24 como el resto de la web. Sólo front, módulo home.
+
+**Cambios:** `HoyPrincipalBloque` recibe `contexto` (el tema del año de
+`momento.getTemaDelAno`, escrito con `TEMA_DE_CASA_TITULAR` como en Build 30)
+y muestra `CONTEXTO` cuando hay tema listo o `CONTACTO` si no; suma
+`VER TU MOMENTO ›` hacia `RUTA_TU_MOMENTO` (`/transito?segmento=momento`).
+`HomeScreen` pide el tema una vez por día con la fecha canónica y nunca bloquea
+la sección por él. `HOY_GUTTER` pasa al token compartido (24).
+
+**Decisiones:** sin tema listo (Free, sin hora exacta, fallo o en vuelo) la
+fila es el contacto de siempre; no hay dos filas ni una inventada. El
+parámetro `segmento=momento` lo honra Tránsitos en CORE-240 (T1); hasta
+entonces abre Tránsitos en Ahora. Tests de `hoySection` actualizados con el
+motivo en cada aserción.
+
+**Estado:** rama `orb/core-237-hoy-principal` desde main f9c8264.
+
 ## Tu momento abre tus cuatro ritmos (CORE-211, 2026-09-06)
 
 **Objetivo:** que Tu momento abra la capa 03, el mandala temporal, con Build 30

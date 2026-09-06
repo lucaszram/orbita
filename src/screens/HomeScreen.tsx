@@ -50,7 +50,8 @@
  * —el Umbral los monta— pero Hoy es la sección de lo que se está moviendo sobre
  * la carta, no el ritual.
  */
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { useAction } from "convex/react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -77,14 +78,17 @@ import { GuestState } from "@/components/orbita/GuestState";
 import { LoadingState } from "@/components/orbita/states";
 import {
   contarModulos,
+  contextoDelAno,
   etiquetaDeModulos,
   guiaPendiente,
   hoyBloques,
   hoyPrincipal,
   hoyRanking,
   numeroDeBloque,
+  RUTA_TU_MOMENTO,
   type HoyBloqueKey
 } from "@/domain/hoyPrincipal";
+import { TEMA_DE_CASA_TITULAR } from "@/domain/momento";
 import {
   cumplelunaHoy,
   cumplelunaIntroDeHoy,
@@ -101,6 +105,7 @@ import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
 import { useRequireProfile } from "@/hooks/useRequireProfile";
 import { useDailyGuide } from "@/services/dailyGuideStore";
 import { useLunaCarta } from "@/services/lunaCartaStore";
+import { proposedApi, type MomentoTemaDelAno } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
 
 const IS_WEB = process.env.EXPO_OS === "web";
@@ -190,6 +195,36 @@ export function HomeScreen() {
   const { state: dailyState, retry: retryDaily } = useDailyGuide(claveDelDia, today ?? "", isAuthLoading);
   const { state: lunaState, retry: retryLuna } = useLunaCarta(claveDelDia, today ?? "", isAuthLoading);
 
+  // El contexto de lo principal es el tema del año (CORE-237). Se pide una
+  // vez por día con la fecha canónica; cualquier sobre que no traiga un tema
+  // listo —Free, sin hora exacta, fallo— deja la línea de contacto, que
+  // siempre sale de la misma guía. Nunca bloquea la sección ni la reintenta.
+  const getTema = useAction(proposedApi.momentoTemaDelAno);
+  // Clave por cuenta Y día, como la guía: un cambio de cuenta el mismo día no
+  // puede mostrar el contexto de la cuenta anterior ni un instante.
+  const claveDelTema = today && claveDelDia && !isAuthLoading ? `${claveDelDia}:${today}` : null;
+  const [temaSobre, setTemaSobre] = useState<{ clave: string; sobre: MomentoTemaDelAno } | null>(null);
+  useEffect(() => {
+    if (!claveDelTema || !today) return;
+    // Ya está el sobre de esta cuenta y este día: una reconexión no lo vuelve a pedir.
+    if (temaSobre?.clave === claveDelTema) return;
+    let vivo = true;
+    getTema({ localDate: today })
+      .then((sobre) => {
+        if (vivo) setTemaSobre({ clave: claveDelTema, sobre });
+      })
+      .catch(() => {
+        if (vivo) setTemaSobre(null);
+      });
+    return () => {
+      vivo = false;
+    };
+    // `temaSobre` se lee sólo para no repetir el pedido; no es un disparador.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [getTema, claveDelTema, today]);
+  const tema = temaSobre && temaSobre.clave === claveDelTema && temaSobre.sobre.status === "ready" ? temaSobre.sobre.tema : null;
+  const contexto = contextoDelAno(tema, tema && tema.status === "ready" ? TEMA_DE_CASA_TITULAR[tema.house] ?? null : null);
+
   const daily = dailyState.status === "ready" ? dailyState.payload : null;
   // La primera respuesta de `getGuide` es genérica y viene marcada pendiente:
   // no es el dato de hoy. Se muestra como carga y se vuelve a consultar.
@@ -264,7 +299,10 @@ export function HomeScreen() {
       </HoyTarjeta>
       <HoyTarjeta titulo="TU MOMENTO">
         <HoyTexto>Los ciclos lentos: tu estación vital, el tema de tu año y tus cuatro ritmos.</HoyTexto>
-        <HoyEnlace href="/transito">IR A TRÁNSITOS</HoyEnlace>
+        <View style={styles.enlaces}>
+          <HoyEnlace href="/transito">IR A TRÁNSITOS</HoyEnlace>
+          <HoyEnlace href={RUTA_TU_MOMENTO}>TU MOMENTO</HoyEnlace>
+        </View>
       </HoyTarjeta>
     </>
   ) : null;
@@ -387,7 +425,7 @@ export function HomeScreen() {
                       const estado = estadoDeLaGuia("principal");
                       if (estado) return <HoyPrincipalEstado>{estado}</HoyPrincipalEstado>;
                       return principal ? (
-                        <HoyPrincipalBloque principal={principal} />
+                        <HoyPrincipalBloque principal={principal} contexto={contexto} />
                       ) : (
                         <HoyPrincipalEstado>
                           <HoyFalta lineas={["La lectura de hoy no trajo una síntesis principal."]} />
@@ -428,6 +466,7 @@ export function HomeScreen() {
 const styles = StyleSheet.create({
   screen: { backgroundColor: "#07080A", flex: 1 },
   estado: { paddingVertical: orbita.spacing.xxl },
+  enlaces: { columnGap: orbita.spacing.xl, flexDirection: "row", flexWrap: "wrap" },
   errorTitle: {
     color: orbita.colors.bone,
     fontFamily: orbita.fonts.serif,

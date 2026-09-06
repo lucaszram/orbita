@@ -9,17 +9,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import {
-  contarModulos,
-  esLecturaPlantilla,
-  etiquetaDeModulos,
-  guiaPendiente,
-  hoyBloques,
-  hoyPrincipal,
-  hoyRanking,
-  numeroDeBloque,
-  partesDeContacto
-} from "../src/domain/hoyPrincipal";
+import { contarModulos, contextoDelAno, esLecturaPlantilla, etiquetaDeModulos, guiaPendiente, hoyBloques, hoyPrincipal, hoyRanking, numeroDeBloque, partesDeContacto } from "../src/domain/hoyPrincipal";
 import type { DailyGuidePayload } from "../src/services/appRefs";
 
 /** Un payload real mínimo; cada test pisa sólo lo que le importa. */
@@ -303,5 +293,15 @@ describe("el contador del encabezado", () => {
   it("concuerda en singular y plural", () => {
     assert.equal(etiquetaDeModulos(1), "1 CAPA");
     assert.equal(etiquetaDeModulos(4), "4 CAPAS");
+  });
+});
+
+describe("el contexto del año (CORE-237)", () => {
+  it("escribe «Tu año de …» sólo con un tema listo, con el titular de la casa si lo hay", () => {
+    assert.equal(contextoDelAno({ status: "ready", houseTheme: "rutinas, tareas, cuidado y trabajo cotidiano" }, "rutinas, tareas y organización cotidiana"), "Tu año de rutinas, tareas y organización cotidiana");
+    assert.equal(contextoDelAno({ status: "ready", houseTheme: "vínculos y acuerdos" }, null), "Tu año de vínculos y acuerdos");
+    assert.equal(contextoDelAno({ status: "ready", houseTheme: "   " }, null), null, "sin tema escrito no hay contexto");
+    assert.equal(contextoDelAno({ status: "needs_birth_time" }, "algo"), null, "sin profección no se inventa contexto");
+    assert.equal(contextoDelAno(null, "algo"), null);
   });
 });

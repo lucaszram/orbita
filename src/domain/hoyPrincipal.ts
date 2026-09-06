@@ -233,6 +233,26 @@ export function hoyBloques(cumplelunaHoy: boolean): readonly HoyBloqueKey[] {
   return cumplelunaHoy ? ["cumpleluna", "ranking", "luna"] : ["ranking", "luna", "cumpleluna"];
 }
 
+/**
+ * A dónde lleva «Ver tu momento» (frames `1718:2136` / `1718:1997`): la
+ * sección Tránsitos, pidiendo el segmento de Tu momento. Tránsitos decide
+ * qué hacer con el parámetro; Hoy sólo declara el destino.
+ */
+export const RUTA_TU_MOMENTO = { pathname: "/transito", params: { segmento: "momento" } } as const;
+
+/**
+ * La línea `CONTEXTO · TU AÑO DE …` de lo principal: el tema del año de la
+ * profección (`momento.getTemaDelAno`, CORE-210) escrito como en el frame
+ * (`TU AÑO DE RUTINAS, TAREAS Y ORGANIZACIÓN COTIDIANA`). `null` cuando el
+ * sobre no trae un tema listo: entonces lo principal muestra el contacto.
+ */
+export function contextoDelAno(tema: { status: string; houseTheme?: string } | null | undefined, titularDeCasa: string | null): string | null {
+  if (!tema || tema.status !== "ready") return null;
+  const tituloTema = titularDeCasa ?? (typeof tema.houseTheme === "string" ? tema.houseTheme.trim() : "");
+  if (!tituloTema) return null;
+  return `Tu año de ${tituloTema}`;
+}
+
 /** `0` → `"01"`. El índice que imprime el encabezado de cada bloque. */
 export function numeroDeBloque(indice: number): string {
   const numero = Number.isFinite(indice) ? Math.max(0, Math.trunc(indice)) + 1 : 1;

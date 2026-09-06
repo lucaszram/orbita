@@ -12,12 +12,11 @@ import { orbita } from "@/theme/orbita";
  * derecha. Estas piezas SON ese sistema, para que ningún bloque lo vuelva a
  * inventar con márgenes propios.
  *
- * Todo sale de los tokens de `theme/orbita`. La única medida propia es la
- * gutter: WEB V1 apila Hoy con 20, un punto más angosto que la gutter histórica
- * de la app (24). Vive acá y no en el tema porque es de esta sección; cambiar el
- * token compartido movería todas las demás pantallas.
+ * Todo sale de los tokens de `theme/orbita`, incluida la gutter: Hoy apila con
+ * la misma gutter que Tránsitos, Vínculos y Carta (CORE-237), así los rótulos
+ * de las cinco secciones arrancan en la misma vertical.
  */
-export const HOY_GUTTER = 20;
+export const HOY_GUTTER = orbita.spacing.gutter;
 
 // ---------------------------------------------------------------------------
 // Tipografía
@@ -230,9 +229,9 @@ export function HoyMedidor({
 /**
  * Enlace mono cobre con la flecha del canon: `VER TODOS LOS TRÁNSITOS ›`.
  *
- * Sólo apunta a rutas que existen en la navegación canónica (CORE-113); un
- * enlace a una pantalla que no está sería una promesa rota, y por eso los
- * «Ver detalle» y «Ver tu momento» del frame no se dibujan todavía.
+ * Sólo apunta a rutas que existen en la navegación canónica (CORE-113): un
+ * enlace a una pantalla que no está sería una promesa rota. «Ver tu momento»
+ * (CORE-237) abre Tránsitos pidiendo el segmento de Tu momento.
  */
 export function HoyEnlace({ href, children }: { href: Href; children: string }) {
   return (

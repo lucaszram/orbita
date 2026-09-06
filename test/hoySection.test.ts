@@ -60,6 +60,11 @@ describe("la jerarquía de Hoy", () => {
     assert.match(PRINCIPAL, /<HoyEtiqueta accessibilityRole="header" style=\{styles\.rotulo\}>\s*LO PRINCIPAL HOY/);
     assert.match(PRINCIPAL, /export function HoyPrincipalEstado/);
     assert.match(PRINCIPAL, /items=\{\["CONTACTO", principal\.aspecto\.toLocaleUpperCase\("es"\)\]\}/);
+    // CORE-237 (frames `1718:2136` / `1718:1997`): con el tema del año listo, la
+    // fila es `CONTEXTO · TU AÑO DE …`; nunca las dos a la vez. Y el enlace
+    // «VER TU MOMENTO ›» abre Tránsitos pidiendo el segmento de Tu momento.
+    assert.match(PRINCIPAL, /contexto \? \(\s*<HoyMeta items=\{\["CONTEXTO", contexto\.toLocaleUpperCase\("es"\)\]\}/);
+    assert.match(PRINCIPAL, /<HoyEnlace href=\{RUTA_TU_MOMENTO\}>VER TU MOMENTO<\/HoyEnlace>/);
     assert.match(HOME, /estadoDeLaGuia\("principal"\)/);
     assert.match(HOME, /<HoyPrincipalEstado>\{estado\}<\/HoyPrincipalEstado>/);
     assert.match(HOME, /<HoyFalta lineas=\{\["La lectura de hoy no trajo una síntesis principal\."\]\}/);
@@ -109,6 +114,8 @@ describe("la jerarquía de Hoy", () => {
     assert.match(HOME, /<HoyTarjeta titulo="LAS CUATRO CAPAS DE HOY">/);
     assert.match(HOME, /<HoyTarjeta titulo="TU MOMENTO">/);
     assert.match(HOME, /<HoyEnlace href="\/transito">IR A TRÁNSITOS<\/HoyEnlace>/);
+    // CORE-237: la tarjeta lleva los dos enlaces del frame, `IR A TRÁNSITOS › · TU MOMENTO ›`.
+    assert.match(HOME, /<HoyEnlace href=\{RUTA_TU_MOMENTO\}>TU MOMENTO<\/HoyEnlace>/);
     assert.equal((HOME.match(/\{tarjetas\}/g) ?? []).length, 1);
     assert.match(LAYOUT, /export function HoyTarjeta/);
   });
@@ -135,7 +142,8 @@ describe("responsive", () => {
     assert.match(reading, /<HoyEncabezado/);
     // La síntesis y los tres bloques numerados viven en la misma columna de
     // lectura; los numerados salen del mismo mapa.
-    assert.match(reading, /<HoyPrincipalBloque principal=\{principal\} \/>/);
+    // CORE-237: lo principal recibe el contexto del año (o `null`) además de la síntesis.
+    assert.match(reading, /<HoyPrincipalBloque principal=\{principal\} contexto=\{contexto\} \/>/);
     assert.match(reading, /\{orden\.map\(\(key, index\) => \(/);
     assert.match(reading, /\{cuerpoDe\(key\)\}/);
   });
@@ -156,7 +164,8 @@ describe("responsive", () => {
   });
 
   it("en móvil la sección apila con la gutter de WEB V1 y respeta el área segura", () => {
-    assert.match(LAYOUT, /export const HOY_GUTTER = 20;/);
+    // CORE-237: Hoy apila con la misma gutter que el resto de la web (token compartido, 24).
+    assert.match(LAYOUT, /export const HOY_GUTTER = orbita\.spacing\.gutter;/);
     assert.match(HOME, /paddingBottom: insets\.bottom \+ orbita\.spacing\.xxl/);
     // El header interno sigue decidiéndose por el contrato compartido.
     assert.match(HOME, /showsScreenHeader\(\{ web: IS_WEB, mode \}\)/);
@@ -238,7 +247,10 @@ describe("las fuentes", () => {
     assert.match(HOME, /REINTENTOS_PENDIENTE_MAX/);
     assert.match(HOME, /const esperaAgotada =/);
     assert.match(HOME, /mensaje="La lectura de hoy está tardando más de lo normal\."/);
-    assert.doesNotMatch(HOME, /useAction\(/);
+    // La guía nunca se pide con una acción directa. (CORE-237 sí llama a
+    // `momento.getTemaDelAno` para la línea de contexto: es otra fuente.)
+    assert.doesNotMatch(HOME, /useAction\(proposedApi\.dailyGuide|useAction\(appApi\.daily/);
+    assert.match(HOME, /useAction\(proposedApi\.momentoTemaDelAno\)/);
   });
 
   it("el contador cuenta módulos con dato, o no se muestra", () => {
