@@ -1,5 +1,12 @@
 # Contrato — CHANGELOG
 
+## 2026-09-06 — Vínculos conserva las personas guardadas (CORE-213)
+
+- **Qué cambia (aditivo):** `relationships.listPeople({})` (query reactiva) devuelve `{ people, activeId }`: todas las personas guardadas de la cuenta —sólo datos autorizados: nombre, tipo, nivel, signo, fecha, hora si se guardó, lugar, `chartStatus`, `isActive`, `savedAt`— de la más reciente a la más antigua. `relationships.selectPerson({ profileId })` (mutation) deja activa a una persona propia; no calcula nada. `relationships.synastry` acepta `profileId?` para abrir la comparación de una persona concreta; sin él sigue usando la activa. `addPerson` acepta `profileId?` para editar a una persona guardada (reemplazo completo de la fila, como antes al reemplazar a la activa).
+- **Cambio de comportamiento de `addPerson` sin `profileId`:** ya no reemplaza a la activa: crea una persona nueva y la deja activa; las demás siguen guardadas con `isActive: false`. `by_user_active` sigue apuntando a una sola. El cupo Free queda para CORE-214: hasta entonces la biblioteca no limita.
+- **Por qué:** la ficha pide una biblioteca observable sobre `relationshipProfiles` (índice `by_user`), sin duplicar datos en el cliente, y que cada persona abra su comparación existente sin generar otra por navegar. La comparación es una derivación pura sobre las cartas ya guardadas (`computeSynastryContacts`), así que elegir a alguien no llama al proveedor.
+- **Front:** `/vinculo` muestra la biblioteca (frames `2092:2975` / `1757:2475`): filas por persona, «Tu vínculo con X» con `resumenDeVinculo` y la barra por tono, «Nivel de datos» y las acciones agregar / editar; `/reading/vinculo-result?id=<profileId>` abre la comparación de esa persona (`perfilIdValido`), sin id la activa. Un id ajeno responde `no_person`.
+
 ## 2026-09-06 — Tránsitos ordena el cielo de hoy: `transits.getPanorama` (CORE-207)
 
 - **Qué cambia (aditivo):** nueva action pública `transits.getPanorama({ localDate })`. Devuelve **siempre** un sobre con `status`: `ready` (con `rows`, `count`, `activeTotal`, `cadence: "Cambia a diario"` y `access`), `empty` (la lectura del día no tiene contactos dentro de orbe) o `locked` (Free: el ranking se calcula con la carta y es Plus; **no** viaja la lista). `getToday` y `getDetail` no cambian.
