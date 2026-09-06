@@ -4,6 +4,9 @@ import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ContentCanvas } from "@/components/orbita/ContentCanvas";
 import { TriadLine } from "@/components/orbita/TriadLine";
+import { PlanBadge } from "@/components/web/plan-badge";
+import { fechaCivilLarga } from "@/domain/lunaCarta";
+import { useCanonicalLocalDate } from "@/hooks/useDailyContext";
 import { PLACEMENT_BODY_SYMBOL } from "@/domain/astroSymbols";
 import { showsScreenHeader, type CanvasVariant } from "@/domain/webLayout";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
@@ -34,10 +37,11 @@ const G = orbita.spacing.gutter;
  */
 export function OrbitaScreen({
   children,
-  right = "Hoy  ˅",
+  right,
   canvas = "reading"
 }: {
   children: ReactNode;
+  /** Rótulo derecho de la barra móvil. Sin él, la fecha canónica del día (frames WEB V1). */
   right?: string;
   canvas?: CanvasVariant;
 }) {
@@ -67,17 +71,27 @@ export function OrbitaScreen({
 }
 
 /**
- * Barra de la pantalla. La regla de la barra es full-bleed (es chrome), pero la
- * marca y el selector viajan en el mismo lienzo que el contenido: si no, en
- * escritorio quedaban a 350px del texto que encabezan.
+ * Barra móvil de la pantalla (`Web/Header · Mobile` del tablero `1308:2`,
+ * CORE-239): la marca en serif con la píldora de plan a la izquierda y, a la
+ * derecha, la fecha canónica del día en mono («MARTES 1 DE SEPTIEMBRE») o el
+ * rótulo que pida la pantalla («NUEVA PERSONA»). La regla de la barra es
+ * full-bleed (es chrome), pero la marca y el rótulo viajan en el mismo lienzo
+ * que el contenido: si no, en escritorio quedaban a 350px del texto que
+ * encabezan.
  */
-export function TopBar({ right = "HOY ˅", canvas = "reading" }: { right?: string; canvas?: CanvasVariant }) {
+export function TopBar({ right, canvas = "reading" }: { right?: string; canvas?: CanvasVariant }) {
+  const localDate = useCanonicalLocalDate();
+  const fecha = localDate ? fechaCivilLarga(localDate) : null;
+  const rotulo = right ?? (fecha ? fecha.toLocaleUpperCase("es") : null);
   return (
     <View>
       <ContentCanvas variant={canvas}>
         <View style={styles.topbar}>
-          <Text style={styles.brand}>ÓRBITA</Text>
-          <Text style={styles.selector}>{right}</Text>
+          <View style={styles.brandRow}>
+            <Text style={styles.brand}>Órbita</Text>
+            <PlanBadge />
+          </View>
+          {rotulo ? <Text style={styles.selector}>{rotulo}</Text> : null}
         </View>
       </ContentCanvas>
       <View style={styles.topbarDivider} />
@@ -247,8 +261,9 @@ export const styles = StyleSheet.create({
     paddingTop: orbita.spacing.md,
     paddingBottom: orbita.spacing.lg
   },
-  brand: { color: orbita.colors.bone, fontFamily: orbita.fonts.monoMedium, fontSize: 17, letterSpacing: 2 },
-  selector: { color: orbita.colors.bone, fontFamily: orbita.fonts.monoMedium, fontSize: 14, letterSpacing: 1 },
+  brandRow: { alignItems: "center", flexDirection: "row", gap: orbita.spacing.sm },
+  brand: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 22, lineHeight: 26 },
+  selector: { color: orbita.colors.muted, flexShrink: 1, fontFamily: orbita.fonts.monoMedium, fontSize: 11, letterSpacing: 1.2, textAlign: "right" },
   topbarDivider: { backgroundColor: orbita.colors.line, height: 1 },
 
   section: { paddingHorizontal: G, paddingTop: orbita.spacing.xl, paddingBottom: orbita.spacing.xxl },

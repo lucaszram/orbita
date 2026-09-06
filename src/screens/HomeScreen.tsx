@@ -406,7 +406,9 @@ export function HomeScreen() {
                   <ReadingBlock>
                     <HoyEncabezado
                       eyebrow="HOY · LO ACTIVO AHORA"
-                      fecha={today ? fechaCivilLarga(today) : null}
+                      // En móvil la fecha ya va en la barra de la app (CORE-239,
+                      // frame `1718:1997`); repetirla acá era leerla dos veces.
+                      fecha={desktop && today ? fechaCivilLarga(today) : null}
                       contador={contador}
                       intro={guest ? INTRO_INVITADO : intro}
                     />

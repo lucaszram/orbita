@@ -49,7 +49,9 @@ describe("la jerarquía de Hoy", () => {
     assert.doesNotMatch(HOME, /titulo="Hoy"/);
     assert.match(LAYOUT, /encabezadoFila: \{[\s\S]*?justifyContent: "space-between"/);
     assert.match(LAYOUT, /<View style=\{styles\.encabezadoLinea\} \/>/);
-    assert.match(HOME, /fecha=\{today \? fechaCivilLarga\(today\) : null\}/);
+    // CORE-239: en móvil la fecha vive en la barra de la app; el encabezado la
+    // muestra sólo en escritorio (frames `1718:2136` / `1718:1997`).
+    assert.match(HOME, /fecha=\{desktop && today \? fechaCivilLarga\(today\) : null\}/);
     assert.match(HOME, /contador=\{contador\}/);
   });
 

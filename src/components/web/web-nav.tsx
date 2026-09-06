@@ -1,5 +1,6 @@
 import { Link } from "expo-router";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { PlanBadge } from "@/components/web/plan-badge";
 import { CANVAS_MAX_WIDTH, WEB_SHELL_BACKGROUND } from "@/domain/webLayout";
 import { useIsDesktop } from "@/hooks/useLayoutMode";
 
@@ -44,6 +45,9 @@ export type NavKey = "inicio" | "transitos" | "vinculo" | "umbral" | "carta" | "
  * aprobada es «Hoy». `perfil` y `diario` siguen en `NavKey` sin item: son
  * destinos contextuales que un shell puede pasar como activo (`app/diario.tsx`).
  */
+/** El atajo de cuenta de la cabecera. No es una sección: no entra en `items`. */
+const CUENTA_HREF = "/perfil";
+
 const items: Array<{ key: NavKey; label: string; href: string }> = [
   { key: "inicio", label: "Hoy", href: "/home" },
   { key: "transitos", label: "Tránsitos", href: "/transito" },
@@ -53,14 +57,17 @@ const items: Array<{ key: NavKey; label: string; href: string }> = [
 ];
 
 /**
- * Navegación de la APP autenticada. No lleva avatar, botón de entrar ni atajo de
- * cuenta: todo lo de la cuenta vive en `/perfil`.
+ * Navegación de la APP autenticada (`Web/Nav · Desktop` del tablero `1308:2`,
+ * CORE-239): la marca con la píldora de plan a la izquierda, las cinco
+ * secciones en mono al centro-derecha y el atajo `PERFIL` a `/perfil` en el
+ * extremo. No lleva botón de entrar ni ninguna salida al login: la cuenta
+ * sigue viviendo en `/perfil`, y Perfil sigue sin ser una sección.
  *
  * En escritorio es una barra OPACA sobre el negro del shell, alineada al mismo
  * lienzo ancho que el contenido. Antes no tenía fondo: se veía el blanco del
  * documento y los links quedaban en cobre sobre blanco, prácticamente
  * invisibles. En móvil no hay barra superior: sólo la inferior fija, como en el
- * nativo.
+ * nativo; la barra móvil con la fecha la pone cada pantalla (`TopBar`).
  */
 export function WebNav({ active, meta }: { active: NavKey; meta?: string }) {
   const desktop = useIsDesktop();
@@ -74,6 +81,7 @@ export function WebNav({ active, meta }: { active: NavKey; meta?: string }) {
   return (
     <View style={styles.topbar}>
       <View style={styles.topbarInner}>
+        <View style={styles.marca}>
         <Link href="/home" asChild>
           <Pressable style={styles.brand} accessibilityRole="link" accessibilityLabel="Órbita · Inicio">
             {/* Tratamiento de ícono de app: cuadrado redondeado chico con
@@ -85,6 +93,8 @@ export function WebNav({ active, meta }: { active: NavKey; meta?: string }) {
             <Text style={styles.brandText}>Órbita</Text>
           </Pressable>
         </Link>
+        <PlanBadge />
+        </View>
 
         {/* La navegación va arriba a la DERECHA, como cualquier header web.
             Antes quedaba centrada por un `space-between` de tres celdas cuya
@@ -111,6 +121,12 @@ export function WebNav({ active, meta }: { active: NavKey; meta?: string }) {
             })}
           </View>
           {meta ? <Text style={styles.metaText}>{meta}</Text> : null}
+          <Link href={CUENTA_HREF} asChild>
+            <Pressable accessibilityRole="link" accessibilityLabel="Perfil y cuenta" style={styles.perfil}>
+              <View style={styles.perfilPunto} />
+              <Text style={styles.perfilTexto}>PERFIL</Text>
+            </Pressable>
+          </Link>
         </View>
       </View>
     </View>
@@ -155,6 +171,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     width: "100%"
   },
+  marca: { alignItems: "center", flexDirection: "row", gap: 12 },
   brand: { alignItems: "center", flexDirection: "row", gap: 10, minHeight: 44 },
   // El ícono trae su propio fondo azul-noche, así que el marco redondeado lo
   // separa del negro del shell y lo hace leer como ícono, no como una foto.
@@ -167,15 +184,16 @@ const styles = StyleSheet.create({
     width: 28
   },
   mark: { height: 26, width: 26 },
-  brandText: { color: colors.bone, fontFamily: "Inter_700Bold", fontSize: 16 },
+  brandText: { color: colors.bone, fontFamily: "Newsreader_500Medium", fontSize: 22 },
   // Grupo derecho del header: la navegación (y el meta si algún día se usa).
   actions: { alignItems: "center", flexDirection: "row", gap: 24 },
   nav: { flexDirection: "row", gap: 26 },
   // 44px de alto mínimo: es el tamaño táctil accesible, y en escritorio no
   // cambia nada visualmente porque el texto queda centrado.
   navItem: { alignItems: "center", justifyContent: "center", minHeight: 44 },
-  navActive: { color: colors.bone, fontFamily: "Inter_700Bold", fontSize: 14 },
-  navLink: { color: colors.boneMuted, fontFamily: "Inter_500Medium", fontSize: 14 },
+  // Las secciones van en mono, como el tablero: la marca serif y el resto mono.
+  navActive: { color: colors.bone, fontFamily: "RobotoMono_500Medium", fontSize: 13, letterSpacing: 1 },
+  navLink: { color: colors.boneMuted, fontFamily: "RobotoMono_400Regular", fontSize: 13, letterSpacing: 1 },
   navUnderline: { backgroundColor: "transparent", borderRadius: 1, height: 2, marginTop: 6, width: 20 },
   navUnderlineOn: { backgroundColor: colors.copper },
 
@@ -198,7 +216,20 @@ const styles = StyleSheet.create({
   bottomItem: { alignItems: "center", flex: 1, justifyContent: "center", minHeight: 56, paddingVertical: 10 },
   bottomActive: { color: colors.bone, fontFamily: "Inter_700Bold", fontSize: 13 },
   bottomLink: { color: colors.boneDim, fontFamily: "Inter_500Medium", fontSize: 13 },
-  metaText: { color: colors.boneMuted, fontFamily: "Inter_500Medium", fontSize: 13 }
+  metaText: { color: colors.boneMuted, fontFamily: "Inter_500Medium", fontSize: 13 },
+  // El atajo de cuenta: píldora de contorno con el punto cobre y PERFIL en mono.
+  perfil: {
+    alignItems: "center",
+    borderColor: colors.line,
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 8,
+    minHeight: 40,
+    paddingHorizontal: 14
+  },
+  perfilPunto: { backgroundColor: colors.copper, borderRadius: 999, height: 18, width: 18 },
+  perfilTexto: { color: colors.bone, fontFamily: "RobotoMono_500Medium", fontSize: 11, letterSpacing: 1.2 }
 });
 
 export default WebNav;
