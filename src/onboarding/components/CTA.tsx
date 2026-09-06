@@ -10,16 +10,24 @@ type Props = {
   variant?: "copper" | "secondary";
 };
 
-/** Primary onboarding CTA — built on the reusable Button (copper or secondary). */
+/**
+ * Primary onboarding CTA — built on the reusable Button (copper or secondary).
+ *
+ * Bloqueado se VE y se ANUNCIA. Antes sólo dejaba de responder: quedaba en
+ * cobre pleno, idéntico a uno activo, así que un Guardar que no se podía tocar
+ * parecía un Guardar roto (D4). Ahora baja a un cobre apagado y declara su
+ * estado, y quien lo usa tiene que explicar al lado qué falta para soltarlo.
+ */
 export function CTA({ label, onPress, disabled, variant = "copper" }: Props) {
   const copper = variant === "copper";
   return (
     <Button
       variant="figma"
       radius={27}
-      fill={copper ? orbita.copper : "transparent"}
+      fill={copper ? (disabled ? orbita.copperOff : orbita.copper) : "transparent"}
       onPress={onPress}
       disabled={disabled}
+      accessibilityState={{ disabled: Boolean(disabled) }}
       style={{
         alignItems: "center",
         alignSelf: "stretch",
@@ -32,7 +40,7 @@ export function CTA({ label, onPress, disabled, variant = "copper" }: Props) {
     >
       <Text
         style={{
-          color: copper ? orbita.ink : orbita.bone,
+          color: copper ? (disabled ? orbita.boneSoft : orbita.ink) : disabled ? orbita.faint : orbita.bone,
           fontFamily: font.sansBold,
           fontSize: 16,
           textAlign: "center",

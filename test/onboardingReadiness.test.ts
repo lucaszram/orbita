@@ -118,38 +118,43 @@ test("el id del borrador es opaco, estable y viaja en el borrador local", () => 
 
 // --- 3. El orden del alta ----------------------------------------------------
 
-test("el borrador remoto se persiste y se CONFIRMA antes de abrir Clerk", () => {
+test("el marcador de alta en curso se siembra ANTES de crear la identidad", () => {
   const flow = sinComentarios(leer("src/onboarding/OnboardingFlow.tsx"));
   // El id se genera una sola vez y viaja con el borrador local.
   assert.match(flow, /ensureClientDraftId\(\)/);
   assert.match(flow, /clientDraftId: clientDraftId \?\? undefined/);
-  // Y la puerta: Clerk sólo se monta con el borrador confirmado.
-  assert.match(flow, /prepareSignupDraft\(\{/);
-  assert.match(flow, /setDraftPhase\("ready"\)/);
-  assert.match(flow, /setDraftPhase\("error"\)/);
-
-  const cuenta = sinComentarios(leer("src/onboarding/screens/AccountScreen.tsx"));
-  assert.match(
-    cuenta,
-    /phase === "ready" \? \([\s\S]{0,200}<ClerkSignUp\b/,
-    "sin borrador confirmado NO se abre Clerk"
-  );
+  // Antes de tocar Clerk en modo alta se guarda el borrador remoto MÍNIMO
+  // (`saveDraft` anónimo, sólo id + paso): es lo que hace que la cuenta recién
+  // creada se clasifique como alta en curso (`recovery: "onboarding"`) y no
+  // como una cuenta preexistente incompleta que rebota a /editar-datos.
+  assert.match(flow, /useAnonymousSignupMarker\(\)/);
+  assert.match(flow, /markSignup\(clientDraftId\)/);
+  // El acceso pasa por la puerta pura `startSignupGate`: el marcador va como
+  // `seedMarker` y la identidad como `createAccount` — la secuencia (marcador
+  // primero; sin marcador no hay Clerk) está probada conductualmente en
+  // `test/onboardingCanonico.test.ts`.
+  const acceso = sinComentarios(leer("src/onboarding/screens/AuthScreen.tsx"));
+  const iGateEmail = acceso.indexOf('seedMarker: onBeforeSignup ? async () => void (await onBeforeSignup()) : undefined,\n        createAccount: async () => void (await signUp?.start(trimmed))');
+  assert.ok(iGateEmail > 0, "el alta por email pasa por la puerta del marcador");
+  const gates = acceso.match(/startSignupGate\(\{/g) ?? [];
+  assert.equal(gates.length, 2, "email y OAuth de alta pasan los dos por la puerta");
 
   const hook = sinComentarios(leer("src/onboarding/useAccount.ts"));
-  const gate = hook.slice(
-    hook.indexOf("function useOnboardingSignupDraftInner"),
-    hook.indexOf("export type FinalizeOnboarding")
+  const marcador = hook.slice(
+    hook.indexOf("function useAnonymousSignupMarkerInner"),
+    hook.indexOf("export function useOnboardingSignupDraft")
   );
-  assert.ok(gate.length > 0);
-  // Anónimo, con clientDraftId, y confirmado DESPUÉS de guardar.
-  assert.ok(
-    gate.indexOf("appApi.onboarding.saveDraft") < gate.indexOf("appApi.onboarding.confirmSignupDraft"),
-    "primero se guarda, después se confirma"
-  );
-  // Reintentable: la zona horaria la resuelve el backend en segundo plano y un
-  // enriquecimiento en vuelo no puede leerse como un error de la persona.
-  assert.match(gate, /runSessionAttempts\(\{/);
-  assert.match(gate, /ONBOARDING_SIGNUP_DRAFT_NOT_READY/);
+  assert.ok(marcador.length > 0);
+  // ANÓNIMO de verdad: por el canal dedicado sin autenticar, nunca por el
+  // cliente compartido que Clerk autentica cuando se le da la gana.
+  assert.doesNotMatch(marcador, /useConvex\(\)/, "el marcador anónimo no usa el cliente de la app");
+  assert.match(marcador, /anonymousSignupDraftTransport\(\)/);
+  assert.match(marcador, /saveDraft\(\{ clientDraftId, currentStep: 0 \}\)/);
+
+  // El transporte dedicado conserva sus garantías.
+  const transporte = sinComentarios(leer("src/services/anonymousOnboardingTransport.ts"));
+  assert.match(transporte, /clientDraftId: args\.clientDraftId/);
+  assert.doesNotMatch(transporte, /setAuth/, "el canal no puede recibir un token");
 });
 
 test("el cierre copia el borrador atómicamente y calcula sólo como mejor esfuerzo", () => {
@@ -179,25 +184,32 @@ test("el cierre copia el borrador atómicamente y calcula sólo como mejor esfue
   assert.match(cierre, /calculateOrCreateNatalChart, \{\}\)\.catch/, "el cálculo no puede rechazar el guardado");
 });
 
-test("la salida del alta la autoriza el estado autoritativo, no la escritura", () => {
+test("la salida del acceso la autoriza el estado autoritativo, no la sesión", () => {
   const flow = sinComentarios(leer("src/onboarding/OnboardingFlow.tsx"));
-  // `submit` ya no navega: sólo escribe.
-  const submit = flow.slice(
-    flow.indexOf("const submit = async ()"),
-    flow.indexOf("if (step === FINAL_STEP && !PAYWALL_ENABLED)")
+  // Con la sesión activa en el paso de acceso, quién decide es la regla pura
+  // `resolveAuthStepExit` sobre la consulta de readiness (probada
+  // conductualmente en `onboardingCanonico`): cuenta completa → destino
+  // autoritativo; preexistente incompleta → editor natal; alta en curso →
+  // continúa el flujo. Nunca `isSignedIn` solo.
+  const salida = flow.slice(flow.indexOf("if (step !== STEP_AUTH) return;"));
+  assert.match(salida, /resolveAuthStepExit\(\{/);
+  assert.match(salida, /if \(exit\.kind === "wait"\) return;/);
+  assert.match(salida, /router\.replace\(HOME_ROUTE as never\)/, "cuenta completa → destino autoritativo");
+  assert.match(salida, /router\.replace\(EDIT_BIRTH_DATA_ROUTE as never\)/, "preexistente incompleta → editor");
+  const regla = sinComentarios(leer("src/onboarding/authExit.ts"));
+  assert.match(regla, /resolveReadinessDestination\(args\.completion\)/, "la autoridad sigue siendo readiness");
+  // La persistencia natal no navega por su cuenta: `prepararCarta` sólo escribe
+  // y avanza dentro del flujo.
+  const preparar = flow.slice(
+    flow.indexOf("const prepararCarta = async ()"),
+    flow.indexOf("const enterCarta = async ()")
   );
-  assert.ok(submit.length > 0);
-  assert.doesNotMatch(submit, /router\.replace/, "el cierre no puede navegar por su cuenta");
-  assert.doesNotMatch(submit, /clearDraft\(\)/, "ni dar por terminado el alta");
-  // Quien navega es el efecto que espera los datos persistidos.
-  assert.match(flow, /if \(!isBirthDataReady\(completion\)\) return;\s*void enterApp\(\);/);
-  // Y el destino es la ceremonia de recepción, con la tríada real calculada por
-  // el alta viajando en params (la carta puede no estar persistida todavía).
-  assert.match(flow, /router\.replace\(\{\s*pathname: RECEPTION_ROUTE,/);
-  assert.match(flow, /sol: computed\.sun/);
-  assert.match(flow, /luna: computed\.moon/);
-  assert.match(flow, /asc: computed\.ascendant/);
-  // Y una sola vez: la query es reactiva y puede volver a emitir.
+  assert.ok(preparar.length > 0);
+  assert.doesNotMatch(preparar, /router\.replace/, "la persistencia no puede navegar fuera del flujo");
+  assert.doesNotMatch(preparar, /clearDraft\(\)/, "ni dar por terminado el alta");
+  // Y la salida final es una sola: la Carta, con su lock (la query es reactiva
+  // y puede volver a emitir).
+  assert.match(flow, /router\.replace\(CARTA_TAB_ROUTE as never\)/);
   assert.match(flow, /if \(enterLock\.current\) return;\s*enterLock\.current = true;/);
 });
 

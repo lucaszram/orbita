@@ -24,6 +24,25 @@ export type SessionGate = {
 /** Estado de la fila `users` en Convex (ver OrbitaSessionProvider). */
 export type UserRowState = "idle" | "pending" | "ready" | "error";
 
+/**
+ * El estado de la fila, leído para el dueño VIGENTE.
+ *
+ * El provider guardaba un `UserRowState` suelto. En un cambio de cuenta A → B el
+ * `ready` de A seguía publicado hasta que corriera el efecto —y los efectos
+ * corren DESPUÉS del render—, así que durante ese render `isLive` era true con
+ * la sesión de B: las queries salían y las pantallas se daban por vivas con la
+ * fila de otra cuenta.
+ *
+ * Atando el estado a su dueño, la caída es SINCRÓNICA: si el dueño publicado no
+ * es el de esta sesión, la fila vale `idle` —o sea, carga— en el mismo render.
+ */
+export function userRowForOwner(
+  slot: { owner: string | null; state: UserRowState },
+  owner: string | null
+): UserRowState {
+  return slot.owner !== null && slot.owner === owner ? slot.state : "idle";
+}
+
 export type AuthSnapshot = {
   isLoaded: boolean;
   isConnecting: boolean;

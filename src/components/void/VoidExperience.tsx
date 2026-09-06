@@ -1,5 +1,15 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { Animated, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  ActivityIndicator,
+  Animated,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View
+} from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
@@ -11,10 +21,18 @@ import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { AstroGlyph } from "@/components/orbita/AstroGlyph";
 import { ContentCanvas } from "@/components/orbita/ContentCanvas";
 import { ReadingBlock } from "@/components/orbita/Layout";
+import { usePressedState } from "@/components/v492/Touchable";
 import { bodySymbolForName, type BodyGlyphKey } from "@/domain/astroSymbols";
 import { GuestState } from "@/components/orbita/GuestState";
 import { ErrorState, MinimalLoading } from "@/components/orbita/states";
 import { sessionPhase } from "@/domain/screenPhase";
+import {
+  resetVoidInteraction,
+  shouldGenerateVoidPrompts,
+  VOID_NEW_QUESTION_LABEL,
+  voidDailyLimitCopy,
+  voidSuggestionsState
+} from "@/domain/voidSession";
 import {
   proposedApi,
   type VoidAnswerPayload,
@@ -49,7 +67,11 @@ type AskVoid = (args: { question: string }) => Promise<VoidAnswerPayload>;
 type VoidViewProps = {
   ask: AskVoid;
   today: VoidTodayPayload | null;
-  categories: VoidPromptCategory[];
+  /** null mientras las sugeridas del día no están: la sección lo dice, la pantalla no espera. */
+  categories: VoidPromptCategory[] | null;
+  /** El camino de las sugeridas falló (la superficie para preguntar sigue viva). */
+  suggestionsFailed: boolean;
+  onRetrySuggestions: () => void;
   /** false cuando es raíz de tab (sin botón "volver"). */
   showBack: boolean;
 } & UmbralSectionSlot;
@@ -71,8 +93,20 @@ export type UmbralSectionSlot = {
 
 /**
  * El Vacío — experiencia completa (entrada → escuchando → respuesta), reutilizada
- * por el tab `app/(tabs)/vacio.tsx` (showBack=false) y por la ruta `app/reading/void.tsx`
- * (showBack=true). Live con sesión (cupo + sugeridas personalizadas); invitado → estado honesto.
+ * por el tab `app/(tabs)/umbral/index.tsx` (showBack=false) y por la lectura web
+ * `src/routes/v492/reading-void.web.tsx` (showBack=true; en nativo esa ruta
+ * redirige al tab). Live con sesión (cupo + sugeridas personalizadas); invitado → estado honesto.
+ *
+ * ## Qué cambió con QA22 (bloque 1)
+ *
+ * - **La pantalla ya no espera al LLM** (QA22-001). El único gate a pantalla
+ *   completa es `void.today`, una query de lectura. Las sugeridas llegan por
+ *   `void.suggestedToday` (el set del día, sin generar) y, sólo si ese día
+ *   todavía no tiene set, por la action que sí genera — con su carga y su error
+ *   acotados a la sección, no a la pantalla.
+ * - **`HACER OTRA PREGUNTA` en las cuatro superficies** (QA22-002): respuesta,
+ *   error, espera y cupo agotado. Resetea la interacción, nunca la cuota.
+ * - **El cupo agotado declara el estado concreto** (QA22-031).
  */
 export function VoidExperience({ showBack = true, sectionLabel, belowHeader }: { showBack?: boolean } & UmbralSectionSlot) {
   const live = useLiveApp();
@@ -109,6 +143,67 @@ export function VoidExperience({ showBack = true, sectionLabel, belowHeader }: {
   return <VoidLive showBack={showBack} sectionLabel={sectionLabel} belowHeader={belowHeader} />;
 }
 
+/** Una pregunta sugerida de la lista. Es su propio componente porque el estado
+ *  de "presionado" es un hook y la lista se arma con `map`. */
+function PromptRow({ prompt, onPress }: { prompt: string; onPress: () => void }) {
+  const { pressed, pressableProps } = usePressedState();
+  return (
+    <Pressable
+      onPress={onPress}
+      {...pressableProps}
+      style={[styles.promptRow, pressed ? styles.pressed : null]}
+      accessibilityRole="button"
+    >
+      <Text style={styles.promptText}>{prompt}</Text>
+    </Pressable>
+  );
+}
+
+/**
+ * Control fantasma del Umbral. Es su propio componente porque el estado de
+ * "presionado" es un hook y estos controles aparecen en cuatro superficies
+ * distintas (QA22-002: la salida tiene que estar en todas).
+ */
+function GhostCta({ label, onPress }: { label: string; onPress: () => void }) {
+  const { pressed, pressableProps } = usePressedState();
+  return (
+    <Pressable
+      onPress={onPress}
+      {...pressableProps}
+      style={[styles.ghostCta, pressed ? styles.pressed : null]}
+      accessibilityRole="button"
+    >
+      <Text style={styles.ghostCtaText}>{label}</Text>
+    </Pressable>
+  );
+}
+
+/**
+ * La carga de las sugeridas, ACOTADA a su sección.
+ *
+ * Antes esto era la pantalla entera y tapaba el campo para preguntar y el
+ * contador de cupo, que no dependen del LLM (QA22-001). El texto dice qué se
+ * está esperando, no "cargando tu cielo".
+ */
+function SuggestionsLoading() {
+  return (
+    <View style={styles.suggestionsState}>
+      <ActivityIndicator color={orbita.colors.copper} />
+      <Text style={styles.microMono}>BUSCANDO TUS PREGUNTAS DE HOY</Text>
+    </View>
+  );
+}
+
+/** El error de las sugeridas también es local: preguntar sigue disponible. */
+function SuggestionsError({ onRetry }: { onRetry: () => void }) {
+  return (
+    <View style={styles.suggestionsState}>
+      <Text style={styles.microMono}>No pudimos traer tus preguntas de hoy.{"\n"}Podés escribir la tuya igual.</Text>
+      <GhostCta label="REINTENTAR" onPress={onRetry} />
+    </View>
+  );
+}
+
 /** Marco mínimo (fondo Órbita) para los estados de carga/error del Umbral. */
 function VoidStateFrame({ children }: { children: ReactNode }) {
   return (
@@ -122,14 +217,23 @@ function VoidStateFrame({ children }: { children: ReactNode }) {
 function VoidLive({ showBack, sectionLabel, belowHeader }: { showBack: boolean } & UmbralSectionSlot) {
   const ask = useAction(proposedApi.voidAsk);
   const today = useQuery(proposedApi.voidToday, {});
+  // Query reactiva: el set del día que YA está cacheado. No dispara el LLM, así
+  // que una entrada "caliente" dibuja las sugeridas reales de inmediato
+  // (QA22-001 pide explícitamente no invalidar esa mejora).
+  const cached = useQuery(proposedApi.voidSuggestedToday, {});
   const suggested = useAction(proposedApi.voidSuggested);
-  // null = las sugeridas personalizadas todavía no llegaron. Carga hasta la
-  // data real: nunca las categorías genéricas que después se pisan.
-  const [categories, setCategories] = useState<VoidPromptCategory[] | null>(null);
+  // null = todavía no hay set generado en esta sesión. Nunca las genéricas
+  // mientras se espera: se pisarían delante del usuario.
+  const [generated, setGenerated] = useState<VoidPromptCategory[] | null>(null);
   const [suggestedError, setSuggestedError] = useState(false);
   const [attempt, setAttempt] = useState(0);
 
+  // La decisión de generar es pura y está probada aparte: sin saber (query en
+  // vuelo) no se dispara, con el set del día tampoco, y una sola vez por sesión.
+  const generar = shouldGenerateVoidPrompts({ cached, generated: generated !== null });
+
   useEffect(() => {
+    if (!generar) return;
     let alive = true;
     setSuggestedError(false);
     suggested({})
@@ -137,7 +241,7 @@ function VoidLive({ showBack, sectionLabel, belowHeader }: { showBack: boolean }
         if (!alive) return;
         // Éxito sin personalizadas: las genéricas son contenido curado válido
         // (no se presentan como personalizadas).
-        setCategories(r?.categories?.length ? r.categories : VOID_CATEGORIES);
+        setGenerated(r?.categories?.length ? r.categories : VOID_CATEGORIES);
       })
       .catch(() => {
         if (alive) setSuggestedError(true);
@@ -145,18 +249,17 @@ function VoidLive({ showBack, sectionLabel, belowHeader }: { showBack: boolean }
     return () => {
       alive = false;
     };
-  }, [suggested, attempt]);
+  }, [generar, suggested, attempt]);
 
-  if (suggestedError) {
-    return (
-      <VoidStateFrame>
-        <ErrorState onRetry={() => setAttempt((a) => a + 1)} />
-      </VoidStateFrame>
-    );
-  }
-  // El gate espera las preguntas personalizadas Y el cupo del día: el contador
-  // no arranca en el default y se pisa delante del usuario.
-  if (categories === null || today === undefined) {
+  // Lo generado en esta sesión MANDA sobre lo que publique la query después: la
+  // action persiste el set, y sin esta precedencia las pestañas cambiarían solas
+  // al volver el mismo contenido por otro camino.
+  const categories = generated ?? (cached?.categories?.length ? cached.categories : null);
+
+  // Único gate a pantalla completa: el cupo del día. Es una query de lectura,
+  // no la action del LLM — así el contador no arranca en un default que después
+  // se pisa, y la superficie para preguntar aparece apenas se sabe la cuota.
+  if (today === undefined) {
     return (
       <VoidStateFrame>
         <MinimalLoading />
@@ -169,6 +272,11 @@ function VoidLive({ showBack, sectionLabel, belowHeader }: { showBack: boolean }
       ask={ask}
       today={today}
       categories={categories}
+      suggestionsFailed={suggestedError}
+      onRetrySuggestions={() => {
+        setSuggestedError(false);
+        setAttempt((a) => a + 1);
+      }}
       showBack={showBack}
       sectionLabel={sectionLabel}
       belowHeader={belowHeader}
@@ -176,12 +284,14 @@ function VoidLive({ showBack, sectionLabel, belowHeader }: { showBack: boolean }
   );
 }
 
-function VoidView({ ask, today, categories, showBack, sectionLabel, belowHeader }: VoidViewProps) {
+function VoidView({ ask, today, categories, suggestionsFailed, onRetrySuggestions, showBack, sectionLabel, belowHeader }: VoidViewProps) {
   const insets = useSafeAreaInsets();
   const fontsLoaded = useOrbitaFonts();
   const [phase, setPhase] = useState<Phase>("entrada");
   const [typed, setTyped] = useState("");
-  const [category, setCategory] = useState<string>(categories[0]?.key ?? "yo");
+  // null = todavía no se eligió categoría: la primera del set manda. No se
+  // siembra con una clave inventada, porque las categorías llegan después.
+  const [category, setCategory] = useState<string | null>(null);
   const [payload, setPayload] = useState<VoidAnswerPayload | null>(null);
   const [locked, setLocked] = useState(false);
   // La action real falló (solo puede pasar con sesión): respuesta = error con
@@ -192,15 +302,22 @@ function VoidView({ ask, today, categories, showBack, sectionLabel, belowHeader 
   // que no termina sola, así que es la que la preferencia de menos movimiento
   // tiene que poder apagar.
   const reducedMotion = useReducedMotion();
+  // El estado "presionado" vive acá, no en la forma función de `style`: en
+  // nativo NativeWind descarta esa forma y el botón se dibuja sin su píldora.
+  const askPress = usePressedState();
 
   const question = typed.trim() || DEFAULT_QUESTION;
-  const activeCategory = categories.find((c) => c.key === category) ?? categories[0];
+  const suggestions = voidSuggestionsState({ categories, failed: suggestionsFailed });
+  const activeCategory = categories?.find((c) => c.key === category) ?? categories?.[0] ?? null;
   const noneLeft = !!today && today.remaining <= 0;
   const counterLabel = today
     ? today.remaining > 0
       ? `TE QUEDAN ${today.remaining} DE ${today.limit} HOY`
       : "SIN PREGUNTAS POR HOY"
     : "3 PREGUNTAS POR DÍA";
+  // El límite del día sale del backend (3 free / 5 pro); el default es el free,
+  // que es el único que se puede afirmar sin la cuota.
+  const dailyLimit = today?.limit ?? 3;
 
   // Manda una pregunta (tocada de la lista o escrita). Si no queda cupo, va
   // directo al estado de límite sin gastar una llamada.
@@ -214,6 +331,18 @@ function VoidView({ ask, today, categories, showBack, sectionLabel, belowHeader 
     }
     setLocked(false);
     setPhase("escuchando");
+  };
+  // Volver al selector (QA22-002). Limpia SÓLO la interacción actual: la cuota
+  // no se toca acá ni en ningún lado del cliente — la publica `void.today`, que
+  // es reactiva. Si había una respuesta en vuelo, el efecto la descarta al
+  // desmontar su fase.
+  const resetInteraction = () => {
+    const inicial = resetVoidInteraction<VoidAnswerPayload>();
+    setPhase(inicial.phase);
+    setTyped(inicial.typed);
+    setPayload(inicial.payload);
+    setLocked(inicial.locked);
+    setAskFailed(inicial.askFailed);
   };
   // Respuesta a mostrar: SIEMPRE la real del backend (un fallo cae en
   // askFailed; el invitado ni llega a esta vista).
@@ -304,48 +433,53 @@ function VoidView({ ask, today, categories, showBack, sectionLabel, belowHeader 
 
           {belowHeader}
 
-          <View style={styles.tabs}>
-            {categories.map((c) => {
-              const active = c.key === category;
-              return (
-                <Pressable
-                  key={c.key}
-                  onPress={() => setCategory(c.key)}
-                  hitSlop={8}
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected: active }}
-                  style={styles.tab}
-                >
-                  <View style={[styles.tabGlyphBox, active && styles.tabGlyphBoxActive]}>
-                    <AstroGlyph
-                      symbol={tabSymbol(c)}
-                      size={20}
-                      color={active ? orbita.colors.bone : orbita.colors.muted}
-                    />
-                  </View>
-                  <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{c.label.toUpperCase()}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          {/* Las sugeridas son una SECCIÓN, no la pantalla: su carga y su error
+              viven acá adentro y no tapan ni el contador de arriba ni la barra
+              de preguntar de abajo (QA22-001). O están las del día, o está el
+              estado — nunca categorías genéricas que después cambien. */}
+          {suggestions === "listas" && categories && activeCategory ? (
+            <>
+              <View style={styles.tabs}>
+                {categories.map((c) => {
+                  const active = c.key === activeCategory.key;
+                  return (
+                    <Pressable
+                      key={c.key}
+                      onPress={() => setCategory(c.key)}
+                      hitSlop={8}
+                      accessibilityRole="tab"
+                      accessibilityState={{ selected: active }}
+                      style={styles.tab}
+                    >
+                      <View style={[styles.tabGlyphBox, active && styles.tabGlyphBoxActive]}>
+                        <AstroGlyph
+                          symbol={tabSymbol(c)}
+                          size={20}
+                          color={active ? orbita.colors.bone : orbita.colors.muted}
+                        />
+                      </View>
+                      <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{c.label.toUpperCase()}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
 
-          <ScrollView
-            style={styles.prompts}
-            contentContainerStyle={styles.promptsContent}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-          >
-            {activeCategory.prompts.map((p) => (
-              <Pressable
-                key={p}
-                onPress={() => askQuestion(p)}
-                style={({ pressed }) => [styles.promptRow, pressed && styles.pressed]}
-                accessibilityRole="button"
+              <ScrollView
+                style={styles.prompts}
+                contentContainerStyle={styles.promptsContent}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
               >
-                <Text style={styles.promptText}>{p}</Text>
-              </Pressable>
-            ))}
-          </ScrollView>
+                {activeCategory.prompts.map((p) => (
+                  <PromptRow key={p} prompt={p} onPress={() => askQuestion(p)} />
+                ))}
+              </ScrollView>
+            </>
+          ) : suggestions === "error" ? (
+            <SuggestionsError onRetry={onRetrySuggestions} />
+          ) : (
+            <SuggestionsLoading />
+          )}
 
           <View style={[styles.askBar, { paddingBottom: insets.bottom + orbita.spacing.md }]}>
             <TextInput
@@ -364,7 +498,8 @@ function VoidView({ ask, today, categories, showBack, sectionLabel, belowHeader 
               onPress={() => askQuestion(question)}
               hitSlop={8}
               accessibilityRole="button"
-              style={({ pressed }) => [styles.askBtn, pressed && styles.pressed]}
+              {...askPress.pressableProps}
+              style={[styles.askBtn, askPress.pressed ? styles.pressed : null]}
             >
               <Text style={styles.askBtnText}>PREGUNTAR</Text>
             </Pressable>
@@ -386,6 +521,10 @@ function VoidView({ ask, today, categories, showBack, sectionLabel, belowHeader 
           <Text style={styles.question}>“{question}”</Text>
           <View style={{ height: orbita.spacing.xl }} />
           <Text style={styles.eyebrow}>EL UMBRAL ESTÁ ESCUCHANDO</Text>
+          {/* La salida también durante la espera (QA22-002): esperar no puede
+              ser un estado del que no se pueda salir. */}
+          <View style={{ height: orbita.spacing.xxl }} />
+          <GhostCta label={VOID_NEW_QUESTION_LABEL} onPress={resetInteraction} />
         </View>
         </ReadingBlock>
         </ContentCanvas>
@@ -397,9 +536,13 @@ function VoidView({ ask, today, categories, showBack, sectionLabel, belowHeader 
         <View style={styles.center}>
           <Text style={styles.eyebrow}>EL UMBRAL · POR HOY</Text>
           <View style={{ height: orbita.spacing.xxl }} />
-          <Text style={styles.answer}>Por hoy{"\n"}alcanzó.</Text>
+          {/* Primero el estado concreto, con el límite real del día (QA22-031).
+              La frase editorial acompaña abajo; no reemplaza la explicación. */}
+          <Text style={styles.answerBody}>{voidDailyLimitCopy(dailyLimit)}</Text>
           <View style={{ height: orbita.spacing.xl }} />
-          <Text style={styles.microMono}>Una pregunta bien pensada rinde más{"\n"}que diez apuradas. Volvé mañana.</Text>
+          <Text style={styles.microMono}>Una pregunta bien pensada{"\n"}rinde más que diez apuradas.</Text>
+          <View style={{ height: orbita.spacing.xxl }} />
+          <GhostCta label={VOID_NEW_QUESTION_LABEL} onPress={resetInteraction} />
           <View style={styles.footer}>
             <Text style={styles.footnote}>El Umbral no contesta sí o no.</Text>
           </View>
@@ -416,18 +559,17 @@ function VoidView({ ask, today, categories, showBack, sectionLabel, belowHeader 
           <View style={{ height: orbita.spacing.xl }} />
           <Text style={styles.microMono}>Parece la conexión.{"\n"}Tu pregunta sigue acá.</Text>
           <View style={{ height: orbita.spacing.xxl }} />
-          <Pressable
+          <GhostCta
+            label="REINTENTAR"
             onPress={() => {
               setAskFailed(false);
               setPhase("escuchando");
             }}
-            style={({ pressed }) => [pressed && styles.pressed]}
-            accessibilityRole="button"
-          >
-            <View style={styles.ghostCta}>
-              <Text style={styles.ghostCtaText}>REINTENTAR</Text>
-            </View>
-          </Pressable>
+          />
+          {/* Reintentar la MISMA pregunta y volver al selector son dos salidas
+              distintas, y el error necesita las dos (QA22-002). */}
+          <View style={{ height: orbita.spacing.lg }} />
+          <GhostCta label={VOID_NEW_QUESTION_LABEL} onPress={resetInteraction} />
         </View>
         </ReadingBlock>
         </ContentCanvas>
@@ -462,6 +604,11 @@ function VoidView({ ask, today, categories, showBack, sectionLabel, belowHeader 
           <Text style={styles.betterQuestion}>{payload?.mejorPregunta}</Text>
           <View style={{ height: orbita.spacing.xxl }} />
           <Text style={styles.microMono}>{payload?.paso}</Text>
+          <View style={{ height: orbita.spacing.xxl }} />
+          {/* El defecto exacto de QA22-002: la respuesta no ofrecía ninguna
+              acción visible para volver al selector y se quedaba puesta al
+              cambiar de pestaña y volver. */}
+          <GhostCta label={VOID_NEW_QUESTION_LABEL} onPress={resetInteraction} />
           <View style={{ height: orbita.spacing.xxl }} />
           <Text style={styles.footnote}>El Umbral no contesta sí o no.</Text>
           </View>
@@ -588,6 +735,15 @@ const styles = StyleSheet.create({
   tabLabelActive: { color: orbita.colors.copper },
 
   prompts: { flex: 1 },
+  // La carga y el error de las sugeridas ocupan el mismo hueco que las
+  // pestañas + la lista: la barra de preguntar no se mueve entre estados.
+  suggestionsState: {
+    alignItems: "center",
+    flex: 1,
+    gap: orbita.spacing.xl,
+    justifyContent: "center",
+    paddingVertical: orbita.spacing.xl
+  },
   promptsContent: { alignItems: "center", gap: orbita.spacing.xxl, paddingVertical: orbita.spacing.xl },
   promptRow: { paddingVertical: orbita.spacing.sm },
   promptText: {

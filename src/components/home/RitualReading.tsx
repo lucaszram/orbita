@@ -39,7 +39,7 @@ export function RitualReading({ ritual }: { ritual: DailyRitual }) {
       <View style={styles.close}>
         <Text style={styles.pregunta}>{ritual.cierre.pregunta}</Text>
         <Pressable
-          onPress={() => router.push("/vacio")}
+          onPress={() => router.push("/umbral")}
           accessibilityRole="button"
           accessibilityLabel="Preguntarle al Umbral"
           hitSlop={8}

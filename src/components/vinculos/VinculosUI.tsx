@@ -2,6 +2,7 @@ import { Component, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View, type TextInputProps } from "react-native";
 import { PEtiqueta } from "@/components/transitos/PanoramaUI";
 import { orbita } from "@/theme/orbita";
+import { usePressedState } from "@/components/v492/Touchable";
 
 /**
  * Lo que Vínculos necesita y el kit compartido no tiene (CORE-233).
@@ -45,12 +46,14 @@ export function VCampo({
 
 /** Chip seleccionable (tipo de vínculo, signo). */
 export function VChip({ label, activo, onPress }: { label: string; activo: boolean; onPress: () => void }) {
+  const presion = usePressedState();
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="radio"
       accessibilityState={{ selected: activo }}
-      style={({ pressed }) => [styles.chip, activo && styles.chipActivo, pressed && styles.apagado]}
+      {...presion.pressableProps}
+      style={[styles.chip, activo && styles.chipActivo, presion.pressed && styles.apagado]}
     >
       <Text style={[styles.chipTexto, activo && styles.chipTextoActivo]}>{label}</Text>
     </Pressable>
@@ -71,13 +74,15 @@ export function VOpcion({
   activo: boolean;
   onPress: () => void;
 }) {
+  const presion = usePressedState();
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="radio"
       accessibilityState={{ selected: activo }}
       accessibilityLabel={`${titulo}. ${rotulo}. ${detalle}`}
-      style={({ pressed }) => [styles.opcion, activo && styles.opcionActiva, pressed && styles.apagado]}
+      {...presion.pressableProps}
+      style={[styles.opcion, activo && styles.opcionActiva, presion.pressed && styles.apagado]}
     >
       <View style={styles.opcionFila}>
         <Text style={styles.opcionTitulo}>{titulo}</Text>

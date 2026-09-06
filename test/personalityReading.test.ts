@@ -28,58 +28,97 @@ const validPayload = {
   disclaimer: "Entretenimiento y autoconocimiento."
 };
 
+/**
+ * Las dos marcas con las que una fila derivada se identifica. La revisión dice
+ * sobre QUÉ carta se escribió —una mejora reescribe el payload sobre el MISMO
+ * `natalChartId`— y la versión de caché, con qué configuración de generación.
+ * Sin las dos, la fila no puede demostrar que describe lo de ahora.
+ */
+const REV = "rev-carta-vigente";
+const CACHE_VERSION = "natal-cache-v1";
+/** La identidad vigente contra la que se resuelve todo. */
+const VIGENTE = { chartRevision: REV, cacheVersion: CACHE_VERSION };
+const conRevision = <T extends Record<string, unknown>>(fila: T) => ({
+  ...fila,
+  chartRevision: REV,
+  cacheVersion: CACHE_VERSION
+});
+
 describe("lectura natal completa", () => {
   it("una lectura lista nunca se regenera", () => {
     assert.equal(
-      resolveNatalGenerationClaim({ status: "ready", payload: validPayload, updatedAt: 1 }, 1000),
+      resolveNatalGenerationClaim(conRevision({ status: "ready", payload: validPayload, updatedAt: 1 }), 1000, VIGENTE),
       "ready"
     );
   });
 
   it("un pending reciente bloquea una segunda generación concurrente", () => {
     assert.equal(
-      resolveNatalGenerationClaim({ status: "pending", payload: null, updatedAt: 1000 }, 2000),
+      resolveNatalGenerationClaim(conRevision({ status: "pending", payload: null, updatedAt: 1000 }), 2000, VIGENTE),
       "pending"
     );
   });
 
   it("un pending vencido y los fallos se pueden retomar", () => {
     assert.equal(
-      resolveNatalGenerationClaim({ status: "pending", payload: null, updatedAt: 1000 }, 302_001, 300_000),
+      resolveNatalGenerationClaim(
+        conRevision({ status: "pending", payload: null, updatedAt: 1000 }),
+        302_001,
+        VIGENTE,
+        300_000
+      ),
       "claim"
     );
     assert.equal(
-      resolveNatalGenerationClaim({ status: "error", payload: null, updatedAt: 1000 }, 2000),
+      resolveNatalGenerationClaim(conRevision({ status: "error", payload: null, updatedAt: 1000 }), 2000, VIGENTE),
       "claim"
     );
-    assert.equal(resolveNatalGenerationClaim(null, 2000), "claim");
+    assert.equal(resolveNatalGenerationClaim(null, 2000, VIGENTE), "claim");
   });
 
   it("expone pending/ready/error para que el bloque inline nunca cargue a ciegas", () => {
-    assert.equal(resolveNatalReadingPublicStatus(null, 2000), "pending");
+    assert.equal(resolveNatalReadingPublicStatus(null, 2000, VIGENTE), "pending");
     assert.equal(
-      resolveNatalReadingPublicStatus({ status: "pending", payload: null, updatedAt: 1000 }, 2000),
+      resolveNatalReadingPublicStatus(conRevision({ status: "pending", payload: null, updatedAt: 1000 }), 2000, VIGENTE),
       "pending"
     );
     assert.equal(
-      resolveNatalReadingPublicStatus({ status: "pending", payload: null, updatedAt: 1000 }, 92_000, 90_000),
+      resolveNatalReadingPublicStatus(
+        conRevision({ status: "pending", payload: null, updatedAt: 1000 }),
+        92_000,
+        VIGENTE,
+        90_000
+      ),
       "error"
     );
-    assert.equal(resolveNatalReadingPublicStatus({ status: "error", payload: null }, 2000), "error");
-    assert.equal(resolveNatalReadingPublicStatus({ status: "fallback", payload: null }, 2000), "error");
     assert.equal(
-      resolveNatalReadingPublicStatus({ status: "ready", payload: validPayload, updatedAt: 1000 }, 2000),
+      resolveNatalReadingPublicStatus(conRevision({ status: "error", payload: null }), 2000, VIGENTE),
+      "error"
+    );
+    assert.equal(
+      resolveNatalReadingPublicStatus(conRevision({ status: "fallback", payload: null }), 2000, VIGENTE),
+      "error"
+    );
+    assert.equal(
+      resolveNatalReadingPublicStatus(
+        conRevision({ status: "ready", payload: validPayload, updatedAt: 1000 }),
+        2000,
+        VIGENTE
+      ),
       "ready"
     );
   });
 
   it("no presenta la plantilla corta ni estados incompletos como lectura terminada", () => {
-    assert.equal(resolveReadyPersonalityReading(null), null);
-    assert.equal(resolveReadyPersonalityReading({ status: "pending", payload: validPayload }), null);
-    assert.equal(resolveReadyPersonalityReading({ status: "fallback", payload: validPayload }), null);
-    assert.equal(resolveReadyPersonalityReading({ status: "error", payload: validPayload }), null);
-    assert.equal(resolveReadyPersonalityReading({ status: "ready" }), null);
-    assert.deepEqual(resolveReadyPersonalityReading({ status: "ready", payload: validPayload }), validPayload);
+    assert.equal(resolveReadyPersonalityReading(null, VIGENTE), null);
+    assert.equal(resolveReadyPersonalityReading(conRevision({ status: "pending", payload: validPayload }), VIGENTE), null);
+    assert.equal(resolveReadyPersonalityReading(conRevision({ status: "fallback", payload: validPayload }), VIGENTE), null);
+    assert.equal(resolveReadyPersonalityReading(conRevision({ status: "error", payload: validPayload }), VIGENTE), null);
+    assert.equal(resolveReadyPersonalityReading(conRevision({ status: "ready" }), VIGENTE), null);
+    assert.deepEqual(
+      resolveReadyPersonalityReading(conRevision({ status: "ready", payload: validPayload }), VIGENTE),
+      validPayload
+    );
   });
 
   it("propaga el fallo del generador para que el cliente pueda ofrecer reintento", () => {

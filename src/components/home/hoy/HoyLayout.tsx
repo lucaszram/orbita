@@ -3,6 +3,7 @@ import { Link, type Href } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { orbita } from "@/theme/orbita";
+import { usePressedState } from "@/components/v492/Touchable";
 
 /**
  * Las piezas de composición de la sección **Hoy** (canon Build 30).
@@ -234,13 +235,15 @@ export function HoyMedidor({
  * (CORE-237) abre Tránsitos pidiendo el segmento de Tu momento.
  */
 export function HoyEnlace({ href, children }: { href: Href; children: string }) {
+  const presion = usePressedState();
   return (
     <Link href={href} asChild>
-      <Pressable
-        accessibilityRole="link"
-        style={({ pressed }) => [styles.enlace, pressed && styles.presionado]}
-      >
-        <HoyEtiqueta>{`${children}  ›`}</HoyEtiqueta>
+      {/* El estilo va en un View propio: con `asChild`, el `<a>` de la web
+          recibe el arreglo tal cual y react-dom lo rechaza (CORE-247). */}
+      <Pressable accessibilityRole="link" {...presion.pressableProps}>
+        <View style={[styles.enlace, presion.pressed && styles.presionado]}>
+          <HoyEtiqueta>{`${children}  ›`}</HoyEtiqueta>
+        </View>
       </Pressable>
     </Link>
   );
@@ -323,6 +326,7 @@ export function HoyError({
   /** Qué se reintenta, en palabras (`RANKING DE TRÁNSITOS`). */
   modulo: string;
 }) {
+  const presion = usePressedState();
   return (
     <View style={styles.falta}>
       {/* El fallo aparece SIN mover el foco, así que se anuncia solo. */}
@@ -333,7 +337,8 @@ export function HoyError({
         onPress={onRetry}
         accessibilityRole="button"
         accessibilityLabel={`Reintentar ${modulo.toLocaleLowerCase("es")}`}
-        style={({ pressed }) => [styles.reintentar, pressed && styles.presionado]}
+        {...presion.pressableProps}
+        style={[styles.reintentar, presion.pressed && styles.presionado]}
       >
         <HoyEtiqueta>REINTENTAR</HoyEtiqueta>
       </Pressable>

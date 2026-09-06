@@ -45,6 +45,7 @@ export function BirthDatePicker({ value, onChange }: BirthDatePickerProps) {
       <View style={styles.hairlineBottom} pointerEvents="none" />
       <View style={styles.dateWheels}>
         <Wheel
+          label="Día"
           items={DAYS}
           index={value.day - 1}
           onChange={(i) => onChange({ ...value, day: i + 1 })}
@@ -52,6 +53,7 @@ export function BirthDatePicker({ value, onChange }: BirthDatePickerProps) {
           align="center"
         />
         <Wheel
+          label="Mes"
           items={[...MONTHS]}
           index={value.month - 1}
           onChange={(i) => onChange({ ...value, month: i + 1 })}
@@ -59,6 +61,7 @@ export function BirthDatePicker({ value, onChange }: BirthDatePickerProps) {
           align="center"
         />
         <Wheel
+          label="Año"
           items={YEARS}
           index={yearIndex < 0 ? 0 : yearIndex}
           onChange={(i) => onChange({ ...value, year: Number(YEARS[i]) })}
@@ -76,8 +79,20 @@ export function BirthTimePicker({ value, onChange, unknown }: BirthTimePickerPro
       <View style={styles.hairlineTopCopper} pointerEvents="none" />
       <View style={styles.hairlineBottomCopper} pointerEvents="none" />
       <View style={styles.timeWheels}>
-        <Wheel items={HOURS} index={value.hour} onChange={(i) => onChange({ ...value, hour: i })} width={84} />
-        <Wheel items={MINUTES} index={value.minute} onChange={(i) => onChange({ ...value, minute: i })} width={84} />
+        <Wheel
+          label="Hora"
+          items={HOURS}
+          index={value.hour}
+          onChange={(i) => onChange({ ...value, hour: i })}
+          width={84}
+        />
+        <Wheel
+          label="Minuto"
+          items={MINUTES}
+          index={value.minute}
+          onChange={(i) => onChange({ ...value, minute: i })}
+          width={84}
+        />
       </View>
     </View>
   );

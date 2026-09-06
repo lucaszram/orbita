@@ -9,7 +9,7 @@
 //
 // Falla (exit 1) si:
 //   · algún test falló;
-//   · pasaron menos de 883 tests;
+//   · pasaron menos de 2542 tests;
 //   · la salida no tiene resumen (la corrida se cayó antes de terminar).
 //
 // El último punto es el que importa de verdad: sin él, una corrida que explota
@@ -21,70 +21,10 @@
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
-/**
- * Piso de tests. Se sube cuando la suite crece; nunca se baja para tapar un
- * borrado.
- *
- * CORE-191 (la sección Hoy) suma 116 casos: 27 en `hoyPrincipal.test.ts`, 45 en
- * `lunaCarta.test.ts` y 44 en `hoySection.test.ts`. El piso es 745 + 116.
- *
- * La profundización del ranking (cada tránsito abre su detalle) suma 22 casos
- * en `transitDetail.test.ts`: 861 + 22.
- *
- * Los otros cinco archivos que la tarjeta tocó —`responsiveShells`,
- * `accesoPostAlta`, `onboardingReadiness`, `umbralTarotWiring` y
- * `parityFoundations`— no mueven el número: sus casos cambiaron de superficie
- * (el ritual del Tarot vive ahora en el Umbral), no de cantidad.
- *
- * La primera comparación de Vínculos (CORE-212) suma 35 casos: 23 en
- * `synastry.test.ts` (contactos, orbes, ejes, dimensiones, tono, precisión) y
- * 12 en `vinculo.test.ts` (alta por nivel, fecha y hora, conteos): 883 + 35.
- *
- * El panorama de Tránsitos (CORE-207) suma 28 casos: 19 en
- * `transitPanorama.test.ts` (hora sin zona, fase, pico, cercanía, «ahora»,
- * filas, totales, Free bloqueado, legacy) y 9 en `transitosPanorama.test.ts`
- * (fila en pantalla, plegado, encabezado, intro, estado): 918 + 28.
- *
- * La biblioteca de personas guardadas (CORE-213) suma 4 casos en
- * `vinculo.test.ts` (línea de persona, resumen del vínculo, nivel, id de
- * perfil): 946 + 4.
- *
- * Tu momento · Estación vital (CORE-209) suma 20 casos: 13 en
- * `estacionVital.test.ts` (fase, ángulo, fechas, sin hora, límites, fallos,
- * normalizador tropical) y 7 en `momento.test.ts` (copy, números, fechas,
- * estado): 950 + 20.
- *
- * El límite Free de Vínculos (CORE-214) suma 4 casos: 1 en `synastry.test.ts`
- * (`personAccess`) y 3 en `vinculo.test.ts` (rótulo del cupo, nota del plan,
- * acción de agregar): 970 + 4.
- *
- * El tema del año (CORE-210) suma 13 casos: 10 en `temaDelAno.test.ts`
- * (profección, bordes del año, gap de medianoche, lo que no se calcula) y 3
- * en `momento.test.ts` (titular Build 30, lectura, estado de pantalla): 974 + 13.
- *
- * La Carta responsive (CORE-215) suma 10 casos en `cartaCompleta.test.ts`
- * (códigos, tríada, resumen, posiciones, ejes, contactos, casas, datos
- * natales, último cálculo, piso de grado): 987 + 10.
- *
- * Los cuatro ritmos (CORE-211) suman 9 casos: 6 en `cuatroRitmos.test.ts`
- * (anillos, franjas, tránsito, vacíos, fuente caída, límites) y 3 en
- * `momento.test.ts` (lectura del mandala, arco, estado): 997 + 9.
- *
- * Lo principal de Hoy (CORE-237) suma 1 caso en `hoyPrincipal.test.ts` (el contexto del año): 1006 + 1.
- *
- * El ranking de Hoy como el de Tránsitos (CORE-238) suma 2 casos en `hoyPrincipal.test.ts`: 1007 + 2.
- *
- * La biblioteca de Vínculos como el frame (CORE-235) suma 3 casos en `vinculo.test.ts`: 1009 + 3.
- *
- * La comparación de Vínculos como el frame (CORE-236) suma 5 casos en `vinculo.test.ts`: 1012 + 5.
- *
- * Tránsitos honra `?segmento=momento` (CORE-240) suma 2 casos en `hoyPrincipal.test.ts`: 1017 + 2.
- *
- * Tránsitos con Plus como el frame (CORE-240, segunda parte) suma 4 casos en `hoyPrincipal.test.ts`: 1019 + 4.
- *
- * Los enlaces de Hoy a Tránsitos en nativo (CORE-246) suman 1 caso en `hoyPrincipal.test.ts`: 1023 + 1.
- */
-export const DEFAULT_MINIMUM = 1024;
+/** Piso de tests. Se sube cuando la suite crece; nunca se baja para tapar un borrado. */
+// Reconciliación main ↔ release/1.0.0 (CORE-247, 2026-09-06): la suite es la unión de las
+// dos líneas (3126 casos al mergear). Toda tarjeta que sume tests sube este número.
+export const DEFAULT_MINIMUM = 3126;
 
 /**
  * Lee un contador del resumen final del runner de Node.

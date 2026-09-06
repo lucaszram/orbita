@@ -365,14 +365,18 @@ describe("Tránsitos con Plus se ve como el frame (CORE-240)", () => {
   });
 
   it("las tres lecturas de Tu momento viajan dentro del shell web y usan la barra de marca, no la flecha de detalle (frames 2023:2900 / 1740:2308)", () => {
-    for (const [ruta, pantalla] of [
-      ["estacion-vital", "EstacionVitalScreen"],
-      ["tema-del-ano", "TemaDelAnoScreen"],
-      ["cuatro-ritmos", "CuatroRitmosScreen"]
+    for (const [ruta, pantalla, destinoNativo] of [
+      ["estacion-vital", "EstacionVitalScreen", "/transitos/capa/estacion"],
+      ["tema-del-ano", "TemaDelAnoScreen", "/transitos/capa/ano"],
+      ["cuatro-ritmos", "CuatroRitmosScreen", "/transitos/momento"]
     ] as const) {
+      // La ruta es un wrapper (CORE-247): web dentro del shell, nativo redirige a V4.9.2.
       const codigoRuta = readFileSync(join(raiz, "app", "reading", `${ruta}.tsx`), "utf8");
-      assert.match(codigoRuta, new RegExp(`<WebAppShell active="transitos">\\s*<${pantalla} \\/>`), ruta);
-      assert.match(codigoRuta, /process\.env\.EXPO_OS !== "web"/, ruta);
+      assert.match(codigoRuta, new RegExp(`export \\{ default \\} from "@/routes/v492/reading-${ruta}"`), ruta);
+      const codigoWeb = readFileSync(join(raiz, "src", "routes", "v492", `reading-${ruta}.web.tsx`), "utf8");
+      assert.match(codigoWeb, new RegExp(`<WebAppShell active="transitos">\\s*<${pantalla} \\/>`), ruta);
+      const codigoNativo = readFileSync(join(raiz, "src", "routes", "v492", `reading-${ruta}.tsx`), "utf8");
+      assert.ok(codigoNativo.includes(`<Redirect href="${destinoNativo}" />`), `${ruta} → ${destinoNativo}`);
       const codigoPantalla = readFileSync(join(raiz, "src", "screens", `${pantalla}.tsx`), "utf8");
       assert.match(codigoPantalla, /<OrbitaScreen canvas="wide"[^>]*>\s*<Section>/, pantalla);
       assert.doesNotMatch(codigoPantalla, /DetailScreen/, pantalla);

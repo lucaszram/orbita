@@ -7,7 +7,8 @@ import {
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { extractNormalizedChartFromPayload } from "./lib/orbita";
-import { resolveEntitlement, type SubscriptionRow } from "./lib/entitlements";
+import type { SubscriptionRow } from "./lib/entitlements";
+import { resolveRowsForUser } from "./lib/subscriptionAccess";
 import { findCurrentUser, findUserByTokenIdentifier, requireIdentity } from "./lib/users";
 import { resolveCanonicalDailyContext } from "./daily";
 
@@ -54,6 +55,19 @@ type VoidAnswerPayload = {
 
 type VoidPromptCategory = { key: string; label: string; glyph: string; prompts: string[] };
 
+/**
+ * La forma de una categoría sugerida, cerrada. La fila la guarda en un
+ * `payload: v.any()`, así que este validator es el contrato de salida de
+ * `suggestedToday` y lo que impide devolver una fila deformada como si fuera
+ * un set válido.
+ */
+const voidPromptCategoryValidator = v.object({
+  key: v.string(),
+  label: v.string(),
+  glyph: v.string(),
+  prompts: v.array(v.string())
+});
+
 type VoidPlacement = { key: string; label: string; signEs: string };
 
 type VoidGenerated = { answer: string; mejorPregunta: string; paso: string };
@@ -87,6 +101,37 @@ function buildBasadoEn(placements: VoidPlacement[]): string[] {
 // ---------------------------------------------------------------------------
 // localDate desde la timezone del usuario (el ref del front es solo { question })
 // ---------------------------------------------------------------------------
+
+/**
+ * El día civil del usuario, con la MISMA regla en todos los caminos de El Vacío.
+ *
+ * Estaba escrito tres veces —`getVoidState`, `today` y ahora `suggestedToday`—
+ * y las tres tienen que coincidir: si el cupo y el set de sugeridas resolvieran
+ * días distintos, la pantalla mostraría el contador de hoy con las preguntas de
+ * ayer. Es la extracción textual de lo que ya hacían las dos primeras.
+ */
+async function resolveVoidLocalDate(ctx: { db: any }, userId: unknown): Promise<string> {
+  const birthData = await ctx.db
+    .query("birthData")
+    .withIndex("by_user", (q: any) => q.eq("userId", userId))
+    .order("desc")
+    .first();
+  const latestGuide = await ctx.db
+    .query("dailyGuides")
+    .withIndex("by_user_date", (q: any) => q.eq("userId", userId))
+    .order("desc")
+    .first();
+
+  return resolveCanonicalDailyContext({
+    birthTimezone: birthData?.timezone,
+    latestGuide: latestGuide
+      ? {
+          localDate: latestGuide.localDate,
+          timezone: latestGuide.timezone
+        }
+      : null
+  }).localDate;
+}
 
 function normalizeQuestion(raw: string): string {
   const trimmed = typeof raw === "string" ? raw.trim().replace(/\s+/g, " ") : "";
@@ -299,6 +344,42 @@ function fallbackSuggestedQuestions(): VoidPromptCategory[] {
   return PROMPT_CATEGORIES.map((c) => ({ ...c, prompts: FALLBACK_PROMPTS[c.key] ?? [] }));
 }
 
+/**
+ * Lee el `payload: v.any()` de una fila de `voidPromptSets` como un set válido,
+ * o `null`.
+ *
+ * Todo o nada, a propósito: un set a medias dibujaría pestañas que no tienen
+ * preguntas adentro, y desde la pantalla eso se ve igual que un bug de carga.
+ * Con `null` el front decide generar, que es el camino que ya existía.
+ */
+function readPromptCategories(payload: unknown): VoidPromptCategory[] | null {
+  const raw = (payload as { categories?: unknown } | null | undefined)?.categories;
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return null;
+  }
+
+  const categories: VoidPromptCategory[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") {
+      return null;
+    }
+    const category = entry as Record<string, unknown>;
+    const key = readString(category.key);
+    const label = readString(category.label);
+    const prompts = Array.isArray(category.prompts)
+      ? category.prompts.map((prompt) => readString(prompt)).filter((prompt) => prompt.length > 0)
+      : [];
+
+    if (!key || !label || prompts.length === 0) {
+      return null;
+    }
+    // `glyph` es decorativo y el front dibuja su propio símbolo vectorial, así
+    // que una fila sin glifo sigue siendo un set legible.
+    categories.push({ key, label, glyph: readString(category.glyph), prompts });
+  }
+  return categories;
+}
+
 function buildSuggestedPrompt(placements: VoidPlacement[]): string {
   const placementLines = placements.length
     ? placements.map((placement) => `- ${placement.label} en ${placement.signEs}`).join("\n")
@@ -377,30 +458,12 @@ export const getVoidState = internalQuery({
       throw new Error("User record not found");
     }
 
-    const birthData = await ctx.db
-      .query("birthData")
-      .withIndex("by_user", (q: any) => q.eq("userId", user._id))
-      .order("desc")
-      .first();
     const natalChart = await ctx.db
       .query("natalCharts")
       .withIndex("by_user", (q: any) => q.eq("userId", user._id))
       .order("desc")
       .first();
-    const latestGuide = await ctx.db
-      .query("dailyGuides")
-      .withIndex("by_user_date", (q: any) => q.eq("userId", user._id))
-      .order("desc")
-      .first();
-    const localDate = resolveCanonicalDailyContext({
-      birthTimezone: birthData?.timezone,
-      latestGuide: latestGuide
-        ? {
-            localDate: latestGuide.localDate,
-            timezone: latestGuide.timezone
-          }
-        : null
-    }).localDate;
+    const localDate = await resolveVoidLocalDate(ctx, user._id);
     const answersToday = await ctx.db
       .query("voidAnswers")
       .withIndex("by_user_date", (q: any) => q.eq("userId", user._id).eq("localDate", localDate))
@@ -413,7 +476,7 @@ export const getVoidState = internalQuery({
       .query("subscriptions")
       .withIndex("by_user", (q: any) => q.eq("userId", user._id))
       .collect()) as SubscriptionRow[];
-    const { isPro } = resolveEntitlement(subscriptions, Date.now());
+    const { isPro } = resolveRowsForUser(subscriptions, Date.now());
 
     return {
       userId: user._id,
@@ -560,25 +623,7 @@ export const today = query({
     if (!user) {
       return { limit: LIMIT_FREE, used: 0, remaining: LIMIT_FREE, isPro: false };
     }
-    const birthData = await ctx.db
-      .query("birthData")
-      .withIndex("by_user", (q: any) => q.eq("userId", user._id))
-      .order("desc")
-      .first();
-    const latestGuide = await ctx.db
-      .query("dailyGuides")
-      .withIndex("by_user_date", (q: any) => q.eq("userId", user._id))
-      .order("desc")
-      .first();
-    const localDate = resolveCanonicalDailyContext({
-      birthTimezone: birthData?.timezone,
-      latestGuide: latestGuide
-        ? {
-            localDate: latestGuide.localDate,
-            timezone: latestGuide.timezone
-          }
-        : null
-    }).localDate;
+    const localDate = await resolveVoidLocalDate(ctx, user._id);
     const answersToday = await ctx.db
       .query("voidAnswers")
       .withIndex("by_user_date", (q: any) => q.eq("userId", user._id).eq("localDate", localDate))
@@ -587,10 +632,48 @@ export const today = query({
       .query("subscriptions")
       .withIndex("by_user", (q: any) => q.eq("userId", user._id))
       .collect()) as SubscriptionRow[];
-    const { isPro } = resolveEntitlement(subscriptions, Date.now());
+    const { isPro } = resolveRowsForUser(subscriptions, Date.now());
     const limit = isPro ? LIMIT_PRO : LIMIT_FREE;
     const used = answersToday.length;
     return { limit, used, remaining: Math.max(0, limit - used), isPro };
+  }
+});
+
+/**
+ * El set de sugeridas que el día YA tiene cacheado — sin generar nada.
+ *
+ * Es la mitad barata de `suggestedQuestions`: la misma fila de `voidPromptSets`
+ * que la action lee antes de decidir si genera, pero como QUERY reactiva. No
+ * llama al AI Gateway, no escribe, no consume cupo; con la fila presente
+ * contesta en una lectura por índice.
+ *
+ * Existe por QA22-001: la pantalla esperaba a la action —que en la carga fría
+ * genera texto con un LLM— antes de dibujar nada. Con esta query, una entrada
+ * “caliente” (el día ya tiene su set) dibuja las sugeridas reales sin pagar un
+ * modelo, y la fría deja de bloquear la superficie para preguntar mientras
+ * genera.
+ *
+ * `null` significa exactamente “este día todavía no tiene set”: es la señal que
+ * el front usa para disparar la action. `suggestedQuestions` no cambia.
+ */
+export const suggestedToday = query({
+  args: {},
+  returns: v.union(v.object({ categories: v.array(voidPromptCategoryValidator) }), v.null()),
+  handler: async (ctx): Promise<{ categories: VoidPromptCategory[] } | null> => {
+    // Lectura: sin sesión no hay set, y eso es un estado normal (no un error).
+    const user = await findCurrentUser(ctx);
+    if (!user) {
+      return null;
+    }
+
+    const localDate = await resolveVoidLocalDate(ctx, user._id);
+    const promptSet = await ctx.db
+      .query("voidPromptSets")
+      .withIndex("by_user_date", (q: any) => q.eq("userId", user._id).eq("localDate", localDate))
+      .first();
+
+    const categories = readPromptCategories(promptSet?.payload);
+    return categories ? { categories } : null;
   }
 });
 

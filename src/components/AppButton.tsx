@@ -1,6 +1,7 @@
 import { ComponentProps } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { usePressedState } from "@/components/v492/Touchable";
 import { theme } from "@/theme/theme";
 
 type AppButtonProps = {
@@ -12,16 +13,18 @@ type AppButtonProps = {
 };
 
 export function AppButton({ label, icon, onPress, variant = "primary", disabled = false }: AppButtonProps) {
+  const { pressed, pressableProps } = usePressedState();
   return (
     <Pressable
       accessibilityRole="button"
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [
+      {...pressableProps}
+      style={[
         styles.button,
         styles[variant],
-        disabled && styles.disabled,
-        pressed && !disabled && styles.pressed
+        disabled ? styles.disabled : null,
+        pressed && !disabled ? styles.pressed : null
       ]}
     >
       <View style={styles.iconWrap}>

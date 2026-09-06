@@ -9,6 +9,7 @@ import {
   type NormalizedAstroTransit,
   type NormalizedAstroTimeline
 } from "./orbita";
+import type { EphemerisPosition } from "./layerContract";
 
 const DEFAULT_ASTROLOGY_API_BASE_URL = "https://json.astrologyapi.com/v1";
 const DEFAULT_HOUSE_SYSTEM = "placidus";
@@ -80,6 +81,20 @@ export type DailyTransitProviderResult = Omit<AstrologyProviderRunResult, "norma
   };
 };
 
+export type TropicalEphemerisProviderResult = {
+  status: "success" | "not_configured" | "missing_input" | "error";
+  provider: "astrologyapi";
+  providerVersion: "astrologyapi-planets-tropical-v1";
+  localDate: string;
+  timezone: string;
+  observedAt: number;
+  warnings: string[];
+  normalized?: {
+    positions: EphemerisPosition[];
+  };
+  error?: string;
+};
+
 export function getAstrologyApiConfig(): AstrologyApiConfig {
   return {
     baseUrl: (process.env.ASTROLOGY_API_BASE_URL ?? DEFAULT_ASTROLOGY_API_BASE_URL).replace(/\/$/, ""),
@@ -146,6 +161,33 @@ function parseOffsetFromTimezoneName(value: string) {
   }
 
   return direction * (hours + minutes / 60);
+}
+
+function getLocalDateTimeParts(date: Date, timezone: string) {
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(date);
+    const readPart = (type: Intl.DateTimeFormatPartTypes) =>
+      Number(parts.find((part) => part.type === type)?.value);
+    const year = readPart("year");
+    const month = readPart("month");
+    const day = readPart("day");
+    const hour = readPart("hour");
+    const minute = readPart("minute");
+    if ([year, month, day, hour, minute].every(Number.isFinite)) {
+      return { year, month, day, hour, minute };
+    }
+  } catch {
+    // The caller converts an invalid IANA timezone into a missing-input state.
+  }
+  return null;
 }
 
 export function getTimezoneOffsetHours(timezone: string, date: Date) {
@@ -678,6 +720,301 @@ export async function runAstrologyApiDailyTransits(args: {
   }
 }
 
+const CANONICAL_TROPICAL_PLANETS = [
+  "sun",
+  "moon",
+  "mercury",
+  "venus",
+  "mars",
+  "jupiter",
+  "saturn",
+  "uranus",
+  "neptune",
+  "pluto",
+] as const;
+
+const PLANET_LABELS: Record<(typeof CANONICAL_TROPICAL_PLANETS)[number], string> = {
+  sun: "Sol",
+  moon: "Luna",
+  mercury: "Mercurio",
+  venus: "Venus",
+  mars: "Marte",
+  jupiter: "Júpiter",
+  saturn: "Saturno",
+  uranus: "Urano",
+  neptune: "Neptuno",
+  pluto: "Plutón",
+};
+
+const SIGN_NAMES_ES: Record<string, string> = {
+  aries: "Aries",
+  taurus: "Tauro",
+  gemini: "Géminis",
+  cancer: "Cáncer",
+  leo: "Leo",
+  virgo: "Virgo",
+  libra: "Libra",
+  scorpio: "Escorpio",
+  sagittarius: "Sagitario",
+  capricorn: "Capricornio",
+  aquarius: "Acuario",
+  pisces: "Piscis",
+};
+
+const SIGN_ORDER = [
+  "Aries",
+  "Taurus",
+  "Gemini",
+  "Cancer",
+  "Leo",
+  "Virgo",
+  "Libra",
+  "Scorpio",
+  "Sagittarius",
+  "Capricorn",
+  "Aquarius",
+  "Pisces",
+] as const;
+
+function normalizePlanetKey(value: string) {
+  const normalized = value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z]/g, "");
+  const aliases: Record<string, (typeof CANONICAL_TROPICAL_PLANETS)[number]> = {
+    sun: "sun",
+    sol: "sun",
+    moon: "moon",
+    luna: "moon",
+    mercury: "mercury",
+    mercurio: "mercury",
+    venus: "venus",
+    mars: "mars",
+    marte: "mars",
+    jupiter: "jupiter",
+    saturn: "saturn",
+    saturno: "saturn",
+    uranus: "uranus",
+    urano: "uranus",
+    neptune: "neptune",
+    neptuno: "neptune",
+    pluto: "pluto",
+    pluton: "pluto",
+  };
+  return aliases[normalized] ?? null;
+}
+
+function normalizeLongitude(value: number) {
+  return ((value % 360) + 360) % 360;
+}
+
+function normalizeSignName(value: string | undefined, longitude: number) {
+  const supplied = value?.trim();
+  if (supplied) {
+    const key = supplied
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+    const english = Object.keys(SIGN_NAMES_ES).find((candidate) => candidate === key);
+    if (english) {
+      return { sign: english[0].toUpperCase() + english.slice(1), signEs: SIGN_NAMES_ES[english] };
+    }
+    const spanish = Object.entries(SIGN_NAMES_ES).find(
+      ([, label]) =>
+        label
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase() === key,
+    );
+    if (spanish) {
+      return {
+        sign: spanish[0][0].toUpperCase() + spanish[0].slice(1),
+        signEs: spanish[1],
+      };
+    }
+  }
+  const sign = SIGN_ORDER[Math.floor(normalizeLongitude(longitude) / 30)] ?? "Aries";
+  return { sign, signEs: SIGN_NAMES_ES[sign.toLowerCase()] ?? sign };
+}
+
+function readOptionalBoolean(record: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "boolean") return value;
+    if (typeof value === "number") return value !== 0;
+    if (typeof value === "string") {
+      const normalized = value.trim().toLowerCase();
+      if (["true", "yes", "1", "retrograde", "r"].includes(normalized)) return true;
+      if (["false", "no", "0", "direct", "d"].includes(normalized)) return false;
+    }
+  }
+  return undefined;
+}
+
+function tropicalPositionItems(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) return raw;
+  const root = asRecord(raw);
+  if (Array.isArray(root.planets)) return root.planets;
+  if (Array.isArray(root.data)) return root.data;
+  const data = asRecord(root.data);
+  if (Array.isArray(data.planets)) return data.planets;
+  const output = asRecord(root.output);
+  if (Array.isArray(output.planets)) return output.planets;
+  return [];
+}
+
+/**
+ * Normalizes the documented `planets/tropical` fixture into the closed V4.9.2
+ * ephemeris contract. Entries missing name, longitude, or speed are rejected:
+ * those values are required for phase, aspect, and applying/separating math.
+ */
+export function normalizeAstrologyApiTropicalPositions(raw: unknown): EphemerisPosition[] {
+  const positions = tropicalPositionItems(raw).flatMap((item) => {
+    const record = asRecord(item);
+    const rawName = readString(record, ["name", "planet", "planet_name", "key"]);
+    const key = rawName ? normalizePlanetKey(rawName) : null;
+    const fullDegree = readNumber(record, [
+      "fullDegree",
+      "full_degree",
+      "fullDegreeInZodiac",
+      "longitude",
+      "lon",
+    ]);
+    const speed = readNumber(record, ["speed", "planetSpeed", "planet_speed", "dailyMotion"]);
+    if (!key || fullDegree === undefined || speed === undefined) return [];
+    const longitude = normalizeLongitude(fullDegree);
+    const sign = normalizeSignName(
+      readString(record, ["sign", "sign_name", "zodiacSign"]),
+      longitude,
+    );
+    const suppliedDegree = readNumber(record, ["normDegree", "norm_degree", "degree"]);
+    return [
+      {
+        key,
+        label: PLANET_LABELS[key],
+        sign: sign.sign,
+        signEs: sign.signEs,
+        degree: suppliedDegree === undefined ? longitude % 30 : normalizeLongitude(suppliedDegree) % 30,
+        fullDegree: longitude,
+        speed,
+        isRetrograde:
+          readOptionalBoolean(record, ["isRetro", "is_retro", "isRetrograde", "retrograde"]) ?? speed < 0,
+      } satisfies EphemerisPosition,
+    ];
+  });
+
+  return positions.sort(
+    (left, right) =>
+      CANONICAL_TROPICAL_PLANETS.indexOf(left.key as (typeof CANONICAL_TROPICAL_PLANETS)[number]) -
+      CANONICAL_TROPICAL_PLANETS.indexOf(right.key as (typeof CANONICAL_TROPICAL_PLANETS)[number]),
+  );
+}
+
+export async function runAstrologyApiPlanetsTropical(args: {
+  instant: Date;
+  localDate: string;
+  timezone: string;
+  latitude?: number;
+  longitude?: number;
+  signal?: AbortSignal;
+}): Promise<TropicalEphemerisProviderResult> {
+  const config = getAstrologyApiConfig();
+  const observedAt = args.instant.getTime();
+  const local = getLocalDateTimeParts(args.instant, args.timezone);
+  const offset = getTimezoneOffsetHours(args.timezone, args.instant);
+  const warnings: string[] = [];
+
+  if (!local || offset === undefined || !Number.isFinite(observedAt)) {
+    return {
+      status: "missing_input",
+      provider: "astrologyapi",
+      providerVersion: "astrologyapi-planets-tropical-v1",
+      localDate: args.localDate,
+      timezone: args.timezone,
+      observedAt: Number.isFinite(observedAt) ? observedAt : Date.now(),
+      warnings: ["valid_instant_and_timezone_required_for_planets_tropical"],
+    };
+  }
+
+  const request: AstrologyApiBirthRequest = {
+    day: local.day,
+    month: local.month,
+    year: local.year,
+    hour: local.hour,
+    min: local.minute,
+    lat: args.latitude ?? 0,
+    lon: args.longitude ?? 0,
+    tzone: offset,
+    house_type: config.houseSystem,
+  };
+
+  if (args.latitude === undefined || args.longitude === undefined) {
+    warnings.push("geocentric_positions_use_zero_coordinates_without_house_interpretation");
+  }
+
+  if (!hasAstrologyApiCredentials(config)) {
+    return {
+      status: "not_configured",
+      provider: "astrologyapi",
+      providerVersion: "astrologyapi-planets-tropical-v1",
+      localDate: args.localDate,
+      timezone: args.timezone,
+      observedAt,
+      warnings: [...warnings, "astrologyapi_credentials_not_configured"],
+    };
+  }
+
+  try {
+    const raw = await postAstrologyApi(config, "planets/tropical", request, { signal: args.signal });
+    const positions = normalizeAstrologyApiTropicalPositions(raw);
+    const counts = new Map<string, number>();
+    for (const position of positions) counts.set(position.key, (counts.get(position.key) ?? 0) + 1);
+    const missing = CANONICAL_TROPICAL_PLANETS.filter((key) => !counts.has(key));
+    const duplicates = CANONICAL_TROPICAL_PLANETS.filter((key) => (counts.get(key) ?? 0) > 1);
+    if (missing.length > 0 || duplicates.length > 0 || positions.length !== CANONICAL_TROPICAL_PLANETS.length) {
+      return {
+        status: "error",
+        provider: "astrologyapi",
+        providerVersion: "astrologyapi-planets-tropical-v1",
+        localDate: args.localDate,
+        timezone: args.timezone,
+        observedAt,
+        warnings: [
+          ...warnings,
+          ...(missing.length > 0 ? [`planets_tropical_contract_missing:${missing.join(",")}`] : []),
+          ...(duplicates.length > 0 ? [`planets_tropical_contract_duplicate:${duplicates.join(",")}`] : []),
+          ...(positions.length !== CANONICAL_TROPICAL_PLANETS.length
+            ? [`planets_tropical_contract_count:${positions.length}`]
+            : []),
+        ],
+        error: "AstrologyAPI planets/tropical did not satisfy the verified V4.9.2 fixture contract.",
+      };
+    }
+    return {
+      status: "success",
+      provider: "astrologyapi",
+      providerVersion: "astrologyapi-planets-tropical-v1",
+      localDate: args.localDate,
+      timezone: args.timezone,
+      observedAt,
+      warnings,
+      normalized: { positions },
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      provider: "astrologyapi",
+      providerVersion: "astrologyapi-planets-tropical-v1",
+      localDate: args.localDate,
+      timezone: args.timezone,
+      observedAt,
+      warnings,
+      error: error instanceof Error ? error.message : "Unknown AstrologyAPI planets/tropical error",
+    };
+  }
+}
+
 export async function runAstrologyApiExtendedTransits(args: {
   input: BirthChartInput;
   localDate: string;
@@ -858,7 +1195,7 @@ function readNumber(record: Record<string, unknown>, keys: string[]) {
     if (typeof value === "number" && Number.isFinite(value)) {
       return value;
     }
-    if (typeof value === "string") {
+    if (typeof value === "string" && value.trim() !== "") {
       const parsed = Number(value);
       if (Number.isFinite(parsed)) {
         return parsed;

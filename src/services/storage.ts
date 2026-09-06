@@ -4,8 +4,17 @@ import {
   parseAccountSnapshot,
   type AccountSnapshot
 } from "@/domain/accountLocalData";
-import type { PendingDeletionMarker, PendingDeletionPhase } from "@/domain/accountDeletion";
-import { DailyReading, JournalEntry, UserProfile } from "@/domain/types";
+import {
+  esOwnerCanonico,
+  parsePendingDeletionMarker,
+  type PendingDeletionPhase,
+  type PendingDeletionRead
+} from "@/domain/accountDeletion";
+import type { UserProfile } from "@/domain/profileTypes";
+// Guardadas y diario son DATOS OPACOS para el storage: se leen y se escriben
+// enteros, nunca se inspeccionan. Por eso el import es de tipo puro y no mete
+// el vocabulario del ritual legado en el bundle nativo.
+import type { DailyReading, JournalEntry } from "@/domain/types";
 
 const keys = {
   profile: "orbita:profile",
@@ -103,32 +112,50 @@ export async function clearLocalData(): Promise<void> {
 
 const pendingAccountDeletionKey = "orbita:pending-account-deletion";
 
+/**
+ * Escribe el marcador. Un marcador INVÁLIDO no se puede escribir: sin dueño no
+ * hay nada que autorizar después, y el arranque quedaría bloqueado por un raw
+ * que escribimos nosotros.
+ */
 export async function storePendingAccountDeletion(
   userId: string,
   phase: PendingDeletionPhase
 ): Promise<void> {
+  // MISMA regla que el parser (`esOwnerCanonico`): ni vacío, ni de puro
+  // espacio, ni con padding. Escribir un id que el parser después rechaza deja
+  // el arranque bloqueado por un raw que generamos nosotros.
+  if (!esOwnerCanonico(userId)) {
+    throw new Error("PENDING_DELETION_OWNER_REQUIRED");
+  }
+  if (
+    phase !== "deletion_requested" &&
+    phase !== "backend_deleted" &&
+    phase !== "identity_deleted"
+  ) {
+    throw new Error("PENDING_DELETION_PHASE_INVALID");
+  }
   await AsyncStorage.setItem(pendingAccountDeletionKey, JSON.stringify({ userId, phase }));
 }
 
-export async function readPendingAccountDeletion(): Promise<PendingDeletionMarker | null> {
-  const raw = await AsyncStorage.getItem(pendingAccountDeletionKey);
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw) as { userId?: unknown; phase?: unknown };
-    return {
-      userId: typeof parsed?.userId === "string" ? parsed.userId : "",
-      // Fase desconocida/ilegible = la más conservadora: `backend_deleted`
-      // exige confirmar el estado de Clerk antes de purgar nada.
-      phase: parsed?.phase === "identity_deleted" ? "identity_deleted" : "backend_deleted"
-    };
-  } catch {
-    return { userId: "", phase: "backend_deleted" };
-  }
+/**
+ * Lee el marcador SIN normalizar nada.
+ *
+ * El parser vive en el dominio y distingue ausencia real, raw vacío, JSON roto,
+ * objeto incompleto y fase desconocida. Antes todo eso se aplanaba a
+ * `{ userId: "", phase: "backend_deleted" }` o a `null` —un error de lectura se
+ * devolvía como "no hay nada"— y el arranque seguía como si la eliminación no
+ * existiera.
+ */
+export async function readPendingAccountDeletion(): Promise<PendingDeletionRead> {
+  return parsePendingDeletionMarker(await AsyncStorage.getItem(pendingAccountDeletionKey));
 }
 
 export async function clearPendingAccountDeletion(): Promise<void> {
   await AsyncStorage.removeItem(pendingAccountDeletionKey);
 }
+
+/** Nombre de la clave del marcador, para escuchar cambios cross-tab en web. */
+export const PENDING_DELETION_STORAGE_KEY = pendingAccountDeletionKey;
 
 // --- Snapshot local por cuenta (logout sin pérdida; ver domain/accountLocalData) ---
 

@@ -1,19 +1,7 @@
-import { TemaDelAnoScreen } from "@/screens/TemaDelAnoScreen";
-import { WebAppShell } from "@/components/web/web-app-shell";
-
 /**
- * Tu momento · Tema del año — la profección anual (CORE-210).
- * En web viaja dentro del shell (CORE-240): la nav de Tránsitos y el modo
- * escritorio los pone `WebAppShell` (frames `2023:2900` / `1740:2308`); en
- * nativo la pantalla se muestra tal cual dentro del stack.
+ * Wrapper de ruta. La implementación vive FUERA de `app/`, en
+ * `src/routes/v492/reading-tema-del-ano` (`.tsx` nativo → redirección a la pantalla
+ * V4.9.2 equivalente, `.web.tsx` web → la pantalla de la web). Así el binario
+ * nativo no empaqueta la pantalla web (CORE-247).
  */
-export default function Route() {
-  if (process.env.EXPO_OS !== "web") {
-    return <TemaDelAnoScreen />;
-  }
-  return (
-    <WebAppShell active="transitos">
-      <TemaDelAnoScreen />
-    </WebAppShell>
-  );
-}
+export { default } from "@/routes/v492/reading-tema-del-ano";

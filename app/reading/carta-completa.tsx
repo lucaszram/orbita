@@ -1,6 +1,7 @@
-import { CartaCompletaScreen } from "@/screens/CartaCompletaScreen";
-
-/** Carta completa — la carta natal punto por punto (CORE-215). */
-export default function CartaCompletaRoute() {
-  return <CartaCompletaScreen />;
-}
+/**
+ * Wrapper de ruta. La implementación vive FUERA de `app/`, en
+ * `src/routes/v492/reading-carta-completa` (`.tsx` nativo → redirección a la pantalla
+ * V4.9.2 equivalente, `.web.tsx` web → la pantalla de la web). Así el binario
+ * nativo no empaqueta la pantalla web (CORE-247).
+ */
+export { default } from "@/routes/v492/reading-carta-completa";

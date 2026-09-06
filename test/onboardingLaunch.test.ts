@@ -17,8 +17,8 @@ import {
   partsToTimeValue,
   timeValueToParts
 } from "../src/domain/birthInput";
+import { ROOT, resolveEntryForPlatform } from "./moduleGraph";
 
-const ROOT = join(import.meta.dirname, "..");
 const leer = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
 const sinComentarios = (x: string) => x.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 
@@ -241,25 +241,13 @@ test("la composición ancha del alta no puede volver por ninguna vía", () => {
 test("el alta no vuelve a componer por ancho de ventana", () => {
   // El breakpoint del alta es IMPLÍCITO: debajo de 480 la columna es ancho
   // completo, así que el teléfono y el nativo quedan idénticos sin ninguna rama
-  // por viewport. La única excepción es la entrada, y no compone: elige el
-  // master del fondo full-bleed (panorámico en ventana ancha, vertical en
-  // teléfono), que es el mismo par de assets que usa la landing.
+  // por viewport. Con el acceso como primera superficie ya no queda ni la
+  // excepción de la portada: ninguna pantalla mide la ventana.
   for (const rel of ALTA) {
     const codigo = sinComentarios(leer(rel));
     assert.doesNotMatch(codigo, /useWindowDimensions|Dimensions\.get|window\.inner/, `${rel} mide la ventana`);
-    if (rel === "src/onboarding/screens/SplashScreen.tsx") continue;
     assert.doesNotMatch(codigo, /useIsDesktop|useLayoutMode/, `${rel} vuelve a ramificar por modo de layout`);
   }
-  const splash = sinComentarios(leer("src/onboarding/screens/SplashScreen.tsx"));
-  const usos = splash.match(/\bdesktop\b/g) ?? [];
-  assert.deepEqual(
-    usos.length,
-    2,
-    "en la entrada el modo se usa DOS veces: declararlo y elegir el fondo. Nada más."
-  );
-  assert.match(splash, /const desktop = useIsDesktop\(\);/);
-  assert.match(splash, /bg=\{entryBackground\(desktop\)\}/, "y sólo para el master del fondo");
-  assert.doesNotMatch(splash, /desktop \?|desktop &&/, "ninguna rama de composición por modo");
 });
 
 test("el tope del lienzo se centra con alignSelf, no con alignItems del padre", () => {
@@ -359,7 +347,7 @@ test("el orden de cada paso es el original, y es UNO solo", () => {
   };
   // Align: header → título → subtítulo → grilla → nota → CTA.
   orden("src/onboarding/screens/AlignScreen.tsx", [
-    "<Header step={1}", "<Title", "<Body", "<View style={styles.gridZone}>", "<TileGrid />", "<Caption", "<CTA"
+    "<Header step={step}", "<Title", "<Body", "<View style={styles.gridZone}>", "<TileGrid />", "<Caption", "<CTA"
   ]);
   // Fecha: header → título → subtítulo → error → picker → privacidad → CTA.
   orden("src/onboarding/screens/BirthdateScreen.tsx", [
@@ -397,53 +385,48 @@ test("los contenedores flex pueden encogerse para acotar un scroll interno", () 
   assert.match(denso, /scroll: \{ flex: 1, minHeight: 0 \}/);
 });
 
-test("la entrada es una sola composición: marca centrada y puertas al pie", () => {
-  // El defecto: en escritorio la entrada montaba el escenario ANCHO con la
-  // marca de 96px anclada abajo a la izquierda. En un viewport bajo —o con la
-  // barra de depuración abierta— eso empujaba las dos puertas fuera del pliegue
-  // y el CTA quedaba cortado.
-  const splash = sinComentarios(leer("src/onboarding/screens/SplashScreen.tsx"));
-  assert.match(splash, /hero: \{ alignItems: "center", flex: 1, justifyContent: "center" \}/, "marca centrada");
-  assert.match(splash, /doors: \{ paddingBottom: 18 \}/, "puertas al pie de la columna");
-  // Ni la tipografía de escritorio ni el anclaje del hero editorial pueden
-  // volver: eran las piezas del escenario ancho.
-  for (const prohibido of ["WORDMARK_DESKTOP", "TAGLINE_DESKTOP", "bodyDesktop", "heroDesktop", "doorsDesktop"]) {
-    assert.ok(!splash.includes(prohibido), `la escena ancha volvió por «${prohibido}»`);
-  }
-  assert.doesNotMatch(splash, /fontSize: 96/, "la marca de 96px era del escenario de 1200");
+test("la entrada es el acceso: wordmark serif, selector de puerta y las tres vías", () => {
+  // La PRIMERA superficie del flujo es "Crear cuenta o ingresar": una sola
+  // pantalla con los dos modos (selector de puerta), campos nativos de Órbita
+  // y las vías del acceso oficial de Clerk. La portada vieja (video + puertas)
+  // ya no existe: la landing web es la portada, y el nativo entra al acceso.
+  const acceso = sinComentarios(leer("src/onboarding/screens/AuthScreen.tsx"));
+  assert.match(acceso, /accessibilityRole="tablist"/, "el selector es una lista de puertas");
+  assert.match(acceso, /Crear cuenta/, "puerta de alta");
+  assert.match(acceso, /Ingresar/, "puerta de ingreso");
+  assert.match(acceso, /Creá tu cuenta/, "título del modo alta");
+  assert.match(acceso, /Bienvenido de nuevo/, "título del modo ingreso");
+  // El wordmark es SOLO el serif "Órbita" con la Ó en cobre: ni el símbolo
+  // viejo de órbita/ojo ni la versión en mayúsculas espaciadas.
+  assert.match(acceso, /function Wordmark\(\)/);
+  assert.doesNotMatch(acceso, /ÓRBITA|letterSpacing: [4-9]/, "sin mayúsculas espaciadas de marca");
+  assert.match(acceso, /minHeight: 44/, "objetivos táctiles de 44 puntos");
+  // Y la salida del alta viejo (SplashScreen) no puede volver.
+  assert.ok(
+    !readdirSync(join(ROOT, "src/onboarding/screens")).includes("SplashScreen.tsx"),
+    "la portada vieja salió del flujo"
+  );
 });
 
-test("la tipografía de la entrada no puede perder contra Tailwind", () => {
+test("la tipografía del acceso no puede perder contra Tailwind", () => {
   // `StyleSheet.create` de react-native-web compila a CLASES atómicas, y el
   // `Text` compartido agrega `text-base` (16px/24px). Clase contra clase ganaba
-  // Tailwind: el wordmark se dibujaba a 16px —no a 46 ni a 96— mientras
-  // `textAlign`, que `text-base` no toca, sí se aplicaba. Un literal viaja en
-  // el atributo `style` y gana siempre.
-  const splash = sinComentarios(leer("src/onboarding/screens/SplashScreen.tsx"));
-  assert.match(splash, /const WORDMARK = \{[\s\S]*?fontSize: 46/, "la marca es un literal, no una hoja registrada");
-  assert.match(splash, /const TAGLINE = \{[\s\S]*?fontSize: 15/);
-  assert.match(splash, /style=\{WORDMARK\}/);
-  assert.match(splash, /style=\{TAGLINE\}/);
-  // Y ya no quedan en la hoja registrada, donde volverían a perder.
-  assert.doesNotMatch(splash, /\n  wordmark: \{/, "el wordmark no puede volver a StyleSheet.create");
-  assert.doesNotMatch(splash, /\n  tagline: \{/);
-});
-
-test("el intro del splash no puede desbordar el viewport", () => {
-  // En web `expo-video` monta un `<video>` que se va a su tamaño intrínseco si
-  // no se lo acota: a 1440x900 el intro tapaba las dos puertas y estiraba el
-  // documento a 1216px de alto.
-  const splash = sinComentarios(leer("src/onboarding/screens/SplashScreen.tsx"));
-  assert.match(splash, /intro: \{ overflow: "hidden" \}/, "el overlay tiene que recortar");
-  assert.match(splash, /introVideo: \{ height: "100%", left: 0, position: "absolute", top: 0, width: "100%" \}/);
-  assert.match(splash, /style=\{styles\.introVideo\}/, "el video usa el estilo acotado, no sólo absoluteFill");
+  // Tailwind: el wordmark de la entrada ya salió a 16px dos veces. Un literal
+  // viaja en el atributo `style` y gana siempre.
+  const acceso = sinComentarios(leer("src/onboarding/screens/AuthScreen.tsx"));
+  assert.match(acceso, /const WORDMARK = \{[\s\S]*?fontSize: 24/, "la marca es un literal");
+  assert.match(acceso, /const TITLE = \{[\s\S]*?fontSize: 34/, "el título es un literal");
+  assert.match(acceso, /style=\{WORDMARK\}/);
+  assert.match(acceso, /style=\{TITLE\}/);
+  assert.doesNotMatch(acceso, /\n  wordmark: \{/, "el wordmark no puede volver a StyleSheet.create");
+  assert.doesNotMatch(acceso, /\n  title: \{/, "el título tampoco");
 });
 
 test("los pasos densos scrollean y los que ya scrollean no anidan otro scroll", () => {
   // Los pasos densos scrollean: sin eso un viewport de 320x568 esconde el CTA.
   for (const rel of [
     "src/onboarding/screens/BirthplaceSearchScreen.tsx",
-    "src/onboarding/screens/BaseChartScreen.tsx",
+    "src/onboarding/screens/AuthScreen.tsx",
     "src/onboarding/screens/SignInScreen.tsx",
     "src/onboarding/screens/SignUpGateScreen.tsx"
   ]) {
@@ -454,8 +437,7 @@ test("los pasos densos scrollean y los que ya scrollean no anidan otro scroll", 
   // 320x568, el CTA de Antes/Después terminaba 412px por debajo del pliegue.
   for (const rel of [
     "src/onboarding/screens/BeforeAfterScreen.tsx",
-    "src/onboarding/screens/AccountScreen.tsx",
-    "src/onboarding/screens/PaywallScreen.tsx"
+    "src/onboarding/screens/OnboardingPaywallScreen.tsx"
   ]) {
     const codigo = sinComentarios(leer(rel));
     assert.match(codigo, /<ScrollView/, `${rel} maneja su propio scroll`);
@@ -464,7 +446,7 @@ test("los pasos densos scrollean y los que ya scrollean no anidan otro scroll", 
 });
 
 test("la vista combinada es interna y de sólo lectura", () => {
-  const preview = sinComentarios(leer("app/preview-alta.tsx"));
+  const preview = sinComentarios(readFileSync(resolveEntryForPlatform("app/preview-alta.tsx", "web"), "utf8"));
   // Cerrada en producción, como /studio, /lab y /backoffice.
   assert.match(preview, /if \(!INTERNAL_TOOLS_ENABLED\) return <Redirect href="\/" \/>;/);
   // Monta el alta REAL, no una copia que pueda divergir.
@@ -489,45 +471,23 @@ test("la vista combinada es interna y de sólo lectura", () => {
   }
 });
 
-test("«Guardá tu carta»: una columna, el sello compacto y Clerk oficial", () => {
-  const cuenta = sinComentarios(leer("src/onboarding/screens/AccountScreen.tsx"));
-  // Una sola composición: el arte del sobre queda como atmósfera y el sello
-  // sube como pieza compacta arriba del título, en la MISMA columna que el
-  // formulario. A 0.9 el fondo competía con los campos de Clerk.
-  assert.match(cuenta, /<Screen bg=\{A\.accountBg\} bgOpacity=\{0\.32\} wash=\{0\.74\}>/);
-  assert.match(cuenta, /<View style=\{styles\.seal\}>/, "el sello es una pieza del paso");
-  assert.match(cuenta, /seal: \{[\s\S]*?height: 88,/, "compacto, no un disco de media pantalla");
-  assert.doesNotMatch(cuenta, /borderRadius: 220|maxWidth: 420/, "el sello de la segunda columna no puede volver");
-  // El widget de Clerk conserva su scroll propio y su alto reservado.
-  assert.match(cuenta, /<ScrollView/, "la pantalla maneja su propio scroll");
-  assert.match(cuenta, /clerkZone: \{ marginTop: 22, minHeight: 380, width: "100%" \}/);
-  // La cuenta la crea la UI OFICIAL de Clerk.
-  assert.match(cuenta, /<ClerkSignUp email=\{email\} \/>/);
-  assert.match(cuenta, /Guardá tu carta\./, "la copy del paso se conserva");
-});
-
-test("el alta NO tiene formulario propio ni pide nombre", () => {
-  const cuenta = sinComentarios(leer("src/onboarding/screens/AccountScreen.tsx"));
-  const flow = sinComentarios(leer("src/onboarding/OnboardingFlow.tsx"));
-  // El formulario propio reimplementaba la máquina de estados de Clerk
-  // (create → prepare → attempt → setActive) y quedaba desfasado con cada
-  // requisito nuevo de la instancia.
-  for (const prohibido of [
-    "TextInput",
-    "CodeInput",
-    "secureTextEntry",
-    "confirmPassword",
-    "Repetir contraseña",
-    "Verificar código",
-    "resetToEmail",
-    "codePhase"
-  ]) {
-    assert.ok(!cuenta.includes(prohibido), `el formulario propio no puede volver: ${prohibido}`);
-    assert.ok(!flow.includes(prohibido), `el flujo tampoco puede manejarlo: ${prohibido}`);
-  }
+test("el acceso maneja Clerk con los hooks oficiales, no con una copia", () => {
+  const acceso = sinComentarios(leer("src/onboarding/screens/AuthScreen.tsx"));
+  const flujo = sinComentarios(leer("src/onboarding/useAccount.ts"));
+  // Los campos son nativos de Órbita, pero la máquina de estados es la de los
+  // hooks oficiales de Clerk (`useAccountFlow` / `useSignInFlow` / SSO): la
+  // pantalla no crea sesiones ni interpreta intentos por su cuenta.
+  assert.match(acceso, /type AccountFlow/, "el alta consume el contrato del hook");
+  assert.match(acceso, /type SignInFlow/, "el ingreso también");
+  assert.doesNotMatch(acceso, /attemptEmailAddressVerification|attemptFirstFactor|setActive/, "la pantalla no habla con Clerk directo");
+  assert.match(flujo, /useSignUp\(\)/, "la máquina vive en los hooks oficiales");
+  assert.match(flujo, /useSignIn\(\)/);
+  // Código de 6 dígitos con el componente real, y reenvío con cooldown.
+  assert.match(acceso, /<CodeInput/, "verificación con el componente del producto");
+  assert.match(acceso, /<CodeHelp onResend=\{flow\.resend\} \/>/, "reenviar sin crear otra cuenta");
   // Nombre y apellido son OPCIONALES: no se piden ni existe un paso para eso.
   for (const rel of [
-    "src/onboarding/screens/AccountScreen.tsx",
+    "src/onboarding/screens/AuthScreen.tsx",
     "src/onboarding/OnboardingFlow.tsx",
     "src/domain/onboardingReadiness.ts"
   ]) {
@@ -535,56 +495,62 @@ test("el alta NO tiene formulario propio ni pide nombre", () => {
     assert.doesNotMatch(codigo, /needs_name/, `${rel}: no existe un estado de nombre`);
     assert.doesNotMatch(codigo, /firstName|lastName|Apellido/, `${rel}: el alta no pide nombre`);
   }
-  // Y el paso 13 sigue siendo UNO solo: 15 pasos, sin agregados.
-  assert.match(flow, /const TOTAL = 15;/);
-  assert.match(flow, /const STEP_ACCOUNT = 13;/);
 });
 
-test("la UI oficial de Clerk se resuelve por plataforma", () => {
+test("el acceso es el paso 0 y el flujo canónico tiene 11 pasos", () => {
+  const flow = sinComentarios(leer("src/onboarding/OnboardingFlow.tsx"));
+  const steps = sinComentarios(leer("src/onboarding/steps.ts"));
+  // El orden aprobado, con sus índices nombrados: un renumerado silencioso ya
+  // costó datos.
+  assert.match(steps, /export const ONBOARDING_TOTAL = 11;/);
+  assert.match(steps, /export const STEP_AUTH = 0;/);
+  assert.match(steps, /export const STEP_PROMISE = 1;/);
+  assert.match(steps, /export const STEP_IDENTITY = 2;/);
+  assert.match(steps, /export const STEP_GUIDANCE = 3;/);
+  assert.match(steps, /export const STEP_BIRTHDATE = 4;/);
+  assert.match(steps, /export const STEP_BIRTHPLACE = 5;/);
+  assert.match(steps, /export const STEP_BIRTHTIME = 6;/);
+  assert.match(steps, /export const STEP_SUMMARY = 7;/);
+  assert.match(steps, /export const STEP_TRIAD = 8;/);
+  assert.match(steps, /export const STEP_BEFORE_AFTER = 9;/);
+  assert.match(steps, /export const STEP_PAYWALL = 10;/);
+  assert.match(flow, /const TOTAL = ONBOARDING_TOTAL;/);
+  assert.match(flow, /case STEP_AUTH:[\s\S]{0,400}<AuthScreen/, "el acceso es la primera superficie");
+});
+
+test("la UI oficial de Clerk se resuelve por plataforma en el alta suelta", () => {
   // Mismo patrón que `BirthPicker`: Metro elige el archivo por plataforma.
   const nativo = sinComentarios(leer("src/onboarding/components/ClerkSignUp.tsx"));
   assert.match(nativo, /from "@clerk\/expo\/native"/);
   assert.match(nativo, /<AuthView mode="signUp"/);
-  // El alta va EMBEBIDA en el paso, no presentada como modal: el botón de
-  // cierre de `AuthView` no tendría a dónde cerrar y sería un segundo control
-  // de salida al lado del `Header`, que sí sabe volver al paso anterior.
   assert.match(nativo, /<AuthView mode="signUp" isDismissible=\{false\} \/>/);
-  // `AuthView` sólo acepta `mode`, `isDismissible` y `onDismiss`: no expone
-  // prellenado, así que el email no puede colarse como prop inventada.
   assert.doesNotMatch(nativo, /initialValues/, "AuthView no tiene prellenado");
 
   const web = sinComentarios(leer("src/onboarding/components/ClerkSignUp.web.tsx"));
   assert.match(web, /from "@clerk\/expo\/web"/);
   assert.match(web, /<SignUp\b/);
   assert.ok(statSync(join(ROOT, "src/onboarding/components/ClerkSignUp.web.tsx")).size > 0);
-  // Las dos superficies del alta montan el MISMO componente.
-  for (const rel of [
-    "src/onboarding/screens/AccountScreen.tsx",
-    "src/onboarding/screens/SignUpGateScreen.tsx"
-  ]) {
-    assert.match(sinComentarios(leer(rel)), /from "\.\.\/components\/ClerkSignUp"/, rel);
-  }
+  // El alta suelta (`/crear-cuenta`) sigue montando el componente oficial.
+  assert.match(
+    sinComentarios(leer("src/onboarding/screens/SignUpGateScreen.tsx")),
+    /from "\.\.\/components\/ClerkSignUp"/
+  );
 });
 
-test("el email ya escrito PRELLENA el campo de Clerk, y sólo si es real", () => {
-  // Prellenar no es tener un campo propio: el dueño del email sigue siendo
-  // Clerk. Lo único que hace Órbita es no obligar a escribirlo dos veces.
+test("el email ya escrito PRELLENA el acceso, y sólo si es real", () => {
+  // El login manda a "Crear una cuenta" con `?email=`: ese email prellena el
+  // campo del acceso para no obligar a escribirlo dos veces.
+  const flow = sinComentarios(leer("src/onboarding/OnboardingFlow.tsx"));
+  assert.match(flow, /initialEmail=\{email \|\| undefined\}/, "el acceso recibe el email del flujo");
+  const acceso = sinComentarios(leer("src/onboarding/screens/AuthScreen.tsx"));
+  assert.match(acceso, /useState\(initialEmail \?\? ""\)/, "y sólo como valor inicial");
+  // El alta suelta conserva el prellenado del componente oficial.
   const web = sinComentarios(leer("src/onboarding/components/ClerkSignUp.web.tsx"));
-  assert.match(web, /email\?: string;/, "el email es opcional");
   assert.match(web, /const prefill = email\?\.trim\(\) \?\? "";/);
-  // Vacío ⇒ NADA. `initialValues: { emailAddress: "" }` es un prellenado que no
-  // corresponde a nada escrito, y deja el campo de Clerk en estado "tocado".
   assert.match(
     web,
     /initialValues=\{prefill \? \{ emailAddress: prefill \} : undefined\}/,
     "sólo se prellena con un email real"
-  );
-  // Y las dos superficies lo cablean hasta Clerk.
-  const flow = sinComentarios(leer("src/onboarding/OnboardingFlow.tsx"));
-  assert.match(flow, /<AccountScreen[\s\S]{0,200}email=\{email\}/, "el paso 13 recibe el email del flujo");
-  assert.match(
-    sinComentarios(leer("src/onboarding/screens/AccountScreen.tsx")),
-    /<ClerkSignUp email=\{email\} \/>/
   );
   const ruta = sinComentarios(leer("app/crear-cuenta.tsx"));
   assert.match(ruta, /useLocalSearchParams<\{ email\?: string \}>\(\)/, "el link directo trae `?email=`");
@@ -595,30 +561,34 @@ test("el email ya escrito PRELLENA el campo de Clerk, y sólo si es real", () =>
   );
 });
 
-test("el login social es SÓLO Google, y se enciende por configuración", () => {
+test("los proveedores sociales se encienden por configuración, nunca se simulan", () => {
   const cuenta = sinComentarios(leer("src/onboarding/useAccount.ts"));
-  // Una sola estrategia en todo el flujo.
-  assert.match(cuenta, /export type OAuthProvider = "google";/);
-  assert.match(cuenta, /const strategy = "oauth_google" as const;/);
-  assert.doesNotMatch(cuenta, /oauth_apple/, "Apple salió del flujo");
-  // El flag sale del entorno: un deploy sin la variable queda cerrado, no roto.
-  // Dos condiciones: sólo web, y sólo con la variable puesta. En nativo el SSO
-  // vuelve por deep link y arrastra credenciales y reglas de tienda no resueltas.
+  // Estrategias oficiales de Clerk. En iOS ambos proveedores ya están
+  // configurados externamente; web conserva flags separados.
+  assert.match(cuenta, /export type OAuthProvider = "google" \| "apple";/);
+  assert.match(cuenta, /provider === "apple" \? \("oauth_apple" as const\) : \("oauth_google" as const\)/);
   assert.match(
     cuenta,
-    /export const GOOGLE_AUTH_ENABLED =\s*Platform\.OS === "web" && process\.env\.EXPO_PUBLIC_ORBITA_GOOGLE_AUTH === "true";/
+    /AuthSession\.makeRedirectUri\(\{ scheme: "com\.lucasssram\.orbita", path: "callback" \}\)/,
+    "iOS vuelve por el callback exacto que Lucas allowlisteó en Clerk"
+  );
+  assert.match(
+    cuenta,
+    /export const GOOGLE_AUTH_ENABLED =\s*Platform\.OS === "ios" \|\|\s*\(Platform\.OS === "web" && process\.env\.EXPO_PUBLIC_ORBITA_GOOGLE_AUTH === "true"\);/
+  );
+  assert.match(
+    cuenta,
+    /export const APPLE_AUTH_ENABLED =\s*Platform\.OS === "ios" \|\|\s*\(Platform\.OS === "web" && process\.env\.EXPO_PUBLIC_ORBITA_APPLE_AUTH === "true"\);/
   );
   assert.match(cuenta, /import \{ Platform \} from "react-native";/);
   assert.doesNotMatch(cuenta, /SOCIAL_LOGIN_ENABLED/, "el flag viejo no puede quedar colgando");
 
-  // Ninguna superficie del alta ofrece Apple.
-  for (const rel of [
-    "src/onboarding/screens/AccountScreen.tsx",
-    "src/onboarding/screens/SignInScreen.tsx",
-    "src/onboarding/OnboardingFlow.tsx"
-  ]) {
-    assert.doesNotMatch(sinComentarios(leer(rel)), /"apple"|Continuar con Apple/, `${rel} todavía ofrece Apple`);
-  }
+  // El acceso dibuja cada botón SOLO detrás de su flag: sin conexión externa
+  // habilitada no se muestra — no se simula un proveedor que no está.
+  const acceso = sinComentarios(leer("src/onboarding/screens/AuthScreen.tsx"));
+  assert.match(acceso, /APPLE_AUTH_ENABLED \?[\s\S]{0,200}Continuar con Apple/, "Apple sólo con su flag");
+  assert.match(acceso, /GOOGLE_AUTH_ENABLED \?[\s\S]{0,200}Continuar con Google/, "Google sólo con su flag");
+  assert.match(acceso, /if \(!APPLE_AUTH_ENABLED && !GOOGLE_AUTH_ENABLED\) return null;/, "sin proveedores no hay bloque social");
 });
 
 test("«Continuar con Google» va arriba del divisor, con marca real y accesible", () => {
@@ -657,18 +627,13 @@ test("la medida del alta es de formulario, no de lectura ni de escenario", () =>
   assert.deepEqual(medidas, [], "el shell no puede tener una segunda medida");
 });
 
-test("el cierre del alta usa la pieza orbital y respeta reducir movimiento", () => {
+test("el flujo no dibuja spinners ni animaciones propias en el cierre", () => {
   const flow = sinComentarios(leer("src/onboarding/OnboardingFlow.tsx"));
-  // Ya no es un spinner sobre negro.
+  // El cierre ES la paywall: el flujo no monta un spinner sobre negro ni una
+  // pieza animada propia (nada que deba consultar "reducir movimiento").
   assert.doesNotMatch(flow, /<ActivityIndicator/, "el spinner sobre negro no puede volver");
-  assert.match(flow, /source=\{A\.heroEclipse\}/, "el orbe del alta es la pieza del cierre");
-  assert.match(flow, /const reduced = useReducedMotion\(\);/);
-  assert.match(flow, /if \(reduced\) return;/, "con movimiento reducido no se anima");
-  assert.match(flow, /!reduced && \{ transform: \[\{ rotate \}\] \}/, "y la pieza queda quieta");
-  // El texto de estado sigue anunciado.
-  assert.match(flow, /Guardando tus datos…/);
-  assert.match(flow, /accessibilityRole="progressbar"/);
-  assert.match(flow, /accessibilityLiveRegion="polite"/);
+  assert.doesNotMatch(flow, /Animated\./, "el flujo no anima nada por su cuenta");
+  assert.doesNotMatch(flow, /useReducedMotion/, "sin animaciones no hay nada que reducir");
 });
 
 test("el vacío de la búsqueda de ciudad guía en vez de dejar un hueco", () => {
@@ -745,10 +710,7 @@ test("«Ya tengo cuenta · Iniciar sesión» se ve y se alcanza en las dos super
   // No puede volver a ser una hoja registrada.
   assert.doesNotMatch(tema, /StyleSheet/, "el literal no puede pasar por StyleSheet.create");
 
-  for (const rel of [
-    "src/onboarding/screens/SplashScreen.tsx",
-    "src/onboarding/screens/SignUpGateScreen.tsx"
-  ]) {
+  for (const rel of ["src/onboarding/screens/SignUpGateScreen.tsx"]) {
     const codigo = sinComentarios(leer(rel));
     // Las dos superficies usan EL MISMO literal: no pueden divergir.
     assert.match(
@@ -784,28 +746,21 @@ test("Antes/Después scrollea y deja el CTA anclado con respiro seguro", () => {
   assert.doesNotMatch(codigo, /spacer: \{ flex: 1/, "el spacer rígido empujaba el CTA fuera del viewport");
 });
 
-test("el cierre del alta muestra que está guardando, no una pantalla vacía", () => {
-  // Con `PAYWALL_ENABLED=false` el último paso persiste los datos y entra a la
-  // app. Mientras tanto se renderizaba un `View` negro y vacío: parecía que la
-  // app se había colgado justo en el momento más frágil del alta.
+test("el cierre es la paywall aprobada, por plataforma y sin pantalla vacía", () => {
+  // El último paso monta SIEMPRE la paywall: RevenueCat en nativo y el
+  // circuito Stripe en web (Metro resuelve la variante `.web`). No existe una
+  // pantalla post-paywall ni un `View` negro de relleno: compra, restauración
+  // y "Seguir gratis" mantienen la paywall visible hasta el `router.replace`.
   const flow = sinComentarios(leer("src/onboarding/OnboardingFlow.tsx"));
-  assert.match(flow, /function SavingBirthData\(/, "hace falta un estado de guardado con marca");
-  assert.match(flow, /<SavingBirthData\b/, "y el cierre tiene que montarlo");
-  assert.match(flow, /Guardando tus datos…/, "con copy en español");
-  assert.match(flow, /source=\{A\.heroEclipse\}/, "y la pieza orbital como señal de actividad");
-  // Anunciado: rol de progreso + región viva para un lector de pantalla.
-  assert.match(flow, /accessibilityRole="progressbar"/);
-  assert.match(flow, /accessibilityLabel=\{error \? "No pudimos sincronizar tus datos" : "Guardando tus datos"\}/);
-  assert.match(flow, /accessibilityLiveRegion="polite"/);
-  assert.match(flow, /Reintentar guardado/);
-
-  // Y el relleno negro vacío ya no se monta en ninguna rama del switch.
-  const cierre = flow.slice(flow.indexOf("case FINAL_STEP:"), flow.indexOf("function SavingBirthData"));
+  const cierreDesde = flow.slice(flow.indexOf("case STEP_PAYWALL:"));
+  const cierre = cierreDesde.slice(0, cierreDesde.indexOf("break;"));
+  assert.match(cierre, /<OnboardingPaywallScreen/);
   assert.doesNotMatch(cierre, /<View style=\{styles\.fill\} \/>/, "el relleno vacío no puede volver al cierre");
-
-  // El envío y el paywall no cambian: sólo lo que se dibuja mientras tanto.
-  assert.match(flow, /if \(step === FINAL_STEP && !PAYWALL_ENABLED\) void submit\(\);/);
-  assert.match(flow, /screen = PAYWALL_ENABLED \? \(/);
+  assert.doesNotMatch(flow, /EnteringCarta|SavingBirthData/, "la pantalla post-paywall no existe");
+  const nativo = sinComentarios(leer("src/onboarding/screens/OnboardingPaywallScreen.tsx"));
+  assert.match(nativo, /useRevenueCat\(\)/, "nativo cobra con RevenueCat");
+  const web = sinComentarios(leer("src/onboarding/screens/OnboardingPaywallScreen.web.tsx"));
+  assert.match(web, /createCheckoutSession/, "web cobra con Stripe");
 });
 
 // --- 6. La inspección interna sigue siendo de sólo lectura ------------------

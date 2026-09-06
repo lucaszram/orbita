@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 
 import {
   ASTRO_GLYPHS,
@@ -22,11 +22,17 @@ import {
   signIndexForName,
   signSymbolForName
 } from "../src/domain/astroSymbols";
+import { ROOT, resolveEntryForPlatform } from "./moduleGraph";
 
-const ROOT = join(import.meta.dirname, "..");
 /** Los comentarios NOMBRAN los glifos viejos a propósito (documentan el bug). */
 const sinComentarios = (x: string) => x.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 const fuente = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
+const implementacionWeb = (entry: string) => relative(ROOT, resolveEntryForPlatform(entry, "web"));
+
+const RECEPCION_WEB = implementacionWeb("app/recepcion.tsx");
+const CARTA_FULL_WEB = implementacionWeb("app/carta-full.tsx");
+const READING_RUEDA_WEB = implementacionWeb("app/reading/rueda.tsx");
+const READING_CARTA_WEB = implementacionWeb("app/reading/carta.tsx");
 
 /**
  * Superficies que presentan símbolos astrológicos. Ninguna puede depender de
@@ -39,6 +45,10 @@ const SUPERFICIES = [
   "src/components/orbita/TriadLine.tsx",
   "src/components/orbita/kit.tsx",
   "src/components/home/sections.tsx",
+  // La fila del ranking de tránsitos: desde V4.9.2 su cabecera es notación
+  // simbólica (cuerpo en tránsito · aspecto · punto natal), así que entra bajo
+  // las mismas reglas que el resto de los símbolos de la app.
+  "src/components/v492/TransitCard.tsx",
   "src/domain/wheelLayout.ts",
   "src/domain/astroSymbols.ts",
   "src/domain/astroGlyphs.ts",
@@ -46,11 +56,11 @@ const SUPERFICIES = [
   "src/screens/CartaScreen.tsx",
   "src/screens/HomeScreen.tsx",
   "src/components/home/CartaCard.tsx",
-  "app/(tabs)/perfil.tsx",
-  "app/recepcion.tsx",
-  "app/carta-full.tsx",
-  "app/reading/rueda.tsx",
-  "app/reading/carta.tsx"
+  "src/screens/PerfilScreen.tsx",
+  RECEPCION_WEB,
+  CARTA_FULL_WEB,
+  READING_RUEDA_WEB,
+  READING_CARTA_WEB
 ];
 
 /**
@@ -244,14 +254,95 @@ test("las superficies de símbolos dibujan con el catálogo vectorial propio", (
     "src/components/orbita/GlyphRow.tsx",
     "src/components/orbita/kit.tsx",
     "src/components/home/sections.tsx",
+    "src/components/v492/TransitCard.tsx",
     "src/screens/CartaScreen.tsx",
     "src/components/home/CartaCard.tsx",
-    "app/recepcion.tsx",
-    "app/carta-full.tsx"
+    RECEPCION_WEB,
+    CARTA_FULL_WEB
   ];
   for (const rel of CON_GLIFOS) {
     assert.match(fuente(rel), /AstroGlyph|TriadLine/, `${rel} no usa el catálogo vectorial`);
   }
+});
+
+// --- La notación compacta de la fila de tránsito ------------------------------
+
+const TRANSIT_CARD = "src/components/v492/TransitCard.tsx";
+
+/**
+ * Los nombres que el backend publica en `transitPlanet` / `natalPoint` son las
+ * etiquetas en español de `convex/lib/orbita.ts` más los dos ejes. Si alguno
+ * dejara de resolver, la cabecera caería al respaldo textual sin que nadie se
+ * entere: este gate lo convierte en un test rojo.
+ */
+const NOMBRES_DEL_CONTRATO: Array<[string, string]> = [
+  ["Sol", "sun"],
+  ["Luna", "moon"],
+  ["Mercurio", "mercury"],
+  ["Venus", "venus"],
+  ["Marte", "mars"],
+  ["Júpiter", "jupiter"],
+  ["Saturno", "saturn"],
+  ["Urano", "uranus"],
+  ["Neptuno", "neptune"],
+  ["Plutón", "pluto"],
+  ["Nodo", "node"],
+  ["Quirón", "chiron"],
+  ["Parte de Fortuna", "part_of_fortune"],
+  ["Ascendente", "ascendant"],
+  ["Medio Cielo", "midheaven"]
+];
+
+test("cada punto que la fila de tránsito puede recibir resuelve a un glifo del catálogo", () => {
+  for (const [nombre, key] of NOMBRES_DEL_CONTRATO) {
+    assert.equal(bodySymbolForName(nombre), key, `«${nombre}» tiene que resolver a ${key}`);
+  }
+});
+
+test("la fila de tránsito dibuja sus DOS extremos con el catálogo vectorial y conserva el aspecto en el medio", () => {
+  const card = sinComentarios(fuente(TRANSIT_CARD));
+
+  // Los extremos salen del catálogo propio, resueltos por NOMBRE: la fila no
+  // recibe `key`, recibe "Mercurio" y "Saturno".
+  assert.match(card, /import \{ AstroGlyph \} from "@\/components\/orbita\/AstroGlyph";/);
+  assert.match(card, /import \{ bodySymbolForName \} from "@\/domain\/astroSymbols";/);
+  assert.match(card, /bodySymbolForName\(name\)/, "el extremo resuelve su glifo por el nombre visible");
+  assert.match(card, /<AstroGlyph symbol=\{symbol\}/, "el extremo se dibuja con el glifo resuelto");
+
+  // La cabecera compacta: tránsito en COBRE, aspecto, natal en MARFIL, en ese
+  // orden. El color es lo que distingue "lo que se mueve" de "tu carta".
+  const cabecera = card.slice(card.indexOf("styles.shorthand"), card.indexOf("styles.orb"));
+  assert.ok(cabecera.length > 0, "no se encontró la cabecera compacta");
+  assert.match(cabecera, /<BodyMark name=\{item\.transitPlanet\} color=\{v492\.colors\.copper\}/);
+  assert.match(cabecera, /<BodyMark name=\{item\.natalPoint\} color=\{v492\.colors\.text\}/);
+  assert.match(cabecera, /<AspectGlyph aspect=\{item\.aspect\}/, "el aspecto sigue siendo el glifo vectorial");
+
+  const orden = [...cabecera.matchAll(/<(BodyMark|AspectGlyph)\b/g)].map((m) => m[1]);
+  assert.deepEqual(
+    orden,
+    ["BodyMark", "AspectGlyph", "BodyMark"],
+    "la notación es tránsito · aspecto · natal, y el aspecto va en el medio"
+  );
+
+  // Y `AspectGlyph` sigue siendo vector, no un carácter.
+  const layout = sinComentarios(fuente("src/components/v492/Layout.tsx"));
+  const glyph = /export function AspectGlyph\([\s\S]*?\n\}/.exec(layout)?.[0] ?? "";
+  assert.ok(glyph, "no se encontró AspectGlyph");
+  assert.match(glyph, /<Svg\b/, "el glifo del aspecto se dibuja en SVG");
+  assert.doesNotMatch(glyph, /fontFamily|<Text\b/, "el glifo del aspecto no puede volver a ser texto");
+});
+
+test("si un nombre no resuelve a un glifo, la fila lo escribe: el símbolo no puede ser la única versión del dato", () => {
+  const card = sinComentarios(fuente(TRANSIT_CARD));
+  const mark = /function BodyMark\([\s\S]*?\n\}/.exec(card)?.[0] ?? "";
+  assert.ok(mark, "no se encontró el componente del extremo");
+  assert.match(
+    mark,
+    /if \(symbol === null\) return <Body[^>]*>\{name\}<\/Body>;/,
+    "sin glifo, el extremo tiene que imprimir el nombre en vez de dejar un hueco mudo"
+  );
+  // El caso que activa el respaldo: un punto que el catálogo no dibuja.
+  assert.equal(bodySymbolForName("Punto que el catálogo todavía no dibuja"), null);
 });
 
 // --- Sin dependencia de fuentes -----------------------------------------------

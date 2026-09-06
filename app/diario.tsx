@@ -1,18 +1,11 @@
-import { Redirect } from "expo-router";
-import { DiarioScreen } from "@/screens/DiarioScreen";
-import { WebAppShell } from "@/components/web/web-app-shell";
-
-// Diario real: la tira de cartas y el ritual de cada día.
-// Es la pantalla canónica compartida con el nativo, no una versión web aparte.
-// `WebAppShell` aporta la navegación que en nativo pone el layout de pestañas.
-export default function Route() {
-  if (process.env.EXPO_OS !== "web") {
-    return <Redirect href="/" />;
-  }
-
-  return (
-    <WebAppShell active="diario">
-      <DiarioScreen />
-    </WebAppShell>
-  );
-}
+/**
+ * Wrapper de ruta. La implementación vive FUERA de `app/`, en
+ * `src/routes/v492/diario` (`.tsx` nativo / `.web.tsx` web).
+ *
+ * Expo Router incluye en el grafo TODOS los archivos de `app/`, también las
+ * variantes `.web.tsx`: por eso el bundle nativo terminaba empaquetando el
+ * árbol web (landing, Home, tarot) aunque nunca lo renderizara. Con la
+ * implementación afuera, la que elige es la resolución por plataforma de Metro
+ * y el nativo no llega a ver el módulo web.
+ */
+export { default } from "@/routes/v492/diario";

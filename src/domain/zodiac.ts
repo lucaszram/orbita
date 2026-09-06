@@ -1,4 +1,4 @@
-import { ZodiacSign } from "./types";
+import type { ZodiacSign } from "./profileTypes";
 
 type ZodiacRange = {
   sign: ZodiacSign;

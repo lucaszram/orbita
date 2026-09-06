@@ -26,6 +26,12 @@ import type { BirthSyncUx } from "@/domain/birthEdits";
 export type RemoteBirthSeedDoc = {
   birthDate?: string;
   birthTime?: string;
+  /**
+   * Lo que el CÁLCULO usa. Manda sobre `birthTime`: el documento puede
+   * conservar una hora vieja después de pasar a "No sé la hora" —el patch que
+   * la omite no la borra— y esa hora no es la de la cuenta.
+   */
+  birthTimePrecision?: "known" | "approximate" | "unknown";
   birthPlaceLabel?: string;
   latitude?: number;
   longitude?: number;
@@ -117,7 +123,14 @@ export function resolveBirthEditorSeed(input: BirthEditorSeedInput): BirthEditor
       status: "ready",
       seed: {
         birthDate: isoDate(doc?.birthDate),
-        birthTime: isoTime(doc?.birthTime),
+        // La PRECISIÓN manda sobre el valor. Con `unknown` la cuenta no tiene
+        // hora aunque el documento traiga una: el editor abría entonces con
+        // esa hora y el interruptor apagado —mostrando algo que el cálculo no
+        // usa— y, como el borrador coincidía con la semilla, `Guardar` quedaba
+        // bloqueado con "todavía no cambiaste nada". La hora se volvía
+        // imposible de restaurar por la UI. Medido en el simulador el
+        // 2026-08-17 sobre la cuenta QA.
+        birthTime: doc?.birthTimePrecision === "unknown" ? null : isoTime(doc?.birthTime),
         placeLabel: seedPlaceLabel(doc?.birthPlaceLabel),
         placeUsable: remotePlaceUsable(doc)
       }
@@ -184,6 +197,13 @@ export type BirthEditorReadiness =
   | "missing-date"
   | "missing-time"
   | "missing-place"
+  /**
+   * Hay un lugar GUARDADO, pero incompleto: le falta la ubicación exacta o la
+   * zona horaria. Es distinto de no haber elegido ninguno y por eso se nombra
+   * distinto: quien ve su ciudad escrita en pantalla y el botón apagado
+   * necesita saber que el problema no es la ciudad, sino lo que falta detrás.
+   */
+  | "place-needs-refresh"
   | "unchanged"
   | "ready";
 
@@ -200,8 +220,11 @@ export function birthEditorReadiness(input: {
   if (draft.birthDate === null) return "missing-date";
   if (!draft.timeUnknown && draft.birthTime === null) return "missing-time";
   // El lugar solo vale elegido del autocompletado, o arrastrado de un remoto
-  // que ya venía completo.
-  if (!draft.place.changed && !seed.placeUsable) return "missing-place";
+  // que ya venía completo. Un lugar guardado y COMPLETO sigue siendo válido y
+  // no obliga a volver a elegirlo; lo que obliga es que le falte algo.
+  if (!draft.place.changed && !seed.placeUsable) {
+    return seed.placeLabel ? "place-needs-refresh" : "missing-place";
+  }
   if (!isDraftDirty(seed, draft)) return "unchanged";
   return "ready";
 }
@@ -210,7 +233,14 @@ export function canSaveBirthEditor(readiness: BirthEditorReadiness): boolean {
   return readiness === "ready";
 }
 
-/** Qué falta, en palabras. `null` cuando no hay nada que avisar. */
+/**
+ * Por qué Guardar todavía no se puede tocar. `null` sólo cuando SÍ se puede.
+ *
+ * Ningún estado bloqueado puede devolver `null`: un botón apagado sin una línea
+ * al lado se lee como un botón roto —la certificación lo registró tocándolo
+ * cuatro veces sin respuesta ni explicación (D4)—. Por eso `unchanged`, que
+ * antes callaba, también habla.
+ */
 export function birthEditorBlockMessage(readiness: BirthEditorReadiness): string | null {
   switch (readiness) {
     case "missing-date":
@@ -219,9 +249,15 @@ export function birthEditorBlockMessage(readiness: BirthEditorReadiness): string
       return "Elegí tu hora de nacimiento, o activá «No sé la hora».";
     case "missing-place":
       return "Elegí tu lugar de nacimiento de la lista para poder guardar.";
+    case "place-needs-refresh":
+      return "Tu lugar guardado no tiene la ubicación exacta ni la zona horaria, y sin eso la carta se calcularía en la hora equivocada. Buscá esa misma ciudad en la lista para completarlo.";
+    case "unchanged":
+      return "Todavía no cambiaste nada. Editá un dato para poder guardar.";
+    case "loading-remote":
+      return "Estamos trayendo los datos de tu cuenta. En cuanto lleguen vas a poder guardar.";
     case "retry-remote":
       return "No pudimos sincronizar los datos de tu cuenta. No cambiamos nada; podés reintentar o cancelar.";
-    default:
+    case "ready":
       return null;
   }
 }

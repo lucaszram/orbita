@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 
 import { canRenderPersonalWheel, personalChartGate } from "../src/domain/natalChartGate";
+import { ROOT, resolveEntryForPlatform } from "./moduleGraph";
 
-const ROOT = join(import.meta.dirname, "..");
 const sinComentarios = (x: string) => x.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 const CARTA = readFileSync(join(ROOT, "src/screens/CartaScreen.tsx"), "utf8");
 const CARTA_CARD = readFileSync(join(ROOT, "src/components/home/CartaCard.tsx"), "utf8");
@@ -149,13 +149,18 @@ test("el estado sin carta se recalcula por la action idempotente, no se dibuja",
 
 test("TODA superficie que dibuja la rueda pasa por el gate antes de mapear", () => {
   // Si una sola ruta se saltea el gate, la carta de otros datos vuelve por ahí.
-  for (const rel of ["app/recepcion.tsx", "app/carta-full.tsx", "app/reading/rueda.tsx"]) {
-    const codigo = sinComentarios(readFileSync(join(ROOT, rel), "utf8"));
-    assert.ok(/personalChartGate\(\{/.test(codigo), `${rel} debe usar el gate compartido`);
-    assert.ok(/birthData\.getCurrent/.test(codigo), `${rel} necesita el dato natal remoto`);
+  for (const entry of ["app/recepcion.tsx", "app/carta-full.tsx", "app/reading/rueda.tsx"]) {
+    const implementacion = resolveEntryForPlatform(entry, "web");
+    const rel = relative(ROOT, implementacion);
+    const codigo = sinComentarios(readFileSync(implementacion, "utf8"));
+    assert.ok(/personalChartGate\(\{/.test(codigo), `${entry} → ${rel} debe usar el gate compartido`);
+    assert.ok(/birthData\.getCurrent/.test(codigo), `${entry} → ${rel} necesita el dato natal remoto`);
     const gate = codigo.indexOf("personalChartGate({");
     const mapea = codigo.indexOf("mapNatalChart(");
-    assert.ok(gate !== -1 && mapea !== -1 && gate < mapea, `${rel}: el gate va antes de mapear`);
-    assert.ok(/chartGate === "listo"|chartGate !== "listo"/.test(codigo), `${rel} corta si la carta no coincide`);
+    assert.ok(gate !== -1 && mapea !== -1 && gate < mapea, `${entry} → ${rel}: el gate va antes de mapear`);
+    assert.ok(
+      /chartGate === "listo"|chartGate !== "listo"/.test(codigo),
+      `${entry} → ${rel} corta si la carta no coincide`
+    );
   }
 });

@@ -380,8 +380,9 @@ test("la navegación canónica sigue exactamente igual", () => {
   assert.match(nav, /\{ key: "umbral", label: "Umbral", href: "\/umbral" \}/);
   assert.match(nav, /\{ key: "carta", label: "Carta", href: "\/carta" \}/);
   // Y las dos rutas siguen montando la MISMA pantalla canónica.
-  assert.match(leer("app/(tabs)/index.tsx"), /@\/screens\/HomeScreen/);
-  assert.match(leer("app/home.tsx"), /@\/screens\/HomeScreen/);
+  // Las rutas son wrappers (CORE-247): la pantalla la montan sus variantes web.
+  assert.match(leer("src/routes/v492/tabs-index.web.tsx"), /@\/screens\/HomeScreen/);
+  assert.match(leer("src/routes/v492/home.web.tsx"), /@\/screens\/HomeScreen/);
   assert.match(HOME, /export function HomeScreen\(\)/);
 });
 

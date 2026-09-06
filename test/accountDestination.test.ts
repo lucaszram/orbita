@@ -4,13 +4,17 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   destinationAllows,
+  mountedOnboardingRetainsCompletion,
   resolveAccountDestination,
   type AccountState
 } from "../src/domain/accountDestination";
+import { resolveEntryForPlatform, type ModulePlatform } from "./moduleGraph";
 
 const ROOT = join(import.meta.dirname, "..");
 const sinComentarios = (x: string) =>
   x.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+const fuenteDeEntrada = (ruta: string, plataforma: ModulePlatform) =>
+  readFileSync(resolveEntryForPlatform(ruta, plataforma), "utf8");
 
 const BASE: AccountState = {
   backendConfigured: true,
@@ -177,43 +181,61 @@ test("`birthData` dejó de ser la autoridad de acceso", () => {
   assert.ok(/completion/.test(resolver));
 
   const hook = sinComentarios(readFileSync(join(ROOT, "src/hooks/useAccountDestination.tsx"), "utf8"));
+  const sesion = sinComentarios(readFileSync(join(ROOT, "src/hooks/useSessionResilience.tsx"), "utf8"));
   assert.ok(
-    /appApi\.onboarding\.getCompletionStatus/.test(hook),
+    /appApi\.onboarding\.getCompletionStatus/.test(sesion),
     "el hook tiene que alimentarse del estado autoritativo"
   );
-  assert.ok(!/birthData\.getCurrent/.test(hook), "y no de la query de datos natales");
-  assert.ok(/clientDraftId/.test(hook), "con el id del borrador, que distingue alta de recuperación");
+  assert.ok(!/birthData\.getCurrent/.test(hook + sesion), "y no de la query de datos natales");
+  assert.ok(/clientDraftId/.test(sesion), "con el id del borrador, que distingue alta de recuperación");
 });
 
 test("las tabs no tienen bypass de web: bloquean hasta datos natales persistidos", () => {
-  const layout = sinComentarios(readFileSync(join(ROOT, "app/(tabs)/_layout.tsx"), "utf8"));
-  // El bypass dejaba entrar a la web con cualquier sesión, sin datos ni carta.
-  assert.ok(!/IS_WEB\s*\?\s*"allow"/.test(layout), "el bypass de web no puede volver");
-  assert.ok(/AccountGate/.test(layout), "las tabs pasan por el gate compartido");
-  assert.ok(/surface="app"/.test(layout));
-  // La regla local (builds sin envs) sigue existiendo, pero sólo ahí.
-  assert.ok(/if \(BACKEND_CONFIGURED\)/.test(layout));
-  assert.ok(/resolveTabsGuard/.test(layout));
+  const wrapper = sinComentarios(readFileSync(join(ROOT, "app/(tabs)/_layout.tsx"), "utf8"));
+  assert.match(
+    wrapper,
+    /export \{ default \} from "@\/routes\/v492\/tabs-layout"/,
+    "Expo Router debe delegar en el módulo que Metro resuelve por plataforma"
+  );
+
+  const implementaciones = {
+    native: resolveEntryForPlatform("app/(tabs)/_layout.tsx", "native"),
+    web: resolveEntryForPlatform("app/(tabs)/_layout.tsx", "web")
+  } as const;
+  assert.equal(implementaciones.native, join(ROOT, "src/routes/v492/tabs-layout.tsx"));
+  assert.equal(implementaciones.web, join(ROOT, "src/routes/v492/tabs-layout.web.tsx"));
+
+  for (const [plataforma, archivo] of Object.entries(implementaciones)) {
+    const layout = sinComentarios(readFileSync(archivo, "utf8"));
+    // El bypass dejaba entrar a la web con cualquier sesión, sin datos ni carta.
+    assert.ok(!/IS_WEB\s*\?\s*"allow"/.test(layout), `el bypass de ${plataforma} no puede volver`);
+    assert.ok(/AccountGate/.test(layout), `las tabs de ${plataforma} pasan por el gate compartido`);
+    assert.ok(/surface="app"/.test(layout), `${plataforma} declara la superficie app`);
+    // La regla local (builds sin envs) sigue existiendo, pero sólo ahí.
+    assert.ok(/if \(BACKEND_CONFIGURED\)/.test(layout), `${plataforma} conserva la guarda de backend`);
+    assert.ok(/resolveTabsGuard/.test(layout), `${plataforma} conserva la decisión local explícita`);
+  }
 });
 
 // --- Cableado: una sola decisión, no siete ----------------------------------
 
 test("todas las superficies de entrada pasan por el gate compartido", () => {
-  const rutas = {
-    "app/index.tsx": "landing",
-    "app/crear-cuenta.tsx": "auth",
-    "src/onboarding/OnboardingGate.tsx": "onboarding",
-    "app/editar-datos.tsx": "edit-birth-data",
-    "app/(tabs)/_layout.tsx": "app",
-    "src/components/web/require-session.tsx": "app"
-  } as const;
-  for (const [ruta, surface] of Object.entries(rutas)) {
-    const src = readFileSync(join(ROOT, ruta), "utf8");
+  const rutas = [
+    ["app/index.tsx", "web", "landing"],
+    ["app/crear-cuenta.tsx", "web", "auth"],
+    ["src/onboarding/OnboardingGate.tsx", "native", "onboarding"],
+    ["app/editar-datos.tsx", "native", "edit-birth-data"],
+    ["app/(tabs)/_layout.tsx", "native", "app"],
+    ["app/(tabs)/_layout.tsx", "web", "app"],
+    ["src/components/web/require-session.tsx", "web", "app"]
+  ] as const satisfies ReadonlyArray<readonly [string, ModulePlatform, string]>;
+  for (const [ruta, plataforma, surface] of rutas) {
+    const src = fuenteDeEntrada(ruta, plataforma);
     // El atributo puede quedar en otra línea por el formato multilínea del JSX.
-    assert.ok(/AccountGate/.test(src), `${ruta} debe usar el gate compartido`);
+    assert.ok(/AccountGate/.test(src), `${ruta} (${plataforma}) debe usar el gate compartido`);
     assert.ok(
       new RegExp(`surface="${surface}"`).test(src),
-      `${ruta} debe declarar surface="${surface}"`
+      `${ruta} (${plataforma}) debe declarar surface="${surface}"`
     );
   }
 });
@@ -251,6 +273,84 @@ test("una cuenta COMPLETA no puede entrar al alta, con o sin sesión", () => {
   // sobrescribir datos natales desde el onboarding.
   assert.equal(resolveAccountDestination(conCuenta(READY)), "app-home");
   assert.ok(!destinationAllows("app-home", "onboarding"), "una cuenta completa NUNCA monta el alta");
+  assert.equal(
+    mountedOnboardingRetainsCompletion({
+      sticky: true,
+      mounted: false,
+      surface: "onboarding",
+      destination: "app-home"
+    }),
+    false,
+    "un deep link inicial no adquiere continuidad"
+  );
+});
+
+test("el onboarding ya montado conserva el cierre hasta paywall y Carta", () => {
+  // Secuencia real del build 27: la cuenta nueva empieza incompleta y el gate
+  // permite montar el flujo. `Preparar mi carta` persiste birthData, pero el
+  // perfil local todavía NO existe: se crea recién al salir de la paywall. La
+  // query reactiva cambia por eso a bootstrap ANTES de Antes/Después.
+  const inicial = resolveAccountDestination(conCuenta(EN_ALTA, { localProfileReady: false }));
+  assert.equal(inicial, "onboarding");
+  assert.equal(destinationAllows(inicial, "onboarding"), true);
+
+  const despuesDeGuardar = resolveAccountDestination(
+    conCuenta(SIN_CARTA, { localProfileReady: false })
+  );
+  assert.equal(despuesDeGuardar, "bootstrap");
+  assert.equal(destinationAllows(despuesDeGuardar, "onboarding"), false);
+  assert.equal(
+    mountedOnboardingRetainsCompletion({
+      sticky: true,
+      mounted: true,
+      surface: "onboarding",
+      destination: despuesDeGuardar
+    }),
+    true,
+    "bootstrap no puede desmontar el flujo antes de la paywall"
+  );
+
+  const conPerfilLocal = resolveAccountDestination(conCuenta(SIN_CARTA));
+  assert.equal(conPerfilLocal, "app-home");
+  assert.equal(
+    mountedOnboardingRetainsCompletion({
+      sticky: true,
+      mounted: true,
+      surface: "onboarding",
+      destination: conPerfilLocal
+    }),
+    true,
+    "la siguiente actualización reactiva tampoco expulsa el cierre"
+  );
+});
+
+test("la continuidad resuelta es exclusiva del onboarding sticky ya montado", () => {
+  for (const caso of [
+    { sticky: false, mounted: true, surface: "onboarding" as const, destination: "app-home" as const },
+    { sticky: true, mounted: false, surface: "onboarding" as const, destination: "app-home" as const },
+    { sticky: true, mounted: true, surface: "auth" as const, destination: "app-home" as const },
+    { sticky: true, mounted: true, surface: "app" as const, destination: "app-home" as const },
+    { sticky: false, mounted: true, surface: "onboarding" as const, destination: "bootstrap" as const },
+    { sticky: true, mounted: false, surface: "onboarding" as const, destination: "bootstrap" as const },
+    { sticky: true, mounted: true, surface: "onboarding" as const, destination: "edit-birth-data" as const }
+  ]) {
+    assert.equal(mountedOnboardingRetainsCompletion(caso), false, JSON.stringify(caso));
+  }
+});
+
+test("el gate cablea la continuidad sin ampliar destinationAllows", () => {
+  const gate = sinComentarios(readFileSync(join(ROOT, "src/components/orbita/AccountGate.tsx"), "utf8"));
+  const onboardingGate = sinComentarios(readFileSync(join(ROOT, "src/onboarding/OnboardingGate.tsx"), "utf8"));
+  assert.match(gate, /mountedOnboardingRetainsCompletion\(\{/);
+  assert.match(gate, /mounted: montado\.current/);
+  assert.match(gate, /if \(retieneCierreOnboarding\) return;/);
+  assert.ok(
+    gate.indexOf("if (retieneCierreOnboarding) return <>{children}</>;") <
+      gate.indexOf('if (destination === "bootstrap")'),
+    "la continuidad debe ganar antes de que bootstrap desmonte el onboarding"
+  );
+  assert.match(onboardingGate, /surface="onboarding" sticky/);
+  assert.equal(destinationAllows("app-home", "onboarding"), false);
 });
 
 test('"Empezar" abre la experiencia inmersiva, no un formulario suelto', () => {

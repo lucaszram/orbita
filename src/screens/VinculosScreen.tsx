@@ -68,6 +68,7 @@ import { useRequireProfile } from "@/hooks/useRequireProfile";
 import { appCoreApi, type VinculoAcceso, type VinculoBiblioteca, type VinculoComparacion, type VinculoNivel, type VinculoPersona } from "@/services/appCoreRefs";
 import { type PlaceHit, searchPlaces } from "@/services/geocoding";
 import { orbita } from "@/theme/orbita";
+import { usePressedState } from "@/components/v492/Touchable";
 
 export function VinculosScreen() {
   useRequireProfile();
@@ -642,15 +643,7 @@ function BuscadorDeLugar({
       {resultados.length > 0 ? (
         <View style={styles.resultados} accessibilityRole="list">
           {resultados.map((r) => (
-            <Pressable
-              key={r.label}
-              onPress={() => elegir(r)}
-              accessibilityRole="button"
-              accessibilityLabel={`Elegir ${r.label}`}
-              style={({ pressed }) => [styles.resultado, pressed && { opacity: 0.6 }]}
-            >
-              <Text style={styles.resultadoTexto}>{r.label}</Text>
-            </Pressable>
+            <FilaResultado key={r.label} label={r.label} onPress={() => elegir(r)} />
           ))}
         </View>
       ) : null}
@@ -689,6 +682,7 @@ function Biblioteca({
   onReemplazar: (persona: VinculoPersona) => void;
   onVolver: () => void;
 }) {
+  const presion = usePressedState();
   const desktop = useIsDesktop();
   const elegir = useMutation(appCoreApi.relationships.selectPerson);
   const [eligiendo, setEligiendo] = useState<string | null>(null);
@@ -719,23 +713,7 @@ function Biblioteca({
   const personas = (
     <PTarjeta>
       {biblioteca.people.map((p, i) => (
-        <Pressable
-          key={p.id}
-          onPress={() => abrir(p)}
-          disabled={eligiendo !== null}
-          accessibilityRole="link"
-          accessibilityLabel={`${p.name}. ${lineaDePersona(p)}.${p.isActive ? " Persona elegida." : ""} Abrir su comparación.`}
-          style={({ pressed }) => [styles.personaFila, i > 0 && styles.personaFilaSiguiente, pressed && { opacity: 0.6 }]}
-        >
-          <VInicial inicial={inicial(p.name)} tamano={40} activa={p.isActive} />
-          <View style={styles.personaCuerpo}>
-            <Text style={styles.personaNombre}>{p.name}</Text>
-            <PEtiqueta tono="gris" mayusculas={false} style={styles.personaDetalle}>
-              {lineaDePersona(p)}
-            </PEtiqueta>
-          </View>
-          <Text style={styles.personaFlecha}>{eligiendo === p.id ? "…" : "›"}</Text>
-        </Pressable>
+        <FilaPersona key={p.id} persona={p} siguiente={i > 0} eligiendo={eligiendo} onPress={() => abrir(p)} />
       ))}
       {falloEleccion ? (
         <Text style={styles.fallo} accessibilityRole="alert">
@@ -781,7 +759,8 @@ function Biblioteca({
         onPress={() => abrir(activa)}
         accessibilityRole="link"
         accessibilityLabel={`Ver comparación con ${activa.name}`}
-        style={({ pressed }) => [styles.verComparacion, pressed && { opacity: 0.6 }]}
+        {...presion.pressableProps}
+        style={[styles.verComparacion, presion.pressed && { opacity: 0.6 }]}
       >
         <Text style={styles.verComparacionTexto}>Ver comparación  ›</Text>
       </Pressable>
@@ -910,6 +889,56 @@ function Biblioteca({
   );
 
   return <DosColumnas izquierda={izquierda} derecha={derecha} />;
+}
+
+/** Un resultado del buscador de lugar. Con su propio estado de presión (sin `style` función: NativeWind lo descarta). */
+function FilaResultado({ label, onPress }: { label: string; onPress: () => void }) {
+  const presion = usePressedState();
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Elegir ${label}`}
+      {...presion.pressableProps}
+      style={[styles.resultado, presion.pressed && { opacity: 0.6 }]}
+    >
+      <Text style={styles.resultadoTexto}>{label}</Text>
+    </Pressable>
+  );
+}
+
+/** Una persona de la biblioteca: avatar, nombre, línea mono y chevron. */
+function FilaPersona({
+  persona,
+  siguiente,
+  eligiendo,
+  onPress
+}: {
+  persona: VinculoPersona;
+  siguiente: boolean;
+  eligiendo: string | null;
+  onPress: () => void;
+}) {
+  const presion = usePressedState();
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={eligiendo !== null}
+      accessibilityRole="link"
+      accessibilityLabel={`${persona.name}. ${lineaDePersona(persona)}.${persona.isActive ? " Persona elegida." : ""} Abrir su comparación.`}
+      {...presion.pressableProps}
+      style={[styles.personaFila, siguiente && styles.personaFilaSiguiente, presion.pressed && { opacity: 0.6 }]}
+    >
+      <VInicial inicial={inicial(persona.name)} tamano={40} activa={persona.isActive} />
+      <View style={styles.personaCuerpo}>
+        <Text style={styles.personaNombre}>{persona.name}</Text>
+        <PEtiqueta tono="gris" mayusculas={false} style={styles.personaDetalle}>
+          {lineaDePersona(persona)}
+        </PEtiqueta>
+      </View>
+      <Text style={styles.personaFlecha}>{eligiendo === persona.id ? "…" : "›"}</Text>
+    </Pressable>
+  );
 }
 
 const styles = StyleSheet.create({

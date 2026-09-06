@@ -1,4 +1,6 @@
+import { useRef } from "react";
 import { useConvexAuth } from "convex/react";
+import { identityDeleteAuthorized } from "@/domain/accountDeletion";
 
 export type OrbitaAuth = {
   /** Clerk terminó de cargar la sesión. */
@@ -16,11 +18,17 @@ export type OrbitaAuth = {
   imageUrl?: string;
   signOut: () => Promise<void>;
   /**
-   * Borra la identidad de Clerk del usuario actual. Llamar SOLO después de que
-   * Convex `users.deleteAccount()` respondió ok (ese orden preserva el token
-   * que prueba qué grafo se puede borrar). Tira si no hay usuario cargado.
+   * Borra la identidad de Clerk, exigiendo QUIÉN se espera borrar.
+   *
+   * `expectedOwner` es obligatorio y se revalida en el instante destructivo
+   * contra la sesión VIVA y contra el objeto `user` que se va a borrar. Sin ese
+   * parámetro, una decisión tomada para A —o una closure vieja que sobrevivió a
+   * un cambio de cuenta A → B— terminaba llamando `user.delete()` sobre B.
+   *
+   * Llamar SOLO después de que Convex `users.deleteAccount()` respondió ok (ese
+   * orden preserva el token que prueba qué grafo se puede borrar).
    */
-  deleteUser: () => Promise<void>;
+  deleteUser: (expectedOwner: string) => Promise<void>;
 };
 
 /**
@@ -37,6 +45,19 @@ export function useOrbitaAuth(): OrbitaAuth {
   const { user } = useUser();
   const convexAuth = useConvexAuth();
   const email = user?.primaryEmailAddress?.emailAddress ?? user?.emailAddresses?.[0]?.emailAddress;
+  /**
+   * Sesión y usuario VIVOS, en refs.
+   *
+   * `deleteUser` puede llamarse desde una closure capturada varios renders
+   * antes: leer `auth`/`user` del closure diría "sigo siendo A" aunque Clerk ya
+   * hubiera pasado a B. Las refs son el mismo objeto entre renders, así que
+   * `.current` siempre es el presente. Se espejan durante el render a propósito:
+   * son derivados, no efectos.
+   */
+  const authRef = useRef(auth);
+  authRef.current = auth;
+  const userRef = useRef(user);
+  userRef.current = user;
   return {
     isLoaded: auth.isLoaded,
     isSignedIn: !!auth.isSignedIn,
@@ -47,9 +68,23 @@ export function useOrbitaAuth(): OrbitaAuth {
     name: user?.firstName ?? user?.username ?? undefined,
     imageUrl: user?.hasImage ? user?.imageUrl : undefined,
     signOut: () => auth.signOut(),
-    deleteUser: async () => {
-      if (!user) throw new Error("Clerk user no disponible");
-      await user.delete();
+    deleteUser: async (expectedOwner: string) => {
+      // Revalidación en el MOMENTO destructivo, contra el presente: la sesión
+      // viva y el objeto que se va a borrar tienen que ser exactamente el dueño
+      // esperado. Cualquier desajuste tira ANTES de tocar Clerk.
+      const liveAuth = authRef.current;
+      const liveUser = userRef.current;
+      if (
+        !identityDeleteAuthorized({
+          expectedOwner,
+          isSignedIn: !!liveAuth?.isSignedIn,
+          sessionUserId: liveAuth?.userId ?? null,
+          userObjectId: liveUser?.id ?? null
+        })
+      ) {
+        throw new Error("ACCOUNT_DELETE_OWNER_MISMATCH");
+      }
+      await liveUser!.delete();
     }
   };
 }

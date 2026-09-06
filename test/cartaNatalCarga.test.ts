@@ -3,6 +3,12 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { cartaGate, readingBlockPhase } from "../src/domain/cartaNatalCarga";
+import {
+  natalChapterParagraphs,
+  natalChapters,
+  natalPlacementLine
+} from "../src/domain/lecturaNatal";
+import { reachableFrom } from "./moduleGraph";
 
 // La carta astronómica llega en <1 s; la lectura larga tarda 40–61 s (PR
 // backend #32 la prewarmea). Regla: la lectura NUNCA participa del loading
@@ -98,10 +104,20 @@ describe("readingBlockPhase — señal remota personalityReadingState (backend #
   });
 });
 
-// Verificación ESTRUCTURAL del cableado en la pantalla (no se puede renderizar
-// RN en node; mismo patrón que perfilAppReview.test.ts).
-// La pantalla es canónica y compartida: la ruta nativa es sólo un wrapper.
-const CARTA = readFileSync(path.join(process.cwd(), "src/screens/CartaScreen.tsx"), "utf8");
+// Verificación ESTRUCTURAL del cableado (no se puede renderizar RN en node;
+// mismo patrón que perfilAppReview.test.ts).
+//
+// El cableado —query, señal remota, action, fallo y reintento— ya NO vive en la
+// pantalla: vive UNA sola vez en `@/hooks/useNatalReading`, porque las dos
+// superficies que muestran el bloque lo comparten. La pantalla canónica
+// (`CartaScreen`, nativa y web) y la Carta completa V4.9.2 sólo lo consumen.
+const leer = (rel: string) => readFileSync(path.join(process.cwd(), rel), "utf8");
+const CARTA_REL = "src/screens/CartaScreen.tsx";
+const COMPLETA_REL = "src/screens/v492/CartaCompletaV492Screen.tsx";
+const HOOK_REL = "src/hooks/useNatalReading.ts";
+const CARTA = leer(CARTA_REL);
+const COMPLETA = leer(COMPLETA_REL);
+const HOOK = leer(HOOK_REL);
 
 describe("carta.tsx — cableado anti-bloqueo", () => {
   it("el gate general usa cartaGate({ doc, values }) — sin la lectura", () => {
@@ -113,21 +129,26 @@ describe("carta.tsx — cableado anti-bloqueo", () => {
   });
 
   it("la lectura resuelve inline: carga 'Preparando tu lectura…' y error con REINTENTAR", () => {
+    // La FASE la calcula el hook compartido; la pantalla sólo la consume.
     assert.match(
-      CARTA,
+      HOOK,
       /readingBlockPhase\(\{\s*reading,\s*failed: generateFailed,\s*generating,\s*state: readingState\?\.status\s*\}\)/
     );
+    assert.match(CARTA, /readingPhase=\{lectura\.phase\}/);
     assert.match(CARTA, /Preparando tu lectura…/);
     assert.match(CARTA, /label="REINTENTAR" onPress=\{onRetryReading\}/);
   });
 
   it("escucha la señal remota personalityReadingState (pending/ready/error) por query reactiva", () => {
-    assert.match(CARTA, /useQuery\(appApi\.charts\.personalityReadingState, \{\}\)/);
+    assert.match(HOOK, /useQuery\(appApi\.charts\.personalityReadingState, \{\}\)/);
   });
 
   it("el reintento limpia el fallo local y re-dispara la action; generating cubre la ventana", () => {
-    assert.match(CARTA, /setGenerateFailed\(false\);\s*\n\s*setGenerating\(true\);/);
-    assert.match(CARTA, /\.finally\(\(\) => \{\s*\n\s*if \(alive\) setGenerating\(false\);/);
+    assert.match(HOOK, /setGenerateFailed\(false\);\s*\n\s*setGenerating\(true\);/);
+    assert.match(HOOK, /\.finally\(\(\) => \{\s*\n\s*if \(alive\) setGenerating\(false\);/);
+    // Y el reintento que ve la pantalla es el del hook, no un contador propio.
+    assert.match(HOOK, /const retry = useCallback\(\(\) => setAttempt\(\(a\) => a \+ 1\), \[\]\);/);
+    assert.match(CARTA, /onRetryReading=\{lectura\.retry\}/);
   });
 
   it("MinimalLoading y ErrorState de pantalla completa quedan solo para sesión/carta, nunca para la lectura", () => {
@@ -141,9 +162,9 @@ describe("carta.tsx — cableado anti-bloqueo", () => {
   });
 
   it("generatePersonalityReading({}) se sigue disparando y solo un REJECT marca fallo", () => {
-    assert.match(CARTA, /generate\(\{\}\)\s*\n?\s*\.catch\(/);
+    assert.match(HOOK, /generate\(\{\}\)\s*\n?\s*\.catch\(/);
     // Ninguna rama marca fallo a partir de un resultado resuelto (p. ej. { status: "pending" }).
-    assert.doesNotMatch(CARTA, /then\([^)]*setGenerateFailed/);
+    assert.doesNotMatch(HOOK, /then\([^)]*setGenerateFailed/);
   });
 
   it("bloqueado (Free) expone una salida a /paywall, no REINTENTAR", () => {
@@ -180,13 +201,13 @@ describe("carta.tsx — cableado anti-bloqueo", () => {
     // un Server Error. El booleano exige que personalityReadingState haya
     // resuelto (undefined = query en vuelo) y que no sea `locked`.
     assert.match(
-      CARTA,
+      HOOK,
       /const canGenerate = readingState !== undefined && readingState\.status !== "locked";/
     );
     // El guard corta el efecto ANTES de generate({}): bloqueado o sin señal,
     // la action no sale nunca.
-    const generateCall = CARTA.indexOf("generate({})");
-    const effect = CARTA.slice(CARTA.lastIndexOf("useEffect(() => {", generateCall), generateCall);
+    const generateCall = HOOK.indexOf("generate({})");
+    const effect = HOOK.slice(HOOK.lastIndexOf("useEffect(() => {", generateCall), generateCall);
     assert.match(effect, /if \(!canGenerate\) return;/);
   });
 
@@ -194,8 +215,8 @@ describe("carta.tsx — cableado anti-bloqueo", () => {
     // pending→ready/error mantiene canGenerate=true sin cambiar de identidad:
     // el efecto no se re-dispara en esas transiciones. Depender de readingState
     // (o de su status) sí lo re-dispararía en cada cambio remoto.
-    assert.match(CARTA, /\}, \[generate, attempt, canGenerate\]\);/);
-    assert.doesNotMatch(CARTA, /\}, \[[^\]]*readingState[^\]]*\]\);/);
+    assert.match(HOOK, /\}, \[generate, attempt, canGenerate\]\);/);
+    assert.doesNotMatch(HOOK, /\}, \[[^\]]*readingState[^\]]*\]\);/);
   });
 
   it("los siete capítulos largos se muestran intactos cuando la lectura está lista", () => {
@@ -210,5 +231,133 @@ describe("carta.tsx — cableado anti-bloqueo", () => {
     assert.match(COMPLETA, /useCartaNatal\(\)/);
     assert.match(CARTA, /export function useCartaNatal\(\)/);
     assert.match(CARTA, /VER CARTA COMPLETA/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Una sola lógica para las dos superficies
+//
+// El bloque "Tu carta, explicada" se muestra en la pantalla canónica y en la
+// Carta completa V4.9.2. Mientras cada una montaba su propio efecto de
+// generación las dos podían derivar sobre EL MISMO dato: una disparando la
+// action donde la otra no, una leyendo la señal remota y la otra no. El efecto
+// vive una sola vez.
+// ---------------------------------------------------------------------------
+
+describe("useNatalReading — el cableado de la lectura no se duplica", () => {
+  const PANTALLAS = [
+    ["carta canónica", CARTA_REL, CARTA],
+    ["carta completa V4.9.2", COMPLETA_REL, COMPLETA]
+  ] as const;
+
+  it("las dos pantallas consumen el hook compartido", () => {
+    for (const [nombre, , source] of PANTALLAS) {
+      assert.match(source, /from "@\/hooks\/useNatalReading"/, `${nombre} no importa el hook`);
+      assert.match(source, /useNatalReading\(\)/, `${nombre} no lo llama`);
+    }
+  });
+
+  it("ninguna pantalla vuelve a montar su propio efecto de generación", () => {
+    for (const [nombre, , source] of PANTALLAS) {
+      assert.doesNotMatch(
+        source,
+        /useAction\(appApi\.charts\.generatePersonalityReading\)/,
+        `${nombre} vuelve a disparar la action por su cuenta`
+      );
+      assert.doesNotMatch(
+        source,
+        /useQuery\(appApi\.charts\.personalityReading(State)?, \{\}\)/,
+        `${nombre} vuelve a montar la query de la lectura`
+      );
+      assert.doesNotMatch(
+        source,
+        /readingBlockPhase\(/,
+        `${nombre} vuelve a decidir la fase por su cuenta`
+      );
+    }
+    // Y el hook es el ÚNICO lugar donde vive el efecto.
+    assert.equal(HOOK.split("generate({})").length - 1, 1, "un solo disparo de la action");
+  });
+
+  it("el grafo real —el mismo que recorre Metro— llega al hook desde las dos rutas", () => {
+    const nativo = reachableFrom(["app/(tabs)/perfil/carta/completa.tsx"], "native");
+    assert.ok(nativo.has(HOOK_REL), "la ruta nativa de la carta completa no llega al hook");
+    const web = reachableFrom(["app/(tabs)/carta.tsx"], "web");
+    assert.ok(web.has(HOOK_REL), "la carta canónica web no llega al hook");
+  });
+
+  it("la lectura recibida MANDA: el hook la entrega sólo en 'listo' y nunca a medias", () => {
+    // El tipo es la garantía: `reading` sale null salvo que la fase sea listo,
+    // así que ninguna pantalla puede dibujar media lectura mientras carga.
+    assert.match(HOOK, /reading: phase === "listo" \? reading! : null/);
+    assert.match(HOOK, /\/\*\* Sólo no-null cuando `phase === "listo"`/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Los capítulos, como se dibujan
+// ---------------------------------------------------------------------------
+
+describe("lecturaNatal — la lectura recibida se dibuja tal cual llegó", () => {
+  const SECCION = {
+    key: "sol",
+    title: "El motor",
+    intro: "i",
+    body: "Primer párrafo.\n\nSegundo párrafo.",
+    placement: { label: "Sol", planet: "Sol", sign: "Cáncer", house: 4 },
+    questions: ["¿Qué te empuja?", "¿Qué te frena?"]
+  };
+
+  it("el placement va COMPLETO: planeta, signo y casa", () => {
+    assert.equal(natalPlacementLine(SECCION.placement), "SOL EN CÁNCER · CASA 4");
+    // Sin casa no se inventa ninguna.
+    assert.equal(
+      natalPlacementLine({ label: "Luna", planet: "Luna", sign: "Aries" }),
+      "LUNA EN ARIES"
+    );
+  });
+
+  it("el cuerpo conserva sus párrafos y no se inventa texto", () => {
+    assert.deepEqual(natalChapterParagraphs(SECCION.body), ["Primer párrafo.", "Segundo párrafo."]);
+    // Un cuerpo sin saltos es un párrafo; uno vacío no fabrica ninguno.
+    assert.deepEqual(natalChapterParagraphs("Uno solo."), ["Uno solo."]);
+    assert.deepEqual(natalChapterParagraphs(""), []);
+    assert.deepEqual(natalChapterParagraphs(undefined), []);
+  });
+
+  it("los siete capítulos salen numerados, en orden y con sus preguntas", () => {
+    const reading = {
+      headline: "h",
+      disclaimer: "d",
+      sections: Array.from({ length: 7 }, (_, i) => ({ ...SECCION, key: `s${i}`, title: `T${i + 1}` }))
+    };
+    const capitulos = natalChapters(reading);
+    assert.equal(capitulos.length, 7);
+    assert.deepEqual(
+      capitulos.map((c) => c.n),
+      [1, 2, 3, 4, 5, 6, 7]
+    );
+    assert.equal(capitulos[0].numero, "Capítulo 01");
+    assert.equal(capitulos[6].numero, "Capítulo 07");
+    // El orden es EL del backend: no se reordena ni se recorta.
+    assert.deepEqual(
+      capitulos.map((c) => c.title),
+      ["T1", "T2", "T3", "T4", "T5", "T6", "T7"]
+    );
+    assert.deepEqual(capitulos[0].questions, ["¿Qué te empuja?", "¿Qué te frena?"]);
+    assert.equal(capitulos[0].glyph, "sun");
+    // VoiceOver no deletrea el placement en mayúsculas.
+    assert.equal(capitulos[0].voice, "Capítulo 1. Sol en cáncer · casa 4. T1");
+  });
+
+  it("sin preguntas no se fabrica ninguna, y sin lectura no hay capítulos", () => {
+    const [capitulo] = natalChapters({
+      headline: "h",
+      disclaimer: "d",
+      sections: [{ ...SECCION, questions: undefined }]
+    });
+    assert.deepEqual(capitulo.questions, []);
+    assert.deepEqual(natalChapters(null), []);
+    assert.deepEqual(natalChapters(undefined), []);
   });
 });

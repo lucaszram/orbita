@@ -205,15 +205,38 @@ describe("authoritative onboarding completion", () => {
     assert.match(completionWrite, /dedupeKey: String\(birthDataId\)/);
 
     const persistStart = charts.indexOf("export const persistCalculatedNatalChart");
-    const actionStart = charts.indexOf("export const calculateOrCreateNatalChart");
-    const persist = charts.slice(persistStart, actionStart);
+    const runnerStart = charts.indexOf("export async function runNatalChartCalculation");
+    const persist = charts.slice(persistStart, runnerStart);
     assert.doesNotMatch(persist, /onboarding_completed/);
 
-    const action = charts.slice(actionStart);
-    const cacheHit = action.indexOf("if (state.existingChart)");
-    const provider = action.indexOf("runAstrologyApiNatalChart");
-    assert.ok(cacheHit >= 0 && provider > cacheHit);
-    assert.match(action.slice(cacheHit, provider), /persistCalculatedNatalChart/);
-    assert.match(action.slice(cacheHit, provider), /return chart/);
+    // El camino de reutilización sigue siendo el mismo trabajo canónico —la
+    // mutación que reafirma identidad y registra el completion— y la suficiencia
+    // del cache se sigue midiendo ANTES de tocar al proveedor: sin eso, una
+    // carta sana volvería a pegarle al proveedor en cada alta.
+    const runner = charts.slice(runnerStart, charts.indexOf("export const calculateOrCreateNatalChart"));
+    const persistHelper = runner.indexOf("const persist = async (");
+    const cacheHit = runner.indexOf("if (!(hasExistingChart && existingIsSufficient))");
+    const provider = runner.indexOf("await provider(");
+    assert.ok(persistHelper >= 0 && cacheHit > persistHelper && provider > cacheHit);
+    assert.match(runner.slice(persistHelper, cacheHit), /persistCalculatedNatalChart/);
+    assert.match(runner.slice(persistHelper, cacheHit), /generatePersonalityReadingForChart/);
+    assert.match(runner.slice(0, cacheHit), /storedNatalChartIsSufficient/);
+    // El camino de reutilización propone la fila que ya estaba, con su payload
+    // intacto; la mutación es la que decide si de verdad queda.
+    assert.match(runner.slice(provider), /payload: state\.existingChart\.payload/);
+    // Y al volver de la mutación se vuelve a medir la carta FINAL: una corrida
+    // atrasada no puede reportar un fallo sobre una carta que ya está completa.
+    const persistCall = runner.indexOf("await persist(candidato.payload");
+    assert.ok(persistCall > provider, "primero se persiste");
+    assert.match(runner.slice(persistCall), /resolveFinalNatalOutcome/, "y después se mide lo que quedó");
+
+    // Y el alta sigue recibiendo una carta —o un rechazo—, no un desenlace: su
+    // action es la de siempre y su contrato no cambió.
+    const antigua = charts.slice(
+      charts.indexOf("export const calculateOrCreateNatalChart"),
+      charts.indexOf("export const recoverNatalChart"),
+    );
+    assert.match(antigua, /return result\.chart/);
+    assert.match(antigua, /throw new Error\(`Natal chart provider failed/);
   });
 });

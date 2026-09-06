@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, Text } from "react-native";
+import { usePressedState } from "@/components/v492/Touchable";
 import { theme } from "@/theme/theme";
 
 type TagProps = {
@@ -8,11 +9,13 @@ type TagProps = {
 };
 
 export function Tag({ label, selected = false, onPress }: TagProps) {
+  const { pressed, pressableProps } = usePressedState();
   return (
     <Pressable
       accessibilityRole={onPress ? "button" : undefined}
       onPress={onPress}
-      style={({ pressed }) => [styles.tag, selected && styles.selected, pressed && onPress && styles.pressed]}
+      {...pressableProps}
+      style={[styles.tag, selected && styles.selected, pressed && onPress ? styles.pressed : null]}
     >
       <Text style={[styles.label, selected && styles.selectedLabel]}>{label}</Text>
     </Pressable>

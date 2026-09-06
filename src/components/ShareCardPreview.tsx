@@ -1,6 +1,7 @@
 import { ComponentProps } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { usePressedState } from "@/components/v492/Touchable";
 import { ShareCard } from "@/domain/types";
 import { theme } from "@/theme/theme";
 
@@ -11,11 +12,13 @@ type ShareCardPreviewProps = {
 };
 
 export function ShareCardPreview({ card, icon = "share-social", onPress }: ShareCardPreviewProps) {
+  const { pressed, pressableProps } = usePressedState();
   return (
     <Pressable
       accessibilityRole={onPress ? "button" : undefined}
       onPress={onPress}
-      style={({ pressed }) => [styles.card, pressed && onPress && styles.pressed]}
+      {...pressableProps}
+      style={[styles.card, pressed && onPress ? styles.pressed : null]}
     >
       <View style={styles.header}>
         <View style={styles.badge}>
