@@ -129,8 +129,10 @@ function isTime(value: string) {
 /**
  * `relationships.addPerson` — guarda a la persona con el nivel de datos que
  * la interfaz declaró y, cuando el nivel lo permite, calcula y persiste su
- * carta con el mismo proveedor que la carta propia. Una sola persona activa en
- * esta rebanada (Free guarda una); guardar otra vez reemplaza a la activa.
+ * carta con el mismo proveedor que la carta propia. Cada alta crea una persona
+ * nueva y la deja activa (CORE-213: la biblioteca conserva a las demás); con
+ * `profileId` se editan los datos de una persona ya guardada, reemplazando la
+ * fila completa para que no quede una carta de un nivel anterior.
  *
  * Niveles:
  * - `signo`: nombre y signo solar. No se llama al proveedor; no hay contactos.
@@ -152,7 +154,9 @@ export const addPerson = action({
     birthTime: v.optional(v.string()),
     birthPlaceLabel: v.optional(v.string()),
     latitude: v.optional(v.number()),
-    longitude: v.optional(v.number())
+    longitude: v.optional(v.number()),
+    /** Editar una persona ya guardada (propia). Sin él, se crea una nueva. */
+    profileId: v.optional(v.id("relationshipProfiles"))
   },
   handler: async (ctx, args) => {
     const identity = await requireIdentity(ctx as any);
@@ -233,6 +237,7 @@ export const addPerson = action({
       internalApi.relationships.persistPerson,
       omitUndefined({
         tokenIdentifier: identity.tokenIdentifier,
+        profileId: args.profileId,
         name,
         relationshipType,
         level,
@@ -255,6 +260,7 @@ export const addPerson = action({
 export const persistPerson = internalMutation({
   args: {
     tokenIdentifier: v.string(),
+    profileId: v.optional(v.id("relationshipProfiles")),
     name: v.string(),
     relationshipType: v.optional(v.string()),
     level: v.union(v.literal("signo"), v.literal("fecha"), v.literal("carta")),
@@ -273,14 +279,19 @@ export const persistPerson = internalMutation({
     const user = await findUserByTokenIdentifier(ctx, args.tokenIdentifier);
     if (!user) throw new Error("User record not found");
     const now = Date.now();
-    const { tokenIdentifier: _token, ...fields } = args;
-    const active = await ctx.db
+    const { tokenIdentifier: _token, profileId, ...fields } = args;
+    // La persona nueva (o editada) queda activa; las demás siguen guardadas,
+    // sólo pierden la marca. `by_user_active` sigue apuntando a una sola.
+    const actives = await ctx.db
       .query("relationshipProfiles")
       .withIndex("by_user_active", (q: any) => q.eq("userId", user._id).eq("isActive", true))
-      .first();
-    // Reemplazo completo: los campos que el nivel nuevo no trae se borran, así
-    // una persona guardada «con carta» y vuelta a guardar «con signo» no
-    // conserva una carta que ya no corresponde.
+      .collect();
+    for (const row of actives) {
+      if (!profileId || row._id !== profileId) await ctx.db.patch(row._id, { isActive: false, updatedAt: now });
+    }
+    // Reemplazo completo al editar: los campos que el nivel nuevo no trae se
+    // borran, así una persona guardada «con carta» y vuelta a guardar «con
+    // signo» no conserva una carta que ya no corresponde.
     const record = {
       userId: user._id,
       name: fields.name,
@@ -300,9 +311,11 @@ export const persistPerson = internalMutation({
       isActive: true,
       updatedAt: now
     };
-    if (active) {
-      await ctx.db.replace(active._id, { ...record, createdAt: active.createdAt });
-      return { id: active._id };
+    if (profileId) {
+      const existing = await ctx.db.get(profileId);
+      if (!existing || existing.userId !== user._id) throw new Error("RELATIONSHIP_PROFILE_NOT_FOUND");
+      await ctx.db.replace(profileId, { ...record, createdAt: existing.createdAt });
+      return { id: profileId };
     }
     const id = await ctx.db.insert("relationshipProfiles", { ...record, createdAt: now });
     return { id };
@@ -339,16 +352,23 @@ export type VinculoComparacionStatus =
  * conteos y las dimensiones siempre se calculan sobre la lista entera.
  */
 export const synastry = query({
-  handler: async (ctx) => {
+  args: {
+    /** Una persona concreta de la biblioteca (CORE-213). Sin él, la activa. */
+    profileId: v.optional(v.id("relationshipProfiles"))
+  },
+  handler: async (ctx, args) => {
     const user = await findCurrentUser(ctx);
     if (!user) return { status: "no_person" as const, person: null };
-    const person = await ctx.db
-      .query("relationshipProfiles")
-      .withIndex("by_user_active", (q: any) => q.eq("userId", user._id).eq("isActive", true))
-      .first();
-    if (!person) return { status: "no_person" as const, person: null };
+    const person = args.profileId
+      ? await ctx.db.get(args.profileId)
+      : await ctx.db
+          .query("relationshipProfiles")
+          .withIndex("by_user_active", (q: any) => q.eq("userId", user._id).eq("isActive", true))
+          .first();
+    if (!person || person.userId !== user._id) return { status: "no_person" as const, person: null };
 
-    const personSummary = {
+    const personSummary = personSummaryOf(person);
+    const personSummaryLegacy = {
       id: person._id,
       name: person.name as string,
       relationshipType: (person.relationshipType as string | undefined) ?? null,
@@ -358,6 +378,7 @@ export const synastry = query({
       birthPlaceLabel: (person.birthPlaceLabel as string | undefined) ?? null,
       chartStatus: (person.chartStatus as string | undefined) ?? (person.chartPayload ? "ready" : "not_needed")
     };
+    void personSummaryLegacy;
 
     const natalChart = await findCurrentNatalChart(ctx, user._id);
     const chartA = extractNormalizedChartFromPayload(natalChart?.payload);
@@ -436,3 +457,65 @@ function capitalizeSign(sign: string) {
   };
   return labels[sign] ?? sign;
 }
+
+// --- CORE-213: la biblioteca de personas guardadas --------------------------
+
+/** El resumen público de una persona guardada: sólo datos autorizados y su nivel. */
+function personSummaryOf(person: any) {
+  return {
+    id: person._id as string,
+    name: person.name as string,
+    relationshipType: (person.relationshipType as string | undefined) ?? null,
+    level: ((person.level as SynastryLevel | undefined) ?? inferLevel(person)) as SynastryLevel,
+    zodiacSign: (person.zodiacSign as string | undefined) ?? null,
+    birthDate: (person.birthDate as string | undefined) ?? null,
+    birthTime: (person.birthTime as string | undefined) ?? null,
+    birthPlaceLabel: (person.birthPlaceLabel as string | undefined) ?? null,
+    chartStatus: ((person.chartStatus as string | undefined) ?? (person.chartPayload ? "ready" : "not_needed")) as string,
+    isActive: Boolean(person.isActive),
+    savedAt: (person.createdAt as number | undefined) ?? 0
+  };
+}
+
+/**
+ * `relationships.listPeople` — todas las personas guardadas de la cuenta, de
+ * la más reciente a la más antigua, con la activa marcada. Reactiva: guardar,
+ * editar o elegir a alguien actualiza la lista sola. Sin sesión: lista vacía.
+ */
+export const listPeople = query({
+  handler: async (ctx) => {
+    const user = await findCurrentUser(ctx);
+    if (!user) return { people: [], activeId: null };
+    const rows = await ctx.db
+      .query("relationshipProfiles")
+      .withIndex("by_user", (q: any) => q.eq("userId", user._id))
+      .collect();
+    const people = rows.map(personSummaryOf).sort((a, b) => b.savedAt - a.savedAt);
+    const active = people.find((p) => p.isActive) ?? null;
+    return { people, activeId: active ? active.id : null };
+  }
+});
+
+/**
+ * `relationships.selectPerson({ profileId })` — deja activa a una persona de la
+ * biblioteca. No calcula nada: la comparación de cada persona sale de su carta
+ * ya guardada, así que elegir no genera otra por navegar.
+ */
+export const selectPerson = mutation({
+  args: { profileId: v.id("relationshipProfiles") },
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx);
+    const target = await ctx.db.get(args.profileId);
+    if (!target || target.userId !== user._id) throw new Error("RELATIONSHIP_PROFILE_NOT_FOUND");
+    const now = Date.now();
+    const actives = await ctx.db
+      .query("relationshipProfiles")
+      .withIndex("by_user_active", (q: any) => q.eq("userId", user._id).eq("isActive", true))
+      .collect();
+    for (const row of actives) {
+      if (row._id !== target._id) await ctx.db.patch(row._id, { isActive: false, updatedAt: now });
+    }
+    if (!target.isActive) await ctx.db.patch(target._id, { isActive: true, updatedAt: now });
+    return { profileId: target._id };
+  }
+});

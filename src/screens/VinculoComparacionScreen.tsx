@@ -11,14 +11,14 @@
  * y la pantalla dice qué haría falta para ver más.
  */
 import { StyleSheet, Text, View } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useQuery } from "convex/react";
 import { DetailScreen } from "@/components/home/DetailScreen";
 import { Column, Columns } from "@/components/orbita/Layout";
 import { GuestState } from "@/components/orbita/GuestState";
 import { EmptyState, ErrorState, MinimalLoading } from "@/components/orbita/states";
 import { VBarra, VBoton, VCerco, VEtiqueta, VNota, VPersonaChip, VTarjeta, VTexto, VTitular } from "@/components/vinculos/VinculosUI";
-import { escalaDeDimensiones, inicial, titularDeContactos } from "@/domain/vinculo";
+import { escalaDeDimensiones, inicial, perfilIdValido, titularDeContactos } from "@/domain/vinculo";
 import { useIsDesktop } from "@/hooks/useLayoutMode";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { appCoreApi, type VinculoComparacion, type VinculoContacto } from "@/services/appCoreRefs";
@@ -48,7 +48,12 @@ export function VinculoComparacionScreen() {
 }
 
 function ComparacionViva() {
-  const comparacion = useQuery(appCoreApi.relationships.synastry, {});
+  // `?id=` abre la comparación de una persona concreta de la biblioteca
+  // (CORE-213); sin id, la activa. Un id que no es de la cuenta responde
+  // `no_person`: nunca otra persona en su lugar.
+  const params = useLocalSearchParams<{ id?: string }>();
+  const profileId = perfilIdValido(params.id);
+  const comparacion = useQuery(appCoreApi.relationships.synastry, profileId ? { profileId } : {});
   if (comparacion === undefined) return <MinimalLoading />;
   if (comparacion.status === "no_person") {
     return (
