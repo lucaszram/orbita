@@ -1,5 +1,9 @@
 # Current Task
 
+## Los componentes viejos que sólo mencionan los tests desaparecen (CORE-267, 2026-09-06)
+
+**Cambios:** se borran `AppButton`, `ShareCardPreview`, `home/CartaBanner`, `diario/DiarioStrip`, `web/immersive-bg`, `Tag`, `MetricPill`, `TransitCard` (el viejo; el vigente es `v492/TransitCard`), `Card`, `theme/text.ts` y `content/moonPhaseMock.ts`: ninguno tiene importadores. Los tests que los listaban (`pressableStyleValue`, `v492ReleaseP1`, `hoySection`, `responsiveShells`) dejan de nombrarlos; el comentario de `convex/sky.ts` deja de citar el mock. `DiarioStrip` estaba protegido por un test de CORE-191 («no borrarlo del producto»): hoy nadie lo monta, así que se borra y el test guarda sólo `CartaDelDia` y `umbral-tarot`.
+
 ## Los mocks de contenido sin uso desaparecen de src (CORE-266, 2026-09-06)
 
 **Cambios:** se borran 20 archivos sin ningún importador ni mención en tests: `src/content/{forecast,home,personality,solarReturn,sunSign,transit,values}Mock.ts`, `src/content/onboardingSteps.ts`, `src/components/{EmptyState,PickCardStrip,ReadingCard,RelationshipCard,SectionHeader,TopicSelector,WeeklyEnergyCard}.tsx`, `src/components/home/{OrbitalHero,SintoniaSection}.tsx`, `src/components/v492/CalcularCarta.tsx`, `src/onboarding/components/DataRow.tsx`, `src/services/supabase.ts`. La dependencia `@supabase/supabase-js` queda en `package.json` (config gris) para retirarla con su lockfile en una tarjeta aparte.

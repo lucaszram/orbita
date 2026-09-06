@@ -446,7 +446,6 @@ test("todo el grafo de rutas nativas V4.9.2 excluye Tarot, Diario y el checkout 
     "src/screens/HomeScreen.tsx",
     "src/screens/DiarioScreen.tsx",
     "src/components/home/CartaDelDia.tsx",
-    "src/components/diario/DiarioStrip.tsx",
     "src/components/diario/TarotStrip.tsx",
     "src/content/tarotDeck.ts",
     "src/content/tarotCatalog.ts",
