@@ -16,6 +16,7 @@ import {
   extractNormalizedChartFromPayload,
   findTransitInPayload
 } from "./lib/orbita";
+import { buildTransitPanorama } from "./lib/transitPanorama";
 import { findUserByTokenIdentifier, omitUndefined, requireIdentity } from "./lib/users";
 import { isUserPro } from "./lib/subscriptionAccess";
 
@@ -374,5 +375,23 @@ export const getDetail = action({
         isPro
       )
     };
+  }
+});
+
+/**
+ * `transits.getPanorama({ localDate })` — el panorama de hoy (CORE-207): todos
+ * los contactos activos de la lectura del día, con identidad, fase respecto del
+ * punto exacto y cercanía medida en tiempo. Misma fuente que `getToday` y
+ * `getDetail`: la lectura persistida para la fecha canónica. En Free responde
+ * `locked` sin la lista —el ranking se calcula con la carta y es Plus—; sin
+ * contactos responde `empty`. Nunca rellena una fila.
+ */
+export const getPanorama = action({
+  args: {
+    localDate: v.string()
+  },
+  handler: async (ctx, args) => {
+    const { payload, isPro } = await resolveTodayReading(ctx, args.localDate);
+    return buildTransitPanorama({ payload, localDate: args.localDate, isPro });
   }
 });

@@ -1,7 +1,5 @@
 # Contrato — CHANGELOG
 
-# Contrato — CHANGELOG
-
 ## 2026-09-06 — Tránsitos ordena el cielo de hoy: `transits.getPanorama` (CORE-207)
 
 - **Qué cambia (aditivo):** nueva action pública `transits.getPanorama({ localDate })`. Devuelve **siempre** un sobre con `status`: `ready` (con `rows`, `count`, `activeTotal`, `cadence: "Cambia a diario"` y `access`), `empty` (la lectura del día no tiene contactos dentro de orbe) o `locked` (Free: el ranking se calcula con la carta y es Plus; **no** viaja la lista). `getToday` y `getDetail` no cambian.

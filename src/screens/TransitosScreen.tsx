@@ -1,49 +1,72 @@
 /**
- * Pantalla canónica de Órbita: la misma en nativo y en web.
+ * **Tránsitos** — el panorama del cielo de hoy, la misma pantalla en nativo y
+ * en web (CORE-207).
  *
- * Vivía dentro de `app/(tabs)/transitos.tsx`, así que la web tenía que mantener su
- * propia versión en paralelo y las dos derivaban. La ruta ahora es un wrapper
- * fino sobre este módulo; no se duplica ninguna pantalla por plataforma.
+ * Frames del carril de Tránsitos del tablero `02 · WEB — PARIDAD PROPUESTA`:
+ * `1731:2158` / `1737:2201` (AHORA · ranking, 390 / 1440), `1732:2179` /
+ * `2014:2825` (orden y cierre) y `1729:2109` / `1730:2131` (Free bloqueado).
+ *
+ *     AHORA                              ← el único segmento de esta tarjeta
+ *     TRÁNSITOS · AHORA     16 CONTACTOS ACTIVOS · CAMBIA A DIARIO
+ *     Todos los contactos activos de hoy, ordenados por…
+ *     LAS BARRAS MIDEN CERCANÍA AL PUNTO EXACTO EN EL TIEMPO
+ *     1 LUNA · MARTE ── Luna trígono tu Marte ── ▇▇▇▇▇▇▇──── ── INTEGRÁNDOSE · CASA 4
+ *     …
+ *     VER LOS 16 CONTACTOS ›
+ *     POR QUÉ ESTE ORDEN
+ *
+ * ## De dónde sale cada cosa (cero maqueta)
+ *
+ * - Todo sale de `transits.getPanorama({ localDate })`: la MISMA lectura
+ *   persistida del día que alimenta `getToday` y `getDetail`. Cada fila trae
+ *   su `transitId` y abre `/reading/transito?id=…` (CORE-208).
+ * - El día lo decide el SERVIDOR (`useCanonicalLocalDate`).
+ * - La barra mide cercanía al punto exacto **en tiempo** (`exactTime` contra la
+ *   ventana del contacto). El proveedor no publica el orbe en grados, así que
+ *   no hay `0°43'` ni puntaje: sin ventana, la fila no dibuja barra.
+ * - Free recibe `locked`: el ranking se calcula con la carta y es Plus. La
+ *   pantalla lo dice con el frame bloqueado, sin filas de relleno.
+ *
+ * Fuera de esta tarjeta: el segmento «Tu momento» (Estación vital, Tema del
+ * año, Cuatro ritmos → CORE-209/210/211). No se dibuja un segmento que no lleva
+ * a ningún lado.
  */
 import { useEffect, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
+import { router } from "expo-router";
 import { useAction } from "convex/react";
-import { Body, Divider, Eyebrow, H2, H3, MonoLine, Note, OrbitaScreen, Section } from "@/components/orbita/kit";
+import { OrbitaScreen, Section } from "@/components/orbita/kit";
 import { Column, Columns, ReadingBlock } from "@/components/orbita/Layout";
-import { FullBleedHero } from "@/components/orbita/ImmersiveHero";
 import { GuestState } from "@/components/orbita/GuestState";
-import { ErrorState, MinimalLoading } from "@/components/orbita/states";
+import { EmptyState, ErrorState, MinimalLoading } from "@/components/orbita/states";
+import {
+  NOTA_DEL_ORDEN,
+  PBoton,
+  PEncabezado,
+  PEnlace,
+  PEsqueleto,
+  PEtiqueta,
+  PFila,
+  PNota,
+  PPlegable,
+  PPorQue,
+  PSegmento,
+  PTarjeta,
+  PTexto
+} from "@/components/transitos/PanoramaUI";
 import { sessionPhase } from "@/domain/screenPhase";
+import { encabezadoDeAhora, estadoDelPanorama, etiquetaDeDespliegue, filasParaMostrar, type PanoramaEstado } from "@/domain/transitosPanorama";
 import { useIsDesktop } from "@/hooks/useLayoutMode";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { useCanonicalLocalDate } from "@/hooks/useDailyContext";
-import { proposedApi, type TransitDetailPayload } from "@/services/appRefs";
+import { proposedApi, type TransitPanorama } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
 
-
-/**
- * El backend (`convex/lib/orbita.ts`) a veces filtra labels placeholder del
- * proveedor ("Ventana del proveedor", "Pico estimado", "La ventana exacta tiene
- * que venir del proveedor…"). Viola el guardrail de voz Órbita, así que el front
- * los oculta. Cuando Codex los humanice, el copy real pasa el filtro y se muestra.
- * Ver convex/CHANGELOG.md (2026-07-09).
- */
-const PROVIDER_JUNK = /proveedor|fecha local|estimad/i;
-/** Limpia sufijos colgados ("Pico -" → "Pico"). */
-function cleanLabel(s?: string): string {
-  return (s ?? "").replace(/[\s·\-–—]+$/u, "").trim();
-}
-/** Devuelve el copy solo si NO es placeholder del proveedor; si no, "" (se oculta). */
-function humanCopy(s?: string): string {
-  const t = cleanLabel(s);
-  return t && !PROVIDER_JUNK.test(t) ? t : "";
-}
+const DISCLAIMER = "Órbita es entretenimiento y autoconocimiento.";
 
 export function TransitosScreen() {
   const live = useLiveApp();
   const phase = sessionPhase(live);
-  // Sin mocks: invitado confirmado → estado honesto; sesión resolviendo →
-  // carga mínima; sesión rota → error real.
   if (phase === "cargando") {
     return (
       <TransitosShell>
@@ -72,226 +95,297 @@ export function TransitosScreen() {
   return <TransitosLive />;
 }
 
-/**
- * Shell único de la pantalla: TODOS los estados (carga, error, invitado, cielo
- * real) pasan por acá, así que ninguno se queda fuera del lienzo. El lienzo es
- * `wide`: en escritorio la escena va full-bleed y la lectura se compone en dos
- * columnas (Figma `271:70`).
- */
+/** Shell único: todos los estados pasan por acá, dentro del lienzo `wide`. */
 function TransitosShell({ children }: { children: React.ReactNode }) {
-  return <OrbitaScreen canvas="wide">{children}</OrbitaScreen>;
+  return (
+    <OrbitaScreen canvas="wide">
+      <Section>{children}</Section>
+    </OrbitaScreen>
+  );
 }
 
-/**
- * Con sesión: cielo REAL del día vía la action `transits.getToday`. Mientras
- * carga → pantalla mínima; si falla o el backend no tiene tránsito → error
- * real con REINTENTAR.
- */
+/** Con sesión: el panorama REAL del día. Carga mínima; fallo → error con reintento. */
 function TransitosLive() {
-  const getToday = useAction(proposedApi.transitToday);
-  const [state, setState] = useState<
-    { kind: "loading" } | { kind: "error" } | { kind: "ok"; data: TransitDetailPayload }
-  >({ kind: "loading" });
-  const [attempt, setAttempt] = useState(0);
-  // La fecha la resuelve el servidor desde la zona natal; `transits.getToday`
-  // rechaza cualquier otra. Null = todavía no llegó → seguimos en carga.
+  const getPanorama = useAction(proposedApi.transitPanorama);
+  const [estado, setEstado] = useState<PanoramaEstado>({ kind: "cargando" });
+  const [intento, setIntento] = useState(0);
   const localDate = useCanonicalLocalDate();
 
   useEffect(() => {
     if (!localDate) return;
-    let alive = true;
-    setState({ kind: "loading" });
-    getToday({ localDate })
-      .then((r) => {
-        if (!alive) return;
-        setState(r ? { kind: "ok", data: r as TransitDetailPayload } : { kind: "error" });
+    let vivo = true;
+    setEstado({ kind: "cargando" });
+    getPanorama({ localDate })
+      .then((r: TransitPanorama) => {
+        if (vivo) setEstado(estadoDelPanorama(r));
       })
       .catch(() => {
-        if (alive) setState({ kind: "error" });
+        if (vivo) setEstado({ kind: "error" });
       });
     return () => {
-      alive = false;
+      vivo = false;
     };
-  }, [getToday, attempt, localDate]);
+  }, [getPanorama, intento, localDate]);
 
-  if (!localDate || state.kind === "loading") {
+  if (!localDate || estado.kind === "cargando") {
     return (
       <TransitosShell>
         <MinimalLoading />
       </TransitosShell>
     );
   }
-  if (state.kind === "error") {
+  if (estado.kind === "error") {
     return (
       <TransitosShell>
-        <ErrorState onRetry={() => setAttempt((a) => a + 1)} />
+        <ErrorState onRetry={() => setIntento((n) => n + 1)} />
       </TransitosShell>
     );
   }
-  return <TransitosView data={state.data} />;
-}
-
-/**
- * El tab consume el payload REAL completo (mismo contrato que `app/reading/transito.tsx`):
- * escena en el cielo → lectura → cada cuánto pasa → cómo se juega en la Tierra → ventana.
- * "POR ÁREA" se embebe al final cuando el backend la popula (`porArea`); si no viene,
- * se oculta. Antes esta pantalla cortaba en DESTACADO y quedaba a medio terminar.
- */
-function TransitosView({ data }: { data: TransitDetailPayload }) {
-  const desktop = useIsDesktop();
-  const porArea = data.porArea ?? [];
-  const cadenceCaption = humanCopy(data.frequency.label);
-  const windowNote = humanCopy(data.window.note);
-
-  // El mismo contenido, una sola vez. Lo único que cambia entre móvil y
-  // escritorio es CÓMO se reparte: en móvil las cuatro piezas van una debajo de
-  // otra (idéntico a hoy y al nativo); en escritorio la lectura + la cadencia
-  // quedan enfrentadas a la Tierra + la ventana (Figma `271:70`).
-  const lectura = (
-    <ReadingBlock>
-      <Body>{data.reading.plain}</Body>
-      <Note>Basado en tus datos de nacimiento y el cielo de hoy.</Note>
-    </ReadingBlock>
-  );
-
-  const cadencia = (
-    <>
-      <Divider />
-      <Eyebrow>CADA CUÁNTO PASA</Eyebrow>
-      <View style={styles.timeline}>
-        <View style={styles.timelineTrack} />
-        {data.frequency.timeline.map((p) => (
-          <View key={p.label} style={styles.timelineStop}>
-            <View style={[styles.timelineDot, p.current && styles.timelineDotCurrent]} />
-            <Text style={[styles.timelineLabel, p.current && styles.timelineLabelCurrent]}>
-              {cleanLabel(p.label)}
-            </Text>
-          </View>
-        ))}
-      </View>
-      {cadenceCaption ? <Note>{cadenceCaption}</Note> : null}
-    </>
-  );
-
-  const tierra = (
-    <>
-      <Divider />
-      <Eyebrow>CÓMO SE JUEGA EN LA TIERRA</Eyebrow>
-      <H3>{data.earth.headline}</H3>
-      <View style={{ height: orbita.spacing.md }} />
-      {data.earth.suggestions.map((s) => (
-        <View key={s} style={styles.suggestion}>
-          <Text style={styles.check}>✓</Text>
-          <Text style={styles.suggestionText}>{s}</Text>
-        </View>
-      ))}
-    </>
-  );
-
-  const ventana = (
-    <>
-      {porArea.length > 0 ? (
-        <>
-          <Divider />
-          <Eyebrow>POR ÁREA</Eyebrow>
-          {porArea.map((a) => (
-            <View key={a.title} style={styles.areaRow}>
-              <Text style={styles.areaTitle}>{a.title}</Text>
-              <Body>{a.body}</Body>
-            </View>
-          ))}
-        </>
-      ) : null}
-
-      {windowNote ? (
-        <>
-          <View style={{ height: orbita.spacing.xl }} />
-          <Note>{`Ventana ${cleanLabel(data.window.label)} · ${windowNote}`}</Note>
-        </>
-      ) : null}
-    </>
-  );
-
+  if (estado.kind === "bloqueado") {
+    return (
+      <TransitosShell>
+        <PanoramaBloqueado />
+      </TransitosShell>
+    );
+  }
+  if (estado.kind === "vacio") {
+    return (
+      <TransitosShell>
+        <EmptyState
+          eyebrow="TRÁNSITOS · AHORA"
+          title={"Hoy no hay contactos\nactivos sobre tu carta."}
+          body="El proveedor no publicó ningún tránsito dentro de orbe para hoy. No es un error: es un cielo tranquilo sobre tus puntos. Volvé mañana."
+          cta="REINTENTAR"
+          onCta={() => setIntento((n) => n + 1)}
+        />
+      </TransitosShell>
+    );
+  }
   return (
     <TransitosShell>
-      {/* La escena: banda full-bleed en móvil, tarjeta contenida en escritorio
-          (como el frame). El asset se dibuja con ancho y alto MEDIDOS. */}
-      <View style={desktop ? styles.sceneWrap : undefined}>
-        <FullBleedHero kind="transitos" rounded={desktop}>
-          <Text style={styles.skyLabel}>HOY EN EL CIELO</Text>
-          <MonoLine>{`${data.scene.transitingBody.label}  ·  ${data.aspect.type}  ·  ${data.scene.natalPoint.label}`}</MonoLine>
-        </FullBleedHero>
-      </View>
-
-      <Section style={{ paddingTop: orbita.spacing.lg }}>
-        <Eyebrow>TRÁNSITOS DE HOY</Eyebrow>
-        <H2>{data.title}</H2>
-        <Columns>
-          <Column>
-            {lectura}
-            {cadencia}
-          </Column>
-          <Column>
-            {tierra}
-            {ventana}
-          </Column>
-        </Columns>
-      </Section>
+      <PanoramaAhora panorama={estado.panorama} />
     </TransitosShell>
   );
 }
 
+// ---------------------------------------------------------------------------
+// AHORA · el ranking del día
+// ---------------------------------------------------------------------------
+
+function PanoramaAhora({ panorama }: { panorama: Extract<TransitPanorama, { status: "ready" }> }) {
+  const desktop = useIsDesktop();
+  const [desplegado, setDesplegado] = useState(false);
+  const filas = filasParaMostrar(panorama.rows, desplegado);
+  const despliegue = etiquetaDeDespliegue(panorama.rows.length, desplegado);
+
+  const lista = (
+    <ReadingBlock>
+      <View style={styles.segmentos} accessibilityRole="tablist">
+        <PSegmento label="AHORA" activo />
+      </View>
+      <PEncabezado izquierda="TRÁNSITOS · AHORA" derecha={encabezadoDeAhora(panorama)} />
+      <PTexto style={styles.intro}>
+        {desktop
+          ? "Todos los contactos activos de hoy, ordenados por cercanía al punto exacto y por la parte de tu carta que activan."
+          : "Todos los contactos activos de hoy, ordenados por cercanía al punto exacto."}
+      </PTexto>
+      <PEtiqueta tono="gris" style={styles.leyenda}>
+        LAS BARRAS MIDEN CERCANÍA AL PUNTO EXACTO EN EL TIEMPO
+      </PEtiqueta>
+      <View style={styles.lineaSuperior} />
+      {filas.map((fila, i) => (
+        <PFila key={fila.transitId} fila={fila} conCuerpo={!desktop} ultima={i === filas.length - 1} />
+      ))}
+      <View style={styles.lineaInferior} />
+      {despliegue ? <PEnlace label={despliegue} onPress={() => setDesplegado(true)} /> : null}
+      {!desktop ? (
+        <View style={styles.porQueMovil}>
+          <PEncabezado izquierda="POR QUÉ ESTE ORDEN" derecha="CAMBIA A DIARIO" />
+          <PPorQue enFila={false} />
+          <PNota style={styles.notaOrden}>{NOTA_DEL_ORDEN}</PNota>
+          <PNota style={styles.notaOrden}>{DISCLAIMER}</PNota>
+        </View>
+      ) : null}
+    </ReadingBlock>
+  );
+
+  if (!desktop) return lista;
+
+  return (
+    <Columns gap={orbita.spacing.xxl * 1.5}>
+      <Column weight={2}>
+        {lista}
+        {desplegado || !despliegue ? (
+          <View style={styles.cierre}>
+            <PEncabezado izquierda="· POR QUÉ ESTE ORDEN" derecha="· CAMBIA A DIARIO" />
+            <PPorQue enFila />
+            <PNota style={styles.notaOrden}>{NOTA_DEL_ORDEN}</PNota>
+          </View>
+        ) : null}
+      </Column>
+      <Column weight={1}>
+        <PTarjeta titulo="POR QUÉ ESTE ORDEN">
+          <PPorQue enFila={false} />
+          <PNota style={styles.notaOrden}>{NOTA_DEL_ORDEN}</PNota>
+        </PTarjeta>
+        <PPlegable titulo="¿POR QUÉ ÓRBITA TE MUESTRA ESTO?">
+          <PTexto>
+            Un tránsito es un planeta de hoy tocando un punto de tu carta natal. Órbita los ordena para que primero
+            leas lo que está más cerca de su punto exacto y lo que toca las partes centrales de tu carta.
+          </PTexto>
+        </PPlegable>
+        <PTarjeta>
+          <PNota>{DISCLAIMER}</PNota>
+        </PTarjeta>
+      </Column>
+    </Columns>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Free · bloqueado
+// ---------------------------------------------------------------------------
+
+function PanoramaBloqueado() {
+  const desktop = useIsDesktop();
+  const irAPlus = () => router.push("/paywall");
+
+  const principal = (
+    <ReadingBlock>
+      <PEncabezado izquierda="TRÁNSITOS" derecha="REQUIERE PLUS" />
+      <PTexto style={styles.intro}>
+        {desktop
+          ? "Un tránsito es un planeta de hoy tocando un punto de tu carta natal. Ordenarlos por cercanía al punto exacto necesita tu carta calculada."
+          : "Un tránsito es un planeta de hoy tocando un punto de tu carta natal."}
+      </PTexto>
+      <View style={styles.lineaSuperior} />
+      <PEtiqueta tono="gris" style={styles.leyenda}>
+        AHORA · EL RANKING DEL DÍA
+      </PEtiqueta>
+      <View style={styles.bloqueada}>
+        <View style={styles.chipPlus}>
+          <PEtiqueta>SOLO CON ÓRBITA PLUS</PEtiqueta>
+        </View>
+        <PTexto style={styles.bloqueadaTitulo}>El ranking de hoy se calcula con tu carta.</PTexto>
+        <PTexto style={styles.bloqueadaCuerpo}>
+          Hace falta tu fecha, hora y lugar de nacimiento para saber qué contactos están activos, cuánto les falta
+          para ser exactos y qué casa de tu carta tocan.
+        </PTexto>
+        {!desktop ? (
+          <View style={styles.vinetas}>
+            {["Todos los contactos activos de hoy", "La barra de cercanía al punto exacto", "El detalle de arco de cada tránsito"].map((t) => (
+              <PTexto key={t} style={styles.vineta}>
+                <PEtiqueta>■</PEtiqueta> {t}
+              </PTexto>
+            ))}
+          </View>
+        ) : null}
+        <View style={styles.bloqueadaAcciones}>
+          <PBoton label="EMPEZAR 7 DÍAS GRATIS" onPress={irAPlus} />
+          {desktop ? <PEnlace label="VER QUÉ ABRE PLUS" onPress={irAPlus} /> : null}
+        </View>
+      </View>
+      <View style={styles.lineaInferior} />
+      <PEncabezado izquierda="02 TU MOMENTO" derecha="BLOQUEADO" />
+      <PTexto style={styles.intro}>
+        {desktop
+          ? "El capítulo actual y sus tres capas —tu estación vital, el tema de tu año y tus cuatro ritmos— también se abren con Plus."
+          : "Tu momento y sus tres capas también se abren con Plus."}
+      </PTexto>
+      <PEsqueleto lineas={desktop ? 3 : 2} />
+      <View style={styles.lineaInferior} />
+      {!desktop ? (
+        <>
+          <PEnlace label="VER QUÉ ABRE PLUS" onPress={irAPlus} />
+          <PNota style={styles.notaOrden}>También en Free: tu carta base y tres preguntas por día en El Umbral.</PNota>
+        </>
+      ) : (
+        <>
+          <PEtiqueta tono="gris">TAMBIÉN EN FREE</PEtiqueta>
+          <View style={styles.freeTarjetas}>
+            <PTarjeta style={styles.freeTarjeta}>
+              <PTexto style={styles.freeTitulo}>Tu carta base</PTexto>
+              <PTexto>Sol, Luna y Ascendente con signo y grado. No se mueve.</PTexto>
+              <PEnlace label="IR A CARTA" href="/carta" />
+            </PTarjeta>
+            <PTarjeta style={styles.freeTarjeta}>
+              <PTexto style={styles.freeTitulo}>El Umbral</PTexto>
+              <PTexto>Tres preguntas por día. Con Plus son cinco.</PTexto>
+              <PEnlace label="IR AL UMBRAL" href="/umbral" />
+            </PTarjeta>
+          </View>
+        </>
+      )}
+    </ReadingBlock>
+  );
+
+  if (!desktop) return principal;
+
+  return (
+    <Columns gap={orbita.spacing.xxl * 1.5}>
+      <Column weight={2}>{principal}</Column>
+      <Column weight={1}>
+        <PTarjeta titulo="QUÉ ABRE PLUS EN TRÁNSITOS">
+          {[
+            "Ahora: todos los contactos activos del día, ordenados por cercanía al punto exacto.",
+            "El detalle de arco de cada tránsito: inicio, punto exacto y cierre.",
+            "Tu momento: tu estación vital, el tema de tu año y tus cuatro ritmos."
+          ].map((t) => (
+            <PTexto key={t} style={styles.vineta}>
+              <PEtiqueta>■</PEtiqueta> {t}
+            </PTexto>
+          ))}
+          <View style={styles.lineaInferior} />
+          <PBoton label="EMPEZAR 7 DÍAS GRATIS" onPress={irAPlus} />
+          <PNota style={styles.notaOrden}>El precio y la prueba gratis se muestran al entrar a Órbita Plus.</PNota>
+        </PTarjeta>
+        <PTarjeta titulo="CÓMO LEER UN TRÁNSITO">
+          {[
+            ["TRÁNSITO", "Un planeta de hoy tocando un punto de tu carta natal."],
+            ["VENTANA", "Cuánto le falta al contacto para ser exacto y cuándo se cierra."],
+            ["CASA", "El área de tu carta donde cae ese contacto."],
+            ["ESTADO", "Acercándose antes del exacto; integrándose después."]
+          ].map(([r, t]) => (
+            <View key={r} style={styles.porQueItem}>
+              <PEtiqueta tono="hueso">{r}</PEtiqueta>
+              <PTexto>{t}</PTexto>
+            </View>
+          ))}
+        </PTarjeta>
+        <PTarjeta>
+          <PNota>{DISCLAIMER}</PNota>
+        </PTarjeta>
+      </Column>
+    </Columns>
+  );
+}
+
 const styles = StyleSheet.create({
-  // En escritorio la escena es una tarjeta contenida (Figma `271:70`), con las
-  // mismas gutters que el texto que la rodea.
-  sceneWrap: { paddingHorizontal: orbita.spacing.gutter, paddingTop: orbita.spacing.xl },
-  skyLabel: {
-    color: orbita.colors.copper,
-    fontFamily: orbita.fonts.monoMedium,
-    fontSize: 10,
-    letterSpacing: 2,
-    marginBottom: 6,
-    textAlign: "center"
-  },
+  segmentos: { flexDirection: "row", gap: orbita.spacing.sm, marginBottom: orbita.spacing.lg },
+  intro: { marginTop: orbita.spacing.md },
+  leyenda: { marginTop: orbita.spacing.lg },
+  lineaSuperior: { backgroundColor: orbita.colors.line, height: 1, marginTop: orbita.spacing.lg },
+  lineaInferior: { backgroundColor: orbita.colors.line, height: 1, marginVertical: orbita.spacing.lg },
+  porQueMovil: { marginTop: orbita.spacing.xl },
+  notaOrden: { marginTop: orbita.spacing.lg },
+  cierre: { marginTop: orbita.spacing.xl },
+  porQueItem: { marginTop: orbita.spacing.lg },
 
-  timeline: { flexDirection: "row", justifyContent: "space-between", marginTop: orbita.spacing.lg },
-  timelineTrack: {
-    backgroundColor: orbita.colors.line,
-    height: 1,
-    left: 12,
-    position: "absolute",
-    right: 12,
-    top: 4
-  },
-  timelineStop: { alignItems: "center", width: 70 },
-  timelineDot: {
-    backgroundColor: orbita.colors.background,
-    borderColor: orbita.colors.mutedDim,
-    borderRadius: 5,
+  bloqueada: {
+    backgroundColor: orbita.colors.surface,
+    borderColor: orbita.colors.line,
+    borderRadius: orbita.radius.lg,
     borderWidth: 1,
-    height: 9,
-    width: 9
+    marginTop: orbita.spacing.lg,
+    padding: orbita.spacing.xl
   },
-  timelineDotCurrent: { backgroundColor: orbita.colors.copper, borderColor: orbita.colors.copper },
-  timelineLabel: {
-    color: orbita.colors.mutedDim,
-    fontFamily: orbita.fonts.mono,
-    fontSize: 10,
-    marginTop: orbita.spacing.sm
-  },
-  timelineLabelCurrent: { color: orbita.colors.copper, fontFamily: orbita.fonts.monoMedium },
-
-  suggestion: { flexDirection: "row", gap: orbita.spacing.md, marginTop: orbita.spacing.md },
-  check: { color: orbita.colors.copper, fontFamily: orbita.fonts.body, fontSize: 14 },
-  suggestionText: { color: orbita.colors.bone, flex: 1, fontFamily: orbita.fonts.body, fontSize: 15, lineHeight: 21 },
-
-  areaRow: { marginTop: orbita.spacing.lg },
-  areaTitle: {
-    color: orbita.colors.copper,
-    fontFamily: orbita.fonts.monoMedium,
-    fontSize: 11,
-    letterSpacing: 0.5,
-    marginBottom: orbita.spacing.sm,
-    textTransform: "uppercase"
-  }
+  chipPlus: { alignSelf: "flex-start", borderColor: orbita.colors.copper, borderRadius: 999, borderWidth: 1, paddingHorizontal: orbita.spacing.md, paddingVertical: 5 },
+  bloqueadaTitulo: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 30, lineHeight: 36, marginTop: orbita.spacing.lg },
+  bloqueadaCuerpo: { marginTop: orbita.spacing.md },
+  vinetas: { marginTop: orbita.spacing.lg },
+  vineta: { marginTop: orbita.spacing.sm },
+  bloqueadaAcciones: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: orbita.spacing.lg, marginTop: orbita.spacing.xl },
+  freeTarjetas: { flexDirection: "row", flexWrap: "wrap", gap: orbita.spacing.lg, marginTop: orbita.spacing.lg },
+  freeTarjeta: { flexBasis: 240, flexGrow: 1, marginBottom: 0 },
+  freeTitulo: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 20, marginBottom: orbita.spacing.sm }
 });

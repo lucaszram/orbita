@@ -1190,7 +1190,7 @@ export function buildWebB0PersonalityReadingPayload(chartPayload: unknown): WebB
   }) as WebB0PersonalityReadingPayload;
 }
 
-function normalizedTransitFromValue(value: unknown): NormalizedAstroTransit | null {
+export function normalizedTransitFromValue(value: unknown): NormalizedAstroTransit | null {
   const record = asRecord(value);
   const transitPlanet = normalizeKey(record.transitPlanet ?? record.transit_planet);
   const natalPoint = normalizeKey(record.natalPoint ?? record.natal_planet);
@@ -1512,11 +1512,11 @@ function aspectEs(value: unknown) {
   return aspectLabels[key] ?? key;
 }
 
-function asRecord(value: unknown): Record<string, unknown> {
+export function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
 }
 
-function asArray(value: unknown): unknown[] {
+export function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 

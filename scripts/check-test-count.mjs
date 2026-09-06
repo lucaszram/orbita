@@ -39,8 +39,13 @@ import { pathToFileURL } from "node:url";
  * La primera comparación de Vínculos (CORE-212) suma 35 casos: 23 en
  * `synastry.test.ts` (contactos, orbes, ejes, dimensiones, tono, precisión) y
  * 12 en `vinculo.test.ts` (alta por nivel, fecha y hora, conteos): 883 + 35.
+ *
+ * El panorama de Tránsitos (CORE-207) suma 28 casos: 19 en
+ * `transitPanorama.test.ts` (hora sin zona, fase, pico, cercanía, «ahora»,
+ * filas, totales, Free bloqueado, legacy) y 9 en `transitosPanorama.test.ts`
+ * (fila en pantalla, plegado, encabezado, intro, estado): 918 + 28.
  */
-export const DEFAULT_MINIMUM = 918;
+export const DEFAULT_MINIMUM = 946;
 
 /**
  * Lee un contador del resumen final del runner de Node.
