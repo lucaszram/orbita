@@ -44,8 +44,12 @@ import { pathToFileURL } from "node:url";
  * `transitPanorama.test.ts` (hora sin zona, fase, pico, cercanía, «ahora»,
  * filas, totales, Free bloqueado, legacy) y 9 en `transitosPanorama.test.ts`
  * (fila en pantalla, plegado, encabezado, intro, estado): 918 + 28.
+ *
+ * La biblioteca de personas guardadas (CORE-213) suma 4 casos en
+ * `vinculo.test.ts` (línea de persona, resumen del vínculo, nivel, id de
+ * perfil): 946 + 4.
  */
-export const DEFAULT_MINIMUM = 946;
+export const DEFAULT_MINIMUM = 950;
 
 /**
  * Lee un contador del resumen final del runner de Node.

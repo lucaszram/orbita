@@ -2,6 +2,26 @@
 
 # Current Task
 
+## Vínculos conserva las personas guardadas (CORE-213, 2026-09-06)
+
+**Objetivo:** que Vínculos liste las personas guardadas y reabra la comparación
+elegida después de recargar, según los frames de biblioteca de CORE-142
+(`2092:2975` / `1757:2475`).
+
+**Contrato (aditivo):** `relationships.listPeople` (query), `selectPerson`
+(mutation), `synastry({ profileId? })`, `addPerson({ profileId? })` para editar.
+`addPerson` sin `profileId` ya no reemplaza a la activa: crea y deja activa.
+Sin schema nuevo: usa `relationshipProfiles` con `by_user` y `by_user_active`.
+
+**Decisiones:** tocar a una persona la deja activa y abre su comparación por
+`?id=`; la comparación es derivación pura de las cartas guardadas (no se
+genera otra por navegar); el cupo Free queda para CORE-214; la edición
+reutiliza el alta con los datos cargados (el lugar se vuelve a elegir porque
+las coordenadas no viajan al cliente).
+
+**Estado:** rama `orb/core-213-personas-guardadas` desde `main` `0e7ea97`.
+4 casos nuevos; piso 918 → 922.
+
 ## Tránsitos ordena el cielo de hoy en cualquier pantalla (CORE-207, 2026-09-06)
 
 **Objetivo:** que Tránsitos deje de abrir una lectura individual y muestre el

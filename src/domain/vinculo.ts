@@ -1,6 +1,6 @@
 import { signLabels } from "@/domain/zodiac";
 import type { ZodiacSign } from "@/domain/types";
-import type { VinculoNivel, VinculoResumen } from "@/services/appCoreRefs";
+import type { VinculoNivel, VinculoPersona, VinculoResumen } from "@/services/appCoreRefs";
 
 /**
  * Vínculos — el alta de la primera persona y cómo se cuenta la comparación
@@ -116,4 +116,71 @@ export function escalaDeDimensiones(resumen: VinculoResumen): number {
 export function inicial(nombre: string): string {
   const limpio = nombre.trim();
   return limpio ? limpio.charAt(0).toLocaleUpperCase("es") : "?";
+}
+
+// --- CORE-213: la biblioteca de personas guardadas --------------------------
+
+const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+
+/** `1994-03-12` → `12 mar 1994`. Devuelve `null` si no es una fecha ISO. */
+export function fechaCorta(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!m) return null;
+  const mes = MESES[Number(m[2]) - 1];
+  if (!mes) return null;
+  return `${Number(m[3])} ${mes} ${m[1]}`;
+}
+
+/**
+ * La línea mono de una persona en la lista: sólo lo que se guardó.
+ * `"12 mar 1994 · 08:20 · Rosario"` · `"Leo · sólo signo"` · `"12 mar 1994"`.
+ */
+export function lineaDePersona(p: Pick<VinculoPersona, "level" | "zodiacSign" | "birthDate" | "birthTime" | "birthPlaceLabel">): string {
+  const partes: string[] = [];
+  if (p.level === "signo") {
+    const signo = p.zodiacSign ? signLabels[p.zodiacSign as ZodiacSign] ?? p.zodiacSign : null;
+    if (signo) partes.push(signo);
+    partes.push("sólo signo");
+    return partes.join(" · ");
+  }
+  const fecha = fechaCorta(p.birthDate);
+  if (fecha) partes.push(fecha);
+  if (p.birthTime) partes.push(p.birthTime);
+  if (p.birthPlaceLabel) partes.push(p.birthPlaceLabel.split(",")[0].trim());
+  return partes.join(" · ") || etiquetaDeNivel(p.level);
+}
+
+/** `"14 CONTACTOS · 9 ARMÓNICOS · 5 TENSOS"`; suma fusiones sólo si hay. */
+export function resumenDeVinculo(r: Pick<VinculoResumen, "total" | "armonicos" | "tensos" | "fusiones">): string {
+  const partes = [r.total === 1 ? "1 CONTACTO" : `${r.total} CONTACTOS`];
+  if (r.total > 0) {
+    partes.push(r.armonicos === 1 ? "1 ARMÓNICO" : `${r.armonicos} ARMÓNICOS`);
+    partes.push(r.tensos === 1 ? "1 TENSO" : `${r.tensos} TENSOS`);
+    if (r.fusiones > 0) partes.push(r.fusiones === 1 ? "1 FUSIÓN" : `${r.fusiones} FUSIONES`);
+  }
+  return partes.join(" · ");
+}
+
+/** Nivel como número de 1 a 3 y su rótulo `NIVEL 3 DE 3`. */
+export function numeroDeNivel(level: VinculoNivel): 1 | 2 | 3 {
+  return level === "signo" ? 1 : level === "fecha" ? 2 : 3;
+}
+
+export function rotuloDeNivel(level: VinculoNivel): string {
+  return `NIVEL ${numeroDeNivel(level)} DE 3`;
+}
+
+/** Qué incluye la comparación con este nivel, en una frase honesta. */
+export function descripcionDeNivel(level: VinculoNivel, conHoraYLugar: boolean): string {
+  if (level === "signo") return "Sólo el signo: lectura de tono, sin contactos.";
+  if (level === "fecha" && !conHoraYLugar) return "Fecha: contactos entre planetas, sin casas ni ejes.";
+  return "Fecha, hora y lugar: la comparación suma casas y ejes si tu carta también tiene hora.";
+}
+
+/** Un id de perfil con la forma de un id de Convex (32 caracteres); `null` si no lo es, así la query no rechaza el argumento. */
+export function perfilIdValido(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const limpio = value.trim();
+  return /^[a-z0-9]{32}$/.test(limpio) ? limpio : null;
 }

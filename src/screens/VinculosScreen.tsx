@@ -20,10 +20,10 @@
  * aun así llega alguien sin sesión (web sin `RequireSession`), la sección lo
  * dice y ofrece entrar.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
-import { useAction, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { Column, Columns } from "@/components/orbita/Layout";
 import { OrbitaScreen, Section } from "@/components/orbita/kit";
 import { GuestState } from "@/components/orbita/GuestState";
@@ -47,10 +47,15 @@ import {
   NIVELES,
   SIGNOS,
   TIPOS_DE_VINCULO,
+  descripcionDeNivel,
   etiquetaDeNivel,
   fechaIsoDesdeTexto,
   horaNormalizada,
   inicial,
+  lineaDePersona,
+  numeroDeNivel,
+  resumenDeVinculo,
+  rotuloDeNivel,
   validarAlta
 } from "@/domain/vinculo";
 import type { ZodiacSign } from "@/domain/types";
@@ -58,7 +63,7 @@ import { signLabels } from "@/domain/zodiac";
 import { useIsDesktop } from "@/hooks/useLayoutMode";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { useRequireProfile } from "@/hooks/useRequireProfile";
-import { appCoreApi, type VinculoComparacion, type VinculoNivel } from "@/services/appCoreRefs";
+import { appCoreApi, type VinculoBiblioteca, type VinculoComparacion, type VinculoNivel, type VinculoPersona } from "@/services/appCoreRefs";
 import { type PlaceHit, searchPlaces } from "@/services/geocoding";
 import { orbita } from "@/theme/orbita";
 
@@ -90,15 +95,40 @@ export function VinculosScreen() {
   );
 }
 
-/** Con sesión confirmada: consulta la comparación y decide lista, alta o persona. */
+/**
+ * Con sesión confirmada: la biblioteca (`listPeople`) decide qué se ve. Sin
+ * personas → lista vacía o alta; con personas → la biblioteca, con la activa
+ * y su comparación (`synastry`, reactiva). Editar reutiliza el alta con los
+ * datos cargados (CORE-213).
+ */
 function VinculosVivo() {
+  const biblioteca = useQuery(appCoreApi.relationships.listPeople, {});
   const comparacion = useQuery(appCoreApi.relationships.synastry, {});
-  const [alta, setAlta] = useState(false);
-  if (comparacion === undefined) return <MinimalLoading />;
-  if (comparacion.status === "no_person") {
-    return alta ? <AltaDePersona onCancelar={() => setAlta(false)} /> : <ListaVacia onAgregar={() => setAlta(true)} />;
+  const [modo, setModo] = useState<{ kind: "lista" } | { kind: "alta"; editar?: VinculoPersona }>({ kind: "lista" });
+  if (biblioteca === undefined || comparacion === undefined) return <MinimalLoading />;
+  if (modo.kind === "alta") {
+    return (
+      <AltaDePersona
+        editar={modo.editar}
+        onCancelar={() => setModo({ kind: "lista" })}
+        // Al guardar, la pantalla vuelve a la biblioteca ANTES de abrir la
+        // comparación: al volver del detalle no puede quedar el alta con los
+        // datos ya guardados y «GUARDAR» habilitado (duplicaría a la persona).
+        onGuardada={() => setModo({ kind: "lista" })}
+      />
+    );
   }
-  return <PersonaGuardada comparacion={comparacion} />;
+  if (biblioteca.people.length === 0) {
+    return <ListaVacia onAgregar={() => setModo({ kind: "alta" })} />;
+  }
+  return (
+    <Biblioteca
+      biblioteca={biblioteca}
+      comparacion={comparacion}
+      onAgregar={() => setModo({ kind: "alta" })}
+      onEditar={(persona) => setModo({ kind: "alta", editar: persona })}
+    />
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -112,12 +142,12 @@ function ListaVacia({ onAgregar }: { onAgregar: () => void }) {
       <Column weight={1}>
         <View style={styles.encabezado}>
           <VEtiqueta accessibilityRole="header">VÍNCULOS · TU LISTA</VEtiqueta>
-          <VEtiqueta tono="gris">{desktop ? "0 DE 1" : "0 de 1 persona"}</VEtiqueta>
+          <VEtiqueta tono="gris">{desktop ? "0 PERSONAS" : "0 personas"}</VEtiqueta>
         </View>
         <VTitular>{desktop ? "Todavía no guardaste a nadie." : "Vínculos compara tu carta con la de otra persona."}</VTitular>
         <VTexto>
           {desktop
-            ? "Vínculos compara tu carta con la de otra persona. Con Órbita Free podés guardar una."
+            ? "Vínculos compara tu carta con la de otra persona. Guardá a la primera y su comparación queda en tu lista."
             : "Cada dato que cargues de esa persona abre una capa más de lectura."}
         </VTexto>
         {desktop ? (
@@ -148,7 +178,7 @@ function ListaVacia({ onAgregar }: { onAgregar: () => void }) {
             <View style={styles.cta}>
               <VBoton label="AGREGAR UNA PERSONA" variante="cobre" onPress={onAgregar} />
             </View>
-            <VNota>Órbita Free incluye una persona.</VNota>
+            <VNota>Cada persona guarda su propia comparación.</VNota>
           </>
         ) : null}
       </Column>
@@ -202,9 +232,25 @@ function TresCapas() {
 
 const FORM_INICIAL: AltaForm = { nombre: "", tipo: null, nivel: "carta", signo: null, fecha: "", hora: "", lugar: null };
 
-function AltaDePersona({ onCancelar }: { onCancelar: () => void }) {
+/** Los datos guardados de una persona, como formulario, para editarla sin retipear. */
+function formDesde(p: VinculoPersona): AltaForm {
+  return {
+    nombre: p.name,
+    tipo: p.relationshipType,
+    nivel: p.level,
+    signo: (p.zodiacSign as ZodiacSign | null) ?? null,
+    fecha: p.birthDate ? p.birthDate.split("-").reverse().join("/") : "",
+    hora: p.birthTime ?? "",
+    // El lugar guardado no trae coordenadas al cliente: se vuelve a elegir de
+    // la lista si el nivel las necesita. El rótulo guardado viaja aparte como
+    // pista del buscador (`lugarGuardado`).
+    lugar: null
+  };
+}
+
+function AltaDePersona({ editar, onCancelar, onGuardada }: { editar?: VinculoPersona; onCancelar: () => void; onGuardada: () => void }) {
   const [paso, setPaso] = useState<1 | 2 | 3>(1);
-  const [form, setForm] = useState<AltaForm>(FORM_INICIAL);
+  const [form, setForm] = useState<AltaForm>(editar ? formDesde(editar) : FORM_INICIAL);
   const [errores, setErrores] = useState<AltaErrores>({});
   const [guardando, setGuardando] = useState(false);
   const [fallo, setFallo] = useState<string | null>(null);
@@ -226,6 +272,11 @@ function AltaDePersona({ onCancelar }: { onCancelar: () => void }) {
 
   const enviar = async () => {
     const e = validarAlta(form);
+    // Al editar, un lugar que ya estaba guardado no se pierde en silencio: si el
+    // nivel lo usa y no se volvió a elegir, se pide antes de guardar.
+    if (editar?.birthPlaceLabel && form.nivel !== "signo" && !form.lugar && !e.lugar) {
+      e.lugar = `Volvé a elegir ${editar.birthPlaceLabel} de la lista para conservar el lugar.`;
+    }
     setErrores(e);
     if (Object.keys(e).length > 0) return;
     setGuardando(true);
@@ -233,7 +284,8 @@ function AltaDePersona({ onCancelar }: { onCancelar: () => void }) {
     try {
       const fecha = form.nivel === "signo" ? undefined : fechaIsoDesdeTexto(form.fecha) ?? undefined;
       const hora = form.hora.trim() ? horaNormalizada(form.hora) ?? undefined : undefined;
-      await guardar({
+      const guardada = await guardar({
+        profileId: editar?.id,
         name: nombre,
         level: form.nivel,
         relationshipType: form.tipo ?? undefined,
@@ -244,7 +296,8 @@ function AltaDePersona({ onCancelar }: { onCancelar: () => void }) {
         latitude: form.nivel === "signo" ? undefined : form.lugar?.latitude,
         longitude: form.nivel === "signo" ? undefined : form.lugar?.longitude
       });
-      router.push("/reading/vinculo-result");
+      onGuardada();
+      router.push({ pathname: "/reading/vinculo-result", params: { id: guardada.relationshipProfileId } });
     } catch (err) {
       setFallo(err instanceof Error && err.message ? "No pudimos guardar a esta persona. Probá de nuevo en un momento." : "No pudimos guardar a esta persona.");
     } finally {
@@ -254,7 +307,7 @@ function AltaDePersona({ onCancelar }: { onCancelar: () => void }) {
 
   const titulos: Record<1 | 2 | 3, { titular: string; texto: string; nota: string; tarjeta: string; ayuda: string }> = {
     1: {
-      titular: "¿Cómo la llamás?",
+      titular: editar ? `Los datos de ${editar.name}` : "¿Cómo la llamás?",
       texto: "Empezá por el nombre y qué tipo de vínculo es. Con el nombre y el signo ya hay lectura.",
       nota: "Paso 1 de 3. Nada se guarda hasta el final del alta.",
       tarjeta: "Nombre y tipo de vínculo",
@@ -291,7 +344,7 @@ function AltaDePersona({ onCancelar }: { onCancelar: () => void }) {
     <Columns>
       <Column weight={1}>
         <View style={styles.encabezado}>
-          <VEtiqueta accessibilityRole="header">VÍNCULOS · AGREGAR</VEtiqueta>
+          <VEtiqueta accessibilityRole="header">{editar ? "VÍNCULOS · EDITAR" : "VÍNCULOS · AGREGAR"}</VEtiqueta>
           <VEtiqueta tono="gris">PASO {paso} DE 3</VEtiqueta>
         </View>
         <VTitular>{t.titular}</VTitular>
@@ -351,7 +404,7 @@ function AltaDePersona({ onCancelar }: { onCancelar: () => void }) {
           ) : null}
 
           {paso === 3 ? (
-            <DatosPorNivel form={form} errores={errores} patch={patch} />
+            <DatosPorNivel form={form} errores={errores} patch={patch} lugarGuardado={editar?.birthPlaceLabel ?? null} />
           ) : null}
 
           {fallo ? (
@@ -379,11 +432,14 @@ function AltaDePersona({ onCancelar }: { onCancelar: () => void }) {
 function DatosPorNivel({
   form,
   errores,
-  patch
+  patch,
+  lugarGuardado
 }: {
   form: AltaForm;
   errores: AltaErrores;
   patch: (p: Partial<AltaForm>) => void;
+  /** Al editar: el lugar que ya estaba guardado, como pista para volver a elegirlo. */
+  lugarGuardado?: string | null;
 }) {
   if (form.nivel === "signo") {
     return (
@@ -436,6 +492,7 @@ function DatosPorNivel({
       <BuscadorDeLugar
         rotulo={pideHora ? "LUGAR" : "LUGAR · OPCIONAL"}
         valor={form.lugar}
+        pista={lugarGuardado ?? undefined}
         onElegir={(lugar) => patch({ lugar })}
         error={errores.lugar}
       />
@@ -447,11 +504,14 @@ function DatosPorNivel({
 function BuscadorDeLugar({
   rotulo,
   valor,
+  pista,
   onElegir,
   error
 }: {
   rotulo: string;
   valor: AltaForm["lugar"];
+  /** Lugar guardado antes (sin coordenadas en el cliente): se muestra y hay que volver a elegirlo. */
+  pista?: string;
   onElegir: (lugar: AltaForm["lugar"]) => void;
   error?: string;
 }) {
@@ -504,11 +564,12 @@ function BuscadorDeLugar({
           setTexto(v);
           if (valor) onElegir(null);
         }}
-        placeholder="Ciudad, país"
+        placeholder={pista ?? "Ciudad, país"}
         autoCapitalize="words"
         error={error}
         style={styles.campo}
       />
+      {pista && !valor ? <VNota>Guardado: {pista}. Volvé a elegirlo de la lista para confirmar las coordenadas.</VNota> : null}
       {buscando ? <VNota>Buscando…</VNota> : null}
       {resultados.length > 0 ? (
         <View style={styles.resultados} accessibilityRole="list">
@@ -536,39 +597,140 @@ function BuscadorDeLugar({
 // Una persona guardada
 // ---------------------------------------------------------------------------
 
-function PersonaGuardada({ comparacion }: { comparacion: Exclude<VinculoComparacion, { status: "no_person" }> }) {
+/**
+ * La biblioteca (frames `2092:2975` / `1757:2475`): a la izquierda «Tu lista»
+ * con las acciones; a la derecha cada persona guardada, la tarjeta «Tu vínculo
+ * con X» de la activa y su nivel de datos. Tocar a una persona la deja activa
+ * y abre su comparación; no se calcula nada nuevo por navegar.
+ */
+function Biblioteca({
+  biblioteca,
+  comparacion,
+  onAgregar,
+  onEditar
+}: {
+  biblioteca: VinculoBiblioteca;
+  comparacion: VinculoComparacion;
+  onAgregar: () => void;
+  onEditar: (persona: VinculoPersona) => void;
+}) {
   const desktop = useIsDesktop();
-  const p = comparacion.person;
-  const signo = p.zodiacSign && p.zodiacSign in signLabels ? signLabels[p.zodiacSign as ZodiacSign] : null;
-  const detalle = useMemo(() => {
-    const partes = [etiquetaDeNivel(p.level)];
-    if (signo) partes.push(signo);
-    if (p.birthDate) partes.push(p.birthDate.split("-").reverse().join("/"));
-    if (p.birthPlaceLabel) partes.push(p.birthPlaceLabel);
-    return partes.join(" · ");
-  }, [p.birthDate, p.birthPlaceLabel, p.level, signo]);
+  const elegir = useMutation(appCoreApi.relationships.selectPerson);
+  const [eligiendo, setEligiendo] = useState<string | null>(null);
+  const [falloEleccion, setFalloEleccion] = useState<string | null>(null);
+  const activa = biblioteca.people.find((p) => p.id === biblioteca.activeId) ?? biblioteca.people[0];
+  const n = biblioteca.people.length;
 
-  const lista = (
+  const abrir = async (persona: VinculoPersona) => {
+    setFalloEleccion(null);
+    if (persona.id !== biblioteca.activeId) {
+      setEligiendo(persona.id);
+      try {
+        await elegir({ profileId: persona.id });
+      } catch {
+        setEligiendo(null);
+        setFalloEleccion("No pudimos abrir a esa persona. Probá de nuevo en un momento.");
+        return;
+      }
+      setEligiendo(null);
+    }
+    router.push({ pathname: "/reading/vinculo-result", params: { id: persona.id } });
+  };
+
+  const listaOk = comparacion.status === "ready";
+  const resumen = listaOk ? comparacion.summary : null;
+  const conHoraYLugar = Boolean(activa.birthTime && activa.birthPlaceLabel);
+
+  const personas = (
     <VTarjeta>
-      <VEtiqueta tono="gris" accessibilityRole="header">
-        TU LISTA
-      </VEtiqueta>
+      {biblioteca.people.map((p, i) => (
+        <Pressable
+          key={p.id}
+          onPress={() => abrir(p)}
+          disabled={eligiendo !== null}
+          accessibilityRole="link"
+          accessibilityLabel={`${p.name}. ${lineaDePersona(p)}.${p.isActive ? " Persona elegida." : ""} Abrir su comparación.`}
+          style={({ pressed }) => [styles.personaFila, i > 0 && styles.personaFilaSiguiente, pressed && { opacity: 0.6 }]}
+        >
+          <View style={[styles.personaAvatar, p.isActive && styles.personaAvatarActiva]}>
+            <Text style={styles.personaAvatarTexto}>{inicial(p.name)}</Text>
+          </View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.personaNombre}>{p.name}</Text>
+            <Text style={styles.personaDetalle}>{lineaDePersona(p)}</Text>
+          </View>
+          <Text style={styles.personaFlecha}>{eligiendo === p.id ? "…" : "›"}</Text>
+        </Pressable>
+      ))}
+      {falloEleccion ? (
+        <Text style={styles.fallo} accessibilityRole="alert">
+          {falloEleccion}
+        </Text>
+      ) : null}
+    </VTarjeta>
+  );
+
+  const vinculo = (
+    <VTarjeta style={styles.tarjetaSiguiente}>
+      <Text style={styles.tarjetaTitulo} accessibilityRole="header">
+        Tu vínculo con {activa.name}
+      </Text>
+      {resumen ? (
+        <>
+          <VEtiqueta tono="gris" style={styles.resumenLinea}>
+            {resumenDeVinculo(resumen)}
+          </VEtiqueta>
+          {resumen.total > 0 ? (
+            <View style={styles.resumenPista} accessibilityLabel={resumenDeVinculo(resumen)}>
+              <View style={[styles.resumenSegmento, { backgroundColor: orbita.colors.harmony, flexGrow: resumen.armonicos }]} />
+              <View style={[styles.resumenSegmento, { backgroundColor: orbita.colors.tension, flexGrow: resumen.tensos }]} />
+              <View style={[styles.resumenSegmento, { backgroundColor: orbita.colors.copperSoft, flexGrow: resumen.fusiones }]} />
+            </View>
+          ) : null}
+        </>
+      ) : (
+        <VNota>
+          {comparacion.status === "needs_natal_chart"
+            ? "Para comparar hace falta tu carta natal calculada. Cuando esté, la comparación aparece acá."
+            : comparacion.status === "person_chart_unavailable"
+              ? "Guardamos a la persona, pero el proveedor no devolvió su carta. Editá sus datos para volver a intentar."
+              : "La comparación se calcula con la persona elegida."}
+        </VNota>
+      )}
       <Pressable
-        onPress={() => router.push("/reading/vinculo-result")}
+        onPress={() => abrir(activa)}
         accessibilityRole="link"
-        accessibilityLabel={`${p.name}. ${detalle}. Abrir la comparación.`}
-        style={({ pressed }) => [styles.personaFila, pressed && { opacity: 0.6 }]}
+        accessibilityLabel={`Ver comparación con ${activa.name}`}
+        style={({ pressed }) => [styles.verComparacion, pressed && { opacity: 0.6 }]}
       >
-        <View style={styles.personaAvatar}>
-          <Text style={styles.personaAvatarTexto}>{inicial(p.name)}</Text>
-        </View>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={styles.personaNombre}>{p.name}</Text>
-          <Text style={styles.personaDetalle}>{detalle}</Text>
-        </View>
-        <Text style={styles.personaFlecha}>›</Text>
+        <Text style={styles.verComparacionTexto}>Ver comparación  ›</Text>
       </Pressable>
     </VTarjeta>
+  );
+
+  const nivel = (
+    <VTarjeta style={styles.tarjetaSiguiente}>
+      <VEtiqueta tono="gris" accessibilityRole="header">
+        NIVEL DE DATOS DE {activa.name.toLocaleUpperCase("es")}
+      </VEtiqueta>
+      <View style={[styles.encabezado, styles.nivelFila]}>
+        <Text style={styles.nivelTitulo}>{etiquetaDeNivel(activa.level)}</Text>
+        <VEtiqueta tono="gris">{rotuloDeNivel(activa.level)}</VEtiqueta>
+      </View>
+      <View style={styles.nivelTramos} accessibilityLabel={rotuloDeNivel(activa.level)}>
+        {[1, 2, 3].map((k) => (
+          <View key={k} style={[styles.nivelTramo, k <= numeroDeNivel(activa.level) && styles.nivelTramoActivo]} />
+        ))}
+      </View>
+      <VNota>{descripcionDeNivel(activa.level, conHoraYLugar)}</VNota>
+    </VTarjeta>
+  );
+
+  const acciones = (
+    <View style={styles.acciones}>
+      <VBoton label="AGREGAR PERSONA" variante={desktop ? "relleno" : "cobre"} onPress={onAgregar} />
+      <VBoton label={`EDITAR DATOS DE ${activa.name.toLocaleUpperCase("es")}`} variante="contorno" onPress={() => onEditar(activa)} />
+    </View>
   );
 
   return (
@@ -576,26 +738,35 @@ function PersonaGuardada({ comparacion }: { comparacion: Exclude<VinculoComparac
       <Column weight={1}>
         <View style={styles.encabezado}>
           <VEtiqueta accessibilityRole="header">VÍNCULOS · TU LISTA</VEtiqueta>
-          <VEtiqueta tono="gris">{desktop ? "1 DE 1" : "1 de 1 persona"}</VEtiqueta>
+          <VEtiqueta tono="gris">{n === 1 ? (desktop ? "1 PERSONA" : "1 persona guardada") : desktop ? `${n} PERSONAS` : `${n} personas guardadas`}</VEtiqueta>
         </View>
-        <VTitular>Tu carta y la de {p.name}.</VTitular>
-        <VTexto>
-          {comparacion.status === "ready"
-            ? comparacion.contacts.length > 0 || comparacion.hiddenContacts > 0
-              ? "La comparación ya está calculada sobre las dos cartas. Abrila para ver dónde se tocan."
-              : "La comparación ya está lista. Abrila para leer el tono entre los dos signos."
-            : comparacion.status === "needs_natal_chart"
-              ? "Para comparar hace falta tu carta natal calculada. Cuando esté, la comparación aparece acá."
-              : "Guardamos a la persona, pero el proveedor no devolvió su carta. Se puede volver a intentar más tarde."}
-        </VTexto>
-        <View style={styles.cta}>
-          <VBoton label="VER COMPARACIÓN" onPress={() => router.push("/reading/vinculo-result")} />
-        </View>
-        <VNota>Órbita Free compara con la persona que tenés guardada.</VNota>
+        {desktop ? <VTitular>Tu lista</VTitular> : null}
+        {desktop ? (
+          <VTexto>
+            {n === 1
+              ? listaOk
+                ? `${activa.name} ya está guardada, con su nivel de datos y su comparación lista.`
+                : `${activa.name} ya está guardada. Su comparación todavía no se pudo calcular: abajo dice por qué.`
+              : `${n} personas guardadas. Tocá a una para abrir su comparación; la elegida es ${activa.name}.`}
+          </VTexto>
+        ) : null}
+        {desktop ? (
+          <>
+            {acciones}
+            <VNota>Tocá a una persona para abrir su comparación o editá los datos de la elegida.</VNota>
+          </>
+        ) : null}
       </Column>
       <Column weight={1} style={!desktop ? styles.tarjetaMovil : undefined}>
-        {lista}
-        <TresCapas />
+        {personas}
+        {vinculo}
+        {nivel}
+        {!desktop ? (
+          <>
+            {acciones}
+            <VNota>Tocá a una persona para abrir su comparación.</VNota>
+          </>
+        ) : null}
       </Column>
     </Columns>
   );
@@ -670,7 +841,21 @@ const styles = StyleSheet.create({
   resultado: { borderBottomColor: orbita.colors.line, borderBottomWidth: StyleSheet.hairlineWidth, minHeight: 44, justifyContent: "center", paddingHorizontal: orbita.spacing.lg },
   resultadoTexto: { color: orbita.colors.bone, fontFamily: orbita.fonts.body, fontSize: 15 },
 
-  personaFila: { alignItems: "center", flexDirection: "row", gap: orbita.spacing.md, marginTop: orbita.spacing.lg, minHeight: 44 },
+  personaFila: { alignItems: "center", flexDirection: "row", gap: orbita.spacing.md, minHeight: 44, paddingVertical: orbita.spacing.sm },
+  personaFilaSiguiente: { borderTopColor: orbita.colors.line, borderTopWidth: 1, marginTop: orbita.spacing.sm, paddingTop: orbita.spacing.md },
+  personaAvatarActiva: { backgroundColor: "rgba(196,106,58,0.45)" },
+  tarjetaSiguiente: { marginTop: orbita.spacing.lg },
+  resumenLinea: { marginTop: orbita.spacing.md },
+  resumenPista: { backgroundColor: "rgba(244,238,228,0.08)", borderRadius: 3, flexDirection: "row", height: 6, marginTop: orbita.spacing.md, overflow: "hidden" },
+  resumenSegmento: { height: 6 },
+  verComparacion: { alignSelf: "flex-start", justifyContent: "center", marginTop: orbita.spacing.md, minHeight: 44 },
+  verComparacionTexto: { color: orbita.colors.copper, fontFamily: orbita.fonts.body, fontSize: 15 },
+  nivelFila: { marginTop: orbita.spacing.md },
+  nivelTitulo: { color: orbita.colors.bone, fontFamily: orbita.fonts.body, fontSize: 16 },
+  nivelTramos: { flexDirection: "row", gap: orbita.spacing.sm, marginTop: orbita.spacing.md },
+  nivelTramo: { backgroundColor: "rgba(244,238,228,0.12)", borderRadius: 2, flex: 1, height: 3 },
+  nivelTramoActivo: { backgroundColor: orbita.colors.copper },
+  acciones: { flexDirection: "row", flexWrap: "wrap", gap: orbita.spacing.md, marginTop: orbita.spacing.xl },
   personaAvatar: {
     alignItems: "center",
     backgroundColor: "rgba(196,106,58,0.25)",

@@ -61,8 +61,20 @@ export type VinculoPersona = {
   level: VinculoNivel;
   zodiacSign: string | null;
   birthDate: string | null;
+  /** `HH:MM` si se guardó junto con el lugar; `null` si no. */
+  birthTime?: string | null;
   birthPlaceLabel: string | null;
   chartStatus: string;
+  /** CORE-213: la persona elegida en la biblioteca. */
+  isActive?: boolean;
+  /** CORE-213: cuándo se guardó (ms). */
+  savedAt?: number;
+};
+
+/** Sobre de `relationships.listPeople` (CORE-213): la biblioteca, de la más reciente a la más antigua. */
+export type VinculoBiblioteca = {
+  people: Array<VinculoPersona & { isActive: boolean; savedAt: number }>;
+  activeId: string | null;
 };
 
 /** Un contacto REAL entre las dos cartas: aspecto mayor dentro de orbe, con su orbe medido. */
@@ -136,6 +148,8 @@ export type VinculoAddPersonInput = {
   birthPlaceLabel?: string;
   latitude?: number;
   longitude?: number;
+  /** Editar una persona ya guardada. Sin él, se crea una nueva (CORE-213). */
+  profileId?: string;
 };
 
 export type VinculoAddPersonResult = {
@@ -156,8 +170,15 @@ export const appCoreApi = {
     synastry: anyApi.relationships.synastry as FunctionReference<
       "query",
       "public",
-      Record<string, never>,
+      { profileId?: string },
       VinculoComparacion
+    >,
+    listPeople: anyApi.relationships.listPeople as FunctionReference<"query", "public", Record<string, never>, VinculoBiblioteca>,
+    selectPerson: anyApi.relationships.selectPerson as FunctionReference<
+      "mutation",
+      "public",
+      { profileId: string },
+      { profileId: string }
     >
   }
 } as const;

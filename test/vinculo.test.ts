@@ -13,12 +13,19 @@ import {
   NIVELES,
   SIGNOS,
   TIPOS_DE_VINCULO,
+  descripcionDeNivel,
   escalaDeDimensiones,
   etiquetaDeNivel,
+  fechaCorta,
   fechaIsoDesdeTexto,
   fraccionDeBarra,
   horaNormalizada,
   inicial,
+  lineaDePersona,
+  numeroDeNivel,
+  perfilIdValido,
+  resumenDeVinculo,
+  rotuloDeNivel,
   titularDeContactos,
   validarAlta
 } from "../src/domain/vinculo";
@@ -139,5 +146,44 @@ describe("cómo se cuenta la comparación", () => {
     assert.equal(inicial("mara"), "M");
     assert.equal(inicial("  Ñandú"), "Ñ");
     assert.equal(inicial(""), "?");
+  });
+});
+
+describe("la biblioteca de personas guardadas (CORE-213)", () => {
+  it("la línea de una persona muestra sólo lo que se guardó", () => {
+    assert.equal(fechaCorta("1994-03-12"), "12 mar 1994");
+    assert.equal(fechaCorta("nada"), null);
+    assert.equal(
+      lineaDePersona({ level: "carta", zodiacSign: null, birthDate: "1994-03-12", birthTime: "08:20", birthPlaceLabel: "Rosario, Santa Fe, AR" }),
+      "12 mar 1994 · 08:20 · Rosario"
+    );
+    assert.equal(lineaDePersona({ level: "fecha", zodiacSign: null, birthDate: "1994-03-12", birthTime: null, birthPlaceLabel: null }), "12 mar 1994");
+    assert.equal(lineaDePersona({ level: "signo", zodiacSign: "leo", birthDate: null, birthTime: null, birthPlaceLabel: null }), "Leo · sólo signo");
+    assert.equal(lineaDePersona({ level: "fecha", zodiacSign: null, birthDate: null, birthTime: null, birthPlaceLabel: null }), "Fecha con fecha");
+  });
+
+  it("el resumen del vínculo cuenta contactos y tonos, y calla las fusiones si no hay", () => {
+    assert.equal(resumenDeVinculo({ total: 14, armonicos: 9, tensos: 5, fusiones: 0 }), "14 CONTACTOS · 9 ARMÓNICOS · 5 TENSOS");
+    assert.equal(resumenDeVinculo({ total: 3, armonicos: 1, tensos: 1, fusiones: 1 }), "3 CONTACTOS · 1 ARMÓNICO · 1 TENSO · 1 FUSIÓN");
+    assert.equal(resumenDeVinculo({ total: 0, armonicos: 0, tensos: 0, fusiones: 0 }), "0 CONTACTOS");
+  });
+
+  it("el nivel se numera de 1 a 3 y se describe sin prometer casas que no hay", () => {
+    assert.equal(numeroDeNivel("signo"), 1);
+    assert.equal(numeroDeNivel("carta"), 3);
+    assert.equal(rotuloDeNivel("fecha"), "NIVEL 2 DE 3");
+    assert.match(descripcionDeNivel("signo", false), /sin contactos/);
+    assert.match(descripcionDeNivel("fecha", false), /sin casas ni ejes/);
+    assert.match(descripcionDeNivel("fecha", true), /suma casas y ejes si tu carta también tiene hora/);
+    assert.match(descripcionDeNivel("carta", true), /suma casas y ejes si tu carta también tiene hora/);
+  });
+
+  it("un id de perfil se acepta sólo si tiene la forma de un id de Convex", () => {
+    assert.equal(perfilIdValido("kn702nxfqb9cjmfey6qft7nwf58apw6w"), "kn702nxfqb9cjmfey6qft7nwf58apw6w");
+    assert.equal(perfilIdValido(" kn702nxfqb9cjmfey6qft7nwf58apw6w "), "kn702nxfqb9cjmfey6qft7nwf58apw6w");
+    assert.equal(perfilIdValido("kn702nxfqb9c"), null, "un id corto no es un id de Convex");
+    assert.equal(perfilIdValido("../otra"), null);
+    assert.equal(perfilIdValido(""), null);
+    assert.equal(perfilIdValido(undefined), null);
   });
 });
