@@ -1,5 +1,12 @@
 # Contrato — CHANGELOG
 
+## 2026-09-06 — Tu momento abre el tema de tu año: `momento.getTemaDelAno` (CORE-210)
+
+- **Qué cambia (aditivo):** nueva action pública `momento.getTemaDelAno({ localDate })`. Devuelve **siempre** un sobre con `status`: `locked` (Free) o `ready` con `tema`, que declara su propio `status`: `ready` (profección calculada), `needs_birth_time` (sin hora exacta no hay Ascendente confiable), `needs_natal_chart`, `needs_birth_data` o `unavailable` (Ascendente ilegible o fechas imposibles). Es un cálculo puro sobre la carta guardada: no llama al proveedor y no se cachea. `getEstacionVital` no cambia.
+- **Método:** profección anual Whole Sign (`annualProfectionForDate` de `layersMath.ts`, portada de `release/1.0.0`): una casa por año de vida desde el Ascendente natal, doce años por vuelta; el signo en el que empieza la casa del año define su regente tradicional. Reproduce `buildAnnualProfectionLayerData` de release (`convex/lib/temaDelAno.ts`), con los mismos rótulos de casas, signos y regentes y la misma política del 29 de febrero (se toma el 28 en años no bisiestos, y se declara).
+- **Qué publica `tema` en `ready`:** `age`, `house`, `houseTheme`, `sign` / `signKey`, `ruler` / `rulerKey`, `periodStart` / `periodEnd` (medianoche de los cumpleaños en la zona natal, ms) con `periodStartDate` / `periodEndDate`, `monthIndex` (1–12), `progress`, `summary` y `limitations`. El sobre `ready` suma `timezone` para escribir las fechas en la zona natal.
+- **Front:** la tarjeta 02 del hub de Tu momento muestra casa, mes y regente reales; `/reading/tema-del-ano` según los frames `1741:2289` / `2024:2925` con la copy de Build 30 (`yearMeaning`, `yearReading`, portadas de `release/1.0.0` en `src/domain/momento.ts`). La capa 03 sigue declarada pendiente (CORE-211).
+
 ## 2026-09-06 — Vínculos explica el límite Free (CORE-214)
 
 - **Qué cambia (aditivo):** `relationships.listPeople` suma `access: { isPro, limit, remaining, atLimit }`, derivado del entitlement real (`isUserPro`) y del conteo de personas guardadas —nunca de un contador guardado—: Free `limit: 1`, Plus `limit: null`. `relationships.addPerson` **sin** `profileId` falla cerrado con `RELATIONSHIP_LIMIT_REACHED` cuando la cuenta ya usó su cupo (se comprueba antes de llamar al proveedor); editar o reemplazar (`profileId`) no cuenta contra el cupo. `FREE_PERSON_LIMIT` y `personAccess` viven en `convex/lib/synastry.ts` (puros, probados).

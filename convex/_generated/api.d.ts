@@ -45,6 +45,7 @@ import type * as lib_subscriptionAccess from "../lib/subscriptionAccess.js";
 import type * as lib_synastry from "../lib/synastry.js";
 import type * as lib_tarot from "../lib/tarot.js";
 import type * as lib_tarotAccess from "../lib/tarotAccess.js";
+import type * as lib_temaDelAno from "../lib/temaDelAno.js";
 import type * as lib_transitPanorama from "../lib/transitPanorama.js";
 import type * as lib_tropicalEphemeris from "../lib/tropicalEphemeris.js";
 import type * as lib_userProfile from "../lib/userProfile.js";
@@ -118,6 +119,7 @@ declare const fullApi: ApiFromModules<{
   "lib/synastry": typeof lib_synastry;
   "lib/tarot": typeof lib_tarot;
   "lib/tarotAccess": typeof lib_tarotAccess;
+  "lib/temaDelAno": typeof lib_temaDelAno;
   "lib/transitPanorama": typeof lib_transitPanorama;
   "lib/tropicalEphemeris": typeof lib_tropicalEphemeris;
   "lib/userProfile": typeof lib_userProfile;
