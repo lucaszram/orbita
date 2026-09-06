@@ -92,7 +92,7 @@ describe("hoyRanking — el orden real, sin puntajes inventados", () => {
     const [fila] = hoyRanking(guia());
     assert.deepEqual(
       Object.keys(fila).sort(),
-      ["aspecto", "casa", "clave", "lectura", "planeta", "punto", "rango", "titulo"]
+      ["aspecto", "casa", "clave", "lectura", "planeta", "punto", "rango", "titulo", "transitId"]
     );
   });
 

@@ -1,14 +1,16 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Image, StyleSheet, Text, View } from "react-native";
 import { useAction } from "convex/react";
+import { useLocalSearchParams } from "expo-router";
 import Svg, { Line } from "react-native-svg";
 import { DetailScreen } from "@/components/home/DetailScreen";
 import { Body, Divider, Eyebrow, H2, H3, Note } from "@/components/orbita/kit";
 import { GuestState } from "@/components/orbita/GuestState";
-import { ErrorState, MinimalLoading } from "@/components/orbita/states";
+import { EmptyState, ErrorState, MinimalLoading } from "@/components/orbita/states";
 import { sessionPhase } from "@/domain/screenPhase";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { useCanonicalLocalDate } from "@/hooks/useDailyContext";
+import { pedidoDeRutaTransito } from "@/domain/hoyPrincipal";
 import { proposedApi, type TransitDetailPayload } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
 
@@ -16,10 +18,20 @@ const PLANET_IMG = require("../../assets/orbita/optimized/core/orbita_home_hero_
 const VENUS_IMG = require("../../assets/orbita/optimized/core/orbita_moon_phase_waxing.jpg");
 
 
-/** Tránsito / En el cielo (Figma V4.7 · 334:2): escena espacial + frecuencia + en la Tierra. */
+/**
+ * Tránsito / En el cielo (Figma V4.7 · 334:2): escena espacial + frecuencia + en
+ * la Tierra. Con `?id=` abre exactamente ese contacto del ranking mediante
+ * `transits.getDetail`; sin `id`, el destacado del día (`transits.getToday`).
+ * La misma pantalla y el mismo contrato en web y en nativo: la ruta con `id`
+ * funciona como deep link porque la fecha la resuelve el servidor.
+ */
 export default function TransitoDetalleScreen() {
   const live = useLiveApp();
   const phase = sessionPhase(live);
+  const params = useLocalSearchParams<{ id?: string | string[] }>();
+  // Sin `id`: el destacado del día. Con `id` válido: ese contacto. Con `id`
+  // presente pero inválido: se dice, en vez de abrir otro tránsito.
+  const pedido = pedidoDeRutaTransito(params.id);
   // Sin mocks: invitado confirmado → estado honesto; sesión resolviendo → carga mínima.
   if (phase === "cargando") {
     return (
@@ -46,7 +58,81 @@ export default function TransitoDetalleScreen() {
       </DetailScreen>
     );
   }
-  return <TransitoDetalleLive />;
+  if (pedido.kind === "invalido") {
+    return (
+      <DetailScreen eyebrow="Tránsito · Hoy">
+        <EmptyState
+          eyebrow="TRÁNSITO"
+          title={"Este enlace no señala\nun tránsito."}
+          body="La identidad del enlace no es válida. Volvé a Hoy y abrí el tránsito desde el ranking, o mirá todos los tránsitos."
+        />
+      </DetailScreen>
+    );
+  }
+  return pedido.kind === "contacto" ? <TransitoContactoLive transitId={pedido.transitId} /> : <TransitoDetalleLive />;
+}
+
+/**
+ * Un contacto por identidad. Estados: carga, error con reintento, `not_found`
+ * honesto (la lectura de hoy no tiene ese contacto: documento anterior sin
+ * identidad o un id que no es de esta persona), y el detalle.
+ */
+function TransitoContactoLive({ transitId }: { transitId: string }) {
+  const getDetail = useAction(proposedApi.transitDetail);
+  const [state, setState] = useState<
+    { kind: "loading" } | { kind: "error" } | { kind: "not_found" } | { kind: "ok"; data: TransitDetailPayload }
+  >({ kind: "loading" });
+  const [attempt, setAttempt] = useState(0);
+  const localDate = useCanonicalLocalDate();
+
+  useEffect(() => {
+    if (!localDate) return;
+    let alive = true;
+    setState({ kind: "loading" });
+    getDetail({ localDate, transitId })
+      .then((r) => {
+        if (!alive) return;
+        if (r?.status === "ready" && r.detail) setState({ kind: "ok", data: r.detail });
+        else if (r?.status === "not_found") setState({ kind: "not_found" });
+        else setState({ kind: "error" });
+      })
+      .catch(() => {
+        if (alive) setState({ kind: "error" });
+      });
+    return () => {
+      alive = false;
+    };
+  }, [getDetail, attempt, localDate, transitId]);
+
+  if (!localDate || state.kind === "loading") {
+    return (
+      <DetailScreen eyebrow="Tránsito · Hoy">
+        <View style={styles.loading}>
+          <ActivityIndicator color={orbita.colors.copper} />
+          <Text style={styles.loadingText}>Leyendo este tránsito…</Text>
+        </View>
+      </DetailScreen>
+    );
+  }
+  if (state.kind === "error") {
+    return (
+      <DetailScreen eyebrow="Tránsito · Hoy">
+        <ErrorState onRetry={() => setAttempt((a) => a + 1)} />
+      </DetailScreen>
+    );
+  }
+  if (state.kind === "not_found") {
+    return (
+      <DetailScreen eyebrow="Tránsito · Hoy">
+        <EmptyState
+          eyebrow="TRÁNSITO"
+          title={"Este tránsito no está\nen tu lectura de hoy."}
+          body="El enlace apunta a un contacto que la lectura de hoy no incluye. Volvé a Hoy y abrilo desde el ranking, o mirá todos los tránsitos."
+        />
+      </DetailScreen>
+    );
+  }
+  return <TransitoDetalle t={state.data} />;
 }
 
 /**
@@ -139,6 +225,10 @@ function TransitoDetalle({ t }: { t: TransitDetailPayload }) {
         </View>
       </View>
       <Body>{t.reading.plain}</Body>
+      {typeof t.natalHouse === "number" ? (
+        <Note>{`Casa ${t.natalHouse}${t.houseTheme ? ` · ${t.houseTheme}` : ""}`}</Note>
+      ) : null}
+      {t.cadence ? <Note>{`Cadencia · ${t.cadence}`}</Note> : null}
 
       <Divider />
       <Eyebrow>CADA CUÁNTO PASA</Eyebrow>

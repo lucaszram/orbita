@@ -202,7 +202,23 @@ export type TransitDetailPayload = {
    *  Energía). Hoy el backend NO la manda (queda undefined → el tab oculta la
    *  sección). Contrato pendiente en `transits.getToday`. Ver convex/CHANGELOG.md. */
   porArea?: Array<{ title: string; body: string }>;
+  /** Identidad estable del contacto dentro de la lectura del día. Ausente en el
+   *  detalle «pendiente» sin tránsito y en respuestas de backends anteriores. */
+  transitId?: string;
+  /** Casa natal tocada y su tema, sólo si el proveedor la publicó. */
+  natalHouse?: number | null;
+  houseTheme?: string | null;
+  /** Cada cuánto cambia esta capa. */
+  cadence?: string;
+  /** Acceso según plan: Free recibe el cielo sin el cruce con la carta. */
+  access?: { isPro: boolean; personalized: boolean };
 };
+
+/** Respuesta de `transits.getDetail`: el contacto pedido, o la constancia de que
+ *  no está en la lectura de hoy. Nunca otro tránsito en su lugar. */
+export type TransitDetailResult =
+  | { status: "ready"; localDate: string; transitId: string; detail: TransitDetailPayload }
+  | { status: "not_found"; localDate: string; transitId: string };
 
 export type VoidAnswerPayload = {
   /** Pregunta del usuario, normalizada. */
@@ -289,8 +305,10 @@ export type DailyGuidePayload = {
   headline: string;
   body: string;
   clima: string;
-  destacado: { aspecto: string; lectura: string };
-  secundarios: Array<{ aspecto: string; lectura: string }>;
+  /** `transitId` abre el detalle de ese contacto (`transits.getDetail`). Los
+   *  documentos anteriores no lo traen: esa fila no promete detalle. */
+  destacado: { aspecto: string; lectura: string; transitId?: string };
+  secundarios: Array<{ aspecto: string; lectura: string; transitId?: string }>;
   basadoEn: string[];
   disclaimer: string;
   /** Carta del día + su lectura. El sorteo no depende del LLM, así que siempre viene;
@@ -677,6 +695,14 @@ export const proposedApi = {
     "public",
     { localDate: string },
     unknown
+  >,
+  // transits.getDetail({ localDate, transitId }): el detalle de UN contacto del
+  // ranking, por identidad. ACTION (reutiliza la lectura persistida del día).
+  transitDetail: anyApi.transits.getDetail as FunctionReference<
+    "action",
+    "public",
+    { localDate: string; transitId: string },
+    TransitDetailResult
   >,
   // TODO: pendiente backend — places.resolve({ query }): geocoding real para onboarding
   resolvePlace: anyApi.places.resolve as FunctionReference<"action", "public", { query: string }, PlaceLookup>,

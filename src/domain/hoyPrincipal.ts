@@ -67,6 +67,12 @@ export type HoyRankingFila = {
   /** La casa natal del contacto, si el backend la escribió. */
   casa: number | null;
   /**
+   * Identidad del contacto para abrir su detalle (`/reading/transito?id=…`).
+   * `null` en documentos anteriores al contrato: la fila se muestra igual, pero
+   * no promete un detalle que no puede abrir.
+   */
+  transitId: string | null;
+  /**
    * La lectura del contacto, o `null` si el backend no escribió una de verdad.
    * El contrato real manda los secundarios SIN lectura (`lectura: ""`), y en
    * modo fallback escribe la plantilla `Hoy <contacto>.`, que repite el
@@ -106,6 +112,27 @@ export function partesDeContacto(aspecto: string): {
     signo: signo ?? null,
     casa: casa ? Number(casa) : null
   };
+}
+
+/** La identidad tal como la publica el backend (`planeta-aspecto-punto`), o `null`. */
+export function transitIdValido(value: unknown): string | null {
+  const limpio = texto(value);
+  return limpio && /^[a-z0-9_-]{1,120}$/.test(limpio) ? limpio : null;
+}
+
+/**
+ * Qué pide una ruta `/reading/transito[?id=…]`: `destacado` cuando no viene
+ * `id`, `{ transitId }` cuando viene uno válido, y `invalido` cuando viene
+ * algo que no es una identidad (mayúsculas, acentos, `../`, vacío). Un id
+ * presente pero inválido NUNCA cae al destacado: abriría otro tránsito.
+ */
+export function pedidoDeRutaTransito(
+  value: string | string[] | undefined | null
+): { kind: "destacado" } | { kind: "contacto"; transitId: string } | { kind: "invalido" } {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (raw === undefined || raw === null) return { kind: "destacado" };
+  const transitId = transitIdValido(raw);
+  return transitId ? { kind: "contacto", transitId } : { kind: "invalido" };
 }
 
 /** ¿La «lectura» es la plantilla de fallback del backend, `Hoy <contacto>.`? */
@@ -169,10 +196,11 @@ export function hoyRanking(payload: DailyGuidePayload | null | undefined): HoyRa
   const filas: HoyRankingFila[] = [];
   const vistas = new Set<string>();
   for (const cruda of crudas) {
-    const fila = cruda as { aspecto?: unknown; lectura?: unknown } | null | undefined;
+    const fila = cruda as { aspecto?: unknown; lectura?: unknown; transitId?: unknown } | null | undefined;
     const aspecto = texto(fila?.aspecto);
     const lectura = texto(fila?.lectura);
     if (!aspecto) continue;
+    const transitId = transitIdValido(fila?.transitId);
 
     const clave = claveDeAspecto(aspecto);
     if (vistas.has(clave)) continue;
@@ -186,6 +214,7 @@ export function hoyRanking(payload: DailyGuidePayload | null | undefined): HoyRa
       planeta: partes.planeta,
       punto: partes.punto,
       casa: partes.casa,
+      transitId,
       lectura: lectura && esLecturaPlantilla(lectura, aspecto) ? null : lectura
     });
   }
