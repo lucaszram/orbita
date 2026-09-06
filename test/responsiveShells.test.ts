@@ -314,10 +314,11 @@ test("la composición de escritorio no reordena la pantalla del teléfono", () =
   assert.match(layout, /desktop && \{ alignItems: align, flexDirection: "row", gap \}/);
   assert.match(layout, /minWidth: 0/, "sin esto una columna con texto largo desborda la fila");
   // Y la Carta, que sí tiene dos órdenes distintos, mantiene el del teléfono
-  // literalmente aparte.
+  // literalmente aparte: el del frame `1821:3186` (CORE-215) —encabezado,
+  // rueda, tríada—, que la composición de escritorio no reordena.
   assert.match(
     sinComentarios(leer("src/screens/CartaScreen.tsx")),
-    /if \(!desktop\) \{[\s\S]*?\{encabezado\}\s*\{triada\}\s*\{rueda\}/,
+    /if \(!desktop\) \{[\s\S]*?\{encabezado\}\s*\{rueda\}\s*\{triada\}/,
     "la Carta de teléfono tiene que conservar su orden aprobado"
   );
 });

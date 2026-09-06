@@ -89,10 +89,20 @@ export type BirthDataDoc = Doc<{
   timezone: string;
 }>;
 
+/**
+ * Documento público de `charts.current` (`convex/lib/publicNatalChart.ts`):
+ * no es la fila de la base. Trae `createdAt`/`updatedAt` (ms) y NO trae
+ * `_creationTime`, aunque el envelope `Doc<>` lo prometa por compatibilidad.
+ */
 export type NatalChartDoc = Doc<{
   userId: string;
   birthDataId: string;
   calculationVersion: string;
+  providerVersion?: string;
+  createdAt: number;
+  /** Sólo en cartas ya recalculadas: `ensureChart` inserta sin él. */
+  updatedAt?: number;
+  access?: { isPro: boolean; houses: boolean; aspects: boolean };
   payload: NatalChartPayload;
 }>;
 

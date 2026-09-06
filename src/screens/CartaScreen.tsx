@@ -20,19 +20,16 @@ import { AstroGlyph } from "@/components/orbita/AstroGlyph";
 import { bodySymbol, RETROGRADE_CODE, type BodyGlyphKey } from "@/domain/astroSymbols";
 import { mapNatalChart } from "@/domain/natalChart";
 import { personalChartGate } from "@/domain/natalChartGate";
-import { Radar } from "@/components/orbita/Radar";
 import { cartaGate, readingBlockPhase, type ReadingBlockPhase } from "@/domain/cartaNatalCarga";
+import { filasDeTriada, resumenDeBase } from "@/domain/cartaCompleta";
 import { sessionPhase } from "@/domain/screenPhase";
 import { useIsDesktop } from "@/hooks/useLayoutMode";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import {
   appApi,
-  type NatalChartAspect,
   type NatalChartPayload,
   type PersonalityReadingPayload,
-  type PersonalitySection,
-  type SignPlacement,
-  type ValuesMapPayload
+  type SignPlacement
 } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
 
@@ -97,7 +94,14 @@ function CartaShell({ children }: { children: ReactNode }) {
   );
 }
 
-function CartaLive() {
+/**
+ * Estado de la carta natal de la cuenta, compartido por el hub (`CartaLive`) y
+ * por la carta completa (`CartaCompletaScreen`): las mismas queries, el mismo
+ * gate de datos natales, la misma generación de la lectura larga. Una sola
+ * fuente para que las dos pantallas nunca discrepen sobre qué carta es la
+ * vigente.
+ */
+export function useCartaNatal() {
   const doc = useQuery(appApi.charts.current, {});
   // La carta se dibuja sólo si corresponde a los datos natales REMOTOS
   // vigentes. `charts.current` cae a la última carta del usuario cuando no
@@ -122,11 +126,6 @@ function CartaLive() {
   const [generateFailed, setGenerateFailed] = useState(false);
   const [generating, setGenerating] = useState(true);
   const [attempt, setAttempt] = useState(0);
-  // La action es Plus-only: con `locked` el backend la rechaza por diseño, así
-  // que dispararla igual solo producía un Server Error en cada cuenta Free. Se
-  // espera la señal remota (`undefined` = query en vuelo) y se dispara solo si
-  // no está bloqueada. La dependencia es este booleano — no el status crudo —
-  // para que pending→ready/error no re-dispare la generación.
   const canGenerate = readingState !== undefined && readingState.status !== "locked";
   useEffect(() => {
     if (!canGenerate) return;
@@ -145,11 +144,30 @@ function CartaLive() {
     };
   }, [generate, attempt, canGenerate]);
 
-  // Gate GENERAL: solo carta + mapa de valores (llegan en <1 s). La lectura
-  // larga (40–61 s) NO participa: nunca devuelve la pantalla a MinimalLoading.
   const gate = cartaGate({ doc, values });
-  // Gate de IDENTIDAD de la carta: datos remotos completos + carta que coincide.
   const chartGate = personalChartGate({ birth: remoteBirth, chart: doc });
+  const readingPhase = readingBlockPhase({
+    reading,
+    failed: generateFailed,
+    generating,
+    state: readingState?.status
+  });
+  return {
+    doc,
+    remoteBirth,
+    reading,
+    readingState,
+    values,
+    gate,
+    chartGate,
+    readingPhase,
+    retryReading: () => setAttempt((a) => a + 1)
+  };
+}
+
+function CartaLive() {
+  const carta = useCartaNatal();
+  const { doc, remoteBirth, reading, readingPhase, values, gate, chartGate } = carta;
   if (gate === "cargando" || chartGate === "cargando") {
     return (
       <CartaShell>
@@ -158,8 +176,6 @@ function CartaLive() {
     );
   }
   if (chartGate === "datosIncompletos") {
-    // Sin datos natales completos no hay carta posible: se pide el dato que
-    // falta, no se dibuja una rueda aproximada.
     return (
       <CartaShell>
         <EmptyState
@@ -173,8 +189,6 @@ function CartaLive() {
     );
   }
   if (gate === "vacio" || chartGate === "sinCarta") {
-    // Los datos están completos y el backend confirmó que todavía no hay
-    // carta. Abrir esta superficie dispara el intento automáticamente.
     return (
       <CartaShell>
         <RecalculateChart reason="missing" />
@@ -182,9 +196,6 @@ function CartaLive() {
     );
   }
   if (chartGate === "desactualizada") {
-    // Hay una carta, pero no es la de estos datos (o no se puede probar que lo
-    // sea). Se ofrece recalcularla —la action es idempotente por cacheKey— en
-    // vez de mostrar la vieja como si fuera la actual.
     return (
       <CartaShell>
         <RecalculateChart reason="stale" />
@@ -201,22 +212,12 @@ function CartaLive() {
       </CartaShell>
     );
   }
-  // La lectura larga resuelve INLINE dentro de "Tu carta, explicada":
-  // pendiente → carga inline; reject del generador o `error` remoto → error
-  // inline con REINTENTAR; lista → los siete capítulos intactos.
-  const readingPhase = readingBlockPhase({
-    reading,
-    failed: generateFailed,
-    generating,
-    state: readingState?.status
-  });
   return (
     <CartaView
       payload={payload}
       reading={readingPhase === "listo" ? reading! : null}
       readingPhase={readingPhase}
-      onRetryReading={() => setAttempt((a) => a + 1)}
-      values={values ?? null}
+      onRetryReading={carta.retryReading}
     />
   );
 }
@@ -226,7 +227,7 @@ function CartaLive() {
  * `calculateOrCreateNatalChart` devuelve la carta exacta si ya existe y la crea
  * si no, así que reintentar es seguro.
  */
-function RecalculateChart({ reason }: { reason: "missing" | "stale" }) {
+export function RecalculateChart({ reason }: { reason: "missing" | "stale" }) {
   const calculate = useAction(appApi.charts.calculateOrCreateNatalChart);
   const [state, setState] = useState<"idle" | "working" | "failed">("idle");
   const running = useRef(false);
@@ -243,8 +244,6 @@ function RecalculateChart({ reason }: { reason: "missing" | "stale" }) {
       });
   }, [calculate]);
 
-  // Entrar a Carta es la intención explícita de verla: se intenta una vez sin
-  // exigir un tap adicional. Si falla, el mismo bloque ofrece reintento.
   useEffect(() => {
     if (autoAttempted.current) return;
     autoAttempted.current = true;
@@ -272,56 +271,80 @@ function RecalculateChart({ reason }: { reason: "missing" | "stale" }) {
   );
 }
 
-// --- Vista ---------------------------------------------------------------
-
 /** Glifo vectorial del cuerpo (ver `domain/astroSymbols`): nunca un carácter
  *  que en web o Android caiga al font de emoji. */
 const symbolOf = (p: { key?: string; planet: string }): BodyGlyphKey => bodySymbol({ key: p.key, label: p.planet });
 const deg = (n?: number) => (typeof n === "number" ? `${Math.round(n)}°` : "");
 
+const DISCLAIMER = "Órbita es entretenimiento y autoconocimiento.";
+
+/**
+ * El hub de Carta (CORE-215): «CARTA · TU BASE», la rueda con la tríada y el
+ * resumen de la base natal, y la puerta a la carta completa. Frames
+ * `1839:3622` / `1821:3186` (hub, 1440 / 390) y `1837:3524` / `1834:3432`
+ * (Free). Una sola carta repartida de dos maneras: en móvil se apila en el
+ * orden del frame; en escritorio la base va a la izquierda y las tarjetas de
+ * «La carta completa», «Sigue en esta pantalla» y el disclaimer a la derecha.
+ *
+ * La lectura larga (siete capítulos), los contactos con orbe, las doce casas
+ * y el mapa de valores viven en `/reading/carta-completa`; acá el bloque 02
+ * dice en qué estado está esa lectura (Plus, preparando, error, lista) y la
+ * abre. Nada se maqueta: el resumen cuenta lo que el payload trae.
+ */
+/** Rótulo derecho y tono de la cabecera del bloque 02 según la fase de la lectura. */
+function cabeceraDelBloque(fase: ReadingBlockPhase): { rotulo: string; cobre: boolean } {
+  if (fase === "bloqueado") return { rotulo: "SOLO CON ÓRBITA PLUS", cobre: true };
+  return { rotulo: fase === "listo" ? "SEIS BLOQUES" : "PREPARANDO", cobre: false };
+}
+
 function CartaView({
   payload,
   reading,
   readingPhase,
-  onRetryReading,
-  values
+  onRetryReading
 }: {
   payload: NatalChartPayload;
   /** Solo no-null cuando `readingPhase === "listo"`. */
   reading: PersonalityReadingPayload | null;
   readingPhase: ReadingBlockPhase;
   onRetryReading: () => void;
-  values: ValuesMapPayload | null;
 }) {
   const desktop = useIsDesktop();
   const [view, setView] = useState<"circulo" | "tabla">("circulo");
   const [selected, setSelected] = useState<string | undefined>();
   const sel = payload.placements.find((p) => p.key === selected);
-  const aspects = payload.mainAspects ?? payload.aspects ?? [];
-  const angular = payload.houses.filter((h) => [1, 4, 7, 10].includes(h.house)).sort((a, b) => a.house - b.house);
-  // La explicación completa va VISIBLE (sector por sector). En móvil el mapa de
-  // valores se intercala en el medio, como hasta ahora.
-  const sections = reading?.sections ?? [];
-  const mid = Math.ceil(sections.length / 2);
-  const sectionsA = sections.slice(0, mid);
-  const sectionsB = sections.slice(mid);
+  const resumen = resumenDeBase(payload);
+  const abrirCompleta = () => router.push("/reading/carta-completa");
+  const chapters = reading?.sections.length ?? 0;
+  const cabecera = cabeceraDelBloque(readingPhase);
+  const bloqueada = cabecera.cobre;
 
   // --- Piezas -------------------------------------------------------------
-  // Las mismas en las dos composiciones: no hay una Carta de web y otra de
-  // teléfono, hay una sola carta repartida de dos maneras.
 
   const encabezado = (
     <Section style={{ paddingBottom: orbita.spacing.lg }}>
-      <Eyebrow>Tu carta natal</Eyebrow>
-      <H2>Tu mapa de origen.</H2>
+      <View style={styles.hubHead}>
+        <Eyebrow>Carta · Tu base</Eyebrow>
+        <Text style={styles.hubHeadRight}>{bloqueada ? "PLAN FREE" : "BASE NATAL"}</Text>
+      </View>
+      <Body bone>
+        {bloqueada
+          ? "Tu base natal está completa en Free: la rueda y el trío Sol, Luna y Ascendente. La lectura larga de la carta se abre con Órbita Plus."
+          : "Lo que no se mueve. Es el punto de partida contra el que se lee todo lo demás."}
+      </Body>
+      <Divider style={{ marginBottom: 0 }} />
+      <View style={styles.bloqueHead}>
+        <Text style={styles.bloqueTitulo}>
+          <Text style={styles.bloqueNum}>01 </Text>TU CARTA
+        </Text>
+        <Text style={styles.hubHeadRight}>{bloqueada ? "DISPONIBLE EN FREE" : "· BASE NATAL"}</Text>
+      </View>
     </Section>
   );
 
-  const triada = <CartaTriad triad={payload.triad} />;
-
   const rueda = (
     <>
-      <Section style={{ paddingTop: orbita.spacing.lg, paddingBottom: 0 }}>
+      <Section style={{ paddingTop: 0, paddingBottom: 0 }}>
         <TabStrip
           tabs={[{ key: "circulo", label: "CÍRCULO" }, { key: "tabla", label: "TABLA" }]}
           active={view}
@@ -364,93 +387,82 @@ function CartaView({
     </>
   );
 
-  const mapaDeValores = values ? (
-    <Section style={{ paddingTop: orbita.spacing.xl }}>
-      <Eyebrow>Mapa de valores</Eyebrow>
-      <Body>Qué te impulsa y qué te pesa, leído desde tu carta.</Body>
-      <View style={styles.radarWrap}>
-        <MeasuredSquare max={340}>{(size) => <Radar payload={values} size={size} />}</MeasuredSquare>
-      </View>
-      <Body>{values.note}</Body>
+  const triada = <CartaTriad triad={payload.triad} />;
+
+  const baseResumen = (
+    <Section style={{ paddingTop: orbita.spacing.lg, paddingBottom: 0 }}>
+      <Text style={styles.resumenMono}>{resumen}</Text>
+      {readingPhase !== "bloqueado" ? (
+        <View style={{ marginTop: orbita.spacing.md }}>
+          <LinkRow label="VER CARTA COMPLETA" onPress={abrirCompleta} />
+        </View>
+      ) : null}
     </Section>
-  ) : null;
+  );
 
-  /** "Tu carta, explicada": estado inline (carga / plan / error) o los capítulos. */
-  const explicada = (chapters: PersonalitySection[], from: number, titled: boolean) => {
-    if (readingPhase !== "listo") {
-      if (!titled) return null;
-      return (
-        <Section style={{ paddingTop: orbita.spacing.xxl }}>
-          <Eyebrow>Tu carta, explicada</Eyebrow>
-          {readingPhase === "cargando" ? (
-            <View style={styles.readingStatus}>
-              <ActivityIndicator color={orbita.colors.copper} />
-              <Text style={styles.readingStatusText}>Preparando tu lectura…</Text>
+  /** Bloque 02: en qué estado está la carta completa (Plus, preparando, error, lista). */
+  const completa = (
+    <Section style={{ paddingTop: orbita.spacing.xl }}>
+      <Divider style={{ marginTop: 0, marginBottom: orbita.spacing.lg }} />
+      <View style={styles.bloqueHead}>
+        <Text style={styles.bloqueTitulo}>
+          <Text style={styles.bloqueNum}>02 </Text>LA CARTA COMPLETA
+        </Text>
+        <Text style={[styles.hubHeadRight, cabecera.cobre && styles.hubHeadCobre]}>
+          {cabecera.rotulo}
+        </Text>
+      </View>
+      {readingPhase !== "listo" ? (
+        readingPhase === "cargando" ? (
+          <View style={styles.readingStatus}>
+            <ActivityIndicator color={orbita.colors.copper} />
+            <Text style={styles.readingStatusText}>Preparando tu lectura…</Text>
+          </View>
+        ) : readingPhase === "bloqueado" ? (
+          // El plan no incluye la lectura larga. Sin esto quedaba en
+          // "Preparando…" para siempre o pedía REINTENTAR sobre una action
+          // que el backend rechaza por diseño. La rueda, la tríada y las
+          // posiciones ya se dibujaron arriba: este bloque solo nombra lo
+          // que falta y da la salida a Plus, nunca REINTENTAR (no es un error).
+          <View style={styles.readingStatus}>
+            <Text style={styles.readingStatusText}>
+              Diez posiciones con lo que cada una permite afirmar, siete capítulos, aspectos con orbe y doce casas.
+            </Text>
+            <Text style={styles.readingStatusText}>
+              Los siete capítulos de tu carta son parte de Órbita Plus. Tu rueda, tu tríada y tus posiciones siguen acá.
+            </Text>
+            <View style={styles.skeleton} accessibilityLabel="Contenido bloqueado">
+              {[0.55, 0.42, 0.34].map((w) => (
+                <View key={w} style={[styles.skeletonLine, { width: `${Math.round(w * 100)}%` }]} />
+              ))}
             </View>
-          ) : readingPhase === "bloqueado" ? (
-            // El plan no incluye la lectura larga. Sin esto quedaba en
-            // "Preparando…" para siempre o pedía REINTENTAR sobre una action
-            // que el backend rechaza por diseño. La rueda, la tríada y las
-            // posiciones ya se dibujaron arriba: este bloque solo nombra lo
-            // que falta y da la salida a Plus, nunca REINTENTAR (no es un error).
-            <View style={styles.readingStatus}>
-              <Text style={styles.readingStatusText}>
-                Los siete capítulos de tu carta son parte de Órbita Plus. Tu rueda, tu tríada y tus
-                posiciones siguen acá.
-              </Text>
-              <View style={{ marginTop: orbita.spacing.lg }}>
-                <Pill label="DESBLOQUEAR MI CARTA NATAL" onPress={() => router.push("/paywall")} />
-              </View>
-            </View>
-          ) : (
-            <View style={styles.readingStatus}>
-              <Text style={styles.readingStatusText}>
-                Tu lectura no llegó. La carta sigue acá: probá de nuevo.
-              </Text>
-              <View style={{ marginTop: orbita.spacing.lg }}>
-                <Pill label="REINTENTAR" onPress={onRetryReading} />
-              </View>
-            </View>
-          )}
-        </Section>
-      );
-    }
-    if (chapters.length === 0) return null;
-    return (
-      <Section style={{ paddingTop: titled ? orbita.spacing.xxl : orbita.spacing.xl }}>
-        {titled ? <Eyebrow>Tu carta, explicada</Eyebrow> : null}
-        {chapters.map((s, i) => (
-          <SectorBlock key={s.key} s={s} n={from + i} />
-        ))}
-      </Section>
-    );
-  };
-
-  const aspectos =
-    aspects.length > 0 ? (
-      <Section style={{ paddingTop: orbita.spacing.xxl }}>
-        <Eyebrow>Aspectos principales</Eyebrow>
-        {aspects.map((a, i) => (
-          <AspectRow key={i} a={a} />
-        ))}
-      </Section>
-    ) : null;
-
-  const casas =
-    angular.length > 0 ? (
-      <Section style={{ paddingTop: orbita.spacing.xxl }}>
-        <Eyebrow>Casas angulares</Eyebrow>
-        {angular.map((h) => (
-          <View key={h.house} style={styles.houseRow}>
-            <Text style={styles.houseNum}>{`Casa ${h.house}`}</Text>
-            <View style={styles.houseBody}>
-              <Text style={styles.houseSign}>{h.sign}</Text>
-              {h.theme ? <Text style={styles.houseTheme}>{h.theme}</Text> : null}
+            <View style={{ marginTop: orbita.spacing.lg }}>
+              <Pill label="DESBLOQUEAR MI CARTA NATAL" onPress={() => router.push("/paywall")} />
             </View>
           </View>
-        ))}
-      </Section>
-    ) : null;
+        ) : (
+          <View style={styles.readingStatus}>
+            <Text style={styles.readingStatusText}>
+              Tu lectura no llegó. La carta sigue acá: probá de nuevo.
+            </Text>
+            <View style={{ marginTop: orbita.spacing.lg }}>
+              <Pill label="REINTENTAR" onPress={onRetryReading} />
+            </View>
+          </View>
+        )
+      ) : (
+        <View style={styles.readingStatus}>
+          <Text style={styles.readingStatusText}>
+            Una sola ruta con seis bloques: la rueda, la precisión natal y los ejes, las diez posiciones, los{" "}
+            {chapters > 0 ? `${chapters} capítulos` : "capítulos"}, los aspectos con orbe y las doce casas.
+          </Text>
+          <View style={{ marginTop: orbita.spacing.md }}>
+            <LinkRow label="VER CARTA COMPLETA" onPress={abrirCompleta} />
+          </View>
+        </View>
+      )}
+    </Section>
+  );
 
   const cierre = (
     <Section style={{ paddingTop: orbita.spacing.xxl }}>
@@ -463,98 +475,95 @@ function CartaView({
       {payload.limitations.map((l) => (
         <Note key={l}>{l}</Note>
       ))}
-      {reading ? <Note>{reading.disclaimer}</Note> : null}
+      <Note>{DISCLAIMER}</Note>
     </Section>
   );
 
   // --- Composición --------------------------------------------------------
 
   if (!desktop) {
-    // Móvil y nativo: EXACTAMENTE el mismo orden de siempre. La composición de
-    // escritorio no reordena la pantalla aprobada del teléfono.
+    // Móvil y nativo: el orden del frame `1821:3186` (encabezado, rueda,
+    // tríada, resumen, la carta completa, cierre). La composición de
+    // escritorio no reordena esta pantalla.
     return (
       <CartaShell>
         {encabezado}
-        {triada}
         {rueda}
-        {explicada(sectionsA, 1, true)}
-        {mapaDeValores}
-        {explicada(sectionsB, mid + 1, false)}
-        {aspectos}
-        {casas}
+        {triada}
+        {baseResumen}
+        {completa}
         {cierre}
       </CartaShell>
     );
   }
 
-  // Escritorio (Figma `252:2`): la carta dibujada a la izquierda —rueda/tabla y
-  // radar, las dos piezas medidas por su contenedor—, la interpretación a la
-  // derecha. Los capítulos largos van abajo, a ancho de LECTURA: a 1200px de
-  // ancho un párrafo de siete líneas no se lee.
+  // Escritorio (frame `1839:3622`): la base natal —rueda y tríada enfrentadas— a
+  // la izquierda a dos tercios; las tarjetas de la carta completa, «sigue en
+  // esta pantalla» y el disclaimer a la derecha. Los textos largos quedan a
+  // ancho de LECTURA.
   return (
     <CartaShell>
-      {encabezado}
-      <Columns gap={0}>
-        <Column>
-          {rueda}
-          {mapaDeValores}
+      <Columns gap={orbita.spacing.xxl}>
+        <Column weight={2}>
+          {encabezado}
+          <Columns gap={orbita.spacing.xl} align="center">
+            <Column weight={1}>{rueda}</Column>
+            <Column weight={1}>
+              {triada}
+              {baseResumen}
+            </Column>
+          </Columns>
+          {completa}
+          <ReadingBlock>{cierre}</ReadingBlock>
         </Column>
-        <Column>
-          {triada}
-          {aspectos}
-          {casas}
-          {cierre}
+        <Column weight={1}>
+          <View style={styles.tarjeta}>
+            <Text style={styles.tarjetaRotulo}>{bloqueada ? "QUÉ ABRE ÓRBITA PLUS EN CARTA" : "LA CARTA COMPLETA"}</Text>
+            <Text style={styles.tarjetaTexto}>
+              {bloqueada
+                ? "La carta completa: diez posiciones, siete capítulos, aspectos con orbe y doce casas. Tu día y tus tránsitos leídos sobre esta misma carta."
+                : "Una sola ruta con seis bloques: la rueda, la precisión natal y los ejes, las diez posiciones, los siete capítulos, los aspectos con orbe y las doce casas."}
+            </Text>
+            <View style={{ marginTop: orbita.spacing.lg }}>
+              {bloqueada ? (
+                <Pill label="DESBLOQUEAR MI CARTA NATAL" onPress={() => router.push("/paywall")} />
+              ) : (
+                <LinkRow label="VER CARTA COMPLETA" onPress={abrirCompleta} />
+              )}
+            </View>
+          </View>
+          <View style={styles.tarjeta}>
+            <Text style={styles.tarjetaRotulo}>{bloqueada ? "TAMBIÉN EN FREE" : "SIGUE EN ESTA PANTALLA"}</Text>
+            <View style={styles.tarjetaFila}>
+              <Text style={styles.tarjetaFilaTitulo}>Tu base natal</Text>
+              <Text style={styles.tarjetaFilaTexto}>La rueda y el trío Sol, Luna y Ascendente, con signo, grado y casa.</Text>
+            </View>
+            {IS_WEB ? (
+              <Pressable onPress={() => router.push("/perfil")} accessibilityRole="link" style={({ pressed }) => [styles.tarjetaFila, styles.tarjetaFilaLinea, pressed && { opacity: 0.6 }]}>
+                <Text style={styles.tarjetaFilaTitulo}>Perfil y ajustes</Text>
+                <Text style={styles.tarjetaFilaTexto}>Tus datos, tu plan y la eliminación de la cuenta. Se abre desde el avatar, arriba a la derecha.</Text>
+              </Pressable>
+            ) : null}
+          </View>
+          <View style={styles.tarjeta}>
+            <Note>{DISCLAIMER}</Note>
+          </View>
         </Column>
       </Columns>
-      <ReadingBlock>
-        {explicada(sectionsA, 1, true)}
-        {explicada(sectionsB, mid + 1, false)}
-      </ReadingBlock>
     </CartaShell>
   );
 }
 
-/** Bloque de explicación por punto de la carta (sector): glifo + placement + título
- *  + lectura + preguntas. Visible, sin colapsar. */
-function SectorBlock({ s, n }: { s: PersonalitySection; n: number }) {
-  return (
-    <View style={styles.sector}>
-      <Text style={styles.sectorNum}>{`Sector ${String(n).padStart(2, "0")}`}</Text>
-      <View style={styles.sectorHead}>
-        <View style={styles.sectorMarker}>
-          <AstroGlyph symbol={bodySymbol({ label: s.placement.label })} size={16} color={orbita.colors.bone} strokeWidth={2} />
-        </View>
-        <Text style={styles.sectorPlacement}>
-          {`${s.placement.planet} en ${s.placement.sign ?? ""}${s.placement.house ? ` · Casa ${s.placement.house}` : ""}`.toUpperCase()}
-        </Text>
-      </View>
-      <Text style={styles.sectorTitle}>{s.title}</Text>
-      <Text style={styles.sectorBody}>{s.body}</Text>
-      {s.questions?.length ? (
-        <View style={styles.sectorQuestions}>
-          {s.questions.map((q) => (
-            <Text key={q} style={styles.sectorQ}>{`— ${q}`}</Text>
-          ))}
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
 function CartaTriad({ triad }: { triad: NatalChartPayload["triad"] }) {
-  const cells: Array<{ role: string; p: SignPlacement }> = [
-    { role: "Sol", p: triad.sun },
-    { role: "Luna", p: triad.moon },
-    { role: "Ascendente", p: triad.ascendant }
-  ];
+  const filas = filasDeTriada({ triad });
   return (
     <View style={styles.triadCard}>
-      {cells.map(({ role, p }, i) => (
-        <View key={role} style={[styles.triadCell, i > 0 && styles.triadCellBorder]}>
-          <AstroGlyph symbol={symbolOf(p)} size={18} color={orbita.colors.copperSoft} />
-          <Text style={styles.triadRole}>{role.toUpperCase()}</Text>
-          <Text style={styles.triadSign}>{p.sign}</Text>
-          {p.house ? <Text style={styles.triadHouse}>{`Casa ${p.house}`}</Text> : null}
+      {filas.map((f, i) => (
+        <View key={f.codigo} style={[styles.triadRow, i > 0 && styles.triadRowLinea]}>
+          <Text style={styles.triadCodigo}>{f.codigo}</Text>
+          <Text style={styles.triadNombre}>{f.nombre}</Text>
+          <Text style={styles.triadValor}>{f.valor}</Text>
+          <Text style={styles.triadMeta}>{f.meta ?? ""}</Text>
         </View>
       ))}
     </View>
@@ -578,16 +587,6 @@ function PositionRow({ p }: { p: SignPlacement }) {
   );
 }
 
-function AspectRow({ a }: { a: NatalChartAspect }) {
-  return (
-    <View style={styles.aspRow}>
-      <View style={[styles.aspDot, { backgroundColor: a.harmony === "tension" ? orbita.colors.tension : orbita.colors.harmony }]} />
-      <Text style={styles.aspText}>{`${a.from} ${a.typeEs ?? a.type} ${a.to}`}</Text>
-      {a.orb != null ? <Text style={styles.aspOrb}>{`orbe ${deg(a.orb)}`}</Text> : null}
-    </View>
-  );
-}
-
 function LinkRow({ label, onPress }: { label: string; onPress?: () => void }) {
   return (
     <Pressable onPress={onPress} accessibilityRole="button" style={({ pressed }) => pressed && { opacity: 0.6 }}>
@@ -601,52 +600,40 @@ const styles = StyleSheet.create({
   selLine: { alignItems: "center", flexDirection: "row", gap: 8, justifyContent: "center", marginTop: orbita.spacing.lg },
   selLineText: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 17, textAlign: "center" },
 
-  triadCard: {
-    borderColor: orbita.colors.line,
-    borderRadius: orbita.radius.lg,
-    borderWidth: 1,
-    flexDirection: "row",
-    marginHorizontal: orbita.spacing.gutter,
-    paddingVertical: orbita.spacing.xl
-  },
-  triadCell: { alignItems: "center", flex: 1, paddingHorizontal: 4 },
-  triadCellBorder: { borderLeftColor: orbita.colors.line, borderLeftWidth: 1 },
-  triadRole: { color: orbita.colors.copper, fontFamily: orbita.fonts.monoMedium, fontSize: 10, letterSpacing: 0.6, marginTop: orbita.spacing.sm },
-  triadSign: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 18, marginTop: 4 },
-  triadHouse: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.mono, fontSize: 11, marginTop: 2 },
+  triadCard: { marginHorizontal: orbita.spacing.gutter, marginTop: orbita.spacing.lg },
+  triadRow: { alignItems: "center", flexDirection: "row", gap: orbita.spacing.md, minHeight: 48, paddingVertical: orbita.spacing.sm },
+  triadRowLinea: { borderTopColor: orbita.colors.line, borderTopWidth: 1 },
+  triadCodigo: { color: orbita.colors.copper, fontFamily: orbita.fonts.monoMedium, fontSize: 10, letterSpacing: 1, width: 24 },
+  triadNombre: { color: orbita.colors.bone, fontFamily: orbita.fonts.body, fontSize: 17, width: 110 },
+  triadValor: { color: orbita.colors.bone, flex: 1, fontFamily: orbita.fonts.body, fontSize: 15 },
+  triadMeta: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.mono, fontSize: 10, letterSpacing: 1, textAlign: "right" },
+
+  hubHead: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
+  hubHeadRight: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.monoMedium, fontSize: 10, letterSpacing: 1.2 },
+  hubHeadCobre: { color: orbita.colors.copper },
+  bloqueHead: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", marginTop: orbita.spacing.lg },
+  bloqueTitulo: { color: orbita.colors.bone, fontFamily: orbita.fonts.monoMedium, fontSize: 11, letterSpacing: 1.2 },
+  bloqueNum: { color: orbita.colors.copper },
+  resumenMono: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.mono, fontSize: 10, letterSpacing: 1.2 },
+  skeleton: { marginTop: orbita.spacing.lg, width: "100%" },
+  skeletonLine: { backgroundColor: "rgba(244,238,228,0.12)", borderRadius: 3, height: 6, marginBottom: orbita.spacing.md },
+  tarjeta: { backgroundColor: orbita.colors.surface, borderColor: orbita.colors.line, borderRadius: orbita.radius.lg, borderWidth: 1, marginBottom: orbita.spacing.lg, padding: orbita.spacing.xl },
+  tarjetaRotulo: { color: orbita.colors.copper, fontFamily: orbita.fonts.monoMedium, fontSize: 11, letterSpacing: 1.2 },
+  tarjetaTexto: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 15, lineHeight: 22, marginTop: orbita.spacing.md },
+  tarjetaFila: { paddingVertical: orbita.spacing.md, minHeight: 44 },
+  tarjetaFilaLinea: { borderTopColor: orbita.colors.line, borderTopWidth: 1 },
+  tarjetaFilaTitulo: { color: orbita.colors.bone, fontFamily: orbita.fonts.body, fontSize: 16 },
+  tarjetaFilaTexto: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 13, lineHeight: 18, marginTop: 2 },
 
   posRow: { alignItems: "center", borderBottomColor: orbita.colors.line, borderBottomWidth: 1, flexDirection: "row", paddingVertical: orbita.spacing.md },
   posMarker: { alignItems: "center", borderColor: "rgba(214,154,106,0.5)", borderRadius: 15, borderWidth: 1, height: 30, justifyContent: "center", marginRight: orbita.spacing.md, width: 30 },
   posName: { color: orbita.colors.bone, flex: 1, fontFamily: orbita.fonts.serif, fontSize: 16 },
   posSign: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 13, textAlign: "right", width: 108 },
   posHouse: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.mono, fontSize: 11, textAlign: "right", width: 58 },
-  radarWrap: { alignItems: "center", marginVertical: orbita.spacing.lg },
 
   // Estado inline del bloque "Tu carta, explicada" (carga / error+reintento).
   readingStatus: { alignItems: "flex-start", marginTop: orbita.spacing.xl },
   readingStatusText: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 15, lineHeight: 23, marginTop: orbita.spacing.md },
-
-  // Bloque de explicación por sector (visible, sin colapsar).
-  sector: { marginTop: orbita.spacing.xl },
-  sectorNum: { color: orbita.colors.copper, fontFamily: orbita.fonts.monoMedium, fontSize: 11, letterSpacing: 1.5 },
-  sectorHead: { alignItems: "center", flexDirection: "row", marginTop: orbita.spacing.md },
-  sectorMarker: { alignItems: "center", borderColor: "rgba(214,154,106,0.5)", borderRadius: 16, borderWidth: 1, height: 32, justifyContent: "center", marginRight: orbita.spacing.md, width: 32 },
-  sectorPlacement: { color: orbita.colors.copperSoft, flex: 1, fontFamily: orbita.fonts.monoMedium, fontSize: 11, letterSpacing: 1 },
-  sectorTitle: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 22, lineHeight: 28, marginTop: orbita.spacing.md },
-  sectorBody: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 15, lineHeight: 23, marginTop: orbita.spacing.sm },
-  sectorQuestions: { borderTopColor: orbita.colors.line, borderTopWidth: 1, marginTop: orbita.spacing.lg, paddingTop: orbita.spacing.lg },
-  sectorQ: { color: orbita.colors.bone, fontFamily: orbita.fonts.serifRegular, fontSize: 16, lineHeight: 24, marginBottom: orbita.spacing.sm },
-
-  aspRow: { alignItems: "center", flexDirection: "row", paddingVertical: orbita.spacing.sm },
-  aspDot: { borderRadius: 3, height: 6, marginRight: orbita.spacing.md, width: 6 },
-  aspText: { color: orbita.colors.bone, flex: 1, fontFamily: orbita.fonts.body, fontSize: 14 },
-  aspOrb: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.mono, fontSize: 11 },
-
-  houseRow: { alignItems: "center", borderBottomColor: orbita.colors.line, borderBottomWidth: 1, flexDirection: "row", paddingVertical: orbita.spacing.md },
-  houseNum: { color: orbita.colors.copper, fontFamily: orbita.fonts.monoMedium, fontSize: 11, letterSpacing: 0.5, width: 64 },
-  houseBody: { flex: 1 },
-  houseSign: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 16 },
-  houseTheme: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 13, marginTop: 1 },
 
   links: { flexDirection: "row", flexWrap: "wrap", gap: orbita.spacing.xl, marginTop: orbita.spacing.xl, marginBottom: orbita.spacing.lg },
   linkText: { color: orbita.colors.muted, fontFamily: orbita.fonts.monoMedium, fontSize: 11, letterSpacing: 1 }

@@ -111,7 +111,7 @@ test("la carta Free bloqueada ofrece DESBLOQUEAR MI CARTA NATAL hacia /paywall",
 });
 
 test("el bloqueo por plan no ofrece REINTENTAR, y el error real sí", () => {
-  const bloque = CARTA.slice(CARTA.indexOf('readingPhase === "bloqueado"'), CARTA.indexOf("if (chapters.length === 0)"));
+  const bloque = CARTA.slice(CARTA.indexOf('readingPhase === "bloqueado"'), CARTA.indexOf("const cierre = ("));
   assert.doesNotMatch(bloque.slice(0, bloque.indexOf("REINTENTAR")), /Pill label="REINTENTAR"/);
   assert.match(CARTA, /<Pill label="REINTENTAR" onPress=\{onRetryReading\} \/>/);
   assert.match(CARTA, /state === "failed" \? "REINTENTAR"/, "el recálculo de la carta conserva su reintento");
