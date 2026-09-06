@@ -238,12 +238,12 @@ export function HoyEnlace({ href, children }: { href: Href; children: string }) 
   const presion = usePressedState();
   return (
     <Link href={href} asChild>
-      <Pressable
-        accessibilityRole="link"
-        {...presion.pressableProps}
-        style={[styles.enlace, presion.pressed && styles.presionado]}
-      >
-        <HoyEtiqueta>{`${children}  ›`}</HoyEtiqueta>
+      {/* El estilo va en un View propio: con `asChild`, el `<a>` de la web
+          recibe el arreglo tal cual y react-dom lo rechaza (CORE-247). */}
+      <Pressable accessibilityRole="link" {...presion.pressableProps}>
+        <View style={[styles.enlace, presion.pressed && styles.presionado]}>
+          <HoyEtiqueta>{`${children}  ›`}</HoyEtiqueta>
+        </View>
       </Pressable>
     </Link>
   );
