@@ -348,17 +348,6 @@ export function ExtrasSection({ reading }: { reading: HomeReading }) {
 }
 
 const styles = StyleSheet.create({
-  header: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingHorizontal: G,
-    paddingTop: orbita.spacing.md,
-    paddingBottom: orbita.spacing.lg
-  },
-  brand: { color: orbita.colors.bone, fontFamily: orbita.fonts.monoMedium, fontSize: 17, letterSpacing: 2 },
-  selector: { color: orbita.colors.bone, fontFamily: orbita.fonts.monoMedium, fontSize: 14, letterSpacing: 1 },
-  headerDivider: { backgroundColor: orbita.colors.line, height: 1 },
 
   section: { paddingHorizontal: G, paddingTop: orbita.spacing.xl, paddingBottom: orbita.spacing.xxl },
   guiaNebula: { ...StyleSheet.absoluteFillObject },

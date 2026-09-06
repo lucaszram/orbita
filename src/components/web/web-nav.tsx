@@ -82,18 +82,18 @@ export function WebNav({ active, meta }: { active: NavKey; meta?: string }) {
     <View style={styles.topbar}>
       <View style={styles.topbarInner}>
         <View style={styles.marca}>
-        <Link href="/home" asChild>
-          <Pressable style={styles.brand} accessibilityRole="link" accessibilityLabel="Órbita · Inicio">
-            {/* Tratamiento de ícono de app: cuadrado redondeado chico con
-                hairline, como se ve en una barra de tareas. El derivado web es
-                de 192px, así que a 28 baja limpio en cualquier densidad. */}
-            <View style={styles.markFrame}>
-              <Image source={APP_ICON} style={styles.mark} resizeMode="cover" />
-            </View>
-            <Text style={styles.brandText}>Órbita</Text>
-          </Pressable>
-        </Link>
-        <PlanBadge />
+          <Link href="/home" asChild>
+            <Pressable style={styles.brand} accessibilityRole="link" accessibilityLabel="Órbita · Inicio">
+              {/* Tratamiento de ícono de app: cuadrado redondeado chico con
+                  hairline, como se ve en una barra de tareas. El derivado web es
+                  de 192px, así que a 28 baja limpio en cualquier densidad. */}
+              <View style={styles.markFrame}>
+                <Image source={APP_ICON} style={styles.mark} resizeMode="cover" />
+              </View>
+              <Text style={styles.brandText}>Órbita</Text>
+            </Pressable>
+          </Link>
+          <PlanBadge />
         </View>
 
         {/* La navegación va arriba a la DERECHA, como cualquier header web.

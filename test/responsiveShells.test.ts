@@ -420,8 +420,8 @@ test("la navegación de escritorio va arriba a la derecha, sin celda vacía", ()
   assert.match(nav, /justifyContent: "space-between"/, "marca a la izquierda, acciones a la derecha");
   assert.doesNotMatch(nav, /styles\.right/, "la celda vacía de la derecha no puede volver");
   assert.doesNotMatch(nav, /right: \{ alignItems: "center", flexDirection: "row", gap: 14 \}/);
-  // Y sigue sin atajos de cuenta: todo eso vive en /perfil.
-  for (const prohibido of ["avatar", "AuthPill", "iniciar-sesion"]) {
+  // Y sigue sin salida al login: el atajo PERFIL (CORE-239) va a /perfil.
+  for (const prohibido of ["AuthPill", "iniciar-sesion"]) {
     assert.ok(!new RegExp(prohibido, "i").test(nav), `la barra autenticada no puede tener ${prohibido}`);
   }
 });
