@@ -21,25 +21,7 @@ import { Column, Columns, ReadingBlock } from "@/components/orbita/Layout";
 import { ErrorState, MinimalLoading } from "@/components/orbita/states";
 import { PBoton, PEncabezado, PEnlace, PEsqueleto, PEtiqueta, PNota, PPlegable, PTarjeta, PTexto } from "@/components/transitos/PanoramaUI";
 import { CAPAS_DE_TU_MOMENTO, DE_DONDE_SALE } from "@/screens/EstacionVitalScreen";
-import {
-  SEASON_TRACE,
-  YEAR_TRACE,
-  anoDeFase,
-  bordeDeFase,
-  copyDeSinDatos,
-  copyDeSinTema,
-  decimalEs,
-  diaMes,
-  estadoDeEstacion,
-  estadoDeTema,
-  resumenDelAno,
-  seasonHeadline,
-  seasonMeaning,
-  tituloDelAno,
-  yearMeaning,
-  type EstacionEstado,
-  type TemaEstado
-} from "@/domain/momento";
+import { anoDeFase, bordeDeFase, copyDeSinDatos, copyDeSinTema, decimalEs, diaMes, estadoDeEstacion, estadoDeTema, SEASON_TRACE, seasonHeadline, seasonMeaning, subtituloDelAno, tituloDelAno, type EstacionEstado, type TemaEstado, YEAR_TRACE, yearMeaning } from "@/domain/momento";
 import { useIsDesktop } from "@/hooks/useLayoutMode";
 import { proposedApi, type MomentoEstacionVital, type MomentoTemaDelAno } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
@@ -152,10 +134,17 @@ export function TuMomentoHub({ localDate }: { localDate: string }) {
       {tema.kind === "listo" ? (
         <>
           <Text style={styles.tarjetaTitulo}>{tituloDelAno(tema.tema)}</Text>
-          <PEtiqueta tono="gris" style={styles.tarjetaCuerpo}>
-            {resumenDelAno(tema.tema).toLocaleUpperCase("es")} · REGENTE DEL AÑO: {tema.tema.ruler.toLocaleUpperCase("es")}
-          </PEtiqueta>
-          <PTexto style={styles.tarjetaCuerpo}>{yearMeaning(tema.tema.house)?.meaning ?? tema.tema.summary}</PTexto>
+          {desktop ? (
+            <>
+              <PEtiqueta tono="gris" style={styles.tarjetaCuerpo}>
+                {subtituloDelAno(tema.tema)}
+              </PEtiqueta>
+              <PTexto style={styles.tarjetaCuerpo}>{yearMeaning(tema.tema.house)?.meaning ?? tema.tema.summary}</PTexto>
+              <PNota>
+                Tu casa {tema.tema.house} empieza en {tema.tema.sign}, así que el regente de este año es {tema.tema.ruler}.
+              </PNota>
+            </>
+          ) : null}
           {desktop ? (
             <View style={styles.aTierra}>
               <PEtiqueta>PARA BAJARLO A TIERRA</PEtiqueta>
@@ -180,6 +169,7 @@ export function TuMomentoHub({ localDate }: { localDate: string }) {
         <>
           <Text style={styles.tarjetaTitulo}>Se abre con Órbita Plus.</Text>
           <PNota>La casa de tu carta que toca tu edad de hoy, y el planeta que la rige.</PNota>
+          <PBoton label="VER ÓRBITA PLUS" onPress={() => router.push("/paywall")} />
         </>
       ) : tema.kind === "error" ? (
         <>

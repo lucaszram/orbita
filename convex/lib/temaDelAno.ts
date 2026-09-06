@@ -102,18 +102,26 @@ function ascendantSignOf(chart: NormalizedAstroChart): ZodiacSign | null {
 }
 
 /**
- * `YYYY-MM-DD` a las 00:00 en la zona natal, en ms. Si esa medianoche no existe
- * (`gap` por un cambio de horario) o se repite (`fold`), se toma el primer
- * instante candidato; sin zona válida, la medianoche UTC. Desvío declarado
- * respecto de release (que lanzaba): en un período de 365 días la diferencia
- * es de horas y sólo mueve `progress` / `monthIndex` en el borde exacto.
+ * `YYYY-MM-DD` a las 00:00 en la zona natal, en ms. Si esa medianoche se repite
+ * (`fold`), se toma el primer instante candidato; si no existe (`gap`: zonas
+ * que adelantan el reloj a medianoche, como America/Santiago), se toma el
+ * primer minuto que sí existe ese día, recorriendo la hora siguiente; sin zona
+ * válida, la medianoche UTC. Desvío declarado respecto de release (que
+ * lanzaba): en un período de 365 días la diferencia es de horas y sólo mueve
+ * `progress` / `monthIndex` en el borde exacto.
  */
 export function civilDateToTimestamp(civilDate: string, timezone: string): number {
   const r = resolveZonedCivilTime({ localDate: civilDate, localTime: "00:00", timezone });
   if (r.status === "exact") return r.instantMs;
-  if (r.status === "fold" || r.status === "gap") {
-    const first = r.candidates[0];
-    if (first) return first.instantMs;
+  if (r.status === "fold" && r.candidates[0]) return r.candidates[0].instantMs;
+  if (r.status === "gap") {
+    for (let minutos = 1; minutos <= 120; minutos += 1) {
+      const hh = String(Math.floor(minutos / 60)).padStart(2, "0");
+      const mm = String(minutos % 60).padStart(2, "0");
+      const alt = resolveZonedCivilTime({ localDate: civilDate, localTime: `${hh}:${mm}`, timezone });
+      if (alt.status === "exact") return alt.instantMs;
+      if (alt.status === "fold" && alt.candidates[0]) return alt.candidates[0].instantMs;
+    }
   }
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(civilDate);
   return m ? Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : Number.NaN;

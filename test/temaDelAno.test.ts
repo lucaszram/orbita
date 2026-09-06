@@ -82,6 +82,11 @@ describe("la profección anual con hora exacta", () => {
     assert.equal(civilDateToTimestamp("2026-11-11", "America/Argentina/Buenos_Aires"), Date.UTC(2026, 10, 11, 3, 0));
     assert.equal(civilDateToTimestamp("2026-11-11", "UTC"), Date.UTC(2026, 10, 11));
   });
+
+  it("si la medianoche no existe por un cambio de horario, el borde es el primer minuto real del día", () => {
+    // Chile adelanta el reloj el 2026-09-06 a las 00:00 (−04 → −03): la medianoche no existe y el día empieza 01:00 −03.
+    assert.equal(civilDateToTimestamp("2026-09-06", "America/Santiago"), Date.UTC(2026, 8, 6, 4, 0));
+  });
 });
 
 describe("lo que no se calcula", () => {
