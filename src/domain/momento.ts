@@ -230,13 +230,13 @@ export type EstacionEstado =
   | { kind: "error" }
   | { kind: "bloqueado" }
   | { kind: "sin_datos"; estacion: Exclude<EstacionVital, { status: "ready" }> }
-  | { kind: "listo"; estacion: Extract<EstacionVital, { status: "ready" }>; localDate: string };
+  | { kind: "listo"; estacion: Extract<EstacionVital, { status: "ready" }>; localDate: string; timezone: string | null };
 
 export function estadoDeEstacion(value: MomentoEstacionVital | null | undefined): EstacionEstado {
   if (!value || typeof value !== "object" || !("status" in value)) return { kind: "error" };
   if (value.status === "locked") return { kind: "bloqueado" };
   if (value.status === "ready") {
-    if (value.estacion.status === "ready") return { kind: "listo", estacion: value.estacion, localDate: value.localDate };
+    if (value.estacion.status === "ready") return { kind: "listo", estacion: value.estacion, localDate: value.localDate, timezone: value.timezone ?? null };
     return { kind: "sin_datos", estacion: value.estacion };
   }
   return { kind: "error" };

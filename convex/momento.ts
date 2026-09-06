@@ -74,9 +74,15 @@ export const persistMomento = internalMutation({
 });
 
 function localDateForInstant(instant: Date, timezone: string) {
-  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(instant);
-  const read = (type: "year" | "month" | "day") => parts.find((part) => part.type === type)?.value ?? "";
-  return `${read("year")}-${read("month")}-${read("day")}`;
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(instant);
+    const read = (type: "year" | "month" | "day") => parts.find((part) => part.type === type)?.value ?? "";
+    return `${read("year")}-${read("month")}-${read("day")}`;
+  } catch {
+    // Una zona IANA inválida no puede tirar el action: el cliente tropical la
+    // convierte en `missing_input` y el cálculo termina en `unavailable`.
+    return instant.toISOString().slice(0, 10);
+  }
 }
 
 function birthInputHash(birth: any) {
@@ -120,7 +126,7 @@ export const getEstacionVital = action({
       : null;
     const inputHash = birth ? birthInputHash(birth) : "sin-datos";
     if (state.cached && state.cached.version === ESTACION_VITAL_VERSION && state.cached.inputHash === inputHash) {
-      return { status: "ready" as const, localDate: args.localDate, access: { isPro: true as const }, estacion: state.cached.payload as EstacionVital, cached: true };
+      return { status: "ready" as const, localDate: args.localDate, timezone: birth?.timezone ?? null, access: { isPro: true as const }, estacion: state.cached.payload as EstacionVital, cached: true };
     }
     const configured = hasAstrologyApiCredentials(getAstrologyApiConfig());
     const timezone = birth?.timezone ?? "UTC";
@@ -151,6 +157,6 @@ export const getEstacionVital = action({
         payload: estacion
       });
     }
-    return { status: "ready" as const, localDate: args.localDate, access: { isPro: true as const }, estacion, cached: false };
+    return { status: "ready" as const, localDate: args.localDate, timezone: birth?.timezone ?? null, access: { isPro: true as const }, estacion, cached: false };
   }
 });

@@ -70,6 +70,8 @@ describe("números y fechas", () => {
 
   it("los bordes de fase se escriben como mes y año; en rango, con los dos extremos", () => {
     assert.equal(mesAno(Date.UTC(2025, 11, 10)), "DIC 2025");
+    // La zona natal decide el mes cuando el borde cae a pocas horas del cambio.
+    assert.equal(mesAno(Date.UTC(2025, 11, 1, 1, 0), "America/Argentina/Buenos_Aires"), "NOV 2025");
     assert.equal(bordeDeFase(lista.phaseStartedAt, undefined), "DIC 2025");
     assert.equal(bordeDeFase(lista.nextPhaseAt, undefined), "ABR 2029");
     assert.equal(bordeDeFase(lista.phaseStartedAt, { earliest: Date.UTC(2025, 10, 28), latest: Date.UTC(2025, 11, 12) }), "NOV 2025 – DIC 2025");
@@ -80,7 +82,7 @@ describe("números y fechas", () => {
 describe("estado de pantalla", () => {
   it("locked → bloqueado; ready con fase → listo; ready sin fase → sin_datos; sobre raro → error", () => {
     assert.equal(estadoDeEstacion({ status: "locked", localDate: "2026-09-06", access: { isPro: false } }).kind, "bloqueado");
-    assert.equal(estadoDeEstacion({ status: "ready", localDate: "2026-09-06", access: { isPro: true }, estacion: lista, cached: false }).kind, "listo");
+    assert.equal(estadoDeEstacion({ status: "ready", localDate: "2026-09-06", timezone: "America/Argentina/Buenos_Aires", access: { isPro: true }, estacion: lista, cached: false }).kind, "listo");
     const parcial: EstacionVital = {
       status: "partial",
       precision: "range",
@@ -89,7 +91,7 @@ describe("estado de pantalla", () => {
       possiblePhases: ["Nueva", "Creciente"],
       observedAt: 0
     };
-    const estado = estadoDeEstacion({ status: "ready", localDate: "2026-09-06", access: { isPro: true }, estacion: parcial, cached: false });
+    const estado = estadoDeEstacion({ status: "ready", localDate: "2026-09-06", timezone: null, access: { isPro: true }, estacion: parcial, cached: false });
     assert.equal(estado.kind, "sin_datos");
     assert.equal(estadoDeEstacion(null).kind, "error");
     assert.equal(estadoDeEstacion({ status: "otro" } as unknown as MomentoEstacionVital).kind, "error");

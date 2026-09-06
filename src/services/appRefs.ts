@@ -292,7 +292,7 @@ export type EstacionVital =
 /** Sobre de `momento.getEstacionVital`: Free recibe `locked`; Plus, el cálculo. */
 export type MomentoEstacionVital =
   | { status: "locked"; localDate: string; access: { isPro: false } }
-  | { status: "ready"; localDate: string; access: { isPro: true }; estacion: EstacionVital; cached: boolean };
+  | { status: "ready"; localDate: string; /** Zona natal: las fechas de borde se escriben en ella. */ timezone: string | null; access: { isPro: true }; estacion: EstacionVital; cached: boolean };
 
 /** Respuesta de `transits.getDetail`: el contacto pedido, o la constancia de que
  *  no está en la lectura de hoy. Nunca otro tránsito en su lugar. */

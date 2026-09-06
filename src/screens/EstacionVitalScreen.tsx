@@ -152,13 +152,21 @@ function EstacionVitalLive() {
           eyebrow="TU ESTACIÓN VITAL"
           title={copy.titulo}
           body={copy.cuerpo}
-          cta={estado.estacion.status === "unavailable" || estado.estacion.status === "not_configured" ? "REINTENTAR" : "VOLVER"}
+          cta={
+            estado.estacion.status === "unavailable" || estado.estacion.status === "not_configured"
+              ? "REINTENTAR"
+              : estado.estacion.status === "needs_birth_time" || estado.estacion.status === "needs_birth_data"
+                ? "COMPLETAR MIS DATOS"
+                : "VOLVER"
+          }
           onCta={() =>
             estado.estacion.status === "unavailable" || estado.estacion.status === "not_configured"
               ? setIntento((n) => n + 1)
-              : router.canGoBack()
-                ? router.back()
-                : router.replace("/transito")
+              : estado.estacion.status === "needs_birth_time" || estado.estacion.status === "needs_birth_data"
+                ? router.push("/editar-datos")
+                : router.canGoBack()
+                  ? router.back()
+                  : router.replace("/transito")
           }
         />
       </Shell>
@@ -166,17 +174,18 @@ function EstacionVitalLive() {
   }
   return (
     <Shell>
-      <EstacionVitalLista estacion={estado.estacion} />
+      <EstacionVitalLista estacion={estado.estacion} timezone={estado.timezone} />
     </Shell>
   );
 }
 
-function EstacionVitalLista({ estacion }: { estacion: Extract<EstacionVital, { status: "ready" }> }) {
+function EstacionVitalLista({ estacion, timezone }: { estacion: Extract<EstacionVital, { status: "ready" }>; timezone: string | null }) {
   const desktop = useIsDesktop();
   const exact = estacion.precision === "exact";
   const lectura = seasonReading({ phaseKey: estacion.phaseKey, phaseName: estacion.name, exact });
-  const empezo = bordeDeFase(estacion.phaseStartedAt, estacion.phaseStartedAtRange);
-  const proxima = bordeDeFase(estacion.nextPhaseAt, estacion.nextPhaseAtRange);
+  const tz = timezone ?? undefined;
+  const empezo = bordeDeFase(estacion.phaseStartedAt, estacion.phaseStartedAtRange, tz);
+  const proxima = bordeDeFase(estacion.nextPhaseAt, estacion.nextPhaseAtRange, tz);
 
   const principal = (
     <ReadingBlock>
@@ -185,7 +194,7 @@ function EstacionVitalLista({ estacion }: { estacion: Extract<EstacionVital, { s
         <PEtiqueta tono="gris">CAPA 01</PEtiqueta>
       </View>
       <View style={styles.titular}>
-        <View style={styles.emblema} accessibilityLabel={`Fase ${estacion.name}`}>
+        <View style={styles.emblema} accessible accessibilityLabel={`Fase ${estacion.name}`}>
           <View style={[styles.emblemaLuz, { width: `${Math.round(Math.max(8, Math.min(100, (estacion.progressedElongationDegrees / 180) * 100)))}%` }]} />
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>

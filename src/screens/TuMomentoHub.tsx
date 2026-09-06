@@ -68,13 +68,13 @@ export function TuMomentoHub({ localDate }: { localDate: string }) {
             <View style={styles.aTierra}>
               <PEtiqueta>PARA BAJARLO A TIERRA</PEtiqueta>
               <PTexto style={styles.tarjetaCuerpo}>{seasonMeaning(estado.estacion.phaseKey).action}</PTexto>
-              <View style={styles.pista}>
+              <View style={styles.pista} accessible accessibilityLabel={`Avance de la fase: ${Math.round(estado.estacion.progress * 100)} por ciento`}>
                 <View style={[styles.relleno, { flexGrow: estado.estacion.progress }]} />
                 <View style={{ flexGrow: 1 - estado.estacion.progress }} />
               </View>
               <View style={styles.fechas}>
-                <PEtiqueta tono="gris">EMPEZÓ {bordeDeFase(estado.estacion.phaseStartedAt, estado.estacion.phaseStartedAtRange)}</PEtiqueta>
-                <PEtiqueta tono="gris">PRÓXIMA FASE {bordeDeFase(estado.estacion.nextPhaseAt, estado.estacion.nextPhaseAtRange)}</PEtiqueta>
+                <PEtiqueta tono="gris">EMPEZÓ {bordeDeFase(estado.estacion.phaseStartedAt, estado.estacion.phaseStartedAtRange, estado.timezone ?? undefined)}</PEtiqueta>
+                <PEtiqueta tono="gris">PRÓXIMA FASE {bordeDeFase(estado.estacion.nextPhaseAt, estado.estacion.nextPhaseAtRange, estado.timezone ?? undefined)}</PEtiqueta>
               </View>
             </View>
           ) : (
