@@ -11,8 +11,10 @@ import { resolveCanonicalDailyContext } from "./daily";
 import {
   buildDailyReadingPayloadFromAstrology,
   buildWebB0TransitDetailPayload,
+  buildWebB0TransitDetailPayloadFor,
   DAILY_READING_EDITORIAL_VERSION,
-  extractNormalizedChartFromPayload
+  extractNormalizedChartFromPayload,
+  findTransitInPayload
 } from "./lib/orbita";
 import { findUserByTokenIdentifier, omitUndefined, requireIdentity } from "./lib/users";
 import { isUserPro } from "./lib/subscriptionAccess";
@@ -111,6 +113,9 @@ function publicTransitDetail(detail: any, isPro: boolean) {
         "Dejá una nota breve en tu Diario."
       ]
     },
+    // El cruce con la carta es Plus: la casa natal y su tema no viajan en Free.
+    natalHouse: null,
+    houseTheme: null,
     access: { isPro: false, personalized: false }
   };
 }
@@ -221,121 +226,153 @@ export const persistTodayFromProvider = internalMutation({
   }
 });
 
+/**
+ * La lectura de tránsitos del día para la persona con sesión: la persistida
+ * para la fecha canónica si existe; si no, se pide al proveedor y se guarda.
+ * Es lo que comparten `getToday` (el destacado) y `getDetail` (un contacto por
+ * identidad): una sola fuente, un solo documento, ningún cálculo por posición.
+ */
+async function resolveTodayReading(ctx: any, localDate: string): Promise<{ payload: unknown; isPro: boolean }> {
+  const identity = await requireIdentity(ctx as any);
+  const dayState: any = await ctx.runQuery(
+    internalApi.daily.getGuideTimezone,
+    { tokenIdentifier: identity.tokenIdentifier }
+  );
+  const canonical = resolveCanonicalDailyContext({
+    birthTimezone: dayState.birthTimezone,
+    latestGuide: dayState.latestGuide
+  });
+  if (localDate !== canonical.localDate) {
+    throw new Error("Los tránsitos diarios usan la fecha canónica del servidor");
+  }
+  const providerVersion = "astrologyapi-western-daily-transits-v3";
+  const state: any = await ctx.runQuery(internalApi.transits.getTodayState, {
+    tokenIdentifier: identity.tokenIdentifier,
+    localDate,
+    providerVersion
+  });
+
+  if (state.providerTransitReading) {
+    return { payload: state.providerTransitReading.payload, isPro: state.isPro };
+  }
+
+  if (!state.birthData) {
+    const fallback = state.fallbackTransitReading ?? state.dailyReading;
+    if (fallback) {
+      return { payload: fallback.payload, isPro: state.isPro };
+    }
+    throw new Error("Birth data is required before calculating daily transits");
+  }
+
+  const birthData = state.birthData;
+  const providerResult = await runAstrologyApiDailyTransits({
+    input: {
+      birthDate: birthData.birthDate,
+      birthTime: birthData.birthTime,
+      birthTimePrecision: birthData.birthTimePrecision,
+      birthPlaceLabel: birthData.birthPlaceLabel,
+      latitude: birthData.latitude,
+      longitude: birthData.longitude,
+      timezone: birthData.timezone
+    },
+    localDate
+  });
+
+  if (providerResult.status !== "success" || !providerResult.normalized) {
+    const fallback = state.fallbackTransitReading ?? state.dailyReading;
+    if (fallback) {
+      return { payload: fallback.payload, isPro: state.isPro };
+    }
+
+    const detail = providerResult.error ?? (providerResult.warnings.join(", ") || providerResult.status);
+    throw new Error(`Daily transit provider failed: ${detail}`);
+  }
+
+  const chart = extractNormalizedChartFromPayload(state.natalChart?.payload);
+  const transits = providerResult.normalized.transits;
+  const payload = {
+    ...buildDailyReadingPayloadFromAstrology({
+      localDate,
+      timezone: birthData.timezone,
+      chart,
+      transits
+    }),
+    provider: {
+      status: providerResult.status,
+      providerVersion: providerResult.providerVersion,
+      houseSystem: providerResult.houseSystem,
+      endpoint: "natal_transits/daily",
+      warnings: providerResult.warnings
+    },
+    modelGaps: [
+      ...providerResult.warnings,
+      ...(transits.length === 0 ? ["daily_transits_empty_or_unavailable"] : []),
+      "editorial_review_required_before_app_release"
+    ],
+    reviewStatus: "needs_review",
+    rawPolicy: {
+      returnsProviderRaw: false,
+      reason: "transitReadings y dailyReadings guardan solo payload normalizado; raw/request queda fuera de tablas app-facing."
+    }
+  };
+  const transitReading: any = await ctx.runMutation(
+    internalApi.transits.persistTodayFromProvider,
+    omitUndefined({
+      tokenIdentifier: identity.tokenIdentifier,
+      localDate,
+      timezone: birthData.timezone,
+      natalChartId: state.natalChart?._id,
+      providerVersion: providerResult.providerVersion,
+      timelineVersion: DAILY_TRANSITS_TIMELINE_VERSION,
+      payload
+    })
+  );
+
+  return { payload: transitReading.payload, isPro: state.isPro };
+}
+
 export const getToday = action({
   args: {
     localDate: v.string()
   },
   handler: async (ctx, args) => {
-    const identity = await requireIdentity(ctx as any);
-    const dayState: any = await ctx.runQuery(
-      internalApi.daily.getGuideTimezone,
-      { tokenIdentifier: identity.tokenIdentifier }
-    );
-    const canonical = resolveCanonicalDailyContext({
-      birthTimezone: dayState.birthTimezone,
-      latestGuide: dayState.latestGuide
-    });
-    if (args.localDate !== canonical.localDate) {
-      throw new Error("Los tránsitos diarios usan la fecha canónica del servidor");
+    const { payload, isPro } = await resolveTodayReading(ctx, args.localDate);
+    return publicTransitDetail(buildWebB0TransitDetailPayload(payload, args.localDate), isPro);
+  }
+});
+
+/**
+ * `transits.getDetail({ localDate, transitId })` — el detalle de UN contacto del
+ * ranking, por identidad. `transitId` sale de `transitIdFor` (planeta, aspecto y
+ * punto natal) y sólo se resuelve dentro de la lectura de la persona con sesión
+ * para la fecha canónica: no depende de la posición en la lista, no acepta otra
+ * fecha, y no expone el crudo del proveedor. Si el contacto no está en esa
+ * lectura —documento anterior sin identidad, o un id ajeno— responde
+ * `not_found`; nunca otro tránsito.
+ */
+export const getDetail = action({
+  args: {
+    localDate: v.string(),
+    transitId: v.string()
+  },
+  handler: async (ctx, args) => {
+    const transitId = args.transitId.trim();
+    if (!transitId || transitId.length > 120 || !/^[a-z0-9_-]+$/.test(transitId)) {
+      throw new Error("Identidad de tránsito inválida");
     }
-    const providerVersion = "astrologyapi-western-daily-transits-v3";
-    const state: any = await ctx.runQuery(internalApi.transits.getTodayState, {
-      tokenIdentifier: identity.tokenIdentifier,
+    const { payload, isPro } = await resolveTodayReading(ctx, args.localDate);
+    const transit = findTransitInPayload(payload, transitId);
+    if (!transit) {
+      return { status: "not_found" as const, localDate: args.localDate, transitId };
+    }
+    return {
+      status: "ready" as const,
       localDate: args.localDate,
-      providerVersion
-    });
-
-    if (state.providerTransitReading) {
-      return publicTransitDetail(
-        buildWebB0TransitDetailPayload(
-          state.providerTransitReading.payload,
-          args.localDate
-        ),
-        state.isPro
-      );
-    }
-
-    if (!state.birthData) {
-      const fallback = state.fallbackTransitReading ?? state.dailyReading;
-      if (fallback) {
-        return publicTransitDetail(
-          buildWebB0TransitDetailPayload(fallback.payload, args.localDate),
-          state.isPro
-        );
-      }
-      throw new Error("Birth data is required before calculating daily transits");
-    }
-
-    const birthData = state.birthData;
-    const providerResult = await runAstrologyApiDailyTransits({
-      input: {
-        birthDate: birthData.birthDate,
-        birthTime: birthData.birthTime,
-        birthTimePrecision: birthData.birthTimePrecision,
-        birthPlaceLabel: birthData.birthPlaceLabel,
-        latitude: birthData.latitude,
-        longitude: birthData.longitude,
-        timezone: birthData.timezone
-      },
-      localDate: args.localDate
-    });
-
-    if (providerResult.status !== "success" || !providerResult.normalized) {
-      const fallback = state.fallbackTransitReading ?? state.dailyReading;
-      if (fallback) {
-        return publicTransitDetail(
-          buildWebB0TransitDetailPayload(fallback.payload, args.localDate),
-          state.isPro
-        );
-      }
-
-      const detail = providerResult.error ?? (providerResult.warnings.join(", ") || providerResult.status);
-      throw new Error(`Daily transit provider failed: ${detail}`);
-    }
-
-    const chart = extractNormalizedChartFromPayload(state.natalChart?.payload);
-    const transits = providerResult.normalized.transits;
-    const payload = {
-      ...buildDailyReadingPayloadFromAstrology({
-        localDate: args.localDate,
-        timezone: birthData.timezone,
-        chart,
-        transits
-      }),
-      provider: {
-        status: providerResult.status,
-        providerVersion: providerResult.providerVersion,
-        houseSystem: providerResult.houseSystem,
-        endpoint: "natal_transits/daily",
-        warnings: providerResult.warnings
-      },
-      modelGaps: [
-        ...providerResult.warnings,
-        ...(transits.length === 0 ? ["daily_transits_empty_or_unavailable"] : []),
-        "editorial_review_required_before_app_release"
-      ],
-      reviewStatus: "needs_review",
-      rawPolicy: {
-        returnsProviderRaw: false,
-        reason: "transitReadings y dailyReadings guardan solo payload normalizado; raw/request queda fuera de tablas app-facing."
-      }
+      transitId,
+      detail: publicTransitDetail(
+        buildWebB0TransitDetailPayloadFor({ ...transit, transitId }, args.localDate),
+        isPro
+      )
     };
-    const transitReading: any = await ctx.runMutation(
-      internalApi.transits.persistTodayFromProvider,
-      omitUndefined({
-        tokenIdentifier: identity.tokenIdentifier,
-        localDate: args.localDate,
-        timezone: birthData.timezone,
-        natalChartId: state.natalChart?._id,
-        providerVersion: providerResult.providerVersion,
-        timelineVersion: DAILY_TRANSITS_TIMELINE_VERSION,
-        payload
-      })
-    );
-
-    return publicTransitDetail(
-      buildWebB0TransitDetailPayload(transitReading.payload, args.localDate),
-      state.isPro
-    );
   }
 });

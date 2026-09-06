@@ -237,7 +237,19 @@ export type WebB0TransitDetailPayload = {
   frequency: { label: string; timeline: Array<{ label: string; current: boolean }> };
   earth: { headline: string; suggestions: string[] };
   window: { label: string; note: string };
+  /** Identidad estable del contacto dentro de la lectura del día (`transitIdFor`).
+   *  Ausente en el detalle «pendiente» sin tránsito. */
+  transitId?: string;
+  /** Casa natal tocada y su tema, sólo si el proveedor la publicó. `null` no se
+   *  rellena: la ausencia se dice en `reading`. */
+  natalHouse?: number | null;
+  houseTheme?: string | null;
+  /** Cada cuánto cambia esta capa. Es un dato del módulo, no decoración. */
+  cadence?: string;
 };
+
+/** Un tránsito normalizado con su identidad estable ya asignada. */
+export type IdentifiedAstroTransit = NormalizedAstroTransit & { transitId: string };
 
 export type AstrologyProviderRunResult = {
   status: "success" | "not_configured" | "missing_input" | "error";
@@ -592,6 +604,88 @@ const aspectLabels: Record<string, string> = {
 };
 
 const majorAspects = new Set(["conjunction", "opposition", "square", "trine", "sextile"]);
+
+/** Cuántos contactos del día conservan identidad en la lectura persistida. Cubre
+ *  el ranking de la guía diaria (cuatro) con margen, sin guardar la lista entera. */
+export const RANKED_TRANSITS_LIMIT = 8;
+
+function transitIdSegment(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+/**
+ * Identidad estable de un contacto: `planeta-aspecto-punto` con las claves
+ * canónicas del proveedor (`mars-square-venus`), nunca la posición en una
+ * lista ni un texto traducido. Es determinista para el mismo contacto en la
+ * misma lectura, y el servidor la resuelve siempre dentro de la lectura del
+ * usuario para la fecha pedida: sola no abre nada.
+ */
+export function transitIdFor(transit: Pick<NormalizedAstroTransit, "transitPlanet" | "aspectType" | "natalPoint">) {
+  return [transit.transitPlanet, transit.aspectType, transit.natalPoint].map(transitIdSegment).join("-");
+}
+
+/**
+ * Asigna identidades a una lista, en orden. Si el mismo contacto aparece dos
+ * veces en el día (el proveedor puede publicar dos ventanas del mismo par), la
+ * segunda lleva sufijo `-2`, la tercera `-3`: dos filas distintas nunca
+ * comparten identidad.
+ */
+export function assignTransitIds<T extends NormalizedAstroTransit>(transits: T[]): Array<T & { transitId: string }> {
+  const seen = new Map<string, number>();
+  return transits.map((transit) => {
+    const base = transitIdFor(transit);
+    const times = (seen.get(base) ?? 0) + 1;
+    seen.set(base, times);
+    return { ...transit, transitId: times === 1 ? base : `${base}-${times}` };
+  });
+}
+
+/**
+ * Busca un contacto por identidad dentro de una lectura persistida. Mira primero
+ * `rankedTransits` (lecturas nuevas, con `transitId` guardado) y, para documentos
+ * anteriores, reconstruye la identidad de los candidatos que existan
+ * (`selectedTransits`, `transits.highlighted`, `transits.secondary`,
+ * `highlightedTransit`). Devuelve `null` si nadie coincide: el consumidor
+ * muestra ese estado, nunca otro tránsito.
+ */
+export function findTransitInPayload(payload: unknown, transitId: string): NormalizedAstroTransit | null {
+  const wanted = transitId.trim();
+  if (!wanted) {
+    return null;
+  }
+  const record = asRecord(payload);
+  const transits = asRecord(record.transits);
+  const withIds = asArray(record.rankedTransits)
+    .map((value) => ({ value, id: asRecord(value).transitId }))
+    .filter((entry): entry is { value: unknown; id: string } => typeof entry.id === "string");
+  for (const entry of withIds) {
+    if (entry.id === wanted) {
+      return normalizedTransitFromValue(entry.value);
+    }
+  }
+
+  const legacyCandidates = [
+    ...asArray(record.selectedTransits),
+    transits.highlighted,
+    ...asArray(transits.secondary),
+    record.highlightedTransit
+  ]
+    .map(normalizedTransitFromValue)
+    .filter((transit): transit is NormalizedAstroTransit => transit !== null);
+  const deduped: NormalizedAstroTransit[] = [];
+  for (const candidate of legacyCandidates) {
+    const key = `${candidate.transitPlanet}|${candidate.aspectType}|${candidate.natalPoint}|${candidate.exactTime ?? ""}`;
+    if (!deduped.some((seen) => `${seen.transitPlanet}|${seen.aspectType}|${seen.natalPoint}|${seen.exactTime ?? ""}` === key)) {
+      deduped.push(candidate);
+    }
+  }
+  return assignTransitIds(deduped).find((candidate) => candidate.transitId === wanted) ?? null;
+}
 
 export const houseThemes: Record<number, string> = {
   1: "identidad y forma de entrar al mundo",
@@ -1190,8 +1284,20 @@ function buildTransitTimeline(transit: NormalizedAstroTransit, localDate: string
 
 export function buildWebB0TransitDetailPayload(payload: unknown, localDate: string): WebB0TransitDetailPayload {
   const transit = extractHighlightedTransitFromPayload(payload);
+  if (transit) {
+    // El destacado conserva la identidad guardada si la lectura ya la trae.
+    const ranked = asArray(asRecord(payload).rankedTransits)[0];
+    const storedId = asRecord(ranked).transitId;
+    return buildWebB0TransitDetailPayloadFor(
+      { ...transit, transitId: typeof storedId === "string" ? storedId : transitIdFor(transit) },
+      localDate
+    );
+  }
+  return buildPendingTransitDetail(localDate);
+}
 
-  if (!transit) {
+function buildPendingTransitDetail(localDate: string): WebB0TransitDetailPayload {
+  {
     const text = "Todavía no hay un tránsito destacado para esta fecha. Podés ver la estructura, pero falta proveedor diario.";
     return toSerializable({
       title: "Tránsito del día pendiente",
@@ -1222,7 +1328,18 @@ export function buildWebB0TransitDetailPayload(payload: unknown, localDate: stri
       }
     }) as WebB0TransitDetailPayload;
   }
+}
 
+/**
+ * El detalle de UN contacto concreto, identificado. Es lo que abre cada fila del
+ * ranking: cuerpos, aspecto, casa si la hay, lectura, ventana, cadencia y «cómo
+ * se juega en la Tierra». Nada se rellena: sin casa se dice que falta; sin hora
+ * exacta la ventana lo declara.
+ */
+export function buildWebB0TransitDetailPayloadFor(
+  transit: IdentifiedAstroTransit,
+  localDate: string
+): WebB0TransitDetailPayload {
   const editorial = getTransitEditorial(transit);
   const title = `${transit.transitPlanetEs} ${transit.aspectTypeEs} tu ${transit.natalPointEs}`;
   const fragments = [
@@ -1278,7 +1395,11 @@ export function buildWebB0TransitDetailPayload(payload: unknown, localDate: stri
         compactWindowLabel(transit.exactTime) ??
         compactWindowLabel(transit.startTime) ??
         "Sin hora exacta en el payload normalizado."
-    }
+    },
+    transitId: transit.transitId,
+    natalHouse: transit.natalHouse,
+    houseTheme: transit.natalHouse !== null ? (houseThemes[transit.natalHouse] ?? null) : null,
+    cadence: "Cambia a diario"
   }) as WebB0TransitDetailPayload;
 }
 
@@ -2125,7 +2246,10 @@ export function buildDailyReadingPayloadFromAstrology(args: {
   chart: NormalizedAstroChart | null;
   transits: NormalizedAstroTransit[];
 }) {
-  const selectedTransits = selectRelevantTransits(args.transits);
+  // Los contactos del día con identidad estable: el ranking de la guía diaria
+  // toma los primeros, y `transits.getDetail` los busca por `transitId`.
+  const rankedTransits = assignTransitIds(selectRelevantTransits(args.transits, RANKED_TRANSITS_LIMIT));
+  const selectedTransits = rankedTransits.slice(0, 3);
   const highlightedTransit = selectedTransits[0] ?? null;
   const editorial = getTransitEditorial(highlightedTransit);
   const sun = args.chart?.summary.sun ?? null;
@@ -2170,6 +2294,7 @@ export function buildDailyReadingPayloadFromAstrology(args: {
     chartProfile: buildChartProfileFromAstrology(args.chart),
     highlightedTransit,
     selectedTransits,
+    rankedTransits: rankedTransits.map((transit) => ({ ...transit, displayText: formatTransitDisplay(transit) })),
     home,
     modules: home,
     topics,

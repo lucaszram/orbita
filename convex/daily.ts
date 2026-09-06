@@ -11,6 +11,7 @@ import { internal } from "./_generated/api";
 import { editorialRitualFor } from "./content/tarotEditorial";
 import { runAstrologyApiDailyTransits } from "./lib/astrologyApi";
 import {
+  assignTransitIds,
   extractNormalizedChartFromPayload,
   houseThemes,
   selectRelevantTransits,
@@ -99,8 +100,11 @@ type DailyGuidePayload = {
   headline: string;
   body: string;
   clima: string;
-  destacado: { aspecto: string; lectura: string };
-  secundarios: Array<{ aspecto: string; lectura: string }>;
+  /** `transitId` identifica el contacto dentro de la lectura del día
+   *  (`transits.getDetail`). Ausente en documentos anteriores y en el payload
+   *  rápido sin tránsitos: el cliente no abre ningún detalle sin él. */
+  destacado: { aspecto: string; lectura: string; transitId?: string };
+  secundarios: Array<{ aspecto: string; lectura: string; transitId?: string }>;
   basadoEn: string[];
   disclaimer: string;
   /** Carta del día. Siempre presente (el sorteo no depende del LLM); usa una de
@@ -938,7 +942,7 @@ export function composePayload(args: {
   ritual?: DailyRitual;
   enrichment?: DailyEnrichment;
 }): DailyGuidePayload {
-  const [top, ...rest] = args.transits;
+  const [top, ...rest] = assignTransitIds(args.transits);
   const g = args.generated;
   const ritual = args.ritual ?? g.cartaRitual ?? fallbackRitual(args.carta);
   return {
@@ -954,8 +958,10 @@ export function composePayload(args: {
     headline: g.headline,
     body: g.body,
     clima: g.clima,
-    destacado: { aspecto: top ? aspectLine(top) : "Sin tránsito destacado", lectura: g.destacadoLectura },
-    secundarios: rest.slice(0, 3).map((t) => ({ aspecto: aspectLine(t), lectura: "" })),
+    destacado: top
+      ? { aspecto: aspectLine(top), lectura: g.destacadoLectura, transitId: top.transitId }
+      : { aspecto: "Sin tránsito destacado", lectura: g.destacadoLectura },
+    secundarios: rest.slice(0, 3).map((t) => ({ aspecto: aspectLine(t), lectura: "", transitId: t.transitId })),
     basadoEn: args.transits.slice(0, 3).map((t) => aspectLine(t).toUpperCase()),
     disclaimer: DISCLAIMER,
     tesis: g.tesis,
