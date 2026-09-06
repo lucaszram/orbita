@@ -108,6 +108,15 @@ function CartaCompletaLive() {
       </Shell>
     );
   }
+  if (carta.readingState === undefined) {
+    // Hasta saber si la lectura está bloqueada por plan, no se dibuja una
+    // carta a medias con el payload Free (sin casas ni aspectos).
+    return (
+      <Shell>
+        <MinimalLoading />
+      </Shell>
+    );
+  }
   if (readingPhase === "bloqueado") {
     // Free: la carta completa es Plus. El hub ya mostró la base natal; acá no
     // se dibuja una carta a medias.
@@ -138,7 +147,7 @@ function CartaCompletaLive() {
       <CartaCompletaLista
         payload={payload}
         birth={remoteBirth ?? null}
-        calculadaEn={typeof doc?._creationTime === "number" ? doc._creationTime : undefined}
+        calculadaEn={typeof doc?.updatedAt === "number" ? doc.updatedAt : typeof doc?.createdAt === "number" ? doc.createdAt : undefined}
         sections={readingPhase === "listo" ? reading?.sections ?? [] : null}
         readingPhase={readingPhase}
         onRetryReading={carta.retryReading}
@@ -315,7 +324,7 @@ function CartaCompletaLista({
       {/* 05 · Los contactos entre tus puntos */}
       <Bloque rotulo="LOS CONTACTOS ENTRE TUS PUNTOS" derecha="NATAL · NO CAMBIA">
         <PTexto style={styles.cuerpo}>
-          Un aspecto es la distancia entre dos puntos de tu carta cuando esa distancia forma un ángulo señalado: 0°, 60°, 90°, 120° o
+          Un aspecto es la distancia entre dos puntos de tu carta cuando esa distancia forma un ángulo señalado: 0°, 60°, 90°, 120°, 150° o
           180°.
         </PTexto>
         {aspectos.length > 0 ? (

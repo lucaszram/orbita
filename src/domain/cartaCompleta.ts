@@ -28,6 +28,11 @@ export const CODIGO_DE_CUERPO: Record<string, string> = {
 /** Del Sol a Plutón: el orden canónico de las diez posiciones. */
 export const ORDEN_DE_PLANETAS = ["sun", "moon", "mercury", "venus", "mars", "jupiter", "saturn", "uranus", "neptune", "pluto"] as const;
 
+/** Grado entero dentro del signo, por piso: 29,6° es 29°, nunca «30°» ni «0°» del signo siguiente. */
+function gradoEnSigno(deg: number): number {
+  return Math.min(29, Math.max(0, Math.floor(deg)));
+}
+
 const SIGNOS_ES = ["Aries", "Tauro", "Géminis", "Cáncer", "Leo", "Virgo", "Libra", "Escorpio", "Sagitario", "Capricornio", "Acuario", "Piscis"];
 
 /** Temas cortos de las doce casas, como los escribe el frame `1872:4512`. */
@@ -58,7 +63,7 @@ export function codigoDe(p: Pick<SignPlacement, "key" | "planet">): string {
 /** `"Escorpio 19°"` — el signo y el grado dentro del signo, si lo hay. */
 export function signoYGrado(p: Pick<SignPlacement, "sign" | "normDegree">): string {
   if (!p.sign || p.sign === "—") return "—";
-  return typeof p.normDegree === "number" && Number.isFinite(p.normDegree) ? `${p.sign} ${Math.round(p.normDegree)}°` : p.sign;
+  return typeof p.normDegree === "number" && Number.isFinite(p.normDegree) ? `${p.sign} ${gradoEnSigno(p.normDegree)}°` : p.sign;
 }
 
 export type FilaDeTriada = { codigo: string; nombre: string; valor: string; meta: string | null };
@@ -105,7 +110,7 @@ export function ejes(payload: Pick<NatalChartPayload, "triad" | "mc">): Eje[] {
   const lista: Eje[] = [{ codigo: "AC", nombre: "Ascendente", valor: signoYGrado(asc) }];
   if (typeof payload.mc === "number" && Number.isFinite(payload.mc)) {
     const norm = ((payload.mc % 360) + 360) % 360;
-    lista.push({ codigo: "MC", nombre: "Medio Cielo", valor: `${SIGNOS_ES[Math.floor(norm / 30)]} ${Math.round(norm % 30)}°` });
+    lista.push({ codigo: "MC", nombre: "Medio Cielo", valor: `${SIGNOS_ES[Math.floor(norm / 30)]} ${gradoEnSigno(norm % 30)}°` });
   }
   return lista;
 }
@@ -133,7 +138,7 @@ export function casasConTema(payload: Pick<NatalChartPayload, "houses">): CasaFi
     .sort((a, b) => a.house - b.house)
     .map((h) => ({
       casa: h.house,
-      valor: typeof h.cusp === "number" && Number.isFinite(h.cusp) ? `${h.sign} ${Math.round(((h.cusp % 360) + 360) % 360) % 30}°` : h.sign,
+      valor: typeof h.cusp === "number" && Number.isFinite(h.cusp) ? `${h.sign} ${gradoEnSigno((((h.cusp % 360) + 360) % 360) % 30)}°` : h.sign,
       tema: TEMA_CORTO_DE_CASA[h.house] ?? h.theme ?? ""
     }));
 }

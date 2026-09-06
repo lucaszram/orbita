@@ -27,13 +27,9 @@ import { useIsDesktop } from "@/hooks/useLayoutMode";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import {
   appApi,
-  type BirthDataDoc,
-  type NatalChartAspect,
   type NatalChartPayload,
   type PersonalityReadingPayload,
-  type PersonalitySection,
-  type SignPlacement,
-  type ValuesMapPayload
+  type SignPlacement
 } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
 
@@ -219,11 +215,9 @@ function CartaLive() {
   return (
     <CartaView
       payload={payload}
-      birth={remoteBirth ?? null}
       reading={readingPhase === "listo" ? reading! : null}
       readingPhase={readingPhase}
       onRetryReading={carta.retryReading}
-      values={values ?? null}
     />
   );
 }
@@ -297,21 +291,23 @@ const DISCLAIMER = "Órbita es entretenimiento y autoconocimiento.";
  * dice en qué estado está esa lectura (Plus, preparando, error, lista) y la
  * abre. Nada se maqueta: el resumen cuenta lo que el payload trae.
  */
+/** Rótulo derecho y tono de la cabecera del bloque 02 según la fase de la lectura. */
+function cabeceraDelBloque(fase: ReadingBlockPhase): { rotulo: string; cobre: boolean } {
+  if (fase === "bloqueado") return { rotulo: "SOLO CON ÓRBITA PLUS", cobre: true };
+  return { rotulo: fase === "listo" ? "SEIS BLOQUES" : "PREPARANDO", cobre: false };
+}
+
 function CartaView({
   payload,
-  birth,
   reading,
   readingPhase,
-  onRetryReading,
-  values
+  onRetryReading
 }: {
   payload: NatalChartPayload;
-  birth: BirthDataDoc | null;
   /** Solo no-null cuando `readingPhase === "listo"`. */
   reading: PersonalityReadingPayload | null;
   readingPhase: ReadingBlockPhase;
   onRetryReading: () => void;
-  values: ValuesMapPayload | null;
 }) {
   const desktop = useIsDesktop();
   const [view, setView] = useState<"circulo" | "tabla">("circulo");
@@ -320,15 +316,10 @@ function CartaView({
   const resumen = resumenDeBase(payload);
   const abrirCompleta = () => router.push("/reading/carta-completa");
   const chapters = reading?.sections.length ?? 0;
-  void birth;
-  void values;
+  const cabecera = cabeceraDelBloque(readingPhase);
+  const bloqueada = cabecera.cobre;
 
   // --- Piezas -------------------------------------------------------------
-
-  // Escrito así a propósito: las regresiones de `cartaNatalCarga` localizan el
-  // ternario de estados por la PRIMERA aparición literal de la fase bloqueada,
-  // que tiene que ser la del bloque 02, no esta variable.
-  const bloqueada: boolean = readingPhase === ("bloqueado" as ReadingBlockPhase);
 
   const encabezado = (
     <Section style={{ paddingBottom: orbita.spacing.lg }}>
@@ -417,8 +408,8 @@ function CartaView({
         <Text style={styles.bloqueTitulo}>
           <Text style={styles.bloqueNum}>02 </Text>LA CARTA COMPLETA
         </Text>
-        <Text style={[styles.hubHeadRight, bloqueada && styles.hubHeadCobre]}>
-          {bloqueada ? "SOLO CON ÓRBITA PLUS" : readingPhase === "listo" ? "SEIS BLOQUES" : "PREPARANDO"}
+        <Text style={[styles.hubHeadRight, cabecera.cobre && styles.hubHeadCobre]}>
+          {cabecera.rotulo}
         </Text>
       </View>
       {readingPhase !== "listo" ? (
@@ -563,33 +554,6 @@ function CartaView({
   );
 }
 
-/** Bloque de explicación por punto de la carta (sector): glifo + placement + título
- *  + lectura + preguntas. Visible, sin colapsar. */
-function SectorBlock({ s, n }: { s: PersonalitySection; n: number }) {
-  return (
-    <View style={styles.sector}>
-      <Text style={styles.sectorNum}>{`Sector ${String(n).padStart(2, "0")}`}</Text>
-      <View style={styles.sectorHead}>
-        <View style={styles.sectorMarker}>
-          <AstroGlyph symbol={bodySymbol({ label: s.placement.label })} size={16} color={orbita.colors.bone} strokeWidth={2} />
-        </View>
-        <Text style={styles.sectorPlacement}>
-          {`${s.placement.planet} en ${s.placement.sign ?? ""}${s.placement.house ? ` · Casa ${s.placement.house}` : ""}`.toUpperCase()}
-        </Text>
-      </View>
-      <Text style={styles.sectorTitle}>{s.title}</Text>
-      <Text style={styles.sectorBody}>{s.body}</Text>
-      {s.questions?.length ? (
-        <View style={styles.sectorQuestions}>
-          {s.questions.map((q) => (
-            <Text key={q} style={styles.sectorQ}>{`— ${q}`}</Text>
-          ))}
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
 function CartaTriad({ triad }: { triad: NatalChartPayload["triad"] }) {
   const filas = filasDeTriada({ triad });
   return (
@@ -619,16 +583,6 @@ function PositionRow({ p }: { p: SignPlacement }) {
         {p.isRetrograde ? ` ${RETROGRADE_CODE}` : ""}
       </Text>
       <Text style={styles.posHouse}>{p.house ? `Casa ${p.house}` : "—"}</Text>
-    </View>
-  );
-}
-
-function AspectRow({ a }: { a: NatalChartAspect }) {
-  return (
-    <View style={styles.aspRow}>
-      <View style={[styles.aspDot, { backgroundColor: a.harmony === "tension" ? orbita.colors.tension : orbita.colors.harmony }]} />
-      <Text style={styles.aspText}>{`${a.from} ${a.typeEs ?? a.type} ${a.to}`}</Text>
-      {a.orb != null ? <Text style={styles.aspOrb}>{`orbe ${deg(a.orb)}`}</Text> : null}
     </View>
   );
 }
@@ -680,28 +634,6 @@ const styles = StyleSheet.create({
   // Estado inline del bloque "Tu carta, explicada" (carga / error+reintento).
   readingStatus: { alignItems: "flex-start", marginTop: orbita.spacing.xl },
   readingStatusText: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 15, lineHeight: 23, marginTop: orbita.spacing.md },
-
-  // Bloque de explicación por sector (visible, sin colapsar).
-  sector: { marginTop: orbita.spacing.xl },
-  sectorNum: { color: orbita.colors.copper, fontFamily: orbita.fonts.monoMedium, fontSize: 11, letterSpacing: 1.5 },
-  sectorHead: { alignItems: "center", flexDirection: "row", marginTop: orbita.spacing.md },
-  sectorMarker: { alignItems: "center", borderColor: "rgba(214,154,106,0.5)", borderRadius: 16, borderWidth: 1, height: 32, justifyContent: "center", marginRight: orbita.spacing.md, width: 32 },
-  sectorPlacement: { color: orbita.colors.copperSoft, flex: 1, fontFamily: orbita.fonts.monoMedium, fontSize: 11, letterSpacing: 1 },
-  sectorTitle: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 22, lineHeight: 28, marginTop: orbita.spacing.md },
-  sectorBody: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 15, lineHeight: 23, marginTop: orbita.spacing.sm },
-  sectorQuestions: { borderTopColor: orbita.colors.line, borderTopWidth: 1, marginTop: orbita.spacing.lg, paddingTop: orbita.spacing.lg },
-  sectorQ: { color: orbita.colors.bone, fontFamily: orbita.fonts.serifRegular, fontSize: 16, lineHeight: 24, marginBottom: orbita.spacing.sm },
-
-  aspRow: { alignItems: "center", flexDirection: "row", paddingVertical: orbita.spacing.sm },
-  aspDot: { borderRadius: 3, height: 6, marginRight: orbita.spacing.md, width: 6 },
-  aspText: { color: orbita.colors.bone, flex: 1, fontFamily: orbita.fonts.body, fontSize: 14 },
-  aspOrb: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.mono, fontSize: 11 },
-
-  houseRow: { alignItems: "center", borderBottomColor: orbita.colors.line, borderBottomWidth: 1, flexDirection: "row", paddingVertical: orbita.spacing.md },
-  houseNum: { color: orbita.colors.copper, fontFamily: orbita.fonts.monoMedium, fontSize: 11, letterSpacing: 0.5, width: 64 },
-  houseBody: { flex: 1 },
-  houseSign: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 16 },
-  houseTheme: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 13, marginTop: 1 },
 
   links: { flexDirection: "row", flexWrap: "wrap", gap: orbita.spacing.xl, marginTop: orbita.spacing.xl, marginBottom: orbita.spacing.lg },
   linkText: { color: orbita.colors.muted, fontFamily: orbita.fonts.monoMedium, fontSize: 11, letterSpacing: 1 }
