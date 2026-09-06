@@ -329,13 +329,18 @@ describe("el ranking de Hoy lleva la identidad hasta la ruta", () => {
   const APPREFS = sinComentarios(leer("src/services/appRefs.ts"));
 
   it("la fila con identidad es un enlace accesible a su propio detalle", () => {
-    assert.match(RANKING, /<Link href=\{\{ pathname: "\/reading\/transito", params: \{ id: transitId \} \}\} asChild>/);
-    assert.match(RANKING, /accessibilityRole="link"/);
-    assert.match(RANKING, /accessibilityLabel=\{`\$\{fila\.rango\}\. \$\{fila\.titulo\}\.\$\{fila\.casa !== null \? ` Casa \$\{fila\.casa\}\.` : ""\} Abrir el detalle de este tránsito\.`\}/);
-    assert.match(RANKING, /onHoverIn=/);
-    assert.match(RANKING, /onFocus=/);
+    // CORE-238: la fila con identidad es la `PFila` del panorama (PanoramaUI),
+    // que ya es el enlace accesible a `/reading/transito?id=…`; Hoy la monta
+    // sólo cuando `filaDeHoyComoVista` devuelve una vista (con `transitId`).
+    const PANORAMA = sinComentarios(leer("src/components/transitos/PanoramaUI.tsx"));
+    assert.match(PANORAMA, /const href: Href = \{ pathname: "\/reading\/transito", params: \{ id: fila\.transitId \} \};/);
+    assert.match(PANORAMA, /accessibilityRole="link"/);
+    assert.match(PANORAMA, /Abrir el detalle de este tránsito\./);
+    assert.match(PANORAMA, /onHoverIn=/);
+    assert.match(PANORAMA, /onFocus=/);
+    assert.match(RANKING, /const vista = filaDeHoyComoVista\(fila\);/);
+    assert.match(RANKING, /vista \? \(\s*<PFila key=\{fila\.clave\} fila=\{vista\} conCuerpo=\{vista\.cuerpo\.length > 0\} ultima=/);
     assert.match(RANKING, /minHeight: 44/);
-    assert.match(RANKING, /fila\.transitId \? <HoyRankingFilaEnlace/);
   });
 
   it("la fila legacy no promete un detalle inexistente y lo dice", () => {
@@ -345,7 +350,9 @@ describe("el ranking de Hoy lleva la identidad hasta la ruta", () => {
   });
 
   it("«Ver todos los tránsitos» sigue yendo a /transito", () => {
-    assert.match(RANKING, /<HoyEnlace href="\/transito">VER TODOS LOS TRÁNSITOS<\/HoyEnlace>/);
+    // CORE-238: con el panorama el pie dice «VER LOS N CONTACTOS ACTIVOS»; sin
+    // total conocido, «VER TODOS LOS TRÁNSITOS». El destino no cambia.
+    assert.match(RANKING, /<HoyEnlace href="\/transito">\{enlace \?\? "VER TODOS LOS TRÁNSITOS"\}<\/HoyEnlace>/);
   });
 
   it("la pantalla abre exactamente el id de la ruta con el contrato compartido por web y nativo", () => {

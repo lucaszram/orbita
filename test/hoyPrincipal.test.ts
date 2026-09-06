@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { contarModulos, contextoDelAno, esLecturaPlantilla, etiquetaDeModulos, guiaPendiente, hoyBloques, hoyPrincipal, hoyRanking, numeroDeBloque, partesDeContacto } from "../src/domain/hoyPrincipal";
+import { contarModulos, contextoDelAno, esLecturaPlantilla, etiquetaDeContactosActivos, etiquetaDeModulos, filaDeHoyComoVista, filasDelPanoramaParaHoy, guiaPendiente, hoyBloques, hoyPrincipal, hoyRanking, numeroDeBloque, partesDeContacto, principalDesdePanorama } from "../src/domain/hoyPrincipal";
 import type { DailyGuidePayload } from "../src/services/appRefs";
 
 /** Un payload real mínimo; cada test pisa sólo lo que le importa. */
@@ -303,5 +303,49 @@ describe("el contexto del año (CORE-237)", () => {
     assert.equal(contextoDelAno({ status: "ready", houseTheme: "   " }, null), null, "sin tema escrito no hay contexto");
     assert.equal(contextoDelAno({ status: "needs_birth_time" }, "algo"), null, "sin profección no se inventa contexto");
     assert.equal(contextoDelAno(null, "algo"), null);
+  });
+});
+
+describe("el ranking de Hoy como el de Tránsitos (CORE-238)", () => {
+  const row = (rank: number, extra: Record<string, unknown> = {}) => ({
+    transitId: `t${rank}`,
+    rank,
+    title: "Luna trígono tu Marte",
+    transitPlanet: "Luna",
+    natalPoint: "Marte",
+    aspectType: "trine",
+    aspectEs: "trígono",
+    aspectAngle: 120,
+    natalHouse: 4,
+    phase: "exacto" as const,
+    peakLabel: "EXACTO HOY",
+    closeness: 0.9,
+    cadence: "Cambia dentro del día",
+    body: "Luna y tu Marte forman un trígono, un contacto de 120°.",
+    startTime: null,
+    exactTime: null,
+    endTime: null,
+    ...extra
+  });
+  const listo = { status: "ready" as const, localDate: "2026-09-06", count: 6, rows: [1, 2, 3, 4, 5, 6].map((n) => row(n)), activeTotal: 16, cadence: "Cambia a diario" as const, access: { isPro: true as const, personalized: true as const } };
+
+  it("con el panorama listo, Hoy muestra sus primeras filas, el total activo y la lectura del primero como principal", () => {
+    const filas = filasDelPanoramaParaHoy(listo);
+    assert.equal(filas.length, 5, "las mismas filas visibles que Tránsitos");
+    assert.equal(filas[0].barra, 0.9);
+    assert.equal(filas[0].chip, "EXACTO HOY");
+    assert.equal(etiquetaDeContactosActivos(listo), "VER LOS 16 CONTACTOS ACTIVOS");
+    assert.deepEqual(principalDesdePanorama(listo, { titular: "síntesis", aspecto: null }), { titular: "Luna y tu Marte forman un trígono, un contacto de 120°.", aspecto: "Luna trígono tu Marte" });
+  });
+
+  it("sin panorama —bloqueado, vacío o caído— queda la guía: sin barra, sin chip, sin total inventado", () => {
+    const bloqueado = { status: "locked" as const, localDate: "2026-09-06", access: { isPro: false as const, personalized: false as const } };
+    assert.deepEqual(filasDelPanoramaParaHoy(bloqueado), []);
+    assert.equal(etiquetaDeContactosActivos(bloqueado), null);
+    assert.equal(etiquetaDeContactosActivos(null), null);
+    assert.deepEqual(principalDesdePanorama(null, { titular: "síntesis", aspecto: "x" }), { titular: "síntesis", aspecto: "x" });
+    const vista = filaDeHoyComoVista({ clave: "k", rango: 2, aspecto: "Marte en Cáncer trígono tu Sol (casa 7)", titulo: "Marte trígono tu Sol", planeta: "Marte", punto: "Sol", casa: 7, transitId: "marte-trine-sun", lectura: null });
+    assert.deepEqual(vista, { transitId: "marte-trine-sun", rango: 2, titulo: "Marte trígono tu Sol", linea: "Marte · Sol", chip: null, meta: "CASA 7", barra: null, cuerpo: "", cadencia: null });
+    assert.equal(filaDeHoyComoVista({ clave: "k", rango: 1, aspecto: "a", titulo: "a", planeta: null, punto: null, casa: null, transitId: null, lectura: null }), null, "sin identidad no hay enlace");
   });
 });

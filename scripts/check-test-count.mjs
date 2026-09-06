@@ -71,8 +71,10 @@ import { pathToFileURL } from "node:url";
  * `momento.test.ts` (lectura del mandala, arco, estado): 997 + 9.
  *
  * Lo principal de Hoy (CORE-237) suma 1 caso en `hoyPrincipal.test.ts` (el contexto del año): 1006 + 1.
+ *
+ * El ranking de Hoy como el de Tránsitos (CORE-238) suma 2 casos en `hoyPrincipal.test.ts`: 1007 + 2.
  */
-export const DEFAULT_MINIMUM = 1007;
+export const DEFAULT_MINIMUM = 1009;
 
 /**
  * Lee un contador del resumen final del runner de Node.

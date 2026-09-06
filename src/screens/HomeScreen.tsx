@@ -79,12 +79,15 @@ import { LoadingState } from "@/components/orbita/states";
 import {
   contarModulos,
   contextoDelAno,
+  etiquetaDeContactosActivos,
   etiquetaDeModulos,
+  filasDelPanoramaParaHoy,
   guiaPendiente,
   hoyBloques,
   hoyPrincipal,
   hoyRanking,
   numeroDeBloque,
+  principalDesdePanorama,
   RUTA_TU_MOMENTO,
   type HoyBloqueKey
 } from "@/domain/hoyPrincipal";
@@ -105,7 +108,7 @@ import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
 import { useRequireProfile } from "@/hooks/useRequireProfile";
 import { useDailyGuide } from "@/services/dailyGuideStore";
 import { useLunaCarta } from "@/services/lunaCartaStore";
-import { proposedApi, type MomentoTemaDelAno } from "@/services/appRefs";
+import { proposedApi, type MomentoTemaDelAno, type TransitPanorama } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
 
 const IS_WEB = process.env.EXPO_OS === "web";
@@ -129,6 +132,9 @@ const TITULO: Record<HoyBloqueKey, string> = {
   luna: "LA LUNA EN TU CARTA",
   cumpleluna: "CUMPLELUNA"
 };
+
+/** Con el panorama, la intro dice lo que «Por qué este orden» explica: el peso de cada contacto. */
+const INTRO_RANKING_PANORAMA = "Los contactos activos de hoy, ordenados por el peso de cada uno sobre tu carta.";
 
 const INTRO: Record<HoyBloqueKey, string> = {
   ranking: "Primero el contacto que la lectura pone al frente, después el resto de lo activo sobre tu carta.",
@@ -225,6 +231,33 @@ export function HomeScreen() {
   const tema = temaSobre && temaSobre.clave === claveDelTema && temaSobre.sobre.status === "ready" ? temaSobre.sobre.tema : null;
   const contexto = contextoDelAno(tema, tema && tema.status === "ready" ? TEMA_DE_CASA_TITULAR[tema.house] ?? null : null);
 
+  // El ranking de Hoy es el panorama de Tránsitos cuando la cuenta lo tiene
+  // (CORE-238, frames `1991:2775` / `1718:2052`): mismo orden, misma barra,
+  // mismo chip. Se pide una vez por cuenta y día; cualquier sobre que no sea
+  // `ready` —bloqueado, vacío, fallo— deja el ranking de la guía, que siempre
+  // está. Nunca bloquea la sección.
+  const getPanorama = useAction(proposedApi.transitPanorama);
+  const [panoramaSobre, setPanoramaSobre] = useState<{ clave: string; sobre: TransitPanorama } | null>(null);
+  useEffect(() => {
+    if (!claveDelTema || !today) return;
+    if (panoramaSobre?.clave === claveDelTema) return;
+    let vivo = true;
+    getPanorama({ localDate: today })
+      .then((sobre) => {
+        if (vivo) setPanoramaSobre({ clave: claveDelTema, sobre });
+      })
+      .catch(() => {
+        if (vivo) setPanoramaSobre(null);
+      });
+    return () => {
+      vivo = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [getPanorama, claveDelTema, today]);
+  const panorama = panoramaSobre && panoramaSobre.clave === claveDelTema ? panoramaSobre.sobre : null;
+  const filasPanorama = filasDelPanoramaParaHoy(panorama);
+  const enlaceContactos = etiquetaDeContactosActivos(panorama);
+
   const daily = dailyState.status === "ready" ? dailyState.payload : null;
   // La primera respuesta de `getGuide` es genérica y viene marcada pendiente:
   // no es el dato de hoy. Se muestra como carga y se vuelve a consultar.
@@ -233,7 +266,8 @@ export function HomeScreen() {
   // explica por qué falta cada bloque.
   const sobre = lunaState.status === "ready" || lunaState.status === "empty" ? lunaState.payload : null;
 
-  const principal = hoyPrincipal(daily);
+  // Con el panorama, lo principal es la lectura del contacto que él pone primero.
+  const principal = principalDesdePanorama(panorama, hoyPrincipal(daily));
   const ranking = hoyRanking(daily);
   const luna = sobre?.moonOnChart ? lunaVista(sobre.moonOnChart, sobre) : null;
   // El día con el que se compara es el del PROPIO sobre: es el día que ese
@@ -263,7 +297,7 @@ export function HomeScreen() {
   const contador = etiquetaDeModulos(
     contarModulos({
       principal: principal !== null,
-      ranking: ranking.length > 0,
+      ranking: ranking.length > 0 || filasPanorama.length > 0,
       luna: luna !== null,
       cumpleluna: cumple !== null
     })
@@ -343,10 +377,13 @@ export function HomeScreen() {
 
   function cuerpoDe(key: HoyBloqueKey) {
     if (key === "ranking") {
+      // Con el panorama listo el ranking se dibuja aunque la guía siga en vuelo
+      // o haya fallado: son fuentes distintas y ésta ya tiene el dato.
+      if (filasPanorama.length > 0) return <HoyRankingBloque filas={ranking} panorama={filasPanorama} enlace={enlaceContactos} />;
       const estado = estadoDeLaGuia("ranking");
       if (estado) return estado;
-      if (ranking.length === 0) return <HoyFalta lineas={["La lectura de hoy no trajo tránsitos para ordenar."]} />;
-      return <HoyRankingBloque filas={ranking} />;
+      if (ranking.length === 0 && filasPanorama.length === 0) return <HoyFalta lineas={["La lectura de hoy no trajo tránsitos para ordenar."]} />;
+      return <HoyRankingBloque filas={ranking} panorama={filasPanorama} enlace={enlaceContactos} />;
     }
     if (guest) return <HoyFalta lineas={[INVITADO[key]]} />;
     if (lunaState.status === "error")
@@ -440,7 +477,7 @@ export function HomeScreen() {
                         indice={numeroDeBloque(index)}
                         titulo={TITULO[key]}
                         cadencia={CADENCIA[key]}
-                        intro={INTRO[key]}
+                        intro={key === "ranking" && filasPanorama.length > 0 ? INTRO_RANKING_PANORAMA : INTRO[key]}
                       >
                         {cuerpoDe(key)}
                       </HoyBloque>

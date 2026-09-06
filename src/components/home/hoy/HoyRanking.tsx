@@ -1,72 +1,73 @@
-import { useState } from "react";
-import { Link } from "expo-router";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
 import { HoyEnlace, HoyEtiqueta, HoyMeta, HoyNota, HoyTexto } from "@/components/home/hoy/HoyLayout";
-import type { HoyRankingFila } from "@/domain/hoyPrincipal";
+import { NOTA_DEL_ORDEN, PFila, PPorQue } from "@/components/transitos/PanoramaUI";
+import { filaDeHoyComoVista, type HoyRankingFila } from "@/domain/hoyPrincipal";
+import type { FilaVista } from "@/domain/transitosPanorama";
 import { orbita } from "@/theme/orbita";
 
 /**
- * `RANKING DE TRÁNSITOS`: el orden que ya trae la generación del día, compuesto
- * como en los frames (Build 30 `1688:112`, WEB V1 `1991:2775`): cada fila abre
- * con su línea mono —el número en cobre, el planeta en tránsito y el punto
- * natal—, sigue con el contacto en cuerpo claro, y cierra con la casa en mono
- * y la lectura cuando el backend escribió una.
+ * `RANKING DE TRÁNSITOS`, compuesto como el de Tránsitos (frames WEB V1
+ * `1991:2775` / `1718:2052`, CORE-238): cada fila es una `PFila` del panorama
+ * —línea mono, título, barra de cercanía, chip de fase, meta y cuerpo—, el pie
+ * enlaza a los N contactos activos y cierra «Por qué este orden», con la misma
+ * explicación que Tránsitos (los pesos de `transitPriority`).
  *
- * Cada fila con identidad (`transitId`) es un enlace a su propio detalle,
- * `/reading/transito?id=…`, que carga exactamente ese contacto por
- * `transits.getDetail`. Una fila de un documento anterior, sin identidad, se
- * muestra igual pero no es tocable y lo dice: nunca abre el destacado en su
- * lugar.
- *
- * **No hay barra de cercanía, ni orbe, ni chip de exactitud, ni contador de
- * activos**: este deployment no publica ninguno de esos números, y dibujarlos a
- * partir de lo que hay sería inventar un puntaje. La única jerarquía que se
- * muestra es la posición, que sí es un dato real. El enlace del pie va a
- * Tránsitos, que existe en la navegación canónica.
+ * Con Plus (`panorama` listo) las filas SON las del panorama: mismo orden,
+ * mismos datos, sin recorte propio más allá de las primeras visibles. Sin Plus
+ * las filas salen de la guía del día con la misma composición y **sin barra ni
+ * chip**: ese deployment no publica cercanía a Free, y dibujarla sería un
+ * puntaje inventado. Una fila de un documento anterior, sin identidad, se
+ * muestra igual pero no es tocable y lo dice.
  */
-export function HoyRankingBloque({ filas }: { filas: readonly HoyRankingFila[] }) {
+export function HoyRankingBloque({
+  filas,
+  panorama,
+  enlace
+}: {
+  /** Las filas de la guía (Free, o mientras el panorama no llegó). */
+  filas: readonly HoyRankingFila[];
+  /** Las filas del panorama (Plus). Si hay, mandan. */
+  panorama: readonly FilaVista[];
+  /** `VER LOS 16 CONTACTOS ACTIVOS`, o `null` si el total no se conoce. */
+  enlace: string | null;
+}) {
+  const conPanorama = panorama.length > 0;
   return (
     <View>
-      {filas.map((fila, index) => (
-        <View key={fila.clave} style={index > 0 && styles.filaSiguiente}>
-          {fila.transitId ? <HoyRankingFilaEnlace fila={fila} transitId={fila.transitId} /> : <HoyRankingFilaFija fila={fila} />}
-        </View>
-      ))}
-      <HoyEnlace href="/transito">VER TODOS LOS TRÁNSITOS</HoyEnlace>
+      {conPanorama ? <HoyEtiqueta style={styles.leyenda}>LAS BARRAS MIDEN CERCANÍA AL PUNTO EXACTO</HoyEtiqueta> : null}
+      {conPanorama
+        ? panorama.map((fila, index) => <PFila key={fila.transitId} fila={fila} conCuerpo ultima={index === panorama.length - 1} />)
+        : filas.map((fila, index) => {
+            const vista = filaDeHoyComoVista(fila);
+            return vista ? (
+              <PFila key={fila.clave} fila={vista} conCuerpo={vista.cuerpo.length > 0} ultima={index === filas.length - 1} sinFase={null} />
+            ) : (
+              <View key={fila.clave} style={index > 0 && styles.filaSiguiente}>
+                <HoyRankingFilaFija fila={fila} />
+              </View>
+            );
+          })}
+      <HoyEnlace href="/transito">{enlace ?? "VER TODOS LOS TRÁNSITOS"}</HoyEnlace>
       <View style={styles.porQue}>
         <HoyEtiqueta style={styles.porQueRotulo}>POR QUÉ ESTE ORDEN</HoyEtiqueta>
-        <HoyNota style={styles.porQueTexto}>
-          Es el orden de la lectura de hoy: primero el contacto que pone al frente, después el resto de lo activo
-          sobre tu carta.
-        </HoyNota>
+        {conPanorama ? (
+          <>
+            <PPorQue enFila={false} />
+            <HoyNota style={styles.porQueTexto}>{NOTA_DEL_ORDEN}</HoyNota>
+          </>
+        ) : (
+          <HoyNota style={styles.porQueTexto}>
+            Es el orden de la lectura de hoy: primero el contacto que pone al frente, después el resto de lo activo
+            sobre tu carta.
+          </HoyNota>
+        )}
       </View>
     </View>
   );
 }
 
-/** La fila como enlace: hover, foco de teclado y área táctil de 44 puntos. */
-function HoyRankingFilaEnlace({ fila, transitId }: { fila: HoyRankingFila; transitId: string }) {
-  const [resaltada, setResaltada] = useState(false);
-  return (
-    <Link href={{ pathname: "/reading/transito", params: { id: transitId } }} asChild>
-      <Pressable
-        accessibilityRole="link"
-        accessibilityLabel={`${fila.rango}. ${fila.titulo}.${fila.casa !== null ? ` Casa ${fila.casa}.` : ""} Abrir el detalle de este tránsito.`}
-        onHoverIn={() => setResaltada(true)}
-        onHoverOut={() => setResaltada(false)}
-        onFocus={() => setResaltada(true)}
-        onBlur={() => setResaltada(false)}
-        style={({ pressed }) => [styles.fila, styles.filaTocable, (resaltada || pressed) && styles.filaResaltada]}
-      >
-        <HoyRankingFilaCuerpo fila={fila} />
-        <HoyEtiqueta style={styles.abrir}>{"VER ESTE TRÁNSITO  ›"}</HoyEtiqueta>
-      </Pressable>
-    </Link>
-  );
-}
-
-/** Una fila sin identidad: se lee, no se abre, y lo dice. */
+/** Una fila sin identidad (documentos anteriores al contrato): se lee, no se abre, y lo dice. */
 function HoyRankingFilaFija({ fila }: { fila: HoyRankingFila }) {
   return (
     <View style={styles.fila}>
@@ -98,10 +99,8 @@ function HoyRankingFilaCuerpo({ fila }: { fila: HoyRankingFila }) {
 }
 
 const styles = StyleSheet.create({
+  leyenda: { color: orbita.colors.mutedDim, marginBottom: orbita.spacing.sm },
   fila: { minHeight: 44 },
-  filaTocable: { marginHorizontal: -orbita.spacing.sm, paddingHorizontal: orbita.spacing.sm },
-  // El resaltado de hover/foco es un fondo apenas más claro, sin borde de tarjeta.
-  filaResaltada: { backgroundColor: "rgba(244, 238, 228, 0.05)" },
   // Separación por línea fina, como el resto del canon: sin tarjetas.
   filaSiguiente: {
     borderTopColor: orbita.colors.line,
@@ -121,7 +120,6 @@ const styles = StyleSheet.create({
   },
   casa: { color: orbita.colors.mutedDim, marginTop: orbita.spacing.sm },
   lectura: { marginTop: orbita.spacing.sm },
-  abrir: { marginTop: orbita.spacing.md },
   sinDetalle: { color: orbita.colors.mutedDim, marginTop: orbita.spacing.md },
   porQue: { borderTopColor: orbita.colors.line, borderTopWidth: 1, marginTop: orbita.spacing.lg, paddingTop: orbita.spacing.lg },
   porQueRotulo: { color: orbita.colors.mutedDim },
