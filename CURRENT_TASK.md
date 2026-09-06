@@ -1,5 +1,9 @@
 # Current Task
 
+## La Vínculos singular sin importadores desaparece del repo (CORE-265, 2026-09-06)
+
+**Cambios:** se borra `src/screens/VinculoScreen.tsx`, huérfano desde CORE-247 (la web monta `VinculosScreen`; el nativo redirige a `/vinculos`). Nada más.
+
 ## Órbita 1.0.0 (40) sale de main reconciliado a TestFlight (CORE-264, 2026-09-06)
 
 **Objetivo:** primer binario desde main reconciliado (`282c336`): `ios.buildNumber` 28 → 40 (App Store Connect ya tenía 29 y 30; se salta a 40),
