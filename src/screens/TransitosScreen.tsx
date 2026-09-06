@@ -130,14 +130,18 @@ function TransitosLive() {
   const [estado, setEstado] = useState<PanoramaEstado>({ kind: "cargando" });
   const [intento, setIntento] = useState(0);
   const params = useLocalSearchParams<{ segmento?: string | string[] }>();
-  const [segmento, setSegmento] = useState<Segmento>(() => segmentoDeRuta(params.segmento));
+  // El pedido ya normalizado: expo-router devuelve un array NUEVO en cada
+  // render cuando el parámetro se repite, y con él como dependencia el efecto
+  // volvería a imponer «momento» después de que el usuario toque Ahora.
+  const pedido = params.segmento === undefined ? undefined : segmentoDeRuta(params.segmento);
+  const [segmento, setSegmento] = useState<Segmento>(pedido ?? "ahora");
   const localDate = useCanonicalLocalDate();
 
   // «Ver tu momento» desde Hoy llega con `?segmento=momento`; si la pantalla ya
   // estaba abierta en Ahora, el nuevo pedido también la cambia.
   useEffect(() => {
-    if (params.segmento !== undefined) setSegmento(segmentoDeRuta(params.segmento));
-  }, [params.segmento]);
+    if (pedido !== undefined) setSegmento(pedido);
+  }, [pedido]);
 
   useEffect(() => {
     if (!localDate) return;

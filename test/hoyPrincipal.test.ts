@@ -4,7 +4,8 @@
  * Lo que se prueba acá es la DERIVACIÓN desde `daily.getGuide`: qué frase
  * encabeza la sección, qué filas tiene el ranking y —sobre todo— qué NO se
  * inventa cuando el payload viene incompleto. Es todo puro, así que se ejecuta
- * de verdad: no hay una sola afirmación sobre el texto del archivo.
+ * de verdad. La única afirmación sobre el texto de un archivo es la de
+ * CORE-240, al final: que `TransitosScreen` lea el segmento de la URL.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -365,7 +366,8 @@ describe("Tránsitos honra el segmento que pide la URL (CORE-240)", () => {
 
   it("la pantalla arranca con el segmento de la URL y vuelve a aplicarlo cuando cambia", () => {
     const fuente = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "src", "screens", "TransitosScreen.tsx"), "utf8");
-    assert.match(fuente, /useState<Segmento>\(\(\) => segmentoDeRuta\(params\.segmento\)\)/);
-    assert.match(fuente, /if \(params\.segmento !== undefined\) setSegmento\(segmentoDeRuta\(params\.segmento\)\);/);
+    assert.match(fuente, /const pedido = params\.segmento === undefined \? undefined : segmentoDeRuta\(params\.segmento\);/);
+    assert.match(fuente, /useState<Segmento>\(pedido \?\? "ahora"\)/);
+    assert.match(fuente, /if \(pedido !== undefined\) setSegmento\(pedido\);\s*\}, \[pedido\]\);/);
   });
 });
