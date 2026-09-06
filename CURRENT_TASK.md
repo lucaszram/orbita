@@ -1,5 +1,36 @@
 # Current Task
 
+## El onboarding pierde los hooks deprecados de useAccount (CORE-268, 2026-09-06)
+
+**Cambios:** se borran de `src/onboarding/useAccount.ts` tres hooks sin ningún
+llamador y su inner huérfano: `useOnboardingChart` (+`useOnboardingChartInner`),
+`useOnboardingBirthDataPersist`, `useBackendPersistStrict` y
+`useBackendPersistInner` (quedaba sin llamador al irse los dos anteriores). El
+alta cierra con `useOnboardingBirthDataSave` y el editor de perfil con
+`useProfileBirthDataPersist`: los dos siguen intactos.
+
+**Contrato conservado, no debilitado:** `test/natalDataIntegrity.test.ts`
+afirmaba «no tomar el día del dispositivo» sobre `useBackendPersistInner` y
+`useProfilePersistInner`; ahora lo afirma sobre los DOS caminos que sí corren
+(`useOnboardingBirthDataSaveInner` y `useProfilePersistInner`). La aserción
+`!useBackendPersistStrict` en el editor se retira porque el hook ya no existe.
+
+**Revisión r1 (RECHAZADA) atendida:** se restauró el JSDoc de
+`useOnboardingBirthDataSave` (camino VIVO) que el corte se había llevado; se
+borró `readTriadSign` (huérfano al irse `useOnboardingChartInner`); se quitó el
+import `useEffect`, ya sin uso; se retiró el header de sección que describía el
+hook borrado. **Revisión r2 (RECHAZADA) atendida:** se restauró también el
+header de la tríada pública (`useOnboardingComputeTriad`, vivo), que el mismo
+corte se había llevado; se repuso la línea en blanco antes del header «Alta
+durable»; y el JSDoc de `OnboardingChart.resolved` deja de hablar de una query
+de Convex que ya no existe. El guard del editor se reancló a
+`assert.ok(!/useOnboardingBirthDataSave/.test(EDITOR))`.
+
+**Declarado:** `useOnboardingSignupDraft` y `useOnboardingFinalize` NO se borran
+aunque tampoco tengan llamadores: ocho aserciones de integridad de datos
+natales están escritas sobre ellos (orden anti-carrera, `ONBOARDING_FINALIZE_FAILED`,
+rechazo sin sesión). Borrarlos sería perder esas garantías; se decide aparte.
+
 ## Los componentes viejos que sólo mencionan los tests desaparecen (CORE-267, 2026-09-06)
 
 **Cambios:** se borran `AppButton`, `ShareCardPreview`, `home/CartaBanner`, `diario/DiarioStrip`, `web/immersive-bg`, `Tag`, `MetricPill`, `TransitCard` (el viejo; el vigente es `v492/TransitCard`), `Card`, `theme/text.ts` y `content/moonPhaseMock.ts`: ninguno tiene importadores. Los tests que los listaban (`pressableStyleValue`, `v492ReleaseP1`, `hoySection`, `responsiveShells`) dejan de nombrarlos; el comentario de `convex/sky.ts` deja de citar el mock. `DiarioStrip` estaba protegido por un test de CORE-191 («no borrarlo del producto»): hoy nadie lo monta, así que se borra y el test guarda sólo `CartaDelDia` y `umbral-tarot`.

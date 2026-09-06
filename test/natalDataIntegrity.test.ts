@@ -135,7 +135,9 @@ test("Editar datos persiste por el endpoint de perfil, con source profile", () =
   assert.ok(!/completeBirthData/.test(inner), "una edición no es completar el onboarding");
   // Y la pantalla usa ese hook, no el del alta.
   assert.ok(/useProfileBirthDataPersist/.test(EDITOR));
-  assert.ok(!/useBackendPersistStrict/.test(EDITOR));
+  // Y NO el del alta: una edición no cierra el onboarding (CORE-268 reancla
+  // este guard, que apuntaba al hook borrado `useBackendPersistStrict`).
+  assert.ok(!/useOnboardingBirthDataSave/.test(EDITOR));
 });
 
 test("la persistencia compartida ya no genera el día con la fecha del dispositivo", () => {
@@ -147,7 +149,10 @@ test("la persistencia compartida ya no genera el día con la fecha del dispositi
   // público de la tríada (`useOnboardingComputeTriadInner`) sí usa una fecha del
   // cliente, y ahí es correcto — corre ANTES de que exista la cuenta, cuando
   // todavía no hay zona natal persistida de la cual derivar el día canónico.
-  for (const ancla of ["function useBackendPersistInner()", "function useProfilePersistInner()"]) {
+  // `useBackendPersistInner` se borró con CORE-268 (nadie lo llamaba desde que
+  // el alta cierra con `useOnboardingBirthDataSaveInner`), así que el contrato
+  // se afirma sobre los dos caminos de escritura que SÍ corren.
+  for (const ancla of ["function useOnboardingBirthDataSaveInner()", "function useProfilePersistInner()"]) {
     const inner = bloqueDesde(PERSIST, ancla);
     assert.ok(!/new Date\(/.test(inner), `${ancla} no puede tomar el día del dispositivo`);
     assert.ok(!/generateToday/.test(inner), `${ancla} no genera el día`);
