@@ -27,6 +27,10 @@ actualizadas con motivo: `responsiveShells` (la Carta ya no pasa `right`),
 `hoySection` (fecha sólo en escritorio en el encabezado). `DetailScreen`
 (pantallas de lectura) no cambia en esta tarjeta.
 
+**Desvíos deliberados respecto del frame** (protegidos por regresiones
+previas): la marca conserva el ícono real de la app junto al wordmark, y las
+secciones van agrupadas a la derecha con PERFIL, no centradas.
+
 **Estado:** rama `orb/core-239-cabecera-web` desde main fcc98db.
 
 ## Vínculos usa el mismo kit visual que Hoy y Tránsitos (CORE-233, 2026-09-06)
