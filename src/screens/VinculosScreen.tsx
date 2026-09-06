@@ -3,7 +3,8 @@
  *
  * Frames: `1757:2613` / `1757:2383` (lista vacía, 1440 / 390), `1761:2776`,
  * `1761:2893`, `1761:3012` (alta en tres pasos), `2092:2975` / `1757:2475`
- * (biblioteca) y `2096:3027` / `1757:2579` (límite Free). En escritorio la
+ * (biblioteca: un solo botón, editar a la elegida; agregar y volver son
+ * enlaces mono) y `2096:3027` / `1757:2579` (límite Free). En escritorio la
  * columna izquierda lleva el rótulo, el titular y la explicación; la derecha,
  * más ancha, la tarjeta que hace el trabajo (lista, alta o persona). En móvil
  * todo se apila en el orden del JSX.
@@ -802,21 +803,28 @@ function Biblioteca({
   );
 
   const access = biblioteca.access;
+  // Los frames (`2092:2975` / `1757:2475`) dibujan un solo botón: editar a la
+  // persona elegida. Con el cupo lleno, «agregar» queda como enlace mono que
+  // abre el límite; con lugar (Plus, o Free con cupo), vuelve a ser el botón
+  // principal porque es la acción que el frame vacío promete.
+  const editar = <PBoton label={`EDITAR DATOS DE ${activa.name.toLocaleUpperCase("es")}`} variante="contorno" onPress={() => onEditar(activa)} />;
   const acciones = (
     <View style={styles.acciones}>
       {access.atLimit ? (
-        <>
-          <PBoton label={`EDITAR DATOS DE ${activa.name.toLocaleUpperCase("es")}`} variante="contorno" onPress={() => onEditar(activa)} />
-          <PBoton label="AGREGAR PERSONA" variante="contorno" onPress={onAgregar} accessibilityLabel="Agregar persona. Free ya usó su cupo: muestra el límite." />
-        </>
+        editar
       ) : (
         <>
           <PBoton label="AGREGAR PERSONA" variante={desktop ? "hueso" : "cobre"} onPress={onAgregar} />
-          <PBoton label={`EDITAR DATOS DE ${activa.name.toLocaleUpperCase("es")}`} variante="contorno" onPress={() => onEditar(activa)} />
+          {editar}
         </>
       )}
     </View>
   );
+  const agregarComoEnlace = access.atLimit ? (
+    <View style={styles.enlaceSecundario}>
+      <PEnlace label="AGREGAR OTRA PERSONA" onPress={onAgregar} />
+    </View>
+  ) : null;
 
   // El límite de Free: las personas guardadas siguen, sólo no entra una nueva.
   const limiteCuerpo = (
@@ -825,14 +833,18 @@ function Biblioteca({
         Free guarda {access.limit === 1 ? "una persona" : `${access.limit} personas`} por cuenta. Para agregar a alguien más, activá Plus o reemplazá a la
         persona guardada.
       </PTexto>
-      <View style={styles.acciones}>
+      <View style={[styles.acciones, !desktop && styles.accionesApiladas]}>
         <PBoton label="VER ÓRBITA PLUS" onPress={() => router.push("/paywall")} />
         <PBoton label="REEMPLAZAR PERSONA" variante="contorno" onPress={() => onReemplazar(activa)} />
       </View>
-      {desktop ? <PNota style={styles.nota}>Reemplazar borra la comparación guardada de esa persona.</PNota> : null}
-      <View style={styles.cta}>
-        <PBoton label="VOLVER A LA LISTA" variante="contorno" onPress={onVolver} />
-      </View>
+      {desktop ? (
+        <>
+          <PNota style={styles.nota}>Reemplazar borra la comparación guardada de esa persona.</PNota>
+          <View style={styles.enlaceSecundario}>
+            <PEnlace label="VOLVER A LA LISTA" onPress={onVolver} />
+          </View>
+        </>
+      ) : null}
     </>
   );
 
@@ -859,6 +871,7 @@ function Biblioteca({
         <>
           {acciones}
           <PNota style={styles.nota}>Tocá a {activa.name} para abrir su perfil o editar sus datos.</PNota>
+          {agregarComoEnlace}
         </>
       ) : null}
     </>
@@ -868,6 +881,7 @@ function Biblioteca({
     <>
       {personas}
       {vinculo}
+      {!limite && !desktop ? <View style={styles.separador} /> : null}
       {!limite ? nivel : null}
       {!desktop && limite ? (
         <PTarjeta style={styles.tarjetaLimite}>
@@ -877,11 +891,19 @@ function Biblioteca({
           {limiteCuerpo}
         </PTarjeta>
       ) : null}
-      {!desktop && limite ? <PNota style={styles.nota}>Reemplazar borra la comparación guardada de esa persona.</PNota> : null}
+      {!desktop && limite ? (
+        <>
+          <PNota style={styles.nota}>Reemplazar borra la comparación guardada de esa persona.</PNota>
+          <View style={styles.enlaceSecundario}>
+            <PEnlace label="VOLVER A LA LISTA" onPress={onVolver} />
+          </View>
+        </>
+      ) : null}
       {!desktop && !limite ? (
         <>
           {acciones}
           <PNota style={styles.nota}>{notaDePlan(access)}</PNota>
+          {agregarComoEnlace}
         </>
       ) : null}
     </>
@@ -967,5 +989,8 @@ const styles = StyleSheet.create({
   nivelFila: { marginTop: orbita.spacing.sm },
   nivelTitulo: { color: orbita.colors.bone, fontFamily: orbita.fonts.body, fontSize: 16 },
   nivelTramos: { marginTop: orbita.spacing.md },
-  acciones: { flexDirection: "row", flexWrap: "wrap", gap: orbita.spacing.md, marginTop: orbita.spacing.xl }
+  acciones: { flexDirection: "row", flexWrap: "wrap", gap: orbita.spacing.md, marginTop: orbita.spacing.xl },
+  accionesApiladas: { alignItems: "flex-start", flexDirection: "column" },
+  enlaceSecundario: { alignItems: "flex-start", marginTop: orbita.spacing.md },
+  separador: { backgroundColor: orbita.colors.line, height: 1, marginTop: orbita.spacing.xl }
 });

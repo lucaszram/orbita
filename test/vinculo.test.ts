@@ -6,6 +6,9 @@
  * cero. Nada de acá toca la red.
  */
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 
 import {
@@ -217,5 +220,27 @@ describe("el límite Free, dicho con honestidad (CORE-214)", () => {
     assert.equal(accionDeAgregar(freeLibre), "alta");
     assert.equal(accionDeAgregar(free), "limite");
     assert.equal(accionDeAgregar(plus), "alta");
+  });
+});
+
+describe("la biblioteca se ve como el frame (CORE-235)", () => {
+  const fuente = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "src", "screens", "VinculosScreen.tsx"), "utf8");
+  const biblioteca = fuente.slice(fuente.indexOf("function Biblioteca("), fuente.indexOf("const styles = StyleSheet.create"));
+
+  it("con el cupo lleno el único botón es editar a la persona elegida; agregar es un enlace mono que abre el límite", () => {
+    assert.match(biblioteca, /access\.atLimit \? \(\s*editar\s*\)/);
+    assert.match(biblioteca, /<PEnlace label="AGREGAR OTRA PERSONA" onPress=\{onAgregar\} \/>/);
+    assert.doesNotMatch(biblioteca, /label="AGREGAR PERSONA" variante="contorno"/, "el frame no dibuja un segundo botón de agregar");
+  });
+
+  it("volver a la lista desde el límite es un enlace, no un botón", () => {
+    assert.match(biblioteca, /<PEnlace label="VOLVER A LA LISTA" onPress=\{onVolver\} \/>/);
+    assert.doesNotMatch(biblioteca, /PBoton label="VOLVER A LA LISTA"/);
+  });
+
+  it("en móvil el límite apila sus dos botones y el nivel va después de una línea (frames 1757:2579 / 1757:2475)", () => {
+    assert.match(biblioteca, /!desktop && styles\.accionesApiladas/);
+    assert.match(biblioteca, /\{!limite && !desktop \? <View style=\{styles\.separador\} \/> : null\}\s*\{!limite \? nivel : null\}/);
+    assert.match(fuente, /accionesApiladas: \{ alignItems: "flex-start", flexDirection: "column" \}/);
   });
 });

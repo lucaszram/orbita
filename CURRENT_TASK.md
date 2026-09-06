@@ -1,5 +1,27 @@
 # Current Task
 
+## La biblioteca de Vínculos se ve como el frame (CORE-235, 2026-09-06)
+
+**Objetivo:** que la lista con una persona guardada y el límite Free
+reproduzcan los frames `2092:2975` / `1757:2475` (biblioteca) y `2096:3027`
+/ `1757:2579` (límite): fila de persona con inicial, nombre y línea mono;
+tarjeta «Tu vínculo con X» con el resumen, la barra por tono y «Ver
+comparación ›»; tarjeta «NIVEL DE DATOS DE X» con tramos y `NIVEL n DE 3`;
+un solo botón de contorno «EDITAR DATOS DE X»; en móvil el nivel va después
+de una línea y la nota del plan cierra. Límite: titular, texto, «VER ÓRBITA
+PLUS» + «REEMPLAZAR PERSONA» (apilados en 390) y la nota. Módulo vinculo.
+
+**Cambios:** `VinculosScreen.Biblioteca`: con el cupo lleno el único botón es
+editar; «AGREGAR OTRA PERSONA» y «VOLVER A LA LISTA» pasan a `PEnlace` (los
+frames no dibujan un segundo botón); separador antes del nivel en móvil;
+botones del límite en columna en móvil. Sin cambio de dominio ni contrato.
+
+**Verificación:** localhost:8081 con la sesión de Lucas (Free) y una persona
+cargada por el alta (Mara, 12/03/1994, 08:20, Rosario): biblioteca y límite
+en 390 y 1440 contra los cuatro frames. Piso del gate 1009 → 1012.
+
+**Estado:** rama `orb/core-235-biblioteca-vinculos` desde main 67549b3.
+
 ## El alta de Vínculos sigue el paso a paso del frame (CORE-234, 2026-09-06)
 
 **Objetivo:** que los tres pasos del alta reproduzcan los frames `1761:2776`
