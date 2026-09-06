@@ -189,15 +189,21 @@ export function PFila({
 
 /** Enlace de pie en mono cobre: «VER LOS 16 CONTACTOS ›», «IR A …». */
 export function PEnlace({ label, onPress, href, disabled }: { label: string; onPress?: () => void; href?: Href; disabled?: boolean }) {
+  // Como en `PFila`: el estilo va en un View propio porque en web el
+  // `Link asChild` descarta el del `Pressable` (el área táctil de 44 se perdía).
+  const [apretado, setApretado] = useState(false);
   const inner = (
     <Pressable
       onPress={onPress}
       disabled={disabled}
       accessibilityRole={href ? "link" : "button"}
       accessibilityState={{ disabled: !!disabled }}
-      style={({ pressed }) => [styles.enlace, (pressed || disabled) && styles.apagado]}
+      onPressIn={() => setApretado(true)}
+      onPressOut={() => setApretado(false)}
     >
-      <PEtiqueta>{`${label}  ›`}</PEtiqueta>
+      <View style={[styles.enlace, (apretado || disabled) && styles.apagado]}>
+        <PEtiqueta>{`${label}  ›`}</PEtiqueta>
+      </View>
     </Pressable>
   );
   return href ? (

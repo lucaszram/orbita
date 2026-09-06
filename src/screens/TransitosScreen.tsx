@@ -264,7 +264,7 @@ function PanoramaAhora({ panorama, onTuMomento }: { panorama: Extract<TransitPan
           <PTexto>Los ciclos lentos: tu estación vital, el tema de tu año y tus cuatro ritmos.</PTexto>
           <View style={styles.capasDeMomento}>
             {["01 · TU ESTACIÓN VITAL", "02 · EL TEMA DE TU AÑO", "03 · TUS CUATRO RITMOS"].map((capa) => (
-              <PEtiqueta key={capa} tono="gris" style={styles.capaDeMomento}>
+              <PEtiqueta key={capa} tono="hueso" style={styles.capaDeMomento}>
                 {capa}
               </PEtiqueta>
             ))}
