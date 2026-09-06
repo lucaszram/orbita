@@ -71,10 +71,19 @@ export type VinculoPersona = {
   savedAt?: number;
 };
 
-/** Sobre de `relationships.listPeople` (CORE-213): la biblioteca, de la más reciente a la más antigua. */
+/** El cupo de personas (CORE-214): derivado del entitlement real, nunca de un contador local. */
+export type VinculoAcceso = {
+  isPro: boolean;
+  limit: number | null;
+  remaining: number | null;
+  atLimit: boolean;
+};
+
+/** Sobre de `relationships.listPeople` (CORE-213/214): la biblioteca, de la más reciente a la más antigua, y el cupo. */
 export type VinculoBiblioteca = {
   people: Array<VinculoPersona & { isActive: boolean; savedAt: number }>;
   activeId: string | null;
+  access: VinculoAcceso;
 };
 
 /** Un contacto REAL entre las dos cartas: aspecto mayor dentro de orbe, con su orbe medido. */

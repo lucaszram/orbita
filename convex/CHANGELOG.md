@@ -1,5 +1,11 @@
 # Contrato — CHANGELOG
 
+## 2026-09-06 — Vínculos explica el límite Free (CORE-214)
+
+- **Qué cambia (aditivo):** `relationships.listPeople` suma `access: { isPro, limit, remaining, atLimit }`, derivado del entitlement real (`isUserPro`) y del conteo de personas guardadas —nunca de un contador guardado—: Free `limit: 1`, Plus `limit: null`. `relationships.addPerson` **sin** `profileId` falla cerrado con `RELATIONSHIP_LIMIT_REACHED` cuando la cuenta ya usó su cupo (se comprueba antes de llamar al proveedor); editar o reemplazar (`profileId`) no cuenta contra el cupo. `FREE_PERSON_LIMIT` y `personAccess` viven en `convex/lib/synastry.ts` (puros, probados).
+- **Alcanzar el cupo no borra ni oculta a nadie:** las personas guardadas y sus comparaciones siguen; sólo no entra una persona nueva. Reemplazar usa `addPerson({ profileId })` con datos nuevos: la fila se reemplaza completa y la comparación anterior desaparece, y la interfaz lo dice antes.
+- **Front:** la biblioteca cuenta contra el cupo («1 DE 1» / «1 persona incluida») y muestra «Órbita Free incluye una persona»; tocar «Agregar» con el cupo lleno abre el estado del límite (frames `2096:3027` / `1757:2579`) con «Ver Órbita Plus» (→ `/paywall`) y «Reemplazar persona»; la lista vacía vuelve a decir «Con Órbita Free podés guardar una» sólo cuando el plan es Free. Sin beneficios inventados: el precio y la prueba se muestran en el paywall.
+
 ## 2026-09-06 — Tu momento abre la estación vital: `momento.getEstacionVital` (CORE-209)
 
 - **Qué cambia (aditivo):** nueva action pública `momento.getEstacionVital({ localDate })`. Devuelve **siempre** un sobre con `status`: `locked` (Free: la capa es Plus, no se calcula nada) o `ready` con `estacion`, que a su vez declara su propio `status`: `ready` (fase certificada), `partial` (sin hora exacta y el día natal cruza un límite de fase: se publican `possiblePhases`, nunca una elegida), `needs_birth_data`, `needs_birth_time`, `unavailable` (proveedor o raíces no confirmadas) y `not_configured`. `transits.*` no cambia.
