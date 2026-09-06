@@ -255,6 +255,45 @@ export type TransitPanorama =
   | { status: "empty"; localDate: string; access: { isPro: true; personalized: true } }
   | { status: "locked"; localDate: string; access: { isPro: false; personalized: false } };
 
+// --- CORE-209: Tu momento · Estación vital -----------------------------------
+
+export type EstacionVitalFase = "new" | "crescent" | "first_quarter" | "gibbous" | "full" | "disseminating" | "last_quarter" | "balsamic";
+
+/** El cálculo de la estación vital (lunación progresada). Siempre con `status`. */
+export type EstacionVital =
+  | {
+      status: "ready";
+      precision: "exact" | "range";
+      phaseKey: EstacionVitalFase;
+      phaseIndex: number;
+      name: string;
+      progressedElongationDegrees: number;
+      progressedElongationRangeDegrees?: { from: number; to: number };
+      ageYears: number;
+      phaseStartedAt: number;
+      nextPhaseAt: number;
+      phaseStartedAtRange?: { earliest: number; latest: number };
+      nextPhaseAtRange?: { earliest: number; latest: number };
+      phaseYears: number;
+      yearsIntoPhase: number;
+      progress: number;
+      observedAt: number;
+      limitations: string[];
+    }
+  | {
+      status: "needs_birth_data" | "needs_birth_time" | "partial" | "unavailable" | "not_configured";
+      precision: "not_applicable" | "range";
+      missingInputs: string[];
+      limitations: string[];
+      possiblePhases?: string[];
+      observedAt: number;
+    };
+
+/** Sobre de `momento.getEstacionVital`: Free recibe `locked`; Plus, el cálculo. */
+export type MomentoEstacionVital =
+  | { status: "locked"; localDate: string; access: { isPro: false } }
+  | { status: "ready"; localDate: string; access: { isPro: true }; estacion: EstacionVital; cached: boolean };
+
 /** Respuesta de `transits.getDetail`: el contacto pedido, o la constancia de que
  *  no está en la lectura de hoy. Nunca otro tránsito en su lugar. */
 export type TransitDetailResult =
@@ -752,6 +791,14 @@ export const proposedApi = {
     "public",
     { localDate: string },
     TransitPanorama
+  >,
+  // momento.getEstacionVital({ localDate }): Tu momento · Estación vital (CORE-209). ACTION,
+  // calcula una vez por día y persona y cachea en `momentoAnalyses`.
+  momentoEstacionVital: anyApi.momento.getEstacionVital as FunctionReference<
+    "action",
+    "public",
+    { localDate: string },
+    MomentoEstacionVital
   >,
   // TODO: pendiente backend — places.resolve({ query }): geocoding real para onboarding
   resolvePlace: anyApi.places.resolve as FunctionReference<"action", "public", { query: string }, PlaceLookup>,

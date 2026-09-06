@@ -357,6 +357,20 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_user_active", ["userId", "isActive"]),
 
+  // CORE-209: análisis de «Tu momento» calculados por día (estación vital y,
+  // después, tema del año y cuatro ritmos). Aditivo: una fila por usuario,
+  // día y capa; `inputHash` invalida el cache cuando cambian los datos natales.
+  momentoAnalyses: defineTable({
+    userId: v.id("users"),
+    localDate: v.string(),
+    kind: v.string(),
+    version: v.string(),
+    inputHash: v.string(),
+    payload: v.any(),
+    createdAt: v.number(),
+    updatedAt: v.number()
+  }).index("by_user_date_kind", ["userId", "localDate", "kind"]),
+
   notificationPreferences: defineTable({
     userId: v.id("users"),
     enabled: v.boolean(),
