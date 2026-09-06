@@ -34,9 +34,12 @@ export const getMomentoState = internalQuery({
       .query("momentoAnalyses")
       .withIndex("by_user_date_kind", (q: any) => q.eq("userId", user._id).eq("localDate", args.localDate).eq("kind", args.kind))
       .first();
+    const isPro = await isUserPro(ctx, user._id);
+    // Free recibe `locked`: no se leen datos que no se van a usar.
+    if (!isPro) return { isPro, birthData: null, natalChartPayload: null, cached: null };
     const natalChart = args.kind === "tema_del_ano" ? await findCurrentNatalChart(ctx, user._id) : null;
     return {
-      isPro: await isUserPro(ctx, user._id),
+      isPro,
       birthData: await findCurrentBirthData(ctx, user._id),
       natalChartPayload: natalChart?.payload ?? null,
       cached

@@ -13,8 +13,9 @@ de release) en `convex/lib/temaDelAno.ts`.
 un Ascendente estimado; el 29 de febrero se toma el 28 en años no bisiestos y
 se declara; Free recibe `locked`; la capa 03 sigue pendiente (CORE-211).
 
-**Estado:** rama `orb/core-210-tema-del-ano` desde `main` `a771713`. 11 casos
-nuevos; piso 970 → 981.
+**Estado:** rama `orb/core-210-tema-del-ano` desde `main` `a771713`. 12 casos
+nuevos; piso 970 → 982. Revisión r1: el titular de la casa es el de Build 30
+(`TEMA_DE_CASA_TITULAR`, igual en hub y detalle).
 
 ## Vínculos explica el límite Free (CORE-214, 2026-09-06)
 

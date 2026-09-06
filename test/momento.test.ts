@@ -143,7 +143,9 @@ describe("el tema del año en pantalla (CORE-210)", () => {
   };
 
   it("titular, subtítulo y resumen salen de la casa, el mes y el regente reales", () => {
-    assert.equal(tituloDelAno(tema), "Casa 6 · rutinas, tareas, cuidado y trabajo cotidiano");
+    // El titular es el de Build 30 (tabla `houseTheme` de release), no el tema largo del sobre.
+    assert.equal(tituloDelAno(tema), "Casa 6 · rutinas, tareas y organización cotidiana");
+    assert.equal(tituloDelAno({ house: 13, houseTheme: "tema del sobre" }), "Casa 13 · tema del sobre");
     assert.equal(subtituloDelAno(tema), "MES 10 DE 12 · REGENTE DEL AÑO: MERCURIO");
     assert.equal(resumenDelAno(tema), "Casa 6 · mes 10 de 12");
     assert.equal(diaMes(tema.periodStart, "America/Argentina/Buenos_Aires"), "11 NOV");

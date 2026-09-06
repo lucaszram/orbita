@@ -101,7 +101,13 @@ function ascendantSignOf(chart: NormalizedAstroChart): ZodiacSign | null {
   return null;
 }
 
-/** `YYYY-MM-DD` a las 00:00 en la zona natal, en ms. Sin zona válida, medianoche UTC. */
+/**
+ * `YYYY-MM-DD` a las 00:00 en la zona natal, en ms. Si esa medianoche no existe
+ * (`gap` por un cambio de horario) o se repite (`fold`), se toma el primer
+ * instante candidato; sin zona válida, la medianoche UTC. Desvío declarado
+ * respecto de release (que lanzaba): en un período de 365 días la diferencia
+ * es de horas y sólo mueve `progress` / `monthIndex` en el borde exacto.
+ */
 export function civilDateToTimestamp(civilDate: string, timezone: string): number {
   const r = resolveZonedCivilTime({ localDate: civilDate, localTime: "00:00", timezone });
   if (r.status === "exact") return r.instantMs;

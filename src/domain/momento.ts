@@ -359,9 +359,29 @@ export function yearReading(input: { house: number; ruler: string; rulerKey: str
   };
 }
 
-/** `Casa 6 · rutinas, tareas y organización cotidiana` (el tema corto de la casa, para el titular). */
-export function tituloDelAno(tema: Extract<TemaDelAno, { status: "ready" }>): string {
-  return `Casa ${tema.house} · ${tema.houseTheme}`;
+/**
+ * El tema de cada casa para el TITULAR, tal como lo escribe Build 30
+ * (`houseTheme` en `release/1.0.0:src/domain/layers.ts`). Es la misma tabla
+ * en el hub y en el detalle: la misma persona lee el mismo titular en los dos.
+ */
+export const TEMA_DE_CASA_TITULAR: Record<number, string> = {
+  1: "identidad y forma de entrar al mundo",
+  2: "recursos, cuerpo y valor propio",
+  3: "conversaciones, aprendizaje y entorno cercano",
+  4: "raíz, casa e intimidad",
+  5: "deseo, juego y expresión",
+  6: "rutinas, tareas y organización cotidiana",
+  7: "pareja, sociedades y acuerdos",
+  8: "profundidad, confianza y cambio",
+  9: "sentido, búsqueda y expansión",
+  10: "dirección, vocación y exposición",
+  11: "redes, futuro y pertenencia",
+  12: "descanso, cierre y mundo interno"
+};
+
+/** `Casa 6 · rutinas, tareas y organización cotidiana` (Build 30); si la casa no está en la tabla, el tema del sobre. */
+export function tituloDelAno(tema: Pick<Extract<TemaDelAno, { status: "ready" }>, "house" | "houseTheme">): string {
+  return `Casa ${tema.house} · ${TEMA_DE_CASA_TITULAR[tema.house] ?? tema.houseTheme}`;
 }
 
 /** `MES 10 DE 12 · REGENTE DEL AÑO: MERCURIO` */

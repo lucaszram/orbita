@@ -35,6 +35,7 @@ import {
   resumenDelAno,
   seasonHeadline,
   seasonMeaning,
+  tituloDelAno,
   yearMeaning,
   type EstacionEstado,
   type TemaEstado
@@ -142,13 +143,15 @@ export function TuMomentoHub({ localDate }: { localDate: string }) {
     <View style={styles.tarjeta}>
       <View style={styles.tarjetaCabecera}>
         <PEtiqueta>02 · EL TEMA DE TU AÑO</PEtiqueta>
-        {tema.kind === "listo" ? <PEtiqueta tono="gris">MES {tema.tema.monthIndex} DE 12</PEtiqueta> : tema.kind === "cargando" ? <PEtiqueta tono="gris">CALCULANDO</PEtiqueta> : null}
+        {tema.kind === "listo" ? (
+          <PEtiqueta tono="gris">{desktop ? "· DE CUMPLEAÑOS A CUMPLEAÑOS" : `MES ${tema.tema.monthIndex} DE 12`}</PEtiqueta>
+        ) : tema.kind === "cargando" ? (
+          <PEtiqueta tono="gris">CALCULANDO</PEtiqueta>
+        ) : null}
       </View>
       {tema.kind === "listo" ? (
         <>
-          <Text style={styles.tarjetaTitulo}>
-            Casa {tema.tema.house} · {yearMeaning(tema.tema.house)?.area ?? tema.tema.houseTheme}
-          </Text>
+          <Text style={styles.tarjetaTitulo}>{tituloDelAno(tema.tema)}</Text>
           <PEtiqueta tono="gris" style={styles.tarjetaCuerpo}>
             {resumenDelAno(tema.tema).toLocaleUpperCase("es")} · REGENTE DEL AÑO: {tema.tema.ruler.toLocaleUpperCase("es")}
           </PEtiqueta>
@@ -169,7 +172,7 @@ export function TuMomentoHub({ localDate }: { localDate: string }) {
           ) : (
             <PNota>La casa de tu carta que toca tu edad de hoy, y el planeta que la rige.</PNota>
           )}
-          <PEnlace label="VER TU AÑO" href="/reading/tema-del-ano" />
+          <PEnlace label={desktop ? "VER TU AÑO" : "VER EL TEMA DEL AÑO"} href="/reading/tema-del-ano" />
         </>
       ) : tema.kind === "cargando" ? (
         <PEsqueleto lineas={2} />
@@ -251,6 +254,7 @@ export function TuMomentoHub({ localDate }: { localDate: string }) {
             Tu estación vital se basa en la relación progresada entre el Sol y la Luna. Recorre ocho fases en un ciclo de unos 30
             años; cada fase dura alrededor de 3,7 años.
           </PTexto>
+          <PNota style={styles.nota}>{SEASON_TRACE.interpretiveRule}</PNota>
           <Text style={[styles.metodoTitulo, styles.item]}>Profección anual</Text>
           <PTexto>
             La profección anual recorre una casa de tu carta por cada año de vida. Esa casa señala el área que este método pone en
@@ -259,7 +263,12 @@ export function TuMomentoHub({ localDate }: { localDate: string }) {
           <PNota style={styles.nota}>{YEAR_TRACE.interpretiveRule}</PNota>
         </PTarjeta>
         <PPlegable titulo="¿POR QUÉ ÓRBITA TE MUESTRA ESTO?">
+          <PEtiqueta tono="hueso">ESTACIÓN VITAL</PEtiqueta>
           <PTexto>{SEASON_TRACE.calculatedDatum}</PTexto>
+          <PEtiqueta tono="hueso" style={styles.item}>
+            TEMA DEL AÑO
+          </PEtiqueta>
+          <PTexto>{YEAR_TRACE.calculatedDatum}</PTexto>
         </PPlegable>
         <PTarjeta>
           <PNota>{DISCLAIMER}</PNota>
