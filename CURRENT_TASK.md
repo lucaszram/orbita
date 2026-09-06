@@ -1,7 +1,5 @@
 # Current Task
 
-# Current Task
-
 ## Vínculos explica el límite Free (CORE-214, 2026-09-06)
 
 **Objetivo:** que una cuenta Free que alcanza su cupo conserve sus
@@ -19,7 +17,7 @@ con `profileId` y datos nuevos.
 alta; sin precios ni beneficios inventados (van en el paywall).
 
 **Estado:** rama `orb/core-214-limite-free` desde `main` `c25cb8e`. 4 casos
-nuevos; piso 950 → 954 (se recalcula al rebasar sobre CORE-209).
+nuevos; piso 970 → 974 (rebasada sobre CORE-209).
 
 ## Tu momento abre la estación vital (CORE-209, 2026-09-06)
 

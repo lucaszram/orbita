@@ -133,7 +133,7 @@ function VinculosVivo() {
     <Biblioteca
       biblioteca={biblioteca}
       comparacion={comparacion}
-      limite={modo.kind === "limite"}
+      limite={modo.kind === "limite" && biblioteca.access.atLimit}
       onAgregar={agregar}
       onEditar={(persona) => setModo({ kind: "alta", editar: persona })}
       onReemplazar={(persona) => setModo({ kind: "alta", editar: persona, reemplazar: true })}
