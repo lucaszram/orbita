@@ -339,7 +339,7 @@ describe("el ranking de Hoy lleva la identidad hasta la ruta", () => {
     assert.match(PANORAMA, /onHoverIn=/);
     assert.match(PANORAMA, /onFocus=/);
     assert.match(RANKING, /const vista = filaDeHoyComoVista\(fila\);/);
-    assert.match(RANKING, /vista \? \(\s*<PFila key=\{fila\.clave\} fila=\{vista\} conCuerpo ultima=/);
+    assert.match(RANKING, /vista \? \(\s*<PFila key=\{fila\.clave\} fila=\{vista\} conCuerpo=\{vista\.cuerpo\.length > 0\} ultima=/);
     assert.match(RANKING, /minHeight: 44/);
   });
 
