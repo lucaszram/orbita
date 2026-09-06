@@ -208,7 +208,7 @@ describe("el límite Free, dicho con honestidad (CORE-214)", () => {
 
   it("la nota del plan y la lista vacía no prometen cupos que el plan no tiene", () => {
     assert.equal(notaDePlan(free), "Órbita Free incluye una persona.");
-    assert.equal(notaDePlan(plus), "Con Órbita Plus podés guardar más personas.");
+    assert.doesNotMatch(notaDePlan(plus), /Plus|Free/, "a quien ya es Plus no se le vende Plus");
     assert.match(copyDeListaVacia(freeLibre).texto, /Con Órbita Free podés guardar una\.$/);
     assert.doesNotMatch(copyDeListaVacia(plus).texto, /Free/);
   });

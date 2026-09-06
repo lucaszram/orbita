@@ -345,6 +345,16 @@ export const persistPerson = internalMutation({
       await ctx.db.replace(profileId, { ...merged, createdAt: existing.createdAt });
       return { id: profileId };
     }
+    // CORE-214: el cupo se vuelve a comprobar DENTRO de la mutation (misma
+    // transacción que el insert): la action ya lo miró para no gastar la
+    // llamada al proveedor, pero dos altas en paralelo pasarían ese check.
+    const existing = await ctx.db
+      .query("relationshipProfiles")
+      .withIndex("by_user", (q: any) => q.eq("userId", user._id))
+      .collect();
+    if (personAccess({ isPro: await isUserPro(ctx, user._id), count: existing.length }).atLimit) {
+      throw new Error("RELATIONSHIP_LIMIT_REACHED");
+    }
     const id = await ctx.db.insert("relationshipProfiles", { ...record, createdAt: now });
     return { id };
   }

@@ -199,7 +199,7 @@ export function rotuloDeCupo(access: VinculoAcceso, n: number, desktop: boolean)
 
 /** La frase del plan bajo la lista: Free dice cuántas incluye; Plus no promete cupos. */
 export function notaDePlan(access: VinculoAcceso): string {
-  if (access.limit === null) return "Con Órbita Plus podés guardar más personas.";
+  if (access.limit === null) return "Tocá a una persona para abrir su comparación o editá los datos de la elegida.";
   return access.limit === 1 ? "Órbita Free incluye una persona." : `Órbita Free incluye ${access.limit} personas.`;
 }
 

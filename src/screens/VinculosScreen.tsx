@@ -318,7 +318,14 @@ function AltaDePersona({
       onGuardada();
       router.push({ pathname: "/reading/vinculo-result", params: { id: guardada.relationshipProfileId } });
     } catch (err) {
-      setFallo(err instanceof Error && err.message ? "No pudimos guardar a esta persona. Probá de nuevo en un momento." : "No pudimos guardar a esta persona.");
+      const codigo = err instanceof Error ? err.message : "";
+      setFallo(
+        /RELATIONSHIP_LIMIT_REACHED/.test(codigo)
+          ? "Tu plan ya usó su cupo de personas: otra alta se guardó antes. Volvé a la lista para reemplazar a la persona guardada o ver Órbita Plus."
+          : codigo
+            ? "No pudimos guardar a esta persona. Probá de nuevo en un momento."
+            : "No pudimos guardar a esta persona."
+      );
     } finally {
       setGuardando(false);
     }
@@ -781,7 +788,7 @@ function Biblioteca({
         <VBoton label="VER ÓRBITA PLUS" variante="cobre" onPress={() => router.push("/paywall")} />
         <VBoton label="REEMPLAZAR PERSONA" variante="contorno" onPress={() => onReemplazar(activa)} />
       </View>
-      <VNota>Reemplazar borra la comparación guardada de esa persona.</VNota>
+      {desktop ? <VNota>Reemplazar borra la comparación guardada de esa persona.</VNota> : null}
       <View style={styles.cta}>
         <VBoton label="VOLVER A LA LISTA" variante="contorno" onPress={onVolver} />
       </View>
@@ -795,26 +802,26 @@ function Biblioteca({
           <VEtiqueta accessibilityRole="header">VÍNCULOS · TU LISTA</VEtiqueta>
           <VEtiqueta tono="gris">{rotuloDeCupo(access, n, desktop)}</VEtiqueta>
         </View>
-        {limite ? (
+        {limite && desktop ? (
           <>
             <VTitular>Llegaste al límite de Órbita Free.</VTitular>
-            {desktop ? limiteCuerpo : null}
+            {limiteCuerpo}
           </>
         ) : null}
         {desktop && !limite ? <VTitular>Tu lista</VTitular> : null}
         {desktop && !limite ? (
           <VTexto>
             {n === 1
-              ? listaOk
-                ? `${activa.name} ya está guardada, con su nivel de datos y su comparación lista.`
-                : `${activa.name} ya está guardada. Su comparación todavía no se pudo calcular: abajo dice por qué.`
+              ? `${access.limit !== null ? `${notaDePlan(access)} ` : ""}${activa.name} ya está guardada${
+                  listaOk ? ", con su nivel de datos y su comparación lista." : ". Su comparación todavía no se pudo calcular: abajo dice por qué."
+                }`
               : `${n} personas guardadas. Tocá a una para abrir su comparación; la elegida es ${activa.name}.`}
           </VTexto>
         ) : null}
         {desktop && !limite ? (
           <>
             {acciones}
-            <VNota>{access.limit !== null ? notaDePlan(access) : "Tocá a una persona para abrir su comparación o editá los datos de la elegida."}</VNota>
+            <VNota>Tocá a {activa.name} para abrir su perfil o editar sus datos.</VNota>
           </>
         ) : null}
       </Column>
@@ -830,6 +837,7 @@ function Biblioteca({
             {limiteCuerpo}
           </VTarjeta>
         ) : null}
+        {!desktop && limite ? <VNota>Reemplazar borra la comparación guardada de esa persona.</VNota> : null}
         {!desktop && !limite ? (
           <>
             {acciones}
