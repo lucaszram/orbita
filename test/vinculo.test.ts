@@ -256,7 +256,7 @@ describe("la biblioteca se ve como el frame (CORE-235)", () => {
 describe("la comparación se ve como el frame (CORE-236)", () => {
   const raiz = join(dirname(fileURLToPath(import.meta.url)), "..");
   const pantalla = readFileSync(join(raiz, "src", "screens", "VinculoComparacionScreen.tsx"), "utf8");
-  const ruta = readFileSync(join(raiz, "app", "reading", "vinculo-result.tsx"), "utf8");
+  const ruta = readFileSync(join(raiz, "src", "routes", "v492", "reading-vinculo-result.web.tsx"), "utf8");
 
   it("en web la ruta viaja dentro del shell con Vínculos activa, como /transito", () => {
     assert.match(ruta, /<WebAppShell active="vinculo">\s*<VinculoComparacionScreen \/>/);

@@ -1,11 +1,20 @@
 # RevenueCat React Native Integration Handoff
 
+> **HISTÓRICO — NO USAR PARA IMPLEMENTAR NI CONFIGURAR.** Este handoff del
+> 2026-07-06 mezcla un bundle iOS anterior, un catálogo semanal/anual/lifetime
+> descartado y ejemplos que ya no representan la arquitectura vigente. La fuente
+> operativa actual es `docs/native-commerce-release-checklist.md`: iOS
+> `com.lucasssram.orbita`, mensual + siete días para personas elegibles,
+> entitlement `orbita_pro` y `offerings.current`. El contenido de abajo se
+> conserva sólo como registro histórico.
+
 Date: 2026-07-06
 
 Scope: frontend implementation for the Expo/React Native app. Codex should not edit
 `app/` or `src/` in the shared workflow, so this is a handoff for the frontend
 worktree. Current app facts: Expo SDK 54, React Native 0.81.5, Expo Router,
-NativeWind/RN Reusables, bundle/package `com.horoscopo.orbita`, and a Convex
+NativeWind/RN Reusables, iOS bundle `com.lucasssram.orbita` (el package Android
+histórico era `com.horoscopo.orbita`), and a Convex
 subscription stub that is not yet wired to real purchases.
 
 Sources checked:
@@ -96,9 +105,9 @@ development, preview, TestFlight, or Play internal build.
 The key provided by Lucas is a public SDK key for testing:
 
 ```bash
-EXPO_PUBLIC_REVENUECAT_TEST_API_KEY=test_abWYVQjsvuJRVRjJDXjuIIiPPvR
-EXPO_PUBLIC_REVENUECAT_IOS_API_KEY=test_abWYVQjsvuJRVRjJDXjuIIiPPvR
-EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY=test_abWYVQjsvuJRVRjJDXjuIIiPPvR
+EXPO_PUBLIC_REVENUECAT_TEST_API_KEY=<obtener-del-entorno-seguro>
+EXPO_PUBLIC_REVENUECAT_IOS_API_KEY=<obtener-del-entorno-seguro>
+EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY=<obtener-del-entorno-seguro>
 ```
 
 For production, replace platform keys with RevenueCat app-specific public SDK
@@ -109,7 +118,7 @@ secret API keys in the app.
 
 1. Create or open the RevenueCat project for Orbita.
 2. Add apps/stores:
-   - iOS bundle id: `com.horoscopo.orbita`
+   - iOS bundle id: `com.lucasssram.orbita`
    - Android package: `com.horoscopo.orbita`
    - Use Test Store while developing if App Store Connect/Google Play products
      are not ready.
@@ -186,7 +195,7 @@ export function isRevenueCatSupported() {
 function getRevenueCatApiKey() {
   const testKey =
     process.env.EXPO_PUBLIC_REVENUECAT_TEST_API_KEY ??
-    "test_abWYVQjsvuJRVRjJDXjuIIiPPvR";
+    undefined;
 
   if (__DEV__) {
     return testKey;
@@ -898,4 +907,3 @@ Keep current Orbita framing:
   - "Transitos en tu carta"
   - "Lecturas mas profundas"
   - "Cancelas cuando quieras"
-

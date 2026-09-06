@@ -1,8 +1,10 @@
 import type { UserIdentity } from "convex/server";
+import { assertIdentityNotDeletionFenced } from "./accountDeletion";
 import { userFieldsFromIdentity } from "./orbita";
 import { recordBackendProductEvent } from "./productAnalytics";
 
-type ConvexCtx = {
+/** Exported so callers that compose helpers (auth + deletion) can name it. */
+export type ConvexCtx = {
   auth: {
     getUserIdentity(): Promise<UserIdentity | null>;
   };
@@ -45,6 +47,9 @@ export async function findCurrentUser(ctx: ConvexCtx) {
 
 export async function requireExistingUser(ctx: ConvexCtx) {
   const identity = await requireIdentity(ctx);
+  // El token de una cuenta ya borrada sigue siendo válido hasta que expira: un
+  // camino de escritura no puede aceptarlo.
+  await assertIdentityNotDeletionFenced(ctx, identity.subject);
   const user = await findUserByTokenIdentifier(ctx, identity.tokenIdentifier);
   if (!user) {
     throw new Error("User record not found");
@@ -55,6 +60,15 @@ export async function requireExistingUser(ctx: ConvexCtx) {
 
 export async function getOrCreateUser(ctx: ConvexCtx) {
   const identity = await requireIdentity(ctx);
+  /**
+   * El fence, ANTES de cualquier `insert`/`patch`.
+   *
+   * Éste es exactamente el camino que resucitaba la cuenta: `deleteAccountV2`
+   * barría, y una llamada autenticada posterior —otro dispositivo, otra
+   * pestaña, el retry tardío de `ensureUser`— volvía a crear `users` y su
+   * `account_created` con el mismo token viejo.
+   */
+  await assertIdentityNotDeletionFenced(ctx, identity.subject);
   const now = Date.now();
   const fields = omitUndefined(userFieldsFromIdentity(identity, now));
   const existing = await findUserByTokenIdentifier(ctx, identity.tokenIdentifier);

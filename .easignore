@@ -17,7 +17,19 @@ node_modules/
 android/
 ios/
 dist/
+# Exports temporales de las auditorías nativas: se generan para auditar el
+# bundle y se retiran en la misma corrida. `.gitignore` ya los excluía, pero EAS
+# NO lee `.gitignore` cuando existe este archivo, así que sin estas dos líneas
+# un export a medio limpiar viajaba dentro del tarball del build.
+dist-ios/
+dist-android/
 web-build/
+
+# Evidencia local de auditoría: capturas, logs, comparaciones y herramientas de
+# la recertificación. Son cientos de megas que existen sólo en esta máquina y no
+# forman parte del producto. NO se borra —vive fuera de git a propósito— pero
+# tampoco tiene por qué subir a un servidor de builds.
+.local/
 
 # Asset archive material not required by the app bundle
 assets/orbita/core/figma-import-previews/

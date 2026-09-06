@@ -10,6 +10,7 @@ import { A } from "../assets";
 import { CTA } from "../components/CTA";
 import { Header } from "../components/Header";
 import { Screen } from "../components/Screen";
+import { ONBOARDING_TOTAL } from "../steps";
 import { Body, Caption, Title } from "../components/Type";
 import { font, GUTTER, orbita } from "../theme";
 
@@ -24,10 +25,19 @@ import { font, GUTTER, orbita } from "../theme";
  * disponible, con el mismo escalonado del Figma. Cuando hay espacio de sobra la
  * grilla se queda en su alto natural: no crece hasta deformarse.
  */
-export function AlignScreen({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
+export function AlignScreen({
+  step,
+  onNext,
+  onBack
+}: {
+  step: number;
+  onNext: () => void;
+  /** Con sesión activa el acceso quedó atrás: sin handler no hay chevron. */
+  onBack?: () => void;
+}) {
   return (
     <Screen bg={A.dailyTexture} wash={0.44}>
-      <Header step={1} total={15} onBack={onBack} />
+      <Header step={step} total={ONBOARDING_TOTAL} onBack={onBack} showBack={Boolean(onBack)} />
       <View style={styles.body}>
         <Title style={styles.title}>Alineate con el ritmo del universo</Title>
         <Body style={styles.sub}>Descifrá amor, trabajo y camino personal desde tu carta.</Body>

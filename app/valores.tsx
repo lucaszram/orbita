@@ -1,18 +1,11 @@
-import { Redirect } from "expo-router";
-import { ValoresScreen } from "@/screens/ValoresScreen";
-import { WebAppShell } from "@/components/web/web-app-shell";
-
-// Mapa de valores: destino contextual de la Carta.
-// Es la pantalla canónica compartida con el nativo, no una versión web aparte.
-// `WebAppShell` aporta la navegación que en nativo pone el layout de pestañas.
-export default function Route() {
-  if (process.env.EXPO_OS !== "web") {
-    return <Redirect href="/" />;
-  }
-
-  return (
-    <WebAppShell active="carta">
-      <ValoresScreen />
-    </WebAppShell>
-  );
-}
+/**
+ * Wrapper de ruta. La implementación vive FUERA de `app/`, en
+ * `src/routes/v492/valores` (`.tsx` nativo → redirección a
+ * `/perfil/carta/mapa-elemental`, `.web.tsx` web → el mapa de valores dentro
+ * del shell web).
+ *
+ * Expo Router incluye en el grafo TODOS los archivos de `app/`, también las
+ * variantes `.web.tsx`: con la implementación afuera, la que elige es la
+ * resolución por plataforma de Metro y cada bundle ve sólo la suya.
+ */
+export { default } from "@/routes/v492/valores";

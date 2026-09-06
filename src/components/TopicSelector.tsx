@@ -1,5 +1,5 @@
 import { StyleSheet, View } from "react-native";
-import { Topic, topics } from "@/domain/types";
+import { topics, type Topic } from "@/domain/profileTypes";
 import { Tag } from "./Tag";
 import { theme } from "@/theme/theme";
 

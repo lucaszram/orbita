@@ -8,13 +8,25 @@
     "orientation": "portrait",
     "scheme": "orbita",
     "userInterfaceStyle": "dark",
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "backgroundColor": "#0A0B0E",
+    "splash": {
+      "backgroundColor": "#0A0B0E",
+      "resizeMode": "contain"
+    },
+    "androidNavigationBar": {
+      "barStyle": "light-content",
+      "backgroundColor": "#0A0B0E"
+    },
     "ios": {
       "supportsTablet": false,
+      "usesAppleSignIn": true,
       "bundleIdentifier": "com.lucasssram.orbita",
-      "buildNumber": "18",
+      "buildNumber": "28",
+      "backgroundColor": "#0A0B0E",
+      "splash": {
+        "backgroundColor": "#0A0B0E",
+        "resizeMode": "contain"
+      },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "CFBundleName": "Órbita",
@@ -22,6 +34,11 @@
       }
     },
     "android": {
+      "backgroundColor": "#0A0B0E",
+      "splash": {
+        "backgroundColor": "#0A0B0E",
+        "resizeMode": "contain"
+      },
       "adaptiveIcon": {
         "backgroundColor": "#0D0E12"
       },
@@ -46,7 +63,7 @@
       [
         "@clerk/expo",
         {
-          "appleSignIn": false
+          "appleSignIn": true
         }
       ],
       "expo-video"
@@ -64,7 +81,7 @@
       }
     },
     "runtimeVersion": {
-      "policy": "sdkVersion"
+      "policy": "fingerprint"
     },
     "updates": {
       "url": "https://u.expo.dev/9e91bb5e-e69e-489e-818d-0e377f397147"

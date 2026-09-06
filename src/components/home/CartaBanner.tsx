@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { LayoutAnimation, Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
+import { usePressedState } from "@/components/v492/Touchable";
 import { orbita } from "@/theme/orbita";
 
 /**
@@ -10,12 +11,15 @@ import { orbita } from "@/theme/orbita";
  */
 export function CartaBanner() {
   const [visible, setVisible] = useState(true);
+  const bodyPress = usePressedState();
+  const closePress = usePressedState();
   if (!visible) return null;
   return (
     <View style={styles.wrap}>
       <View style={styles.banner}>
         <Pressable
-          style={({ pressed }) => [styles.body, pressed && styles.pressed]}
+          {...bodyPress.pressableProps}
+          style={[styles.body, bodyPress.pressed ? styles.pressed : null]}
           onPress={() => router.push("/(tabs)/carta")}
           accessibilityRole="button"
           accessibilityLabel="Ver mi carta natal"
@@ -32,7 +36,8 @@ export function CartaBanner() {
           hitSlop={12}
           accessibilityRole="button"
           accessibilityLabel="Cerrar aviso"
-          style={({ pressed }) => [styles.close, pressed && styles.pressed]}
+          {...closePress.pressableProps}
+          style={[styles.close, closePress.pressed ? styles.pressed : null]}
         >
           <Text style={styles.closeText}>×</Text>
         </Pressable>

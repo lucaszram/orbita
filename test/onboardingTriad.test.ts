@@ -17,6 +17,7 @@ import {
   validateOnboardingTriadInput,
   type OnboardingTriadArgs
 } from "../convex/lib/onboardingTriad";
+import { observeTriadComputation, triadAutoAdvances } from "../src/onboarding/triadSurface";
 import { buildRateLimitBucketKey, evaluateRateLimit, resolvePositiveInt } from "../convex/lib/rateLimit";
 import { isProductionEnvironment } from "../convex/lib/environment";
 import { assertPublicLabAccess } from "../convex/publicLab";
@@ -662,6 +663,31 @@ describe("guards de producción", () => {
   });
 });
 
+/** Timers manuales para las pruebas conductuales de la superficie de tríada. */
+function makeManualTimers() {
+  let pending: { fn: () => void; ms: number } | null = null;
+  return {
+    setTimeout(fn: () => void, ms: number) {
+      pending = { fn, ms };
+      return 1 as unknown as ReturnType<typeof setTimeout>;
+    },
+    clearTimeout() {
+      pending = null;
+    },
+    pendingDelay() {
+      return pending?.ms ?? null;
+    },
+    fire() {
+      const actual = pending;
+      pending = null;
+      actual?.fn();
+    }
+  };
+}
+
+/** Deja correr las microtareas pendientes (then/catch encadenados). */
+const drain = () => new Promise<void>((r) => setTimeout(r, 0));
+
 describe("el onboarding no depende del laboratorio", () => {
   const read = (file: string) => readFileSync(path.join(process.cwd(), file), "utf8");
 
@@ -759,13 +785,105 @@ describe("el onboarding no depende del laboratorio", () => {
     assert.equal(/deviceTimezone/.test(src), false);
   });
 
-  it("el flujo no traga el error: marca estado y ofrece reintento", () => {
-    const flow = read("src/onboarding/OnboardingFlow.tsx");
-    assert.match(flow, /setTriadStatus\("error"\)/);
-    assert.match(flow, /onRetryTriad=\{retryTriad\}/);
+  it("CONDUCTA · el cálculo que llega antes del techo revela la carta", async () => {
+    const timers = makeManualTimers();
+    let resolve!: (v: string) => void;
+    const events: string[] = [];
+    const cancel = observeTriadComputation({
+      computation: new Promise<string>((r) => (resolve = r)),
+      visibleWaitMs: 8000,
+      timers,
+      onReady: (v) => events.push(`ready:${v}`),
+      onTimedOut: () => events.push("timed_out"),
+      onError: () => events.push("error")
+    });
+    resolve("triada");
+    await drain();
+    // El timer visible quedó limpio: no dispara después del revelado.
+    timers.fire();
+    await drain();
+    assert.deepEqual(events, ["ready:triada"]);
+    cancel();
+  });
 
-    const screen = read("src/onboarding/screens/PersonalizingScreen.tsx");
-    assert.match(screen, /Reintentar/);
-    assert.match(screen, /Continuar sin mi Luna y ascendente/);
+  it("CONDUCTA · a los 8 segundos se emite timed_out y el flujo AVANZA solo", async () => {
+    const timers = makeManualTimers();
+    let resolve!: (v: string) => void;
+    const events: string[] = [];
+    observeTriadComputation({
+      computation: new Promise<string>((r) => (resolve = r)),
+      visibleWaitMs: 8000,
+      timers,
+      onReady: (v) => events.push(`ready:${v}`),
+      onTimedOut: () => events.push("timed_out"),
+      onError: () => events.push("error")
+    });
+    assert.equal(timers.pendingDelay(), 8000, "el techo visible es de 8 segundos");
+    timers.fire();
+    await drain();
+    assert.deepEqual(events, ["timed_out"]);
+    // timed_out avanza SOLO: no exige interacción ni una pantalla técnica.
+    assert.equal(triadAutoAdvances("timed_out"), true);
+    // Y una respuesta TARDÍA se descarta: la superficie ya avanzó.
+    resolve("tarde");
+    await drain();
+    assert.deepEqual(events, ["timed_out"], "el resultado tardío no re-emite nada");
+  });
+
+  it("CONDUCTA · un error del proveedor también avanza solo, sin pantalla técnica", async () => {
+    const timers = makeManualTimers();
+    let reject!: (e: unknown) => void;
+    const events: string[] = [];
+    observeTriadComputation({
+      computation: new Promise<string>((_r, rj) => (reject = rj)),
+      visibleWaitMs: 8000,
+      timers,
+      onReady: () => events.push("ready"),
+      onTimedOut: () => events.push("timed_out"),
+      onError: () => events.push("error")
+    });
+    reject(new Error("ONBOARDING_TRIAD_PROVIDER_TIMEOUT"));
+    await drain();
+    assert.deepEqual(events, ["error"]);
+    assert.equal(triadAutoAdvances("error"), true);
+    // Los estados que NO avanzan solos: la carga espera y el revelado espera
+    // el Continuar de la persona.
+    assert.equal(triadAutoAdvances("idle"), false);
+    assert.equal(triadAutoAdvances("loading"), false);
+    assert.equal(triadAutoAdvances("ready"), false);
+  });
+
+  it("CONDUCTA · cancelar (volver atrás / editar datos) silencia todo", async () => {
+    const timers = makeManualTimers();
+    let resolve!: (v: string) => void;
+    const events: string[] = [];
+    const cancel = observeTriadComputation({
+      computation: new Promise<string>((r) => (resolve = r)),
+      visibleWaitMs: 8000,
+      timers,
+      onReady: () => events.push("ready"),
+      onTimedOut: () => events.push("timed_out"),
+      onError: () => events.push("error")
+    });
+    cancel();
+    timers.fire();
+    resolve("tarde");
+    await drain();
+    assert.deepEqual(events, []);
+  });
+
+  it("el flujo cablea la orquestación pura y el auto-avance", () => {
+    // Cableado (no copy): el efecto de la tríada usa la orquestación probada
+    // arriba, y el avance automático pasa por la misma regla pura.
+    const flow = read("src/onboarding/OnboardingFlow.tsx");
+    assert.match(flow, /observeTriadComputation\(\{/);
+    assert.match(flow, /if \(!triadAutoAdvances\(triadStatus\)\) return;\s*setStep\(STEP_BEFORE_AFTER\);/);
+    // Mientras carga NO hay CTA para saltarla: el único CTA de la superficie
+    // aparece con la carta revelada.
+    const screen = read("src/onboarding/screens/TriadScreen.tsx");
+    assert.match(screen, /\{ready \? <CTA label="Continuar" onPress=\{onContinue\} \/> : null\}/);
+    // El techo visible sigue siendo menor que el techo duro del cliente.
+    const timeoutSrc = read("src/domain/triadTimeout.ts");
+    assert.match(timeoutSrc, /export const TRIAD_VISIBLE_WAIT_MS = 8_000;/);
   });
 });

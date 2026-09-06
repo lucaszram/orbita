@@ -48,7 +48,18 @@ export type AccountDestination =
    */
   | "edit-birth-data"
   | "app-home"
-  | "retry";
+  | "retry"
+  /**
+   * No se pudo CONFIRMAR la sesión, pero la identidad local es segura: el dueño
+   * del perfil en disco es exactamente el que Clerk publica ahora (QA23-007).
+   *
+   * No lo produce este resolver —que sólo sabe de estado remoto— sino
+   * `applySessionResilience` (`@/domain/sessionResilience`), que degrada un
+   * `loading` o un `retry` cuando venció el plazo de confirmación. Abre el shell
+   * con los últimos datos de ESA cuenta, con aviso, y sin autoridad para
+   * comprar, borrar, editar datos natales ni escribir en la cuenta.
+   */
+  | "degraded";
 
 export type AccountState = {
   /** Convex + Clerk configurados. Sin backend no hay cuenta que resolver. */
@@ -141,6 +152,40 @@ export function destinationAllows(
       // y editar los datos de una cuenta ya completa desde Perfil.
       return destination === "edit-birth-data" || destination === "app-home";
     case "app":
-      return destination === "app-home";
+      // El shell abre también con la sesión sin confirmar y la identidad local
+      // segura (QA23-007): son los últimos datos de ESTA misma cuenta. Lo que
+      // no abre es ninguna escritura — eso lo decide `sensitiveOperationAllowed`
+      // y, para una ruta entera, `SurfaceRequirement`.
+      return destination === "app-home" || destination === "degraded";
   }
+}
+
+/**
+ * Continuidad acotada del onboarding que YA estaba en pantalla.
+ *
+ * `completeBirthData` vuelve la cuenta apta para la app antes de que terminen
+ * las superficies editoriales del alta. En un alta real todavía no existe el
+ * perfil local —se crea recién al salir de la paywall—, por lo que la query
+ * reactiva pasa primero a `bootstrap` y después a `app-home`. Si el gate actúa
+ * en cualquiera de esos estados, salta Antes/Después y la paywall y aterriza
+ * en Hoy. Un onboarding legítimamente montado conserva su propia navegación
+ * hasta que su CTA final lo reemplaza por Carta.
+ *
+ * No se incorpora esta excepción a `destinationAllows`: una cuenta completa
+ * que llega inicialmente por un deep link a `/onboarding` mantiene
+ * `mounted=false` y sigue siendo rechazada. Tampoco se extiende a otra
+ * superficie ni a un gate que no haya pedido continuidad explícita.
+ */
+export function mountedOnboardingRetainsCompletion(args: {
+  sticky: boolean;
+  mounted: boolean;
+  surface: AccountSurface;
+  destination: AccountDestination;
+}): boolean {
+  return (
+    args.sticky &&
+    args.mounted &&
+    args.surface === "onboarding" &&
+    (args.destination === "bootstrap" || args.destination === "app-home")
+  );
 }

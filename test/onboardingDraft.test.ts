@@ -7,11 +7,11 @@ import {
   type OnboardingDraft
 } from "../src/domain/onboardingDraft";
 
-/** El flujo canónico tiene 15 pasos (`TOTAL` en OnboardingFlow.tsx). */
-const STEPS = 15;
+/** El flujo canónico tiene 11 pasos (`ONBOARDING_TOTAL` en steps.ts). */
+const STEPS = 11;
 
 const FULL: OnboardingDraft = {
-  step: 13,
+  step: 7,
   identity: "ella",
   birthDate: { day: 12, month: 4, year: 1994 },
   placeQuery: "Rosario",
@@ -36,7 +36,7 @@ test("un borrador completo sobrevive el ida y vuelta", () => {
 });
 
 test("el email sobrevive la vuelta de Clerk", () => {
-  // El paso de cuenta (índice 13) escribe el email en el borrador y el remonte
+  // El acceso (paso 0) escribe el email en el borrador y el remonte
   // lo lee. `parseDraft` lo descartaba en silencio: la persona tenía que volver
   // a tipear el email que acababa de tipear, justo en el paso más caro del alta.
   const back = parseDraft(serializeDraft(FULL), STEPS)!;
@@ -70,7 +70,7 @@ test("un email vacío o de tipo inesperado no se propaga", () => {
 
 test("se conservan identidad, fecha, hora, lugar y paso", () => {
   const back = parseDraft(serializeDraft(FULL), STEPS)!;
-  assert.equal(back.step, 13);
+  assert.equal(back.step, 7);
   assert.equal(back.identity, "ella");
   assert.deepEqual(back.birthDate, { day: 12, month: 4, year: 1994 });
   assert.deepEqual(back.birthTime, { hour: 10, minute: 40 });

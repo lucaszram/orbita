@@ -15,6 +15,7 @@ import { A } from "../assets";
 import { Emblem } from "../components/Emblem";
 import { Header } from "../components/Header";
 import { Screen } from "../components/Screen";
+import { ONBOARDING_TOTAL } from "../steps";
 import { Body, Caption, Label, Title } from "../components/Type";
 import { font, GUTTER, orbita } from "../theme";
 
@@ -96,7 +97,7 @@ export function BirthplaceSearchScreen({ step, query, onQuery, onSelect, onBack 
 
   return (
     <Screen bg={A.dailyTexture} wash={0.52} scroll>
-      <Header step={step} total={15} onBack={onBack} />
+      <Header step={step} total={ONBOARDING_TOTAL} onBack={onBack} />
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.fill}
@@ -137,7 +138,16 @@ export function BirthplaceSearchScreen({ step, query, onQuery, onSelect, onBack 
             <Caption style={styles.hint}>Sin resultados. Probá agregando el país o con otra ciudad.</Caption>
           ) : (
             results.map((place) => (
-              <Pressable key={place.label} onPress={() => onSelect(place)} style={styles.result}>
+              // Rol declarado: es una lista de opciones tocables, y sin él un
+              // lector de pantalla la lee como texto suelto y no ofrece
+              // activarla (QA23-008). El nombre accesible lo aporta el texto.
+              <Pressable
+                key={place.label}
+                onPress={() => onSelect(place)}
+                accessibilityRole="button"
+                accessibilityHint="Elegí esta ciudad como tu lugar de nacimiento"
+                style={styles.result}
+              >
                 <Text style={styles.resultTxt}>{place.label}</Text>
                 <View style={styles.resultLine} />
               </Pressable>

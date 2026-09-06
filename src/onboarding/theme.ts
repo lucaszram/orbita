@@ -18,6 +18,8 @@ export const orbita = {
   // accent
   copper: "#C46A3A",
   copperSoft: "#D69A6A",
+  /** Cobre apagado: un CTA bloqueado, que se distingue de uno activo sin desaparecer. */
+  copperOff: "#5B3320",
   copperGlow: "rgba(242, 122, 56, 0.16)",
 
   // lines / hairlines

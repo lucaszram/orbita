@@ -29,23 +29,84 @@ const ACTIVE_STATUSES: SubscriptionStatus[] = [
   "past_due"
 ];
 
+export type ProviderEnvironment = "sandbox" | "production";
+
 export type SubscriptionRow = {
   entitlement?: string;
   status?: SubscriptionStatus;
   provider?: SubscriptionProvider;
   plan?: SubscriptionPlan;
+  /**
+   * Producto que sostiene esta fila.
+   *
+   * Está en la tabla y lo usan las decisiones de precedencia (un reembolso sólo
+   * puede retirar el producto que demuestra), pero faltaba en este tipo, así
+   * que las comparaciones se hacían contra un campo invisible para el
+   * compilador.
+   */
+  productId?: string;
   isLifetime?: boolean;
   willRenew?: boolean;
   currentPeriodEnd?: number;
+  /** Tienda de la que vino el recibo. Sólo las filas de RevenueCat lo traen. */
+  environment?: ProviderEnvironment;
+  /** Denormalizado en la tabla; permite resolver el contexto sin otra lectura. */
+  clerkUserId?: string;
+};
+
+/**
+ * Contexto de resolución. Lo que no se puede demostrar, no concede.
+ *
+ * Los dos flags los calcula `convex/lib/subscriptionAccess.ts` a partir del
+ * entorno declarado del deployment y de la allowlist de review. Los DOS tienen
+ * default `false` para que cualquier consumidor que los olvide falle CERRADO.
+ *
+ * `productionAllowed` no existía, y ésa era la puerta: un consumidor que
+ * llamaba a `resolveEntitlement(rows, now)` sin contexto —el default directo—
+ * dejaba pasar una fila `production` en un deployment de development, o en uno
+ * sin entorno declarado. El corte de sandbox estaba, el de production no.
+ */
+export type EntitlementContext = {
+  sandboxAllowed?: boolean;
+  productionAllowed?: boolean;
 };
 
 // ¿Esta fila da acceso Pro ahora mismo?
-export function isRowActive(row: SubscriptionRow, now: number): boolean {
-  if (row.entitlement === "free") return false;
+export function isRowActive(
+  row: SubscriptionRow,
+  now: number,
+  context: EntitlementContext = {}
+): boolean {
+  // `plus` sigue aceptado solo para filas legacy pendientes de migración. Una
+  // fila incompleta o con cualquier otro entitlement nunca concede acceso.
+  if (row.entitlement !== PRO_ENTITLEMENT && row.entitlement !== "plus") return false;
+
+  // Corte de entorno para las filas de la tienda. Stripe no tiene entornos y no
+  // se ve afectado por nada de esto.
+  //
+  // Las TRES formas fallan cerrado y hay que autorizarlas explícitamente:
+  //
+  // - sin `environment` (fila legada): no se puede demostrar de qué tienda vino;
+  // - `sandbox`: sólo con `sandboxAllowed` (development, o una cuenta de review
+  //   allowlisted contra producción);
+  // - `production`: sólo con `productionAllowed`. Sin esto, un deployment de
+  //   development —o uno que no declara su entorno— concedía Órbita Plus desde
+  //   una fila productiva, y cualquier consumidor que llamara sin contexto
+  //   entraba por esa puerta.
+  if (row.provider === "revenuecat") {
+    if (row.environment === undefined) return false;
+    if (row.environment === "sandbox" && !context.sandboxAllowed) return false;
+    if (row.environment === "production" && !context.productionAllowed) return false;
+  }
+
   if (row.isLifetime) return true;
   if (!row.status || !ACTIVE_STATUSES.includes(row.status)) return false;
-  // Sin fecha de fin y con estado activo (ej. lifetime sin flag) → vigente.
-  if (row.currentPeriodEnd === undefined) return row.status === "active" || row.status === "trialing";
+  // Sólo `isLifetime` puede prescindir de una fecha de fin. Antes, cualquier
+  // fila `active`/`trialing` sin fecha concedía acceso indefinido: un
+  // `checkout.session.completed` de Stripe escribe exactamente esa forma y la
+  // fecha llega recién con `customer.subscription.updated`. Si ese segundo
+  // webhook nunca llegaba, el acceso no vencía nunca.
+  if (row.currentPeriodEnd === undefined) return false;
   return row.currentPeriodEnd > now;
 }
 
@@ -66,6 +127,17 @@ export type ResolvedEntitlement = {
   currentPeriodEnd?: number;
   willRenew?: boolean;
   canManageInStripePortal: boolean;
+  /**
+   * Campos ADITIVOS. Un cliente anterior que sólo lee `provider` y
+   * `canManageInStripePortal` sigue funcionando igual.
+   *
+   * Existen porque `provider` nombra a UN ganador —el de mayor rango— y una
+   * persona puede tener cobros vivos en los dos lados a la vez (compró en la
+   * web y después en la app). Si la pantalla sólo ofrece la salida del ganador,
+   * el otro cobro sigue corriendo sin forma visible de cancelarlo.
+   */
+  canManageInRevenueCat: boolean;
+  activeProviders: SubscriptionProvider[];
 };
 
 const FREE_RESULT: ResolvedEntitlement = {
@@ -73,13 +145,19 @@ const FREE_RESULT: ResolvedEntitlement = {
   isPro: false,
   status: "inactive",
   isLifetime: false,
-  canManageInStripePortal: false
+  canManageInStripePortal: false,
+  canManageInRevenueCat: false,
+  activeProviders: []
 };
 
 // Combina todas las filas del usuario en un único estado de acceso.
-export function resolveEntitlement(rows: SubscriptionRow[], now: number): ResolvedEntitlement {
-  const active = rows.filter((row) => isRowActive(row, now));
-  if (active.length === 0) return { ...FREE_RESULT };
+export function resolveEntitlement(
+  rows: SubscriptionRow[],
+  now: number,
+  context: EntitlementContext = {}
+): ResolvedEntitlement {
+  const active = rows.filter((row) => isRowActive(row, now, context));
+  if (active.length === 0) return { ...FREE_RESULT, activeProviders: [] };
 
   const winner = active.reduce((best, row) => (rowRank(row) > rowRank(best) ? row : best));
 
@@ -92,6 +170,16 @@ export function resolveEntitlement(rows: SubscriptionRow[], now: number): Resolv
     isLifetime: Boolean(winner.isLifetime),
     currentPeriodEnd: winner.currentPeriodEnd,
     willRenew: winner.willRenew,
-    canManageInStripePortal: winner.provider === "stripe" && !winner.isLifetime
+    // Si RevenueCat gana por duración/lifetime pero Stripe también está activo,
+    // el usuario debe conservar la salida para administrar y evitar doble cobro.
+    canManageInStripePortal: active.some((row) => row.provider === "stripe" && !row.isLifetime),
+    canManageInRevenueCat: active.some((row) => row.provider === "revenuecat"),
+    activeProviders: [
+      ...new Set(
+        active
+          .map((row) => row.provider)
+          .filter((provider): provider is SubscriptionProvider => provider !== undefined)
+      )
+    ].sort()
   };
 }

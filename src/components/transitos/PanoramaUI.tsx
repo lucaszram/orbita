@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { FilaVista } from "@/domain/transitosPanorama";
 import { rotuloAccesible } from "@/domain/webLayout";
 import { orbita } from "@/theme/orbita";
+import { usePressedState } from "@/components/v492/Touchable";
 
 /**
  * Piezas de Tránsitos · AHORA (CORE-207), calcadas de los frames
@@ -57,6 +58,7 @@ export function PNota({ children, style }: { children: ReactNode; style?: object
  * (rol `tab`, estado seleccionado); sin él, un rótulo.
  */
 export function PSegmento({ label, activo, onPress }: { label: string; activo: boolean; onPress?: () => void }) {
+  const presion = usePressedState();
   if (!onPress) {
     return (
       <View style={[styles.segmento, activo && styles.segmentoActivo]} accessibilityRole="header">
@@ -69,7 +71,8 @@ export function PSegmento({ label, activo, onPress }: { label: string; activo: b
       onPress={onPress}
       accessibilityRole="tab"
       accessibilityState={{ selected: activo }}
-      style={({ pressed }) => [styles.segmento, activo && styles.segmentoActivo, pressed && styles.apagado]}
+      {...presion.pressableProps}
+      style={[styles.segmento, activo && styles.segmentoActivo, presion.pressed && styles.apagado]}
     >
       <Text style={[styles.segmentoTexto, activo && styles.segmentoTextoActivo]}>{label}</Text>
     </Pressable>
@@ -90,6 +93,7 @@ export function PEncabezado({
   /** Si el dato de la derecha es una acción («‹ VOLVER» en la comparación de Vínculos), qué hace al tocarlo. */
   onDerecha?: () => void;
 }) {
+  const presion = usePressedState();
   const dato = derecha ? (
     <PEtiqueta tono="gris" mayusculas={!derechaMinuscula} style={styles.encabezadoDerecha}>
       {derecha}
@@ -104,7 +108,8 @@ export function PEncabezado({
           accessibilityRole="button"
           accessibilityLabel={derecha ? rotuloAccesible(derecha) : undefined}
           hitSlop={8}
-          style={({ pressed }) => [styles.encabezadoAccion, pressed && styles.apagado]}
+          {...presion.pressableProps}
+          style={[styles.encabezadoAccion, presion.pressed && styles.apagado]}
         >
           {dato}
         </Pressable>
@@ -297,6 +302,7 @@ export function PBoton({
   disabled?: boolean;
   accessibilityLabel?: string;
 }) {
+  const presion = usePressedState();
   return (
     <Pressable
       onPress={onPress}
@@ -304,12 +310,13 @@ export function PBoton({
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={{ disabled: !!disabled }}
-      style={({ pressed }) => [
+      {...presion.pressableProps}
+      style={[
         styles.boton,
         variante === "hueso" && styles.botonHueso,
         variante === "contorno" && styles.botonContorno,
         variante === "cobreContorno" && styles.botonCobreContorno,
-        (pressed || disabled) && styles.apagado
+        (presion.pressed || disabled) && styles.apagado
       ]}
     >
       <Text

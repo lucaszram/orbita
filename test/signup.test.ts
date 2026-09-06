@@ -1,35 +1,32 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, it } from "node:test";
 import {
   describeMissingRequirements,
   interpretSignInAttempt,
   interpretSignUpAttempt,
-  makeReentrancyGuard,
-  MIN_PASSWORD_LENGTH,
-  validateSignupPassword
+  makeReentrancyGuard
 } from "../src/onboarding/signup";
 import { resolveFirstFactor } from "../src/domain/sessionStart";
 
-describe("validateSignupPassword — email + contraseña + confirmación", () => {
-  it("contraseña vacía → pide elegir una", () => {
-    assert.match(validateSignupPassword("", "") ?? "", /Elegí una contraseña/);
+describe("política Clerk Producción — alta passwordless y login legacy", () => {
+  const accountHook = readFileSync(path.join(process.cwd(), "src/onboarding/useAccount.ts"), "utf8");
+  const authScreen = readFileSync(path.join(process.cwd(), "src/onboarding/screens/AuthScreen.tsx"), "utf8");
+
+  it("el alta nueva crea por email y código, sin enviar contraseña", () => {
+    assert.match(accountHook, /signUp\.create\(\{ emailAddress \}\)/);
+    assert.doesNotMatch(accountHook, /signUp\.create\(\{ emailAddress, password \}\)/);
+    assert.doesNotMatch(authScreen, /newPassword|Elegí una contraseña/);
   });
 
-  it("contraseña corta → exige el mínimo", () => {
-    const err = validateSignupPassword("abc123", "abc123") ?? "";
-    assert.match(err, new RegExp(String(MIN_PASSWORD_LENGTH)));
-  });
-
-  it("confirmación distinta → 'no coinciden'", () => {
-    assert.match(validateSignupPassword("supersecreta", "otracosa123") ?? "", /no coinciden/i);
-  });
-
-  it("contraseña válida y confirmada → sin error", () => {
-    assert.equal(validateSignupPassword("supersecreta", "supersecreta"), null);
+  it("una cuenta legacy todavía puede ingresar con contraseña o pedir código", () => {
+    assert.match(accountHook, /attemptFirstFactor\(\{ strategy: "password", password \}\)/);
+    assert.match(authScreen, /Mandame un código por email/);
   });
 });
 
-describe("interpretSignUpAttempt — alta con contraseña + código", () => {
+describe("interpretSignUpAttempt — alta por email + código", () => {
   it("status complete → sesión activa (kind complete + sessionId)", () => {
     const out = interpretSignUpAttempt({ status: "complete", createdSessionId: "sess_1" });
     assert.deepEqual(out, { kind: "complete", sessionId: "sess_1" });

@@ -325,7 +325,8 @@ describe("el ranking de Hoy lleva la identidad hasta la ruta", () => {
   });
 
   const RANKING = sinComentarios(leer("src/components/home/hoy/HoyRanking.tsx"));
-  const DETALLE = sinComentarios(leer("app/reading/transito.tsx"));
+  // La ruta es un wrapper (CORE-247): la implementación web vive en src/routes/v492.
+  const DETALLE = sinComentarios(leer("src/routes/v492/reading-transito.web.tsx"));
   const APPREFS = sinComentarios(leer("src/services/appRefs.ts"));
 
   it("la fila con identidad es un enlace accesible a su propio detalle", () => {

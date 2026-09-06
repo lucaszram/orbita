@@ -1,15 +1,21 @@
 import { Platform } from "react-native";
 import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAction, useConvex, useMutation, useQuery } from "convex/react";
 
+import {
+  persistSignupDraft,
+  SIGNUP_DRAFT_NOT_READY,
+  type SignupDraftInput
+} from "@/domain/anonymousSignupDraft";
 import {
   mapSignInStartError,
   resolveFirstFactor,
   runSessionAttempts,
   type SignInPhase
 } from "@/domain/sessionStart";
+import { classifySsoOutcome, type SsoOutcome } from "@/onboarding/authGate";
 import { planResend, type ResendResult } from "@/onboarding/resend";
 import {
   interpretSignInAttempt,
@@ -21,6 +27,7 @@ import { timezoneLookupFor, withResolvedTimezone } from "@/domain/placeTimezone"
 import type { OnboardingCompletion } from "@/domain/onboardingReadiness";
 import { TRIAD_CLIENT_TIMEOUT_CODE, withTriadTimeout } from "@/domain/triadTimeout";
 import { useOrbitaAuth } from "@/hooks/useOrbitaAuth";
+import { anonymousSignupDraftTransport } from "@/services/anonymousOnboardingTransport";
 import { appApi, type BirthDataDoc } from "@/services/appRefs";
 import { backendConfig } from "@/services/backendProviders";
 import { publicOnboardingApi } from "@/services/publicOnboardingRefs";
@@ -28,22 +35,25 @@ import { publicOnboardingApi } from "@/services/publicOnboardingRefs";
 // Necesario para que el browser de OAuth devuelva el control a la app.
 WebBrowser.maybeCompleteAuthSession();
 
-/** Único proveedor social del producto. */
-export type OAuthProvider = "google";
+/** Proveedores sociales del acceso oficial de Clerk. */
+export type OAuthProvider = "google" | "apple";
 
 /**
- * Login con Google — SÓLO WEB, y sólo si la conexión está habilitada.
- *
- * Dos condiciones, las dos necesarias:
- *
- * 1. `Platform.OS === "web"`. En iOS/Android el SSO abre un navegador externo
- *    y vuelve por deep link: exige credenciales propias y arrastra reglas de
- *    las tiendas que no están resueltas. El botón no existe en nativo.
- * 2. `EXPO_PUBLIC_ORBITA_GOOGLE_AUTH`. Un deploy que se olvida de setearla
- *    queda cerrado, no roto: el alta por email sigue entera debajo.
+ * Google quedó validado por Lucas en iOS contra Clerk Producción y el callback
+ * nativo allowlisted. En web conserva el flag explícito para no ofrecer una
+ * conexión que el deploy no haya configurado.
  */
 export const GOOGLE_AUTH_ENABLED =
-  Platform.OS === "web" && process.env.EXPO_PUBLIC_ORBITA_GOOGLE_AUTH === "true";
+  Platform.OS === "ios" ||
+  (Platform.OS === "web" && process.env.EXPO_PUBLIC_ORBITA_GOOGLE_AUTH === "true");
+
+/**
+ * Apple quedó configurado en Clerk Producción y Apple Developer. iOS lo ofrece
+ * de forma nativa; web conserva un flag separado por si se habilita allí.
+ */
+export const APPLE_AUTH_ENABLED =
+  Platform.OS === "ios" ||
+  (Platform.OS === "web" && process.env.EXPO_PUBLIC_ORBITA_APPLE_AUTH === "true");
 
 
 /**
@@ -59,8 +69,8 @@ export type AccountFlow = {
   error: string | null;
   isSignedIn: boolean;
   oauthBusy: OAuthProvider | null;
-  /** Crea el intento de alta con contraseña (Clerk Producción la exige). */
-  start: (email: string, password: string) => Promise<void>;
+  /** Crea el intento passwordless y envía el código al email. */
+  start: (email: string) => Promise<void>;
   verify: (code: string) => Promise<boolean>;
   /** Reenvía el código sin crear otra cuenta ni reiniciar el flujo. */
   resend: () => Promise<ResendResult>;
@@ -70,7 +80,7 @@ export type AccountFlow = {
    * explicar por qué dejó de ser un alta.
    */
   existingAccount: boolean;
-  oauth: (provider: OAuthProvider) => Promise<boolean>;
+  oauth: (provider: OAuthProvider, hooks?: SsoHooks) => Promise<SsoOutcome>;
   resetToEmail: () => void;
 };
 
@@ -86,41 +96,69 @@ export function useAccountFlow(): AccountFlow | null {
   return useAccountFlowInner();
 }
 
-/** OAuth SSO con Google, compartido entre el alta de cuenta y el sign-in. */
+/** Avisos por resultado del SSO, ANTES de activar la sesión. */
+export type SsoHooks = {
+  /**
+   * Clerk resolvió el SSO por el recurso de INGRESO: la cuenta ya existía.
+   * Corre ANTES de `setActive`, para que el marcador `anonymous_signup` se
+   * descarte antes de que la consulta de completion pueda usarlo — con el
+   * marcador vivo, una cuenta OAuth preexistente incompleta se reclasificaba
+   * como alta nueva y era enviada al onboarding en vez del editor de datos.
+   */
+  onExistingAccount?: () => void;
+};
+
+/** OAuth SSO (Apple/Google), compartido entre el alta de cuenta y el sign-in. */
 function useSSOOauth(
   setError: (v: string | null) => void,
   setOauthBusy: (v: OAuthProvider | null) => void,
-): (provider: OAuthProvider) => Promise<boolean> {
+): (provider: OAuthProvider, hooks?: SsoHooks) => Promise<SsoOutcome> {
   const { useSSO } = require("@clerk/expo") as typeof import("@clerk/expo");
   const { startSSOFlow } = useSSO();
+  const redirectUrl =
+    Platform.OS === "web"
+      ? AuthSession.makeRedirectUri()
+      : AuthSession.makeRedirectUri({ scheme: "com.lucasssram.orbita", path: "callback" });
   return useCallback(
-    async (provider: OAuthProvider): Promise<boolean> => {
+    async (provider: OAuthProvider, hooks?: SsoHooks): Promise<SsoOutcome> => {
       setError(null);
       setOauthBusy(provider);
       try {
-        // Única estrategia del producto. `provider` se mantiene en la firma
-        // para no cambiar el contrato de `AccountFlow`.
-        void provider;
-        const strategy = "oauth_google" as const;
-        const { createdSessionId, setActive } = await startSSOFlow({
+        // Estrategias oficiales de Clerk; el botón de cada proveedor sólo se
+        // dibuja cuando su conexión está habilitada externamente.
+        const strategy = provider === "apple" ? ("oauth_apple" as const) : ("oauth_google" as const);
+        const { createdSessionId, setActive, signIn, signUp } = await startSSOFlow({
           strategy,
-          redirectUrl: AuthSession.makeRedirectUri()
+          redirectUrl
         });
-        if (createdSessionId && setActive) {
-          await setActive({ session: createdSessionId });
-          return true;
+        // Cuenta nueva vs. existente: EXCLUSIVAMENTE por coincidencia del id
+        // de la sesión creada con su recurso (`classifySsoOutcome`, pura y con
+        // tests conductuales) — los `status` pueden arrastrar un intento
+        // previo. Ambos proveedores pasan por exactamente esta transición.
+        const outcome = classifySsoOutcome({
+          createdSessionId,
+          signUpCreatedSessionId: signUp?.createdSessionId ?? null,
+          signInCreatedSessionId: signIn?.createdSessionId ?? null
+        });
+        if (outcome === "cancelled" || !createdSessionId || !setActive) {
+          // El usuario cerró el navegador o falta un paso (MFA): no es un error duro.
+          return "cancelled";
         }
-        // El usuario canceló el navegador o falta un paso (MFA): no es un error duro.
-        return false;
+        // El descarte del marcador va ANTES de activar la sesión: la consulta
+        // de completion no puede llegar a correr con el id de un alta nueva
+        // para una cuenta que ya existía.
+        if (outcome === "existing_account") hooks?.onExistingAccount?.();
+        await setActive({ session: createdSessionId });
+        return outcome;
       } catch (e) {
         setError(clerkErrorMessage(e));
-        return false;
+        return "cancelled";
       } finally {
         setOauthBusy(null);
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [startSSOFlow]
+    [redirectUrl, startSSOFlow]
   );
 }
 
@@ -146,16 +184,16 @@ function useAccountFlowInner(): AccountFlow {
   if (!verifyGuardRef.current) verifyGuardRef.current = makeReentrancyGuard();
 
   const start = useCallback(
-    async (emailAddress: string, password: string) => {
+    async (emailAddress: string) => {
       if (!signUp || !signIn) return;
       setBusy(true);
       setError(null);
       setExistingAccount(false);
       try {
-        // Con contraseña desde la creación: Clerk Producción tiene
-        // `password: required`, así que sin esto el alta queda en
-        // `missing_requirements` después de verificar el email.
-        await signUp.create({ emailAddress, password });
+        // Clerk Producción está configurado para alta por email + código, sin
+        // contraseña obligatoria. Las cuentas legacy conservan la contraseña
+        // como factor de ingreso dentro de `useSignInFlow`.
+        await signUp.create({ emailAddress });
         await signUp.prepareEmailAddressVerification({ strategy: "email_code" });
         flowRef.current = "signUp";
         emailAddressIdRef.current = null;
@@ -216,8 +254,8 @@ function useAccountFlowInner(): AccountFlow {
         try {
           if (flowRef.current === "signUp") {
             // Un código MALO lanza (→ catch). Si no lanza pero el alta no está
-            // `complete`, el email quedó verificado y faltan requisitos (p. ej.
-            // contraseña): se dice QUÉ falta, nunca "el código no coincide".
+            // `complete`, el email quedó verificado y faltan requisitos: se
+            // dice QUÉ falta, nunca "el código no coincide".
             const outcome = interpretSignUpAttempt(await signUp.attemptEmailAddressVerification({ code }));
             if (outcome.kind === "complete" && setActiveSignUp) {
               await setActiveSignUp({ session: outcome.sessionId });
@@ -289,7 +327,7 @@ export type SignInFlow = {
   verify: (code: string) => Promise<boolean>;
   /** Reenvía el código conservando el emailAddressId (mismo intento). */
   resend: () => Promise<ResendResult>;
-  oauth: (provider: OAuthProvider) => Promise<boolean>;
+  oauth: (provider: OAuthProvider, hooks?: SsoHooks) => Promise<SsoOutcome>;
   resetToEmail: () => void;
 };
 
@@ -598,10 +636,21 @@ export function signLabelFromKey(v: unknown): string | null {
 }
 
 /**
- * Estado del cálculo real de la tríada sin sesión. "unavailable" = sin backend
- * o sin lugar de nacimiento; "skipped" = el usuario eligió seguir sin ella.
+ * Estado de la ÚNICA superficie de cálculo de la tríada.
+ *
+ * - `idle`: todavía no se pidió (o los datos cambiaron y la tríada anterior
+ *   quedó invalidada).
+ * - `loading`: "Preparando tu carta…".
+ * - `ready`: "Tu carta ya está lista".
+ * - `timed_out`: la espera VISIBLE superó los 8 segundos; el cálculo sigue en
+ *   segundo plano y el avance queda siempre a mano.
+ * - `error`: el proveedor falló; se dice el motivo y el avance continúa igual.
+ *
+ * Ningún estado retiene el onboarding: timeout y error continúan, y una
+ * respuesta tardía se aprovecha después en Carta (el cálculo persistido corre
+ * del lado del servidor desde el guardado de los datos natales).
  */
-export type TriadStatus = "idle" | "unavailable" | "loading" | "ready" | "error" | "skipped";
+export type TriadStatus = "idle" | "loading" | "ready" | "timed_out" | "error";
 
 /** Motivo del fallo, ya en el idioma del usuario (el alta lo muestra). */
 export function describeTriadError(error: unknown): string {
@@ -734,6 +783,70 @@ export function useBackendPersistStrict(): PersistBirthData | null {
   return useBackendPersistInner();
 }
 
+/**
+ * Guardado natal del onboarding AUTH-FIRST: con la sesión activa desde el
+ * paso 0, "Preparar mi carta" escribe los datos natales por el camino
+ * autenticado (`onboarding.completeBirthData`, con el `clientDraftId` del
+ * marcador de alta) y dispara el cálculo de la carta SIN esperarlo: el guardado
+ * es la operación obligatoria y el derivado nunca bloquea la navegación —
+ * Carta lo resuelve o lo reintenta si sigue pendiente.
+ *
+ * La zona horaria se deriva de las coordenadas del lugar en el backend
+ * (Photon no la trae); nunca del reloj del dispositivo. Si la resolución falla,
+ * el error se propaga y no se escribe nada: la pantalla ofrece reintentar.
+ */
+export type OnboardingBirthDataSave = (input: {
+  birthDate: string;
+  birthTime?: string;
+  birthPlaceLabel?: string;
+  latitude?: number;
+  longitude?: number;
+  timezone?: string;
+  clientDraftId?: string;
+}) => Promise<void>;
+
+export function useOnboardingBirthDataSave(): OnboardingBirthDataSave | null {
+  if (!HAS_BACKEND) return null;
+  return useOnboardingBirthDataSaveInner();
+}
+
+function useOnboardingBirthDataSaveInner(): OnboardingBirthDataSave {
+  const auth = useOrbitaAuth();
+  const ensureUser = useMutation(appApi.users.getOrCreateCurrentUser);
+  const completeBirthData = useMutation(appApi.onboarding.completeBirthData);
+  const calculateChart = useAction(appApi.charts.calculateOrCreateNatalChart);
+  const resolveTimezone = useAction(appApi.placeTimezone.atCoordinates);
+  const isSignedIn = auth.isSignedIn;
+
+  return useCallback(
+    async (input) => {
+      // Sin sesión no se escribe: el acceso es la PRIMERA superficie del flujo,
+      // así que llegar acá sin cuenta es una carrera y la salida es reintentar.
+      if (!isSignedIn) throw new Error("ONBOARDING_SESSION_NOT_READY");
+      const lookup = timezoneLookupFor(input);
+      const resolved = lookup
+        ? withResolvedTimezone(input, (await resolveTimezone(lookup)).timezone)
+        : input;
+      // Nada de rellenar: sin lugar elegido, coordenadas o zona, no se escribe.
+      const payload = validateBirthPayload(resolved);
+      await ensureUser({});
+      await completeBirthData({
+        clientDraftId: input.clientDraftId,
+        birthDate: payload.birthDate,
+        birthTime: payload.birthTime,
+        birthTimePrecision: payload.birthTime ? "known" : "unknown",
+        birthPlaceLabel: payload.birthPlaceLabel,
+        latitude: payload.latitude,
+        longitude: payload.longitude,
+        timezone: payload.timezone
+      });
+      // El derivado NUNCA participa del resultado del guardado.
+      void calculateChart({}).catch(() => undefined);
+    },
+    [calculateChart, completeBirthData, ensureUser, isSignedIn, resolveTimezone]
+  );
+}
+
 function useBackendPersistInner(): PersistBirthData {
   const auth = useOrbitaAuth();
   const ensureUser = useMutation(appApi.users.getOrCreateCurrentUser);
@@ -782,26 +895,12 @@ function useBackendPersistInner(): PersistBirthData {
 // `clientDraftId` se conserva para adjuntarlo a la cuenta recién creada.
 // ---------------------------------------------------------------------------
 
-/** Presupuestos de las cadenas idempotentes (ver `runSessionAttempts`). */
-const SIGNUP_DRAFT_BUDGET_MS = 20000;
-const SIGNUP_DRAFT_CALL_TIMEOUT_MS = 6000;
-const SIGNUP_DRAFT_RETRY_PAUSE_MS = 800;
+/** Presupuestos de la cadena idempotente del cierre (ver `runSessionAttempts`). */
 const FINALIZE_BUDGET_MS = 60000;
 const FINALIZE_CALL_TIMEOUT_MS = 25000;
 const FINALIZE_RETRY_PAUSE_MS = 900;
 
-export type SignupDraftInput = {
-  clientDraftId: string;
-  currentStep: number;
-  identity?: "ella" | "el" | "prefiero_no_decirlo";
-  birthDate: string;
-  birthTime?: string;
-  birthTimePrecision: "known" | "approximate" | "unknown";
-  birthPlaceLabel?: string;
-  latitude?: number;
-  longitude?: number;
-  timezone?: string;
-};
+export type { SignupDraftInput };
 
 /**
  * Persiste el borrador remoto del alta y espera su confirmación.
@@ -816,6 +915,53 @@ export type SignupDraftInput = {
  * Rechaza si al agotar el presupuesto sigue incompleto: en ese caso NO se abre
  * Clerk. Crear la identidad primero es exactamente lo que produce cuentas
  * huérfanas.
+ *
+ * **Las dos llamadas viajan por un canal sin autenticar** — nunca por
+ * `useConvex()`. El cliente compartido lo autentica Clerk cuando Clerk resuelve,
+ * y eso puede caer con esta cadena en vuelo: un `saveDraft` con identidad marca
+ * el borrador `accountState: "created"` y `confirmSignupDraft` deja de devolver
+ * `ready` para siempre. Ver `src/services/anonymousOnboardingTransport.ts`.
+ */
+/**
+ * Marcador de "alta en curso" del flujo auth-first.
+ *
+ * Antes de crear la cuenta, se guarda un borrador remoto MÍNIMO (sólo
+ * `clientDraftId` + paso) por el canal anónimo. Es lo que hace que
+ * `getCompletionStatus` clasifique la cuenta recién creada como un alta en
+ * curso (`recovery: "onboarding"`) y no como una cuenta preexistente incompleta
+ * (`edit_birth_data`): sin él, el remonte de la web tras el redirect de Clerk
+ * sacaba a la persona del onboarding y la dejaba en el editor suelto.
+ *
+ * Es IMPRESCINDIBLE, así que el fallo se PROPAGA: si el marcador no se pudo
+ * guardar, Clerk no se abre — crear la identidad sin él es exactamente lo que
+ * produce la reclasificación. La pantalla dice el fallo y ofrece reintentar
+ * (la escritura es idempotente por `clientDraftId`).
+ */
+export function useAnonymousSignupMarker(): ((clientDraftId: string) => Promise<void>) | null {
+  if (!HAS_BACKEND) return null;
+  return useAnonymousSignupMarkerInner();
+}
+
+function useAnonymousSignupMarkerInner(): (clientDraftId: string) => Promise<void> {
+  const transport = useMemo(() => anonymousSignupDraftTransport(), []);
+  return useCallback(
+    async (clientDraftId: string) => {
+      // `HAS_BACKEND` ya exige Convex; sin canal, el marcador no puede quedar
+      // guardado y no se abre Clerk (nunca se resuelve como éxito).
+      if (!transport) throw new Error("ONBOARDING_SIGNUP_MARKER_UNAVAILABLE");
+      await transport.saveDraft({ clientDraftId, currentStep: 0 });
+    },
+    [transport]
+  );
+}
+
+/**
+ * @deprecated El flujo auth-first ya no confirma un borrador completo antes de
+ * abrir Clerk: siembra el marcador mínimo (`useAnonymousSignupMarker`) y
+ * persiste los datos por el camino autenticado (`useOnboardingBirthDataSave`).
+ * Se conserva junto a `useOnboardingFinalize` porque el contrato del backend
+ * (saveDraft/confirm/completeSignupFromDraft) sigue vigente para builds
+ * publicados; no agregar usos nuevos.
  */
 export function useOnboardingSignupDraft(): ((input: SignupDraftInput) => Promise<void>) | null {
   if (!HAS_BACKEND) return null;
@@ -823,44 +969,20 @@ export function useOnboardingSignupDraft(): ((input: SignupDraftInput) => Promis
 }
 
 function useOnboardingSignupDraftInner(): (input: SignupDraftInput) => Promise<void> {
-  const convex = useConvex();
+  // Transporte DEDICADO y explícitamente anónimo. `useConvex()` no se usa acá a
+  // propósito: es el cliente atado a Clerk y su token aparece cuando Clerk
+  // quiere, no cuando el alta puede.
+  const transport = useMemo(() => anonymousSignupDraftTransport(), []);
   return useCallback(
     async (input: SignupDraftInput) => {
-      // Acá NO se valida contra `validateBirthPayload`: la zona horaria es un
-      // enriquecimiento que el backend resuelve solo DESPUÉS de guardar el
-      // borrador. Exigirla antes de escribir impediría justamente el guardado
-      // que dispara esa resolución. El juez es `confirmSignupDraft`.
-      const result = await runSessionAttempts({
-        budgetMs: SIGNUP_DRAFT_BUDGET_MS,
-        callTimeoutMs: SIGNUP_DRAFT_CALL_TIMEOUT_MS,
-        retryPauseMs: SIGNUP_DRAFT_RETRY_PAUSE_MS,
-        attempt: async (timebox) => {
-          // Idempotente por `clientDraftId`: reintentar actualiza la MISMA fila.
-          await timebox(
-            convex.mutation(appApi.onboarding.saveDraft, {
-              clientDraftId: input.clientDraftId,
-              currentStep: input.currentStep,
-              identity: input.identity,
-              birthDate: input.birthDate,
-              birthTime: input.birthTime,
-              birthTimePrecision: input.birthTimePrecision,
-              birthPlaceLabel: input.birthPlaceLabel,
-              latitude: input.latitude,
-              longitude: input.longitude,
-              timezone: input.timezone
-            })
-          );
-          await timebox(
-            convex.mutation(appApi.onboarding.confirmSignupDraft, {
-              clientDraftId: input.clientDraftId
-            })
-          );
-          return true as const;
-        }
-      });
-      if (result.status === "error") throw new Error("ONBOARDING_SIGNUP_DRAFT_NOT_READY");
+      // `HAS_BACKEND` ya exige Convex; si aun así no hay canal, el borrador no
+      // quedó listo y no se abre Clerk (nunca se resuelve como éxito).
+      if (!transport) throw new Error(SIGNUP_DRAFT_NOT_READY);
+      // La cadena vive en `src/domain/anonymousSignupDraft.ts`: guarda, después
+      // confirma, reintenta mientras dure el presupuesto y rechaza si no llegó.
+      await persistSignupDraft(transport, input);
     },
-    [convex]
+    [transport]
   );
 }
 
@@ -879,6 +1001,10 @@ export type FinalizeOnboarding = (input: {
   clientDraftId: string;
 }) => Promise<void>;
 
+/**
+ * @deprecated Ver `useOnboardingSignupDraft`: el flujo auth-first cierra con
+ * `useOnboardingBirthDataSave`. Se conserva por el contrato publicado.
+ */
 export function useOnboardingFinalize(): FinalizeOnboarding | null {
   if (!HAS_BACKEND) return null;
   return useOnboardingFinalizeInner();

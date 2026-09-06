@@ -21,6 +21,24 @@ type Props = {
   /** Salida hacia el alta, con el email ya tipeado (si escribió alguno). */
   onCreateAccount: (email: string) => void;
   onBack: () => void;
+  /**
+   * ¿Se ofrece "Crear una cuenta"? Por defecto sí.
+   *
+   * El boundary de eliminación pendiente monta esta misma pantalla para que la
+   * cuenta que se está borrando vuelva a entrar y termine su eliminación. Ahí
+   * crear OTRA cuenta es exactamente lo que no puede pasar: dejaría una cuenta
+   * nueva conviviendo con un marcador ajeno vivo en disco.
+   */
+  allowSignup?: boolean;
+  /**
+   * ¿Se ofrece Google/SSO? Por defecto sí.
+   *
+   * El boundary de eliminación pendiente lo apaga: un SSO puede terminar
+   * creando una cuenta nueva —o entrando con otra— y eso es exactamente lo que
+   * no puede pasar con un marcador ajeno vivo en disco. Ahí sólo vale volver a
+   * entrar con la MISMA cuenta por email + código o contraseña.
+   */
+  allowOAuth?: boolean;
 };
 
 /**
@@ -29,7 +47,14 @@ type Props = {
  * u OAuth. NO manda al onboarding: con carta en Convex se entra derecho a la
  * Home. La salida al alta ("Crear una cuenta") está siempre a mano.
  */
-export function SignInScreen({ flow, onSignedIn, onCreateAccount, onBack }: Props) {
+export function SignInScreen({
+  flow,
+  onSignedIn,
+  onCreateAccount,
+  onBack,
+  allowSignup = true,
+  allowOAuth = true
+}: Props) {
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
@@ -38,7 +63,8 @@ export function SignInScreen({ flow, onSignedIn, onCreateAccount, onBack }: Prop
   const codePhase = flow.phase === "code" && !flow.isSignedIn;
   const passwordPhase = flow.phase === "password" && !flow.isSignedIn;
   const busy = flow.busy || entering;
-  const offerSignup = shouldOfferSignup({ phase: flow.phase, isSignedIn: flow.isSignedIn });
+  const offerSignup =
+    allowSignup && shouldOfferSignup({ phase: flow.phase, isSignedIn: flow.isSignedIn });
   const subtitle = flow.isSignedIn
     ? "Tu sesión ya está activa. Entrá y seguí donde estabas."
     : codePhase
@@ -90,9 +116,13 @@ export function SignInScreen({ flow, onSignedIn, onCreateAccount, onBack }: Prop
   };
 
   const oauth = async (provider: OAuthProvider) => {
-    if (busy || flow.oauthBusy) return;
-    const ok = await flow.oauth(provider);
-    if (ok) await finish();
+    // Doble llave: además de no dibujar el botón, tampoco se ejecuta. Un
+    // `allowOAuth={false}` tiene que apagar el CAMINO, no sólo el píxel.
+    if (!allowOAuth || busy || flow.oauthBusy) return;
+    // En el login cualquier sesión creada sirve (nueva o existente); sólo la
+    // cancelación/error no entra.
+    const outcome = await flow.oauth(provider);
+    if (outcome !== "cancelled") await finish();
   };
 
   return (
@@ -107,7 +137,7 @@ export function SignInScreen({ flow, onSignedIn, onCreateAccount, onBack }: Prop
         <Body style={styles.sub}>{subtitle}</Body>
 
         {/* El camino corto primero; el email queda completo debajo. */}
-        {GOOGLE_AUTH_ENABLED && !flow.isSignedIn && flow.phase === "email" ? (
+        {allowOAuth && GOOGLE_AUTH_ENABLED && !flow.isSignedIn && flow.phase === "email" ? (
           <>
             <GoogleButton
               busy={flow.oauthBusy === "google"}

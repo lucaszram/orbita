@@ -7,6 +7,7 @@ import { TriadLine } from "@/components/orbita/TriadLine";
 import { PlanBadge } from "@/components/web/plan-badge";
 import { fechaCivilLarga } from "@/domain/lunaCarta";
 import { useCanonicalLocalDate } from "@/hooks/useDailyContext";
+import { usePressedState } from "@/components/v492/Touchable";
 import { PLACEMENT_BODY_SYMBOL } from "@/domain/astroSymbols";
 import { rotuloAccesible, showsScreenHeader, type CanvasVariant } from "@/domain/webLayout";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
@@ -83,12 +84,13 @@ export function OrbitaScreen({
  * encabezan.
  */
 export function TopBar({ right, onRight, canvas = "reading" }: { right?: string; onRight?: () => void; canvas?: CanvasVariant }) {
+  const presion = usePressedState();
   const localDate = useCanonicalLocalDate();
   const fecha = localDate ? fechaCivilLarga(localDate) : null;
   const rotulo = right ?? (fecha ? fecha.toLocaleUpperCase("es") : null);
   const derecha = rotulo ? (
     onRight ? (
-      <Pressable onPress={onRight} accessibilityRole="button" accessibilityLabel={rotuloAccesible(rotulo)} hitSlop={8} style={({ pressed }) => [styles.selectorAccion, pressed && { opacity: 0.6 }]}>
+      <Pressable onPress={onRight} accessibilityRole="button" accessibilityLabel={rotuloAccesible(rotulo)} hitSlop={8} {...presion.pressableProps} style={[styles.selectorAccion, presion.pressed && { opacity: 0.6 }]}>
         <Text style={styles.selector}>{rotulo}</Text>
       </Pressable>
     ) : (
@@ -171,11 +173,29 @@ export function Triad({ triad }: { triad: TriadData }) {
   );
 }
 
-export function Pill({ label, onPress }: { label: string; onPress?: () => void }) {
+export function Pill({
+  label,
+  onPress,
+  disabled
+}: {
+  label: string;
+  onPress?: () => void;
+  /** Opcional y aditivo: sin pasarlo, el Pill se comporta como siempre. Un
+   *  botón bloqueado tiene que ANUNCIARSE bloqueado, no sólo dejar de responder. */
+  disabled?: boolean;
+}) {
   // Bugfix: backgroundColor directo sobre Pressable no pinta en iOS new-arch;
   // el estilo visual va en el View interno.
+  const { pressed, pressableProps } = usePressedState();
   return (
-    <Pressable style={({ pressed }) => [styles.pillWrap, pressed && styles.pressed]} onPress={onPress} accessibilityRole="button">
+    <Pressable
+      style={[styles.pillWrap, pressed ? styles.pressed : null, disabled ? styles.pillDisabled : null]}
+      {...pressableProps}
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: Boolean(disabled) }}
+    >
       <View style={styles.pill}>
         <Text style={styles.pillText}>{label}</Text>
       </View>
@@ -219,8 +239,9 @@ export function InsightRow({
   active?: boolean;
   first?: boolean;
 }) {
+  const { pressed, pressableProps } = usePressedState();
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.insightRow, pressed && styles.pressed]}>
+    <Pressable onPress={onPress} {...pressableProps} style={[styles.insightRow, pressed ? styles.pressed : null]}>
       <View style={styles.insightHead}>
         <View style={styles.marker}>
           <View style={[styles.markerDot, active ? styles.markerActive : undefined]} />
@@ -299,6 +320,7 @@ export const styles = StyleSheet.create({
   note: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.body, fontSize: 12, lineHeight: 17, marginTop: orbita.spacing.sm },
 
   pillWrap: { alignSelf: "flex-start" },
+  pillDisabled: { opacity: 0.5 },
   pill: {
     alignSelf: "flex-start",
     backgroundColor: orbita.colors.bone,

@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { AstroGlyph } from "@/components/orbita/AstroGlyph";
+import { usePressedState } from "@/components/v492/Touchable";
 import { bodySymbolForName } from "@/domain/astroSymbols";
 import type { BodyGlyphKey } from "@/domain/astroGlyphs";
 import { orbita } from "@/theme/orbita";
@@ -22,8 +23,14 @@ export function glyphFor(title: string): BodyGlyphKey {
 }
 
 export function GlyphRow({ title, body, onPress }: { title: string; body: string; onPress?: () => void }) {
+  const { pressed, pressableProps } = usePressedState();
   return (
-    <Pressable onPress={onPress} disabled={!onPress} style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
+    <Pressable
+      onPress={onPress}
+      disabled={!onPress}
+      {...pressableProps}
+      style={[styles.row, pressed ? styles.pressed : null]}
+    >
       <View style={styles.head}>
         <View style={styles.marker}>
           <AstroGlyph symbol={glyphFor(title)} size={14} color={orbita.colors.bone} strokeWidth={2} />

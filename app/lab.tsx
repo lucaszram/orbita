@@ -1,12 +1,10 @@
-import { Redirect } from "expo-router";
-import { OrbitaLab } from "@/components/web/orbita-lab";
-import { INTERNAL_TOOLS_ENABLED } from "@/services/internalTools";
-
-export default function LabRoute() {
-  // Antes sólo se cerraba en nativo: en la web publicada el Lab era ruteable.
-  if (!INTERNAL_TOOLS_ENABLED || process.env.EXPO_OS !== "web") {
-    return <Redirect href="/" />;
-  }
-
-  return <OrbitaLab />;
-}
+/**
+ * Wrapper de ruta. La implementación vive FUERA de `app/`, en
+ * `src/routes/v492/lab` (`.tsx` nativo → redirección a Hoy, `.web.tsx` web →
+ * la herramienta interna de siempre, con su interruptor).
+ *
+ * Expo Router incluye en el grafo TODOS los archivos de `app/`, también las
+ * variantes `.web.tsx`: con la implementación afuera, la que elige es la
+ * resolución por plataforma de Metro y cada bundle ve sólo la suya.
+ */
+export { default } from "@/routes/v492/lab";

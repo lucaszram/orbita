@@ -21,14 +21,13 @@ type Props = {
  * `/crear-cuenta` — alta suelta, con la UI OFICIAL de Clerk.
  *
  * NO es la entrada del alta: el camino canónico crea la cuenta DENTRO del
- * onboarding, cuando ya hay una carta que guardar. Esta ruta sobrevive para
- * quien llegue con el link directo.
+ * onboarding, en su primera superficie ("Crear cuenta o ingresar"). Esta ruta
+ * sobrevive para quien llegue con el link directo.
  *
  * Acá vivía un segundo formulario propio (email, contraseña, repetir
- * contraseña, código, reenvío, rama "ese email ya tiene cuenta"): una copia del
- * de `AccountScreen` que había que mantener dos veces y que se desfasaba con
- * cada requisito nuevo de la instancia de Clerk. Ahora las dos superficies
- * montan el MISMO componente oficial.
+ * contraseña, código, reenvío, rama "ese email ya tiene cuenta"): una copia
+ * que había que mantener dos veces y que se desfasaba con cada requisito nuevo
+ * de la instancia de Clerk. Esta superficie monta el componente oficial.
  *
  * No se piden nombre ni apellido: son opcionales y nunca bloquean el alta.
  */

@@ -4,6 +4,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useIsDesktop } from "@/hooks/useLayoutMode";
 import { AstroGlyph } from "@/components/orbita/AstroGlyph";
 import { TriadLine } from "@/components/orbita/TriadLine";
+import { usePressedState } from "@/components/v492/Touchable";
 import { PLACEMENT_BODY_SYMBOL, type BodyGlyphKey } from "@/domain/astroSymbols";
 import { HomeReading, HomeTopic, Topic } from "@/domain/types";
 import type { DailyGuidePayload, DailyTopic } from "@/services/appRefs";
@@ -50,8 +51,14 @@ export function HomeHeader() {
 /** CTA pill bone → texto oscuro. El fondo va en un View interno (el bg directo
  *  sobre Pressable no pinta en iOS con new arch). */
 export function PillButton({ label, onPress }: { label: string; onPress?: () => void }) {
+  const { pressed, pressableProps } = usePressedState();
   return (
-    <Pressable style={({ pressed }) => [styles.pillWrap, pressed && styles.pressed]} onPress={onPress} accessibilityRole="button">
+    <Pressable
+      style={[styles.pillWrap, pressed ? styles.pressed : null]}
+      {...pressableProps}
+      onPress={onPress}
+      accessibilityRole="button"
+    >
       <View style={styles.pill}>
         <Text style={styles.pillText}>{label}</Text>
       </View>
@@ -82,6 +89,7 @@ export function SignalTop({
   onVerCarta?: () => void;
 }) {
   const desktop = useIsDesktop();
+  const cartaCtaPress = usePressedState();
   const triad = triadOverride ?? reading.triad;
   const headline = daily?.headline ?? reading.headline;
   const body = daily?.body ?? reading.body;
@@ -116,7 +124,8 @@ export function SignalTop({
             <Pressable
               onPress={onVerCarta}
               accessibilityRole="button"
-              style={({ pressed }) => [styles.cartaCta, pressed && styles.pressed]}
+              {...cartaCtaPress.pressableProps}
+              style={[styles.cartaCta, cartaCtaPress.pressed ? styles.pressed : null]}
             >
               <Text style={styles.cartaCtaText}>VER MI CARTA  →</Text>
             </Pressable>
@@ -182,6 +191,29 @@ export function DailyGuide({ reading, guia }: { reading: HomeReading; guia?: Dai
   );
 }
 
+/** Encabezado plegable de un área. Es su propio componente porque el estado de
+ *  "presionado" es un hook y la lista se arma con `map`. */
+function TopicHead({ topic, open, onPress }: { topic: HomeTopic; open: boolean; onPress: () => void }) {
+  const { pressed, pressableProps } = usePressedState();
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ expanded: open }}
+      {...pressableProps}
+      style={pressed ? styles.pressed : null}
+    >
+      <View style={styles.insightHead}>
+        <View style={styles.topicMarker}>
+          <AstroGlyph symbol={TOPIC_GLYPHS[topic.topic] ?? "sun"} size={14} color={orbita.colors.bone} strokeWidth={2} />
+        </View>
+        <Text style={styles.insightTitle}>{topic.title}</Text>
+        <Text style={[styles.chevron, open && styles.chevronOpen]}>⌄</Text>
+      </View>
+    </Pressable>
+  );
+}
+
 /** Tramo 03 — Topics: tabs Amor/Trabajo/Familia/Vínculos + filas editoriales. */
 export function TopicsSection({
   reading,
@@ -217,20 +249,7 @@ export function TopicsSection({
         const open = t.topic === activeTopic;
         return (
           <View key={t.topic} style={styles.insightRow}>
-            <Pressable
-              onPress={() => onSelectTab(t.topic)}
-              accessibilityRole="button"
-              accessibilityState={{ expanded: open }}
-              style={({ pressed }) => [pressed && styles.pressed]}
-            >
-              <View style={styles.insightHead}>
-                <View style={styles.topicMarker}>
-                  <AstroGlyph symbol={TOPIC_GLYPHS[t.topic] ?? "sun"} size={14} color={orbita.colors.bone} strokeWidth={2} />
-                </View>
-                <Text style={styles.insightTitle}>{t.title}</Text>
-                <Text style={[styles.chevron, open && styles.chevronOpen]}>⌄</Text>
-              </View>
-            </Pressable>
+            <TopicHead topic={t} open={open} onPress={() => onSelectTab(t.topic)} />
             <Text style={[styles.body, styles.insightBody]}>{t.oneLine}</Text>
             {open ? (
               <View style={styles.insightExpanded}>

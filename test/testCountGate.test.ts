@@ -27,28 +27,29 @@ const resumen = (pass: number, fail = 0) =>
     ""
   ].join("\n");
 
-test("el piso es el del brief más lo que sumaron CORE-191, el detalle del ranking, Vínculos, el panorama de Tránsitos, la biblioteca de Vínculos, la estación vital, el límite Free el tema del año, la Carta responsive los cuatro ritmos lo principal de Hoy, su ranking, la biblioteca y la comparación de Vínculos como el frame más el segmento de Tránsitos por URL y con Plus más los enlaces de Hoy en nativo: 1024 tests", () => {
-  // 745 + 116 casos nuevos de la sección Hoy (hoyPrincipal 27, lunaCarta 45,
-  // hoySection 44). El piso se sube con lo que se agregó DE VERDAD: los otros
-  // archivos que la tarjeta tocó repuntaron sus afirmaciones a la superficie
-  // nueva sin agregar ni borrar un solo caso. La profundización del ranking
-  // (`transitDetail.test.ts`) suma 22 casos más: 861 + 22.
-  assert.equal(DEFAULT_MINIMUM, 1024);
+test("el piso acompaña a la suite: 3124 tests", () => {
+  // El brief original pedía 745; la suite creció con V4.9.2, identidad, comercio,
+  // la reestructura de la pestaña 5, el bloque de frescura, Hoy sin arco, los
+  // detalles editoriales y ahora el cierre de frescura —el resultado que resuelve
+  // sin cielo, la ruta vieja del arco y el destino de la pestaña Tránsitos—. El
+  // piso sube con ella —y queda en el conteo REAL de la corrida, no en un número
+  // redondo—: bajar de acá significa que se borró o se debilitó una prueba.
+  assert.equal(DEFAULT_MINIMUM, 3124);
 });
 
 test("una corrida completa por encima del piso pasa", () => {
-  const verdict = evaluateTestRun(resumen(1100));
+  const verdict = evaluateTestRun(resumen(3300));
   assert.equal(verdict.ok, true);
-  assert.equal(verdict.pass, 1100);
+  assert.equal(verdict.pass, 3300);
   assert.deepEqual(verdict.failures, []);
 });
 
-test("el piso incluye su propio número: exactamente 1024 pasa, 1023 falla", () => {
-  assert.equal(evaluateTestRun(resumen(1024)).ok, true);
+test("el piso incluye su propio número: exactamente 3124 pasa, 3123 falla", () => {
+  assert.equal(evaluateTestRun(resumen(3124)).ok, true);
 
-  const abajo = evaluateTestRun(resumen(1023));
+  const abajo = evaluateTestRun(resumen(3123));
   assert.equal(abajo.ok, false);
-  assert.match(abajo.failures[0], /1023/);
+  assert.match(abajo.failures[0], /3123/);
   assert.match(abajo.failures[0], /falta/);
 });
 
@@ -67,19 +68,19 @@ test("una corrida sin resumen NO pasa: la ausencia de `fail` no es `fail 0`", ()
 });
 
 test("el formato TAP del runner también se lee", () => {
-  const tap = ["# tests 1100", "# pass 1100", "# fail 0", ""].join("\n");
+  const tap = ["# tests 3200", "# pass 3200", "# fail 0", ""].join("\n");
   const verdict = evaluateTestRun(tap);
   assert.equal(verdict.ok, true);
-  assert.equal(verdict.pass, 1100);
+  assert.equal(verdict.pass, 3200);
 });
 
 test("un nombre de test que imita el resumen no le gana al resumen real", () => {
   // El resumen va al final; se toma la última aparición, no la primera.
-  const salida = ["✔ pass 1 no debería contar (0.1ms)", resumen(1100)].join("\n");
-  assert.equal(readCounter(salida, "pass"), 1100);
+  const salida = ["✔ pass 1 no debería contar (0.1ms)", resumen(2367)].join("\n");
+  assert.equal(readCounter(salida, "pass"), 2367);
 });
 
 test("el mínimo es configurable para poder subir el piso sin tocar la lógica", () => {
-  assert.equal(evaluateTestRun(resumen(1100), { minimum: 1200 }).ok, false);
-  assert.equal(evaluateTestRun(resumen(1100), { minimum: 800 }).ok, true);
+  assert.equal(evaluateTestRun(resumen(2367), { minimum: 2427 }).ok, false);
+  assert.equal(evaluateTestRun(resumen(2367), { minimum: 700 }).ok, true);
 });

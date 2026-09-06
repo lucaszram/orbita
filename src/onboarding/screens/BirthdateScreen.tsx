@@ -7,6 +7,7 @@ import { BirthDatePicker } from "../components/BirthPicker";
 import { CTA } from "../components/CTA";
 import { Header } from "../components/Header";
 import { Screen } from "../components/Screen";
+import { ONBOARDING_TOTAL } from "../steps";
 import { Body, Caption, Title } from "../components/Type";
 import { GUTTER } from "../theme";
 
@@ -38,7 +39,7 @@ export function BirthdateScreen({ step, value, onChange, onNext, onBack }: Props
   const usable = real && !future;
   return (
     <Screen bg={A.dailyTexture} wash={0.52}>
-      <Header step={step} total={15} onBack={onBack} />
+      <Header step={step} total={ONBOARDING_TOTAL} onBack={onBack} />
       <View style={styles.body}>
         <Title>¿Cuándo naciste?</Title>
         <Body style={styles.sub}>Tu fecha ubica el Sol en tu carta.</Body>

@@ -12,6 +12,7 @@
  * palabras; nunca se rellena. Free ve el bloque de Plus, no una carta a medias.
  */
 import { StyleSheet, Text, View } from "react-native";
+import { useQuery } from "convex/react";
 import { router } from "expo-router";
 import { DetailScreen } from "@/components/home/DetailScreen";
 import { Column, Columns, ReadingBlock } from "@/components/orbita/Layout";
@@ -39,6 +40,7 @@ import { useLiveApp } from "@/hooks/useLiveApp";
 import { RecalculateChart, useCartaNatal } from "@/screens/CartaScreen";
 import type { NatalChartPayload, PersonalitySection } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
+import { appApi } from "@/services/appRefs";
 
 const DISCLAIMER = "Órbita es entretenimiento y autoconocimiento.";
 
@@ -108,7 +110,10 @@ function CartaCompletaLive() {
       </Shell>
     );
   }
-  if (carta.readingState === undefined) {
+  // La señal remota de la lectura (pending/ready/error/locked) se lee acá, no
+  // en `useCartaNatal`: la generación vive en `useNatalReading` (CORE-247).
+  const readingState = useQuery(appApi.charts.personalityReadingState, {});
+  if (readingState === undefined) {
     // Hasta saber si la lectura está bloqueada por plan, no se dibuja una
     // carta a medias con el payload Free (sin casas ni aspectos).
     return (

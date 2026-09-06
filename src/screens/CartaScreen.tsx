@@ -20,7 +20,8 @@ import { AstroGlyph } from "@/components/orbita/AstroGlyph";
 import { bodySymbol, RETROGRADE_CODE, type BodyGlyphKey } from "@/domain/astroSymbols";
 import { mapNatalChart } from "@/domain/natalChart";
 import { personalChartGate } from "@/domain/natalChartGate";
-import { cartaGate, readingBlockPhase, type ReadingBlockPhase } from "@/domain/cartaNatalCarga";
+import { cartaGate, type ReadingBlockPhase } from "@/domain/cartaNatalCarga";
+import { useNatalReading } from "@/hooks/useNatalReading";
 import { filasDeTriada, resumenDeBase } from "@/domain/cartaCompleta";
 import { sessionPhase } from "@/domain/screenPhase";
 import { useIsDesktop } from "@/hooks/useLayoutMode";
@@ -32,6 +33,7 @@ import {
   type SignPlacement
 } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
+import { usePressedState } from "@/components/v492/Touchable";
 
 /**
  * En web, Perfil dejó de ser una sección de la barra: vive dentro de la Carta,
@@ -109,65 +111,30 @@ export function useCartaNatal() {
   // devolver la carta VIEJA (ver `domain/natalChartGate`). Sin esta verificación
   // se presentaba la carta de otros datos como si fuera la actual.
   const remoteBirth = useQuery(appApi.birthData.getCurrent, {});
-  const reading = useQuery(appApi.charts.personalityReading, {});
-  // Señal reactiva de la generación (pending/ready/error): si el prewarm del
-  // backend tomó el claim y FALLÓ, acá llega `error` y el bloque de lectura
-  // ofrece reintento en vez de quedar en "Preparando…" para siempre.
-  const readingState = useQuery(appApi.charts.personalityReadingState, {});
   const values = useQuery(appApi.charts.valuesMap, {});
-  // Dispara la generación LLM natal (no-opea si ya está cacheada o no hay
-  // carta; una resolución `{ status: "pending" }` significa que el prewarm del
-  // backend ya la está generando y NO es error). Si REJECTA, el bloque de
-  // lectura lo dice inline con REINTENTAR — sin esto, "reading" quedaría null
-  // para siempre y la carga sería eterna. El reintento limpia el fallo local y
-  // vuelve a disparar la action; `generating` cubre la ventana hasta que el
-  // backend pise el `error` remoto de la ronda anterior.
-  const generate = useAction(appApi.charts.generatePersonalityReading);
-  const [generateFailed, setGenerateFailed] = useState(false);
-  const [generating, setGenerating] = useState(true);
-  const [attempt, setAttempt] = useState(0);
-  const canGenerate = readingState !== undefined && readingState.status !== "locked";
-  useEffect(() => {
-    if (!canGenerate) return;
-    let alive = true;
-    setGenerateFailed(false);
-    setGenerating(true);
-    generate({})
-      .catch(() => {
-        if (alive) setGenerateFailed(true);
-      })
-      .finally(() => {
-        if (alive) setGenerating(false);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [generate, attempt, canGenerate]);
+  // La lectura larga —query, señal remota, generación, fallo y reintento— vive
+  // en UN solo lugar (`@/hooks/useNatalReading`), compartido con la Carta
+  // completa V4.9.2 (reconciliación CORE-247).
+  const lectura = useNatalReading();
 
   const gate = cartaGate({ doc, values });
   const chartGate = personalChartGate({ birth: remoteBirth, chart: doc });
-  const readingPhase = readingBlockPhase({
-    reading,
-    failed: generateFailed,
-    generating,
-    state: readingState?.status
-  });
   return {
     doc,
     remoteBirth,
-    reading,
-    readingState,
+    lectura,
+    reading: lectura.reading,
     values,
     gate,
     chartGate,
-    readingPhase,
-    retryReading: () => setAttempt((a) => a + 1)
+    readingPhase: lectura.phase,
+    retryReading: lectura.retry
   };
 }
 
 function CartaLive() {
   const carta = useCartaNatal();
-  const { doc, remoteBirth, reading, readingPhase, values, gate, chartGate } = carta;
+  const { doc, remoteBirth, lectura, values, gate, chartGate } = carta;
   if (gate === "cargando" || chartGate === "cargando") {
     return (
       <CartaShell>
@@ -215,9 +182,9 @@ function CartaLive() {
   return (
     <CartaView
       payload={payload}
-      reading={readingPhase === "listo" ? reading! : null}
-      readingPhase={readingPhase}
-      onRetryReading={carta.retryReading}
+      reading={lectura.reading}
+      readingPhase={lectura.phase}
+      onRetryReading={lectura.retry}
     />
   );
 }
@@ -538,12 +505,7 @@ function CartaView({
               <Text style={styles.tarjetaFilaTitulo}>Tu base natal</Text>
               <Text style={styles.tarjetaFilaTexto}>La rueda y el trío Sol, Luna y Ascendente, con signo, grado y casa.</Text>
             </View>
-            {IS_WEB ? (
-              <Pressable onPress={() => router.push("/perfil")} accessibilityRole="link" style={({ pressed }) => [styles.tarjetaFila, styles.tarjetaFilaLinea, pressed && { opacity: 0.6 }]}>
-                <Text style={styles.tarjetaFilaTitulo}>Perfil y ajustes</Text>
-                <Text style={styles.tarjetaFilaTexto}>Tus datos, tu plan y la eliminación de la cuenta. Se abre desde el avatar, arriba a la derecha.</Text>
-              </Pressable>
-            ) : null}
+            {IS_WEB ? <FilaPerfil /> : null}
           </View>
           <View style={styles.tarjeta}>
             <Note>{DISCLAIMER}</Note>
@@ -587,9 +549,26 @@ function PositionRow({ p }: { p: SignPlacement }) {
   );
 }
 
-function LinkRow({ label, onPress }: { label: string; onPress?: () => void }) {
+/** El acceso a Perfil desde la tarjeta de la Carta (sólo web). */
+function FilaPerfil() {
+  const presion = usePressedState();
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" style={({ pressed }) => pressed && { opacity: 0.6 }}>
+    <Pressable
+      onPress={() => router.push("/perfil")}
+      accessibilityRole="link"
+      {...presion.pressableProps}
+      style={[styles.tarjetaFila, styles.tarjetaFilaLinea, presion.pressed && { opacity: 0.6 }]}
+    >
+      <Text style={styles.tarjetaFilaTitulo}>Perfil y ajustes</Text>
+      <Text style={styles.tarjetaFilaTexto}>Tus datos, tu plan y la eliminación de la cuenta. Se abre desde el avatar, arriba a la derecha.</Text>
+    </Pressable>
+  );
+}
+
+function LinkRow({ label, onPress }: { label: string; onPress?: () => void }) {
+  const presion = usePressedState();
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" {...presion.pressableProps} style={presion.pressed && { opacity: 0.6 }}>
       <Text style={styles.linkText}>{`${label} →`}</Text>
     </Pressable>
   );

@@ -95,7 +95,9 @@ test("cuenta incompleta CON datos ajenos → primero aislar", () => {
 
 test("el gate no redirige en el estado bootstrap: muestra carga o reintento", () => {
   const gate = sinComentarios(readFileSync(join(ROOT, "src/components/orbita/AccountGate.tsx"), "utf8"));
-  const bloque = gate.slice(gate.indexOf('destination === "bootstrap"'), gate.indexOf('destination === "loading"'));
+  const inicio = gate.indexOf('if (destination === "bootstrap") {');
+  const fin = gate.indexOf('if (destination === "loading") {', inicio);
+  const bloque = gate.slice(inicio, fin);
   assert.ok(!/Redirect/.test(bloque), "redirigir acá sería justo el loop");
   assert.ok(/bootstrap\.state === "error"/.test(bloque), "un fallo tiene que ser visible");
   assert.ok(/mostrarError/.test(bloque), "con reintento");
@@ -153,23 +155,20 @@ test('"Crear una cuenta" entra al alta completa, con el email ya cargado', () =>
 
 // --- El onboarding sin restos de autenticación -------------------------------
 
-test("el alta vive dentro del onboarding, en su paso original", () => {
+test("el alta vive dentro del onboarding, como su primera superficie", () => {
   const flow = sinComentarios(readFileSync(join(ROOT, "src/onboarding/OnboardingFlow.tsx"), "utf8"));
-  // Secuencia V4.4: la cuenta es el penúltimo paso, después del before/after y
-  // antes del cierre. La experiencia inmersiva va primero.
-  assert.match(flow, /const TOTAL = 15;/);
-  assert.match(flow, /const STEP_ACCOUNT = 13;/);
-  assert.match(flow, /const FINAL_STEP = TOTAL - 1;/);
-  assert.match(flow, /case STEP_ACCOUNT:\s*screen = \(\s*<AccountScreen/);
-  // El cableado del paso de cuenta después de pasar a la UI oficial de Clerk:
-  // ya no hay contraseña ni código propios, sí el borrador remoto confirmado
-  // antes de abrir Clerk y la sesión que el propio componente activa.
+  // Flujo canónico aprobado: crear cuenta o ingresar es el paso 0, y la
+  // experiencia inmersiva y los datos natales continúan con la sesión activa.
+  assert.match(flow, /const TOTAL = ONBOARDING_TOTAL;/);
+  assert.match(flow, /case STEP_AUTH:[\s\S]{0,400}<AuthScreen/);
+  // El cableado del acceso: los hooks oficiales de Clerk, el marcador remoto de
+  // alta en curso y el id estable del borrador.
   for (const pieza of [
     "useAccountFlow",
-    "sessionActivated",
-    "prepareSignupDraft",
+    "useSignInFlow",
+    "useAnonymousSignupMarker",
     "ensureClientDraftId"
   ]) {
-    assert.match(flow, new RegExp(pieza), `falta el cableado del paso de cuenta: ${pieza}`);
+    assert.match(flow, new RegExp(pieza), `falta el cableado del acceso: ${pieza}`);
   }
 });
