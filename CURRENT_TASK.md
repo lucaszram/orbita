@@ -27,6 +27,17 @@ no existen. Sin hora exacta, ejes y casas se declaran, no se rellenan.
 **Estado:** rama `orb/core-215-carta-responsive` desde `main` `48cb4c8`.
 9 casos nuevos; piso 974 → 983.
 
+# Current Task
+
+**Revisión:** r1 RECHAZADA (la fila «Último cálculo» leía `_creationTime`, que el
+documento público de `charts.current` no trae) → corregido en 0283a0f con
+`updatedAt ?? createdAt`; laterales atendidos (carga de la carta completa hasta
+saber si la lectura está bloqueada, grado por piso, código huérfano, ancla de
+regresión). r2 APROBADA; laterales: `updatedAt` opcional en el tipo, test del
+piso de grado. Decisión consciente: la carta completa espera
+`personalityReadingState` antes de dibujar (Free no debe ver casas/aspectos
+vacíos como propios); el hub no.
+
 ## Tu momento abre el tema de tu año (CORE-210, 2026-09-06)
 
 **Objetivo:** que Tu momento abra la capa 02, el tema del año (profección

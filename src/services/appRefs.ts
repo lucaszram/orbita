@@ -100,7 +100,8 @@ export type NatalChartDoc = Doc<{
   calculationVersion: string;
   providerVersion?: string;
   createdAt: number;
-  updatedAt: number;
+  /** Sólo en cartas ya recalculadas: `ensureChart` inserta sin él. */
+  updatedAt?: number;
   access?: { isPro: boolean; houses: boolean; aspects: boolean };
   payload: NatalChartPayload;
 }>;

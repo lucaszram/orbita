@@ -68,6 +68,14 @@ describe("la base natal", () => {
     assert.equal(signoYGrado({ sign: "—" }), "—");
   });
 
+  it("el grado dentro del signo va por piso: 29,6° es 29°, nunca 30° ni 0° del signo siguiente", () => {
+    assert.equal(signoYGrado({ sign: "Escorpio", normDegree: 29.6 }), "Escorpio 29°");
+    assert.equal(signoYGrado({ sign: "Aries", normDegree: 0.4 }), "Aries 0°");
+    assert.deepEqual(ejes({ triad: payload.triad, mc: 209.7 })[1], { codigo: "MC", nombre: "Medio Cielo", valor: "Libra 29°" });
+    assert.deepEqual(ejes({ triad: payload.triad, mc: 210.2 })[1], { codigo: "MC", nombre: "Medio Cielo", valor: "Escorpio 0°" });
+    assert.equal(casasConTema({ houses: [{ house: 2, sign: "Tauro", cusp: 59.95 }] })[0].valor, "Tauro 29°");
+  });
+
   it("las tres filas de la tríada, con casa; sin hora, el Ascendente lo dice", () => {
     const filas = filasDeTriada(payload);
     assert.deepEqual(filas[0], { codigo: "SO", nombre: "Sol", valor: "Escorpio 19°", meta: "CASA 10" });
