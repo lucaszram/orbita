@@ -336,6 +336,20 @@ export default defineSchema({
     birthTime: v.optional(v.string()),
     birthPlaceLabel: v.optional(v.string()),
     zodiacSign: v.optional(v.string()),
+    // CORE-212 (aditivo): nivel de datos declarado, coordenadas y zona para
+    // recalcular sin volver a geocodificar, y la carta normalizada de la
+    // persona tal como la devolvió el proveedor (nunca el crudo).
+    relationshipType: v.optional(v.string()),
+    level: v.optional(v.union(v.literal("signo"), v.literal("fecha"), v.literal("carta"))),
+    birthTimePrecision: v.optional(v.union(v.literal("known"), v.literal("approximate"), v.literal("unknown"))),
+    latitude: v.optional(v.number()),
+    longitude: v.optional(v.number()),
+    timezone: v.optional(v.string()),
+    chartStatus: v.optional(
+      v.union(v.literal("ready"), v.literal("not_needed"), v.literal("not_configured"), v.literal("error"))
+    ),
+    chartVersion: v.optional(v.string()),
+    chartPayload: v.optional(v.any()),
     isActive: v.boolean(),
     createdAt: v.number(),
     updatedAt: v.number()

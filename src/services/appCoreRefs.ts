@@ -49,6 +49,119 @@ export type SynastryAddInput = {
   birthPlaceLabel?: string;
 };
 
+// --- CORE-212: la primera persona y su comparación real -----------------------
+
+/** Nivel de datos de la persona guardada: define qué puede calcular la comparación. */
+export type VinculoNivel = "signo" | "fecha" | "carta";
+
+export type VinculoPersona = {
+  id: string;
+  name: string;
+  relationshipType: string | null;
+  level: VinculoNivel;
+  zodiacSign: string | null;
+  birthDate: string | null;
+  birthPlaceLabel: string | null;
+  chartStatus: string;
+};
+
+/** Un contacto REAL entre las dos cartas: aspecto mayor dentro de orbe, con su orbe medido. */
+export type VinculoContacto = {
+  id: string;
+  from: { key: string; label: string };
+  to: { key: string; label: string };
+  aspect: "conjunction" | "sextile" | "square" | "trine" | "opposition";
+  aspectEs: string;
+  symbol: string;
+  orb: number;
+  orbLabel: string;
+  tone: "armonico" | "tenso" | "fusion";
+  dimensions: Array<"hablan" | "cuidan" | "deseo">;
+};
+
+export type VinculoResumen = {
+  total: number;
+  armonicos: number;
+  tensos: number;
+  fusiones: number;
+  dimensions: Array<{
+    key: "hablan" | "cuidan" | "deseo";
+    label: string;
+    total: number;
+    armonicos: number;
+    tensos: number;
+    fusiones: number;
+  }>;
+};
+
+export type VinculoPrecision = {
+  level: VinculoNivel;
+  label: string;
+  includesAngles: boolean;
+  limitations: string[];
+};
+
+export type VinculoTono = {
+  relation: "mismo_elemento" | "elementos_afines" | "elementos_distintos";
+  headline: string;
+  body: string;
+};
+
+/** Sobre de `relationships.synastry`: siempre con `status`; nunca `null`. */
+export type VinculoComparacion =
+  | { status: "no_person"; person: null }
+  | { status: "needs_natal_chart"; person: VinculoPersona }
+  | { status: "person_chart_unavailable"; person: VinculoPersona; pairing: string; disclaimer: string }
+  | {
+      status: "ready";
+      person: VinculoPersona;
+      precision: VinculoPrecision;
+      pairing: string;
+      tone: VinculoTono | null;
+      contacts: VinculoContacto[];
+      /** Cuántos contactos reales quedaron fuera de la lista visible (Free). */
+      hiddenContacts: number;
+      summary: VinculoResumen;
+      access: { isPro: boolean; contactLimit: number | null };
+      disclaimer: string;
+    };
+
+export type VinculoAddPersonInput = {
+  name: string;
+  level: VinculoNivel;
+  relationshipType?: string;
+  zodiacSign?: string;
+  birthDate?: string;
+  birthTime?: string;
+  birthPlaceLabel?: string;
+  latitude?: number;
+  longitude?: number;
+};
+
+export type VinculoAddPersonResult = {
+  relationshipProfileId: string;
+  chartStatus: "ready" | "not_needed" | "not_configured" | "error";
+  level: VinculoNivel;
+};
+
+/** Funciones reales de Vínculos (CORE-212). Se invocan con `useAction` / `useQuery`. */
+export const appCoreApi = {
+  relationships: {
+    addPerson: anyApi.relationships.addPerson as FunctionReference<
+      "action",
+      "public",
+      VinculoAddPersonInput,
+      VinculoAddPersonResult
+    >,
+    synastry: anyApi.relationships.synastry as FunctionReference<
+      "query",
+      "public",
+      Record<string, never>,
+      VinculoComparacion
+    >
+  }
+} as const;
+
 // ---------------------------------------------------------------------------
 // Calendario energético + fase lunar
 // ---------------------------------------------------------------------------
