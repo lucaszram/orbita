@@ -576,48 +576,6 @@ export type OnboardingChart = {
   moon: string | null;
   ascendant: string | null;
 };
-
-/** Lee la carta natal persistida del usuario. `null` si no hay backend configurado. */
-export function useOnboardingChart(): OnboardingChart | null {
-  if (!HAS_BACKEND) return null;
-  return useOnboardingChartInner();
-}
-
-function useOnboardingChartInner(): OnboardingChart {
-  const auth = useOrbitaAuth();
-  const ensureUser = useMutation(appApi.users.getOrCreateCurrentUser);
-  const [userReady, setUserReady] = useState(false);
-  // charts.current tira "User record not found" si hay sesión pero todavía no
-  // existe la fila `users`. Creamos la fila y recién ahí habilitamos la query.
-  useEffect(() => {
-    if (!auth.isAuthenticated) {
-      setUserReady(false);
-      return;
-    }
-    ensureUser({})
-      .then(() => setUserReady(true))
-      .catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auth.isAuthenticated]);
-  const chart = useQuery(appApi.charts.current, auth.isAuthenticated && userReady ? {} : "skip");
-  const payload = chart && typeof chart === "object" ? (chart as { payload?: unknown }).payload : null;
-  const triad = payload && typeof payload === "object" ? (payload as { triad?: unknown }).triad : null;
-  return {
-    resolved: chart !== undefined,
-    sun: readTriadSign(triad, "sun"),
-    moon: readTriadSign(triad, "moon"),
-    ascendant: readTriadSign(triad, "ascendant")
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Tríada real SIN login: la calcula `publicOnboarding.computeTriad`, una acción
-// pública mínima (solo Sol/Luna/Ascendente). Antes se usaba el laboratorio
-// (`publicLab.previewDailyHome`), bloqueado en producción por diseño: el
-// cálculo fallaba siempre y el alta seguía de largo sin tríada. La zona horaria
-// la deriva el backend de las coordenadas; acá no se usa la del dispositivo.
-// ---------------------------------------------------------------------------
-
 const HAS_CONVEX = backendConfig.hasConvex;
 
 const SIGN_ES: Record<string, string> = {
@@ -747,23 +705,6 @@ export type PersistBirthData = (input: {
 }) => Promise<void>;
 
 /**
- * Persistencia con errores TRAGADOS (onboarding: la copia local ya existe y
- * el flujo no debe cortarse). Para "Editar datos" usar la variante estricta.
- */
-/**
- * @deprecated El cierre del alta usa `useOnboardingFinalize`, que además
- * adjunta el borrador anónimo a la cuenta (`markAccountCreated` con el
- * `clientDraftId`) y reintenta la cadena completa. Esta variante escribe los
- * datos natales sin ese vínculo, así que un alta cerrada por acá queda como una
- * recuperación de cuenta preexistente. Se conserva sólo para consumidores
- * previos; no agregar usos nuevos.
- */
-export function useOnboardingBirthDataPersist(): PersistBirthData | null {
-  if (!HAS_BACKEND) return null;
-  return useBackendPersistInner();
-}
-
-/**
  * Persistencia del EDITOR DE PERFIL: `birthData.upsertForCurrentUser` con
  * `source: "profile"`. Es el único camino para CAMBIAR datos natales ya
  * existentes; propaga el error para que "Guardar" pueda mostrar reintento.
@@ -773,28 +714,6 @@ export function useProfileBirthDataPersist(): PersistBirthData | null {
   return useProfilePersistInner();
 }
 
-/**
- * Persistencia ESTRICTA: propaga el error. Con sesión iniciada, "Guardar" en
- * Editar datos espera la confirmación del backend y muestra error/reintento
- * si falla (sin sesión resuelve sin hacer nada, igual que la otra variante).
- */
-export function useBackendPersistStrict(): PersistBirthData | null {
-  if (!HAS_BACKEND) return null;
-  return useBackendPersistInner();
-}
-
-/**
- * Guardado natal del onboarding AUTH-FIRST: con la sesión activa desde el
- * paso 0, "Preparar mi carta" escribe los datos natales por el camino
- * autenticado (`onboarding.completeBirthData`, con el `clientDraftId` del
- * marcador de alta) y dispara el cálculo de la carta SIN esperarlo: el guardado
- * es la operación obligatoria y el derivado nunca bloquea la navegación —
- * Carta lo resuelve o lo reintenta si sigue pendiente.
- *
- * La zona horaria se deriva de las coordenadas del lugar en el backend
- * (Photon no la trae); nunca del reloj del dispositivo. Si la resolución falla,
- * el error se propaga y no se escribe nada: la pantalla ofrece reintentar.
- */
 export type OnboardingBirthDataSave = (input: {
   birthDate: string;
   birthTime?: string;
@@ -846,45 +765,6 @@ function useOnboardingBirthDataSaveInner(): OnboardingBirthDataSave {
     [calculateChart, completeBirthData, ensureUser, isSignedIn, resolveTimezone]
   );
 }
-
-function useBackendPersistInner(): PersistBirthData {
-  const auth = useOrbitaAuth();
-  const ensureUser = useMutation(appApi.users.getOrCreateCurrentUser);
-  const completeBirthData = useMutation(appApi.onboarding.completeBirthData);
-  // Backend la define como Action (igual que en la web); antes acá estaba mal
-  // como useMutation → "Trying to execute ... as Mutation, but defined as Action".
-  const calculateChart = useAction(appApi.charts.calculateOrCreateNatalChart);
-  const isSignedIn = auth.isSignedIn;
-
-  return useCallback(
-    async (input) => {
-      // Con backend configurado, "sesión todavía no lista" es la carrera
-      // post-verify: NO se puede resolver como éxito, porque el cierre seguiría
-      // adelante sin haber escrito nada. Se rechaza y la pantalla ofrece
-      // reintentar, que es lo que la carrera necesita.
-      if (!isSignedIn) throw new Error("ONBOARDING_SESSION_NOT_READY");
-      // Nada de rellenar: sin lugar elegido, coordenadas o zona, no se escribe.
-      const payload = validateBirthPayload(input);
-      await ensureUser({});
-      await completeBirthData({
-        birthDate: payload.birthDate,
-        birthTime: payload.birthTime,
-        birthTimePrecision: payload.birthTime ? "known" : "unknown",
-        birthPlaceLabel: payload.birthPlaceLabel,
-        latitude: payload.latitude,
-        longitude: payload.longitude,
-        timezone: payload.timezone
-      });
-      await calculateChart({});
-      // NO se llama `readings.generateToday` acá: usaba la fecha y la timezone
-      // del dispositivo, y el día astrológico lo decide el servidor desde la
-      // zona natal (`daily.getTodayContext`). La generación diaria sigue por el
-      // camino canónico, que ya corre en la Home con la fecha del servidor.
-    },
-    [calculateChart, completeBirthData, ensureUser, isSignedIn]
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Alta durable: borrador remoto anónimo → Clerk → adjuntar → carta → readiness.
 //
