@@ -81,6 +81,10 @@ function Shell({ children }: { children: React.ReactNode }) {
 
 function CartaCompletaLive() {
   const carta = useCartaNatal();
+  // La señal remota de la lectura (pending/ready/error/locked) se lee acá, no
+  // en `useCartaNatal`: la generación vive en `useNatalReading` (CORE-247).
+  // Va ANTES de cualquier return condicional: es un hook.
+  const readingState = useQuery(appApi.charts.personalityReadingState, {});
   const { doc, remoteBirth, reading, readingPhase, values, gate, chartGate } = carta;
   if (gate === "cargando" || chartGate === "cargando") {
     return (
@@ -110,9 +114,6 @@ function CartaCompletaLive() {
       </Shell>
     );
   }
-  // La señal remota de la lectura (pending/ready/error/locked) se lee acá, no
-  // en `useCartaNatal`: la generación vive en `useNatalReading` (CORE-247).
-  const readingState = useQuery(appApi.charts.personalityReadingState, {});
   if (readingState === undefined) {
     // Hasta saber si la lectura está bloqueada por plan, no se dibuja una
     // carta a medias con el payload Free (sin casas ni aspectos).

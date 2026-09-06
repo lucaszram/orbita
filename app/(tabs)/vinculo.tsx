@@ -1,4 +1,3 @@
-
 /**
  * Wrapper de ruta. La implementación vive FUERA de `app/`, en
  * `src/routes/v492/tabs-vinculo` (`.tsx` nativo / `.web.tsx` web).

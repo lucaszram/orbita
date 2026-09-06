@@ -21,9 +21,9 @@ Merge de `origin/release/1.0.0` sobre `origin/main` en la rama
   condicional; `CartaScreen.tsx` = main (web; el nativo no la usa) cableada al hook compartido
   `useNatalReading` de release y sin su efecto propio; la query `personalityReadingState` pasa a
   `CartaCompletaScreen`.
-- Backend: `relationships.ts` unión de imports y de constantes (`SIGNOS_ES` para `addPerson`, `SIGNS`
-  en inglés para release; `getActive`/`upsert` versión release; las 17 funciones exportadas
-  conviven); `astrologyApi.ts` release + `export` de `getAstrologyApiConfig`; `accountDeletion.ts`
+- Backend: `relationships.ts` unión de imports y de constantes (`SIGNOS_ES` para `addPerson`; release resuelve
+  signos con `SIGN_ALIASES`/`SIGN_ORDER`; `getActive`/`upsert` versión release; las 17 funciones
+  exportadas conviven); `astrologyApi.ts` release + `export` de `getAstrologyApiConfig`; `accountDeletion.ts`
   y su test: las cuatro tablas; `schema.ts` sin conflicto pero con campos duplicados en
   `relationshipProfiles` (main repetía `relationshipType`, `birthTimePrecision`, coordenadas y
   zona): quedan los de release, main aporta `level`, `chartStatus`, `chartVersion`, `chartPayload`;
@@ -31,12 +31,23 @@ Merge de `origin/release/1.0.0` sobre `origin/main` en la rama
 - Tests: `parityFoundations`, `responsiveShells`, `routeOwnership` → release, con la barra web de
   main (Hoy · Tránsitos · Vínculos · Umbral · Carta) y el Umbral resuelto por plataforma;
   `accesoPostAlta` unión (+ Tarot); `hoySection`, `transitDetail`, `vinculo` leen las variantes
-  web en vez de los envoltorios; piso del gate = 3124 (conteo real de la suite unida).
+  web en vez de los envoltorios; piso del gate = 3126 (conteo real de la suite unida, con dos tests de main rescatados).
 - Regla nueva heredada de release: ningún `style` en forma función (NativeWind lo descarta; era
-  la causa real de las filas sin padding de CORE-240). Las 14 ocurrencias de main pasan a
+  la causa real de las filas sin padding de CORE-240). Los 16 sitios de main pasan a
   `usePressedState()`; `FilaResultado`/`FilaPersona`/`FilaPerfil` extraídas para poder usar el hook.
+  `HoyEnlace` lleva el estilo en un View propio: bajo `Link asChild` el `<a>` recibía el arreglo y
+  react-dom lo rechazaba.
+- Las cuatro lecturas sólo-main (`app/reading/{estacion-vital,tema-del-ano,cuatro-ritmos,carta-completa}.tsx`)
+  pasan al mismo patrón de envoltorio: `.web.tsx` con la pantalla de main, `.tsx` nativo con
+  `Redirect` a la pantalla V4.9.2 equivalente (`/transitos/capa/estacion`, `/transitos/capa/ano`,
+  `/transitos/momento`, `/perfil/carta/completa`), así el binario no empaqueta la web.
+- Nueve archivos que la web renderiza quedan en versión release porque main nunca los tocó
+  (`CartaBanner`, `CartaCard`, `RitualReading`, `GlyphRow`, `TriadLine`, `orbita-legal.tsx`,
+  `AccountGate`, `ManageSubscription`, `TabBar`): es la resolución correcta del merge, y se
+  verifican en vivo. `src/screens/VinculoScreen.tsx` (singular) queda sin importadores: se
+  conserva, se retira en una tarjeta aparte.
 
-**Gates:** typecheck 0 · tests 3124/3124 · build:web OK · check:web-export OK · export iOS (ver PR)
+**Gates:** typecheck 0 · tests 3126/3126 · build:web OK · check:web-export OK · export iOS (ver PR)
 · `git diff --check` OK.
 
 **Fuera de esta tarjeta:** deploy a producción (backend → web → nativo), cada paso con «dale».

@@ -248,6 +248,18 @@ test("web permanece sin cambios y nativo expone las cinco pestañas V4.9.2", () 
   assert.match(tabsWeb, /<WebAppShell active=\{navKeyForPath\(pathname\)\}>[\s\S]*<Slot \/>/);
 });
 
+test("la ruta activa marca la sección en la barra web: /vinculo → Vínculos, /perfil → Carta (CORE-239)", () => {
+  const web = readFileSync(resolveEntryForPlatform("app/(tabs)/_layout.tsx", "web"), "utf8");
+  assert.match(web, /if \(pathname\.startsWith\("\/vinculo"\)\) return "vinculo";/);
+  assert.match(web, /if \(pathname\.startsWith\("\/carta"\) \|\| pathname\.startsWith\("\/perfil"\)\) return "carta";/);
+});
+
+test("a Perfil se entra desde la Carta, y sólo en web", () => {
+  const carta = readFileSync(join(ROOT, "src/screens/CartaScreen.tsx"), "utf8");
+  assert.match(carta, /\{IS_WEB \? <FilaPerfil \/> : null\}/);
+  assert.match(carta, /router\.push\("\/perfil"\)/);
+});
+
 test("el Umbral es una sección de la web, no una ruta olvidada", () => {
   assert.throws(
     () => readFileSync(join(ROOT, "app/umbral.tsx"), "utf8"),

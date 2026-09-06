@@ -1,4 +1,3 @@
-
 /**
  * Wrapper de ruta. La implementación vive FUERA de `app/`, en
  * `src/routes/v492/reading-vinculo-result` (`.tsx` nativo → redirección a

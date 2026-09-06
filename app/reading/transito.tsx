@@ -1,5 +1,3 @@
-
-
 /**
  * Wrapper de ruta. La implementación vive FUERA de `app/`, en
  * `src/routes/v492/reading-transito` (`.tsx` nativo → redirección a `/hoy/arco`,

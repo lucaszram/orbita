@@ -27,14 +27,14 @@ const resumen = (pass: number, fail = 0) =>
     ""
   ].join("\n");
 
-test("el piso acompaña a la suite: 3124 tests", () => {
+test("el piso acompaña a la suite: 3126 tests", () => {
   // El brief original pedía 745; la suite creció con V4.9.2, identidad, comercio,
   // la reestructura de la pestaña 5, el bloque de frescura, Hoy sin arco, los
   // detalles editoriales y ahora el cierre de frescura —el resultado que resuelve
   // sin cielo, la ruta vieja del arco y el destino de la pestaña Tránsitos—. El
   // piso sube con ella —y queda en el conteo REAL de la corrida, no en un número
   // redondo—: bajar de acá significa que se borró o se debilitó una prueba.
-  assert.equal(DEFAULT_MINIMUM, 3124);
+  assert.equal(DEFAULT_MINIMUM, 3126);
 });
 
 test("una corrida completa por encima del piso pasa", () => {
@@ -44,12 +44,12 @@ test("una corrida completa por encima del piso pasa", () => {
   assert.deepEqual(verdict.failures, []);
 });
 
-test("el piso incluye su propio número: exactamente 3124 pasa, 3123 falla", () => {
-  assert.equal(evaluateTestRun(resumen(3124)).ok, true);
+test("el piso incluye su propio número: exactamente 3126 pasa, 3125 falla", () => {
+  assert.equal(evaluateTestRun(resumen(3126)).ok, true);
 
-  const abajo = evaluateTestRun(resumen(3123));
+  const abajo = evaluateTestRun(resumen(3125));
   assert.equal(abajo.ok, false);
-  assert.match(abajo.failures[0], /3123/);
+  assert.match(abajo.failures[0], /3125/);
   assert.match(abajo.failures[0], /falta/);
 });
 

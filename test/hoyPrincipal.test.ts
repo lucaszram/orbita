@@ -370,9 +370,13 @@ describe("Tránsitos con Plus se ve como el frame (CORE-240)", () => {
       ["tema-del-ano", "TemaDelAnoScreen"],
       ["cuatro-ritmos", "CuatroRitmosScreen"]
     ] as const) {
+      // La ruta es un wrapper (CORE-247): web dentro del shell, nativo redirige a V4.9.2.
       const codigoRuta = readFileSync(join(raiz, "app", "reading", `${ruta}.tsx`), "utf8");
-      assert.match(codigoRuta, new RegExp(`<WebAppShell active="transitos">\\s*<${pantalla} \\/>`), ruta);
-      assert.match(codigoRuta, /process\.env\.EXPO_OS !== "web"/, ruta);
+      assert.match(codigoRuta, new RegExp(`export \\{ default \\} from "@/routes/v492/reading-${ruta}"`), ruta);
+      const codigoWeb = readFileSync(join(raiz, "src", "routes", "v492", `reading-${ruta}.web.tsx`), "utf8");
+      assert.match(codigoWeb, new RegExp(`<WebAppShell active="transitos">\\s*<${pantalla} \\/>`), ruta);
+      const codigoNativo = readFileSync(join(raiz, "src", "routes", "v492", `reading-${ruta}.tsx`), "utf8");
+      assert.match(codigoNativo, /<Redirect href="\/transitos\//, ruta);
       const codigoPantalla = readFileSync(join(raiz, "src", "screens", `${pantalla}.tsx`), "utf8");
       assert.match(codigoPantalla, /<OrbitaScreen canvas="wide"[^>]*>\s*<Section>/, pantalla);
       assert.doesNotMatch(codigoPantalla, /DetailScreen/, pantalla);

@@ -23,8 +23,8 @@ import { pathToFileURL } from "node:url";
 
 /** Piso de tests. Se sube cuando la suite crece; nunca se baja para tapar un borrado. */
 // Reconciliación main ↔ release/1.0.0 (CORE-247, 2026-09-06): la suite es la unión de las
-// dos líneas (3124 casos al mergear). Toda tarjeta que sume tests sube este número.
-export const DEFAULT_MINIMUM = 3124;
+// dos líneas (3126 casos al mergear). Toda tarjeta que sume tests sube este número.
+export const DEFAULT_MINIMUM = 3126;
 
 /**
  * Lee un contador del resumen final del runner de Node.
