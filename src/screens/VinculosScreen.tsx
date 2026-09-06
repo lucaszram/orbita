@@ -431,7 +431,7 @@ function DatosPorNivel({
         />
       </View>
       <VEtiqueta tono="gris" style={styles.rotuloGrupo}>
-        {pideHora ? "PRECISIÓN · SUMA CASAS Y EJES" : "PRECISIÓN · SIN CASAS NI EJES"}
+        {pideHora ? "PRECISIÓN · SUMA CASAS Y EJES" : "PRECISIÓN · CON HORA Y LUGAR SUMA CASAS Y EJES"}
       </VEtiqueta>
       <BuscadorDeLugar
         rotulo={pideHora ? "LUGAR" : "LUGAR · OPCIONAL"}
