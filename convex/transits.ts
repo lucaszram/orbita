@@ -16,12 +16,22 @@ import {
   extractNormalizedChartFromPayload,
   findTransitInPayload
 } from "./lib/orbita";
-import { buildTransitPanorama } from "./lib/transitPanorama";
+import { buildTransitPanorama, naiveNowIn } from "./lib/transitPanorama";
 import { findUserByTokenIdentifier, omitUndefined, requireIdentity } from "./lib/users";
 import { isUserPro } from "./lib/subscriptionAccess";
 
 const internalApi = internal as any;
 const DAILY_TRANSITS_TIMELINE_VERSION = "orbita-daily-transits-v1";
+
+/** Sólo el plan de la persona con sesión: para responder `locked` sin tocar al proveedor. */
+export const getAccess = internalQuery({
+  args: { tokenIdentifier: v.string() },
+  handler: async (ctx, args) => {
+    const user = await findUserByTokenIdentifier(ctx, args.tokenIdentifier);
+    if (!user) throw new Error("User record not found");
+    return { isPro: await isUserPro(ctx, user._id) };
+  }
+});
 
 export const getTodayState = internalQuery({
   args: {
@@ -391,7 +401,15 @@ export const getPanorama = action({
     localDate: v.string()
   },
   handler: async (ctx, args) => {
+    // Free recibe `locked` sin lista: se decide ANTES de resolver la lectura,
+    // así una respuesta vacía no cuesta una llamada al proveedor.
+    const identity = await requireIdentity(ctx as any);
+    const access: any = await ctx.runQuery(internalApi.transits.getAccess, { tokenIdentifier: identity.tokenIdentifier });
+    if (!access.isPro) {
+      return buildTransitPanorama({ payload: null, localDate: args.localDate, isPro: false });
+    }
     const { payload, isPro } = await resolveTodayReading(ctx, args.localDate);
-    return buildTransitPanorama({ payload, localDate: args.localDate, isPro });
+    const timezone = typeof (payload as any)?.timezone === "string" ? (payload as any).timezone : undefined;
+    return buildTransitPanorama({ payload, localDate: args.localDate, isPro, now: naiveNowIn(timezone) });
   }
 });

@@ -63,11 +63,28 @@ export function etiquetaDeDespliegue(total: number, desplegado: boolean): string
   return `VER LOS ${total} CONTACTOS`;
 }
 
-/** `"16 CONTACTOS ACTIVOS · CAMBIA A DIARIO"` / `"1 CONTACTO ACTIVO · …"`. */
+/**
+ * `"8 DE 16 CONTACTOS ACTIVOS · CAMBIA A DIARIO"` cuando el proveedor publicó
+ * más de los que la lista muestra; `"5 CONTACTOS ACTIVOS · …"` cuando están
+ * todos; `"8 CONTACTOS PRINCIPALES · …"` cuando la lectura no guardó el total
+ * (documentos anteriores): nunca «todos» sin saberlo.
+ */
 export function encabezadoDeAhora(panorama: Extract<TransitPanorama, { status: "ready" }>): string {
-  const n = panorama.activeTotal;
-  const contactos = n === 1 ? "1 CONTACTO ACTIVO" : `${n} CONTACTOS ACTIVOS`;
+  const n = panorama.rows.length;
+  const total = panorama.activeTotal;
+  let contactos: string;
+  if (total === null) contactos = n === 1 ? "1 CONTACTO PRINCIPAL" : `${n} CONTACTOS PRINCIPALES`;
+  else if (total > n) contactos = `${n} DE ${total} CONTACTOS ACTIVOS`;
+  else contactos = n === 1 ? "1 CONTACTO ACTIVO" : `${n} CONTACTOS ACTIVOS`;
   return `${contactos} · ${panorama.cadence.toLocaleUpperCase("es")}`;
+}
+
+/** La intro dice «todos» sólo cuando se sabe que están todos. */
+export function introDeAhora(panorama: Extract<TransitPanorama, { status: "ready" }>, desktop: boolean): string {
+  const todos = panorama.activeTotal !== null && panorama.activeTotal <= panorama.rows.length;
+  const quienes = todos ? "Todos los contactos activos de hoy" : "Los contactos principales de hoy";
+  const orden = "ordenados por el peso del contacto: qué planeta pasa, qué punto de tu carta toca y qué aspecto forma";
+  return desktop ? `${quienes}, ${orden}.` : `${quienes}, ${orden}.`;
 }
 
 /** Estado de pantalla a partir del sobre (o de su ausencia). */

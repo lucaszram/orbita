@@ -12,7 +12,8 @@ import {
   estadoDelPanorama,
   etiquetaDeDespliegue,
   filaVista,
-  filasParaMostrar
+  filasParaMostrar,
+  introDeAhora
 } from "../src/domain/transitosPanorama";
 import type { TransitPanorama, TransitPanoramaRow } from "../src/services/appRefs";
 
@@ -39,7 +40,7 @@ function fila(partial: Partial<TransitPanoramaRow> = {}): TransitPanoramaRow {
   };
 }
 
-function listo(n: number, activeTotal = n): Extract<TransitPanorama, { status: "ready" }> {
+function listo(n: number, activeTotal: number | null = n): Extract<TransitPanorama, { status: "ready" }> {
   return {
     status: "ready",
     localDate: "2026-09-05",
@@ -94,9 +95,19 @@ describe("plegado y encabezado", () => {
     assert.equal(etiquetaDeDespliegue(3, false), null);
   });
 
-  it("el encabezado cuenta los activos y la cadencia", () => {
-    assert.equal(encabezadoDeAhora(listo(8, 16)), "16 CONTACTOS ACTIVOS · CAMBIA A DIARIO");
+  it("el encabezado dice «8 de 16» con total real, «activos» si están todos y «principales» si no se sabe", () => {
+    assert.equal(encabezadoDeAhora(listo(8, 16)), "8 DE 16 CONTACTOS ACTIVOS · CAMBIA A DIARIO");
     assert.equal(encabezadoDeAhora(listo(1)), "1 CONTACTO ACTIVO · CAMBIA A DIARIO");
+    assert.equal(encabezadoDeAhora(listo(5, 5)), "5 CONTACTOS ACTIVOS · CAMBIA A DIARIO");
+    assert.equal(encabezadoDeAhora(listo(8, null)), "8 CONTACTOS PRINCIPALES · CAMBIA A DIARIO");
+    assert.equal(encabezadoDeAhora(listo(1, null)), "1 CONTACTO PRINCIPAL · CAMBIA A DIARIO");
+  });
+
+  it("la intro dice «todos» sólo cuando se sabe que están todos, y describe el orden real", () => {
+    assert.match(introDeAhora(listo(5, 5), true), /^Todos los contactos activos de hoy, ordenados por el peso del contacto/);
+    assert.match(introDeAhora(listo(8, 16), false), /^Los contactos principales de hoy/);
+    assert.match(introDeAhora(listo(8, null), true), /^Los contactos principales de hoy/);
+    assert.doesNotMatch(introDeAhora(listo(8, 16), true), /cercanía al punto exacto/);
   });
 });
 

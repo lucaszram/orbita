@@ -12,6 +12,10 @@
  * posición del planeta, así que acá no hay `0°43'` ni un puntaje. La cercanía
  * se mide contra `exactTime` con la resolución que el proveedor da (minutos,
  * sin zona), y la fila lo declara: «cercanía al punto exacto en el tiempo».
+ *
+ * El ORDEN no es de este módulo: es el del backend (`selectRelevantTransits`,
+ * pesos fijos por planeta en tránsito, punto natal y aspecto, más uno con hora
+ * exacta). Lo que la pantalla explique del orden tiene que describir eso.
  */
 import {
   assignTransitIds,
@@ -19,7 +23,6 @@ import {
   asRecord,
   normalizedTransitFromValue,
   RANKED_TRANSITS_LIMIT,
-  selectRelevantTransits,
   transitCadence,
   type NormalizedAstroTransit
 } from "./orbita";
@@ -60,8 +63,8 @@ export type TransitPanorama =
       localDate: string;
       count: number;
       rows: TransitPanoramaRow[];
-      /** Cuántos contactos activos hay en la lectura, aunque la lista se corte. */
-      activeTotal: number;
+      /** Cuántos aspectos mayores publicó el proveedor para hoy (`transitTotals.major`); la lista se corta en `RANKED_TRANSITS_LIMIT`. `null` en documentos anteriores, que no guardaron el total. */
+      activeTotal: number | null;
       cadence: "Cambia a diario";
       access: { isPro: true; personalized: true };
     }
@@ -118,22 +121,48 @@ export function phaseFor(days: number | null): TransitPhase | null {
 }
 
 /**
- * Cercanía 0–1 medida en tiempo: la distancia entre el mediodía de `localDate`
- * y `exactTime`, sobre la mitad de la ventana del contacto. Sin ventana no hay
- * escala y se devuelve `null`: nunca un valor por defecto que parezca medido.
+ * «Ahora» en la zona de la lectura, escrito como la hora del proveedor
+ * (`YYYY-MM-DDTHH:mm`, sin zona) para poder compararlo con `exactTime`. Sin
+ * zona válida devuelve `null` y la cercanía cae al mediodía de `localDate`.
+ */
+export function naiveNowIn(timezone: string | undefined, at: Date = new Date()): string | null {
+  if (!timezone) return null;
+  try {
+    const parts = new Intl.DateTimeFormat("sv-SE", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    }).format(at);
+    const m = /^(\d{4}-\d{2}-\d{2}) (\d{2}):(\d{2})/.exec(parts);
+    return m ? `${m[1]}T${m[2] === "24" ? "00" : m[2]}:${m[3]}` : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Cercanía 0–1 medida en tiempo: la distancia entre «ahora» (`now`, en la zona
+ * de la lectura; si falta, el mediodía de `localDate`) y `exactTime`, sobre la
+ * mitad de la ventana del contacto. Sin ventana no hay escala y se devuelve
+ * `null`: nunca un valor por defecto que parezca medido.
  */
 export function closenessFor(
   transit: Pick<NormalizedAstroTransit, "startTime" | "exactTime" | "endTime">,
-  localDate: string
+  localDate: string,
+  now?: string | null
 ): number | null {
   const exact = parseNaiveTime(transit.exactTime);
   const start = parseNaiveTime(transit.startTime);
   const end = parseNaiveTime(transit.endTime);
   const day = parseNaiveTime(localDate);
   if (exact === null || start === null || end === null || day === null || end <= start) return null;
-  const noon = day + 12 * 3_600_000;
+  const reference = parseNaiveTime(now) ?? day + 12 * 3_600_000;
   const half = Math.max((end - start) / 2, 12 * 3_600_000);
-  const distance = Math.abs(exact - noon);
+  const distance = Math.abs(exact - reference);
   return Math.max(0, Math.min(1, 1 - distance / half));
 }
 
@@ -157,10 +186,11 @@ function aspectoConArticulo(aspectEs: string): string {
 
 /**
  * Los contactos del día con identidad. Las lecturas nuevas ya traen
- * `rankedTransits` con `transitId` guardado; para documentos anteriores se
- * reconstruye la misma selección (`selectRelevantTransits` sobre los candidatos
- * persistidos) y la misma identidad (`transitIdFor`), que es lo que
- * `transits.getDetail` acepta por su vía legacy.
+ * `rankedTransits` con `transitId` guardado. Para documentos anteriores se
+ * recorren los MISMOS candidatos, en el MISMO orden y con la MISMA identidad
+ * (`transitIdFor`) que `findTransitInPayload` usa en su vía legacy: no se
+ * reordena, porque un reordenamiento cambiaría qué contacto abre cada id
+ * cuando hay dos ventanas del mismo par.
  */
 export function listRankedTransits(payload: unknown): Array<NormalizedAstroTransit & { transitId: string }> {
   const record = asRecord(payload);
@@ -180,10 +210,16 @@ export function listRankedTransits(payload: unknown): Array<NormalizedAstroTrans
     seen.add(key);
     return true;
   });
-  return assignTransitIds(selectRelevantTransits(unique, RANKED_TRANSITS_LIMIT));
+  return assignTransitIds(unique.slice(0, RANKED_TRANSITS_LIMIT));
 }
 
-export function buildTransitPanorama(args: { payload: unknown; localDate: string; isPro: boolean }): TransitPanorama {
+export function buildTransitPanorama(args: {
+  payload: unknown;
+  localDate: string;
+  isPro: boolean;
+  /** «Ahora» en la zona de la lectura (`YYYY-MM-DDTHH:mm`); sin él, el mediodía de `localDate`. */
+  now?: string | null;
+}): TransitPanorama {
   if (!args.isPro) {
     return { status: "locked", localDate: args.localDate, access: { isPro: false, personalized: false } };
   }
@@ -207,7 +243,7 @@ export function buildTransitPanorama(args: { payload: unknown; localDate: string
       natalHouse: transit.natalHouse,
       phase,
       peakLabel: peakLabelFor(days),
-      closeness: closenessFor(transit, args.localDate),
+      closeness: closenessFor(transit, args.localDate, args.now),
       cadence: transitCadence(transit),
       body: bodyFor(transit, phase, angle),
       startTime: transit.startTime,
@@ -215,7 +251,8 @@ export function buildTransitPanorama(args: { payload: unknown; localDate: string
       endTime: transit.endTime
     };
   });
-  const activeTotal = Math.max(rows.length, asArray(asRecord(args.payload).rankedTransits).length);
+  const totals = asRecord(asRecord(args.payload).transitTotals);
+  const activeTotal = typeof totals.major === "number" && Number.isFinite(totals.major) ? Math.max(totals.major, rows.length) : null;
   return {
     status: "ready",
     localDate: args.localDate,

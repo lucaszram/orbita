@@ -9,12 +9,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { buildDailyReadingPayloadFromAstrology, transitIdFor, type NormalizedAstroTransit } from "../convex/lib/orbita";
+import { buildDailyReadingPayloadFromAstrology, findTransitInPayload, transitIdFor, type NormalizedAstroTransit } from "../convex/lib/orbita";
 import {
   buildTransitPanorama,
   closenessFor,
   daysUntilExact,
   listRankedTransits,
+  naiveNowIn,
   parseNaiveTime,
   peakLabelFor,
   phaseFor
@@ -96,6 +97,22 @@ describe("fase, pico y cercanía", () => {
     assert.equal(closenessFor(transito({ startTime: "2026-09-06T00:00", endTime: "2026-09-04T00:00" }), HOY), null);
   });
 
+  it("con «ahora» la cercanía se mide desde ese instante, no desde el mediodía", () => {
+    const exactoALas23 = transito({ startTime: "2026-09-05T11:00", exactTime: "2026-09-05T23:00", endTime: "2026-09-06T11:00" });
+    assert.equal(closenessFor(exactoALas23, HOY, "2026-09-05T23:00"), 1);
+    assert.equal(closenessFor(exactoALas23, HOY, "2026-09-05T17:00"), 0.5);
+    // Sin «ahora» legible se cae al mediodía, como antes.
+    assert.equal(closenessFor(exactoALas23, HOY, "ahora mismo"), closenessFor(exactoALas23, HOY));
+  });
+
+  it("naiveNowIn escribe «ahora» en la zona de la lectura con el formato del proveedor", () => {
+    const instante = new Date(Date.UTC(2026, 8, 6, 1, 30)); // 01:30 UTC del 6
+    assert.equal(naiveNowIn("America/Argentina/Buenos_Aires", instante), "2026-09-05T22:30");
+    assert.equal(naiveNowIn("UTC", instante), "2026-09-06T01:30");
+    assert.equal(naiveNowIn(undefined, instante), null);
+    assert.equal(naiveNowIn("Marte/Olympus", instante), null);
+  });
+
   it("una ventana muy corta usa media jornada de escala mínima para no saturar", () => {
     const corta = transito({ startTime: "2026-09-05T11:00", exactTime: "2026-09-05T13:00", endTime: "2026-09-05T15:00" });
     const c = closenessFor(corta, HOY);
@@ -126,6 +143,27 @@ describe("las filas del panorama", () => {
     assert.equal(panorama.rows[0].transitId, transitIdFor(lista[1]));
     assert.equal(panorama.cadence, "Cambia a diario");
     assert.deepEqual(panorama.access, { isPro: true, personalized: true });
+    assert.equal(panorama.activeTotal, 4, "los aspectos mayores que publicó el proveedor");
+  });
+
+  it("con más contactos de los que entran, el total real viaja para decir «8 de 16»", () => {
+    const muchos = Array.from({ length: 16 }, (_, i) =>
+      transito({ transitPlanet: `p${i}`, transitPlanetEs: `Planeta ${i}`, priority: 100 - i })
+    );
+    const doc = buildDailyReadingPayloadFromAstrology({ localDate: HOY, timezone: "UTC", chart: null, transits: muchos });
+    assert.deepEqual((doc as { transitTotals: unknown }).transitTotals, { provider: 16, major: 16, ranked: 8 });
+    const panorama = buildTransitPanorama({ payload: doc, localDate: HOY, isPro: true });
+    if (panorama.status !== "ready") return assert.fail("ready");
+    assert.equal(panorama.count, 8);
+    assert.equal(panorama.activeTotal, 16);
+  });
+
+  it("un documento anterior sin totales no inventa uno: activeTotal null", () => {
+    const legacy = { selectedTransits: [lista[0], lista[1]] };
+    const panorama = buildTransitPanorama({ payload: legacy, localDate: HOY, isPro: true });
+    if (panorama.status !== "ready") return assert.fail("ready");
+    assert.equal(panorama.activeTotal, null);
+    assert.equal(panorama.count, 2);
   });
 
   it("cada fila lleva título, línea mono, fase, pico, casa y cadencia derivados del contacto", () => {
@@ -181,9 +219,27 @@ describe("las filas del panorama", () => {
     const filas = listRankedTransits(legacy);
     assert.deepEqual(
       filas.map((f) => f.transitId),
-      ["moon-trine-mars", "mars-square-venus", "venus-square-neptune"],
-      "deduplicado por identidad y ordenado por prioridad"
+      ["mars-square-venus", "moon-trine-mars", "venus-square-neptune"],
+      "deduplicado por identidad, en el orden de los candidatos (sin reordenar)"
     );
+    // Cada id del panorama abre en `getDetail` (vía legacy) exactamente el mismo contacto.
+    for (const fila of filas) {
+      const abierto = findTransitInPayload(legacy, fila.transitId);
+      assert.ok(abierto, fila.transitId);
+      assert.equal(abierto?.transitPlanet, fila.transitPlanet);
+      assert.equal(abierto?.natalPoint, fila.natalPoint);
+      assert.equal(abierto?.exactTime, fila.exactTime);
+    }
+  });
+
+  it("legacy con el mismo par en dos ventanas: el panorama y el detalle abren la misma", () => {
+    const temprano = transito({ transitPlanet: "moon", transitPlanetEs: "Luna", natalPoint: "mars", natalPointEs: "Marte", aspectType: "trine", aspectTypeEs: "trígono", exactTime: "2026-09-05T03:00", priority: 20 });
+    const tarde = { ...temprano, exactTime: "2026-09-05T20:00", priority: 90 };
+    const legacy = { selectedTransits: [temprano, tarde] };
+    const filas = listRankedTransits(legacy);
+    for (const fila of filas) {
+      assert.equal(findTransitInPayload(legacy, fila.transitId)?.exactTime, fila.exactTime, fila.transitId);
+    }
   });
 
   it("un payload sin tránsitos legibles no rompe: empty", () => {

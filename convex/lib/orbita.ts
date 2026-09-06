@@ -2312,6 +2312,14 @@ export function buildDailyReadingPayloadFromAstrology(args: {
     highlightedTransit,
     selectedTransits,
     rankedTransits: rankedTransits.map((transit) => ({ ...transit, displayText: formatTransitDisplay(transit) })),
+    // Cuántos contactos publicó el proveedor y cuántos son aspectos mayores:
+    // el ranking se corta en `RANKED_TRANSITS_LIMIT`, y sin estos números un
+    // consumidor no puede decir «8 de 16» sin inventar el total.
+    transitTotals: {
+      provider: args.transits.length,
+      major: args.transits.filter((transit) => majorAspects.has(transit.aspectType)).length,
+      ranked: rankedTransits.length
+    },
     home,
     modules: home,
     topics,

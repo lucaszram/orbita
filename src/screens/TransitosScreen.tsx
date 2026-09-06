@@ -7,9 +7,9 @@
  * `2014:2825` (orden y cierre) y `1729:2109` / `1730:2131` (Free bloqueado).
  *
  *     AHORA                              ← el único segmento de esta tarjeta
- *     TRÁNSITOS · AHORA     16 CONTACTOS ACTIVOS · CAMBIA A DIARIO
- *     Todos los contactos activos de hoy, ordenados por…
- *     LAS BARRAS MIDEN CERCANÍA AL PUNTO EXACTO EN EL TIEMPO
+ *     TRÁNSITOS · AHORA     8 DE 16 CONTACTOS ACTIVOS · CAMBIA A DIARIO
+ *     Los contactos principales de hoy, ordenados por el peso del contacto…
+ *     LAS BARRAS MIDEN CERCANÍA AL PUNTO EXACTO EN EL TIEMPO, DESDE AHORA
  *     1 LUNA · MARTE ── Luna trígono tu Marte ── ▇▇▇▇▇▇▇──── ── INTEGRÁNDOSE · CASA 4
  *     …
  *     VER LOS 16 CONTACTOS ›
@@ -22,8 +22,15 @@
  *   su `transitId` y abre `/reading/transito?id=…` (CORE-208).
  * - El día lo decide el SERVIDOR (`useCanonicalLocalDate`).
  * - La barra mide cercanía al punto exacto **en tiempo** (`exactTime` contra la
- *   ventana del contacto). El proveedor no publica el orbe en grados, así que
- *   no hay `0°43'` ni puntaje: sin ventana, la fila no dibuja barra.
+ *   ventana del contacto, desde «ahora» en la zona de la lectura). El
+ *   proveedor no publica el orbe en grados, así que no hay `0°43'` ni puntaje:
+ *   sin ventana, la fila no dibuja barra.
+ * - El ORDEN es el del backend (pesos fijos por planeta, punto y aspecto, más
+ *   uno con hora exacta): «Por qué este orden» describe exactamente eso, no el
+ *   criterio del frame, que el código no implementa.
+ * - El encabezado dice «8 de 16» cuando la lectura guardó el total de aspectos
+ *   mayores del proveedor y «principales» cuando no lo sabe: nunca «todos» sin
+ *   saberlo.
  * - Free recibe `locked`: el ranking se calcula con la carta y es Plus. La
  *   pantalla lo dice con el frame bloqueado, sin filas de relleno.
  *
@@ -55,7 +62,14 @@ import {
   PTexto
 } from "@/components/transitos/PanoramaUI";
 import { sessionPhase } from "@/domain/screenPhase";
-import { encabezadoDeAhora, estadoDelPanorama, etiquetaDeDespliegue, filasParaMostrar, type PanoramaEstado } from "@/domain/transitosPanorama";
+import {
+  encabezadoDeAhora,
+  estadoDelPanorama,
+  etiquetaDeDespliegue,
+  filasParaMostrar,
+  introDeAhora,
+  type PanoramaEstado
+} from "@/domain/transitosPanorama";
 import { useIsDesktop } from "@/hooks/useLayoutMode";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { useCanonicalLocalDate } from "@/hooks/useDailyContext";
@@ -180,17 +194,13 @@ function PanoramaAhora({ panorama }: { panorama: Extract<TransitPanorama, { stat
 
   const lista = (
     <ReadingBlock>
-      <View style={styles.segmentos} accessibilityRole="tablist">
+      <View style={styles.segmentos}>
         <PSegmento label="AHORA" activo />
       </View>
       <PEncabezado izquierda="TRÁNSITOS · AHORA" derecha={encabezadoDeAhora(panorama)} />
-      <PTexto style={styles.intro}>
-        {desktop
-          ? "Todos los contactos activos de hoy, ordenados por cercanía al punto exacto y por la parte de tu carta que activan."
-          : "Todos los contactos activos de hoy, ordenados por cercanía al punto exacto."}
-      </PTexto>
+      <PTexto style={styles.intro}>{introDeAhora(panorama, desktop)}</PTexto>
       <PEtiqueta tono="gris" style={styles.leyenda}>
-        LAS BARRAS MIDEN CERCANÍA AL PUNTO EXACTO EN EL TIEMPO
+        LAS BARRAS MIDEN CERCANÍA AL PUNTO EXACTO EN EL TIEMPO, DESDE AHORA
       </PEtiqueta>
       <View style={styles.lineaSuperior} />
       {filas.map((fila, i) => (
@@ -213,16 +223,7 @@ function PanoramaAhora({ panorama }: { panorama: Extract<TransitPanorama, { stat
 
   return (
     <Columns gap={orbita.spacing.xxl * 1.5}>
-      <Column weight={2}>
-        {lista}
-        {desplegado || !despliegue ? (
-          <View style={styles.cierre}>
-            <PEncabezado izquierda="· POR QUÉ ESTE ORDEN" derecha="· CAMBIA A DIARIO" />
-            <PPorQue enFila />
-            <PNota style={styles.notaOrden}>{NOTA_DEL_ORDEN}</PNota>
-          </View>
-        ) : null}
-      </Column>
+      <Column weight={2}>{lista}</Column>
       <Column weight={1}>
         <PTarjeta titulo="POR QUÉ ESTE ORDEN">
           <PPorQue enFila={false} />
@@ -268,7 +269,7 @@ function PanoramaBloqueado() {
         </View>
         <PTexto style={styles.bloqueadaTitulo}>El ranking de hoy se calcula con tu carta.</PTexto>
         <PTexto style={styles.bloqueadaCuerpo}>
-          Hace falta tu fecha, hora y lugar de nacimiento para saber qué contactos están activos, cuánto les falta
+          Con Plus, Órbita cruza el cielo de hoy con tu carta natal: qué contactos están activos, cuánto les falta
           para ser exactos y qué casa de tu carta tocan.
         </PTexto>
         {!desktop ? (
@@ -281,7 +282,7 @@ function PanoramaBloqueado() {
           </View>
         ) : null}
         <View style={styles.bloqueadaAcciones}>
-          <PBoton label="EMPEZAR 7 DÍAS GRATIS" onPress={irAPlus} />
+          <PBoton label="VER ÓRBITA PLUS" onPress={irAPlus} />
           {desktop ? <PEnlace label="VER QUÉ ABRE PLUS" onPress={irAPlus} /> : null}
         </View>
       </View>
@@ -336,8 +337,8 @@ function PanoramaBloqueado() {
             </PTexto>
           ))}
           <View style={styles.lineaInferior} />
-          <PBoton label="EMPEZAR 7 DÍAS GRATIS" onPress={irAPlus} />
-          <PNota style={styles.notaOrden}>El precio y la prueba gratis se muestran al entrar a Órbita Plus.</PNota>
+          <PBoton label="VER ÓRBITA PLUS" onPress={irAPlus} />
+          <PNota style={styles.notaOrden}>El precio y la prueba gratis, si aplica, se muestran al entrar a Órbita Plus.</PNota>
         </PTarjeta>
         <PTarjeta titulo="CÓMO LEER UN TRÁNSITO">
           {[

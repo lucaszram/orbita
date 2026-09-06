@@ -42,18 +42,15 @@ export function PNota({ children, style }: { children: ReactNode; style?: object
   return <Text style={[styles.nota, style]}>{children}</Text>;
 }
 
-/** Chip de segmento (AHORA · TU MOMENTO): el activo en hueso, el resto en contorno. */
-export function PSegmento({ label, activo, onPress, disabled }: { label: string; activo: boolean; onPress?: () => void; disabled?: boolean }) {
+/**
+ * Chip de segmento (AHORA). Mientras «Tu momento» no exista (CORE-209/210/211)
+ * hay un solo segmento y no se anuncia como pestaña: es un rótulo, no un control.
+ */
+export function PSegmento({ label, activo }: { label: string; activo: boolean }) {
   return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="tab"
-      accessibilityState={{ selected: activo, disabled: !!disabled }}
-      style={({ pressed }) => [styles.segmento, activo && styles.segmentoActivo, (pressed || disabled) && styles.apagado]}
-    >
+    <View style={[styles.segmento, activo && styles.segmentoActivo]} accessibilityRole="header">
       <Text style={[styles.segmentoTexto, activo && styles.segmentoTextoActivo]}>{label}</Text>
-    </Pressable>
+    </View>
   );
 }
 
@@ -142,11 +139,18 @@ export function PEnlace({ label, onPress, href }: { label: string; onPress?: () 
   );
 }
 
+/**
+ * Lo que la pantalla explica del orden tiene que ser lo que el backend hace:
+ * `selectRelevantTransits` suma pesos fijos por planeta en tránsito, punto
+ * natal y aspecto, más uno si el proveedor publicó la hora exacta
+ * (`transitPriority`, convex/lib/orbita.ts). No mide cercanía al exacto ni
+ * mira la casa: eso lo dicen la barra y la meta de cada fila, no el orden.
+ */
 export const POR_QUE_ESTE_ORDEN: ReadonlyArray<{ rotulo: string; texto: string }> = [
-  { rotulo: "EXACTITUD", texto: "Cuánto le falta al tránsito para ser exacto." },
-  { rotulo: "QUÉ TOCA", texto: "Los contactos con el Sol, la Luna, el Ascendente y el Medio Cielo reciben más peso." },
-  { rotulo: "CASA", texto: "Las casas 1, 4, 7 y 10 reciben más peso porque representan áreas centrales de la carta." },
-  { rotulo: "CASAS QUE RIGE", texto: "Cada planeta se asocia con una o más casas natales. Si una de esas áreas también está activa, suma peso." }
+  { rotulo: "QUÉ PLANETA PASA", texto: "Saturno pesa más; Sol, Venus y Marte siguen; la Luna, que pasa rápido, pesa menos." },
+  { rotulo: "QUÉ PUNTO TOCA", texto: "Los contactos con tu Sol y tu Luna reciben más peso; después el Ascendente, Mercurio, Venus y Marte." },
+  { rotulo: "QUÉ ASPECTO", texto: "La conjunción pesa más que la oposición y la cuadratura; el trígono y el sextil, menos." },
+  { rotulo: "HORA EXACTA", texto: "Un contacto con hora exacta publicada suma un punto." }
 ];
 
 /** «Por qué este orden»: en columna (móvil / tarjeta lateral) o en cuatro columnas (cierre 1440). */
@@ -163,7 +167,8 @@ export function PPorQue({ enFila }: { enFila: boolean }) {
   );
 }
 
-export const NOTA_DEL_ORDEN = "El orden no es un puntaje de importancia: combina cercanía al punto exacto y relevancia del punto natal involucrado.";
+export const NOTA_DEL_ORDEN =
+  "El orden no es un puntaje de importancia ni mide cuánto falta para el exacto: suma pesos fijos por planeta, punto y aspecto. La cercanía en el tiempo la muestra la barra de cada fila.";
 
 /** Tarjeta lateral de escritorio: borde fino, rótulo cobre, contenido. */
 export function PTarjeta({ titulo, children, style }: { titulo?: string; children: ReactNode; style?: object }) {
@@ -238,7 +243,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     justifyContent: "center",
-    minHeight: 40,
+    minHeight: 44,
     paddingHorizontal: orbita.spacing.lg
   },
   segmentoActivo: { backgroundColor: orbita.colors.bone, borderColor: orbita.colors.bone },
@@ -280,7 +285,7 @@ const styles = StyleSheet.create({
     padding: orbita.spacing.xl
   },
   tarjetaTitulo: { marginBottom: orbita.spacing.xs },
-  plegableCabeza: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", minHeight: 24 },
+  plegableCabeza: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", minHeight: 44 },
   plegableSigno: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.mono, fontSize: 16 },
   plegableCuerpo: { marginTop: orbita.spacing.md },
 

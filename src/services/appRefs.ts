@@ -247,7 +247,8 @@ export type TransitPanorama =
       localDate: string;
       count: number;
       rows: TransitPanoramaRow[];
-      activeTotal: number;
+      /** Aspectos mayores publicados hoy por el proveedor; `null` en lecturas anteriores. La lista se corta en 8. */
+      activeTotal: number | null;
       cadence: string;
       access: { isPro: true; personalized: true };
     }
