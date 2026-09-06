@@ -57,8 +57,12 @@ import { pathToFileURL } from "node:url";
  * El límite Free de Vínculos (CORE-214) suma 4 casos: 1 en `synastry.test.ts`
  * (`personAccess`) y 3 en `vinculo.test.ts` (rótulo del cupo, nota del plan,
  * acción de agregar): 970 + 4.
+ *
+ * El tema del año (CORE-210) suma 13 casos: 10 en `temaDelAno.test.ts`
+ * (profección, bordes del año, gap de medianoche, lo que no se calcula) y 3
+ * en `momento.test.ts` (titular Build 30, lectura, estado de pantalla): 974 + 13.
  */
-export const DEFAULT_MINIMUM = 974;
+export const DEFAULT_MINIMUM = 987;
 
 /**
  * Lee un contador del resumen final del runner de Node.

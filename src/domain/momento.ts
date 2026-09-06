@@ -1,4 +1,4 @@
-import type { EstacionVital, EstacionVitalFase, MomentoEstacionVital } from "@/services/appRefs";
+import type { EstacionVital, EstacionVitalFase, MomentoEstacionVital, MomentoTemaDelAno, TemaDelAno } from "@/services/appRefs";
 
 /**
  * Tu momento — cómo se lee la estación vital en pantalla (CORE-209).
@@ -258,5 +258,162 @@ export function copyDeSinDatos(estacion: Exclude<EstacionVital, { status: "ready
       return { titulo: "El cálculo no está disponible en este entorno.", cuerpo: estacion.limitations[0] ?? "" };
     default:
       return { titulo: "No pudimos calcular tu estación vital.", cuerpo: estacion.limitations[0] ?? "Probá de nuevo en un momento." };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tema del año — la casa de la profección (CORE-210). Copy de Build 30,
+// portada de `release/1.0.0` (`yearMeaning`, `yearReading`).
+// ---------------------------------------------------------------------------
+
+export const YEAR_DETAIL_EYEBROW = "TEMA DE TU AÑO";
+export const YEAR_RULER_HEADING = "QUIÉN RIGE ESTE AÑO";
+export const YEAR_DATA_HEADING = "LOS DATOS DEL AÑO";
+
+export const YEAR_TRACE = {
+  calculatedDatum:
+    "Qué casa de tu carta le toca a tu edad actual, en qué signo empieza esa casa, qué planeta la rige y entre qué fechas corre el año que va de un cumpleaños al siguiente.",
+  interpretiveRule:
+    "El recorrido arranca en tu Ascendente, avanza una casa por año y vuelve a empezar cada doce años. La casa del año indica en qué área se concentra la lectura; no afirma que algo vaya a ocurrir en esa área."
+} as const;
+
+export type YearMeaning = { area: string; meaning: string; action: string };
+
+const YEAR_HOUSE: Record<number, YearMeaning> = {
+  1: { area: "cómo arrancás y cómo te presentás", meaning: "El año pone en primer plano lo tuyo: cómo empezás las cosas, qué mostrás primero y qué imagen queda de vos.", action: "Escribí en una línea qué te gustaría que la gente note de vos este año." },
+  2: { area: "lo que tenés y lo que valorás", meaning: "El foco cae en lo concreto de todos los días: lo que tenés, lo que usás y a qué le das valor cuando repartís tu tiempo.", action: "Anotá tres cosas tuyas —un objeto, una hora del día, algo que sabés hacer— que quieras cuidar mejor este año." },
+  3: { area: "las conversaciones y el entorno cercano", meaning: "Las charlas, los mensajes, los trayectos cortos y lo que aprendés sobre la marcha ocupan más lugar que de costumbre.", action: "Escribí a quién te gustaría escribirle más seguido y mandale un mensaje esta semana." },
+  4: { area: "la casa y la gente de confianza", meaning: "El año trabaja puertas adentro: dónde vivís, con quién, y qué necesitás para sentirte en tu lugar.", action: "Elegí un rincón de tu casa y dejalo como te gustaría encontrarlo." },
+  5: { area: "lo que hacés por gusto", meaning: "Lo que hacés porque te gusta —crear, jugar, mostrar algo tuyo— pide más espacio del que suele tener.", action: "Reservá una hora por semana para algo que hagas sólo porque te divierte." },
+  6: { area: "las rutinas y las tareas de todos los días", meaning: "El año se juega en lo chico: cómo organizás el día, qué tareas se repiten y qué se te acumula.", action: "Elegí una sola rutina y cambiale algo mínimo, para ver si así se sostiene." },
+  7: { area: "los vínculos de a dos", meaning: "Los temas de a dos —pareja, socios, acuerdos, la persona con la que trabajás— pasan al frente.", action: "Escribí qué acuerdo, dicho o no dicho, te gustaría revisar con alguien, y buscá el momento de hablarlo." },
+  8: { area: "lo compartido y lo que no se muestra", meaning: "Toma peso lo que compartís con pocos y lo que preferís no mostrar: lo que está cambiando de fondo, sin anuncio.", action: "Anotá una cosa que hoy te cueste decir y a quién se la dirías si te animaras." },
+  9: { area: "lo que te saca de tu radio habitual", meaning: "Gana lugar lo que amplía: estudiar, viajar, conocer otra manera de hacer las cosas, buscarle sentido a lo que hacés.", action: "Elegí un tema que te dé curiosidad y reservá una tarde para meterte en él." },
+  10: { area: "tu dirección y lo que se ve de vos", meaning: "El año mira hacia afuera: en qué dirección va lo que hacés y cómo te ven los que no te conocen de cerca.", action: "Escribí en una línea cómo te gustaría que te describan dentro de un año." },
+  11: { area: "la gente y lo que viene", meaning: "La gente con la que te juntás, los proyectos compartidos y lo que viene después ocupan más lugar del habitual.", action: "Elegí una persona o un grupo con quien quieras armar algo y proponé una fecha." },
+  12: { area: "lo que se cierra y lo que descansa", meaning: "El año pide cerrar más que abrir: lo que ya terminó, lo que descansa y lo que pasa puertas adentro.", action: "Elegí algo que ya terminó y date un rato para cerrarlo bien: tirar, archivar, avisar." }
+};
+
+export function yearMeaning(house: number): YearMeaning | null {
+  return Number.isInteger(house) && house >= 1 && house <= 12 ? YEAR_HOUSE[house] : null;
+}
+
+type YearStretch = "apertura" | "desarrollo" | "revision" | "cierre";
+function yearStretch(monthIndex: number): YearStretch {
+  if (monthIndex <= 3) return "apertura";
+  if (monthIndex <= 6) return "desarrollo";
+  if (monthIndex <= 9) return "revision";
+  return "cierre";
+}
+const YEAR_STRETCH: Record<YearStretch, string> = {
+  apertura: "Estás en los primeros meses del año personal: es el tramo en el que el tema aparece y todavía no tiene forma definida.",
+  desarrollo: "Estás en el desarrollo del año: el tema ya se nota en lo cotidiano y pide tiempo encima más que ideas nuevas.",
+  revision: "Pasaste la mitad del año personal: es el tramo de mirar qué funcionó de lo que probaste y qué conviene acomodar.",
+  cierre: "Estás en los últimos meses del año personal: rinde cerrar lo que abriste antes de que el recorrido cambie de casa."
+};
+const YEAR_MONTH_UNKNOWN = "El cálculo no publicó en qué mes del año personal estás, así que la lectura se apoya en la casa y en su regente.";
+const YEAR_PRUDENCE = "Es un foco de todo el año, así que conviene volver sobre él cada tanto en vez de resolverlo de una vez.";
+const YEAR_RULER: Record<string, string> = {
+  sun: "Pone el foco en lo que querés sostener y en lo que estás dispuesto a mostrar como propio.",
+  moon: "Pone el foco en cómo te sentís mientras hacés las cosas, no sólo en cómo salen.",
+  mercury: "Pone el foco en cómo nombrás las cosas: lo que conversás, lo que escribís y lo que dejás por escrito.",
+  venus: "Pone el foco en los vínculos y en el gusto: con quién y con qué te querés rodear.",
+  mars: "Pone el foco en la iniciativa: qué empezás, con cuánta fuerza y a qué ritmo.",
+  jupiter: "Pone el foco en abrir: aparece más espacio del habitual y también más de todo.",
+  saturn: "Pone el foco en el tiempo y en la estructura: rinde lo que se sostiene, no lo que se apura.",
+  uranus: "Pone el foco en cambiar la forma: lo que venía igual empieza a pedir otra manera.",
+  neptune: "Pone el foco en lo que no tiene bordes claros: hay más matiz que definición.",
+  pluto: "Pone el foco en lo que cambia de raíz, de a poco y sin anuncio."
+};
+const YEAR_RULER_UNKNOWN = "Es el planeta con el que este método lee cómo se expresan los temas de la casa durante el año.";
+const YEAR_QUESTION: Record<number, string> = {
+  1: "¿Qué te gustaría que se note de vos este año, sin tener que explicarlo?",
+  2: "¿Qué de lo que ya tenés estás usando poco?",
+  3: "¿Con quién te gustaría hablar más seguido este año?",
+  4: "¿Qué te falta para sentirte en tu lugar donde vivís?",
+  5: "¿Cuándo fue la última vez que hiciste algo sólo porque te divertía?",
+  6: "¿Qué parte de tu día se repite sin que la hayas elegido?",
+  7: "¿Qué acuerdo tuyo con otra persona nunca se dijo en voz alta?",
+  8: "¿Qué estás cambiando de fondo que todavía no le contaste a nadie?",
+  9: "¿Qué te daría curiosidad aprender si tuvieras el tiempo?",
+  10: "¿Cómo te gustaría que te describa alguien que te conoce poco?",
+  11: "¿Con quiénes querés construir lo que viene?",
+  12: "¿Qué venís arrastrando que ya podría darse por terminado?"
+};
+
+export type YearReading = { now: string; theme: string; ruler: string; month: string; use: string; question: string };
+
+/** El tema del año, desarrollado. `null` para una casa que el método no tiene. */
+export function yearReading(input: { house: number; ruler: string; rulerKey: string; monthIndex: number }): YearReading | null {
+  const base = yearMeaning(input.house);
+  if (!base) return null;
+  const mes = Number.isInteger(input.monthIndex) && input.monthIndex >= 1 && input.monthIndex <= 12 ? input.monthIndex : null;
+  const regente = YEAR_RULER[input.rulerKey] ?? YEAR_RULER_UNKNOWN;
+  return {
+    now: `Tu año personal corre por tu casa ${input.house}${mes === null ? "." : `, y vas por el mes ${mes} de 12.`}${mes === null ? "" : ` ${YEAR_STRETCH[yearStretch(mes)]}`}`,
+    theme: base.meaning,
+    ruler: `El regente de este año es ${input.ruler}. ${regente}`,
+    month: mes === null ? YEAR_MONTH_UNKNOWN : YEAR_STRETCH[yearStretch(mes)],
+    use: `${base.action} ${YEAR_PRUDENCE}`,
+    question: YEAR_QUESTION[input.house]
+  };
+}
+
+/** `Casa 6 · rutinas, tareas y organización cotidiana` (el tema corto de la casa, para el titular). */
+export function tituloDelAno(tema: Extract<TemaDelAno, { status: "ready" }>): string {
+  return `Casa ${tema.house} · ${tema.houseTheme}`;
+}
+
+/** `MES 10 DE 12 · REGENTE DEL AÑO: MERCURIO` */
+export function subtituloDelAno(tema: Extract<TemaDelAno, { status: "ready" }>): string {
+  return `MES ${tema.monthIndex} DE 12 · REGENTE DEL AÑO: ${tema.ruler.toLocaleUpperCase("es")}`;
+}
+
+/** `Casa 6 · mes 10 de 12` para la tarjeta del hub. */
+export function resumenDelAno(tema: Extract<TemaDelAno, { status: "ready" }>): string {
+  return `Casa ${tema.house} · mes ${tema.monthIndex} de 12`;
+}
+
+/** `11 NOV` en la zona natal. */
+export function diaMes(ms: number, timeZone?: string): string {
+  if (!Number.isFinite(ms)) return "—";
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", { timeZone: timeZone ?? "UTC", month: "2-digit", day: "2-digit" }).formatToParts(new Date(ms));
+    const day = Number(parts.find((p) => p.type === "day")?.value);
+    const month = Number(parts.find((p) => p.type === "month")?.value);
+    return `${day} ${MESES_CORTOS[month - 1] ?? "—"}`;
+  } catch {
+    const d = new Date(ms);
+    return `${d.getUTCDate()} ${MESES_CORTOS[d.getUTCMonth()]}`;
+  }
+}
+
+export type TemaEstado =
+  | { kind: "cargando" }
+  | { kind: "error" }
+  | { kind: "bloqueado" }
+  | { kind: "sin_datos"; tema: Exclude<TemaDelAno, { status: "ready" }> }
+  | { kind: "listo"; tema: Extract<TemaDelAno, { status: "ready" }>; timezone: string | null };
+
+export function estadoDeTema(value: MomentoTemaDelAno | null | undefined): TemaEstado {
+  if (!value || typeof value !== "object" || !("status" in value)) return { kind: "error" };
+  if (value.status === "locked") return { kind: "bloqueado" };
+  if (value.status === "ready") {
+    if (value.tema.status === "ready") return { kind: "listo", tema: value.tema, timezone: value.timezone ?? null };
+    return { kind: "sin_datos", tema: value.tema };
+  }
+  return { kind: "error" };
+}
+
+export function copyDeSinTema(tema: Exclude<TemaDelAno, { status: "ready" }>): { titulo: string; cuerpo: string } {
+  switch (tema.status) {
+    case "needs_birth_data":
+      return { titulo: "Falta tu fecha de nacimiento.", cuerpo: tema.limitations[0] ?? "" };
+    case "needs_birth_time":
+      return { titulo: "Hace falta tu hora exacta.", cuerpo: tema.limitations[0] ?? "El Ascendente define desde dónde arranca el recorrido." };
+    case "needs_natal_chart":
+      return { titulo: "Primero, tu carta.", cuerpo: tema.limitations[0] ?? "" };
+    default:
+      return { titulo: "No pudimos ubicar tu año personal.", cuerpo: tema.limitations[0] ?? "Probá de nuevo en un momento." };
   }
 }

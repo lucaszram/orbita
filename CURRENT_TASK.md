@@ -1,5 +1,21 @@
 # Current Task
 
+## Tu momento abre el tema de tu año (CORE-210, 2026-09-06)
+
+**Objetivo:** que Tu momento abra la capa 02, el tema del año (profección
+anual), con Build 30 como contenido y los frames `1741:2289` / `2024:2925`.
+
+**Contrato (aditivo):** `momento.getTemaDelAno({ localDate })` (action pura,
+sin proveedor ni cache) sobre `annualProfectionForDate` (layersMath, portada
+de release) en `convex/lib/temaDelAno.ts`.
+
+**Decisiones:** sin hora exacta no hay profección (`needs_birth_time`), nunca
+un Ascendente estimado; el 29 de febrero se toma el 28 en años no bisiestos y
+se declara; Free recibe `locked`; la capa 03 sigue pendiente (CORE-211).
+
+**Estado:** rama `orb/core-210-tema-del-ano` desde `main` `a771713`. 11 casos
+nuevos; piso 970 → 981.
+
 ## Vínculos explica el límite Free (CORE-214, 2026-09-06)
 
 **Objetivo:** que una cuenta Free que alcanza su cupo conserve sus

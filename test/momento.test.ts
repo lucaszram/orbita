@@ -11,13 +11,21 @@ import {
   anguloProgresado,
   bordeDeFase,
   copyDeSinDatos,
+  copyDeSinTema,
   decimalEs,
+  diaMes,
   estadoDeEstacion,
+  estadoDeTema,
   etiquetaDeEtapa,
   mesAno,
+  resumenDelAno,
   seasonHeadline,
   seasonMeaning,
-  seasonReading
+  seasonReading,
+  subtituloDelAno,
+  tituloDelAno,
+  yearMeaning,
+  yearReading
 } from "../src/domain/momento";
 import type { EstacionVital, MomentoEstacionVital } from "../src/services/appRefs";
 
@@ -109,5 +117,59 @@ describe("estado de pantalla", () => {
     assert.equal(parcial.titulo, "Puede ser Nueva o Creciente.");
     assert.match(copyDeSinDatos({ status: "needs_birth_time", precision: "not_applicable", missingInputs: [], limitations: [], observedAt: 0 }).titulo, /hora exacta/);
     assert.match(copyDeSinDatos({ status: "needs_birth_data", precision: "not_applicable", missingInputs: [], limitations: [], observedAt: 0 }).titulo, /fecha de nacimiento/);
+  });
+});
+
+describe("el tema del año en pantalla (CORE-210)", () => {
+  const tema = {
+    status: "ready" as const,
+    precision: "exact" as const,
+    age: 31,
+    house: 6,
+    houseTheme: "rutinas, tareas, cuidado y trabajo cotidiano",
+    sign: "Géminis",
+    signKey: "gemini",
+    ruler: "Mercurio",
+    rulerKey: "mercury",
+    periodStart: Date.UTC(2025, 10, 11, 3),
+    periodEnd: Date.UTC(2026, 10, 11, 3),
+    periodStartDate: "2025-11-11",
+    periodEndDate: "2026-11-11",
+    monthIndex: 10,
+    progress: 0.82,
+    summary: "…",
+    limitations: ["a", "b"],
+    observedAt: 0
+  };
+
+  it("titular, subtítulo y resumen salen de la casa, el mes y el regente reales", () => {
+    assert.equal(tituloDelAno(tema), "Casa 6 · rutinas, tareas, cuidado y trabajo cotidiano");
+    assert.equal(subtituloDelAno(tema), "MES 10 DE 12 · REGENTE DEL AÑO: MERCURIO");
+    assert.equal(resumenDelAno(tema), "Casa 6 · mes 10 de 12");
+    assert.equal(diaMes(tema.periodStart, "America/Argentina/Buenos_Aires"), "11 NOV");
+    assert.equal(diaMes(Date.UTC(2026, 10, 11, 1), "America/Argentina/Buenos_Aires"), "10 NOV");
+  });
+
+  it("la lectura nombra la casa, el mes y el regente, y tiene copy para las doce casas", () => {
+    const l = yearReading({ house: 6, ruler: "Mercurio", rulerKey: "mercury", monthIndex: 10 });
+    assert.ok(l);
+    assert.match(l!.now, /^Tu año personal corre por tu casa 6, y vas por el mes 10 de 12\./);
+    assert.match(l!.now, /últimos meses del año personal/);
+    assert.match(l!.ruler, /^El regente de este año es Mercurio\./);
+    assert.match(l!.use, /foco de todo el año/);
+    for (let casa = 1; casa <= 12; casa += 1) assert.ok(yearMeaning(casa)?.area, String(casa));
+    assert.equal(yearMeaning(13), null);
+    assert.equal(yearReading({ house: 0, ruler: "Sol", rulerKey: "sun", monthIndex: 1 }), null);
+    assert.match(yearReading({ house: 3, ruler: "Ceres", rulerKey: "ceres", monthIndex: 20 })!.ruler, /Es el planeta con el que este método lee/);
+  });
+
+  it("estado de pantalla del tema: bloqueado, listo, sin datos, error", () => {
+    assert.equal(estadoDeTema({ status: "locked", localDate: "2026-09-06", access: { isPro: false } }).kind, "bloqueado");
+    assert.equal(estadoDeTema({ status: "ready", localDate: "2026-09-06", timezone: null, access: { isPro: true }, tema }).kind, "listo");
+    const sinHora = { status: "needs_birth_time" as const, precision: "not_applicable" as const, missingInputs: ["exact_birth_time"], limitations: ["x"], observedAt: 0 };
+    const e = estadoDeTema({ status: "ready", localDate: "2026-09-06", timezone: null, access: { isPro: true }, tema: sinHora });
+    assert.equal(e.kind, "sin_datos");
+    assert.match(copyDeSinTema(sinHora).titulo, /hora exacta/);
+    assert.equal(estadoDeTema(null).kind, "error");
   });
 });
