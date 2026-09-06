@@ -296,15 +296,16 @@ test("no queda un solo color de arranque distinto del canónico", () => {
   assert.equal(expo.android.adaptiveIcon.backgroundColor, "#0D0E12");
 });
 
-test("la promoción autorizada conserva 1.0.0 y prepara exactamente el build 29", () => {
+test("la promoción autorizada conserva 1.0.0 y prepara exactamente el build 30", () => {
   // Esta tanda toca `app.json`, así que el efecto nativo aparece recién con un
   // build nuevo — y la política de runtime es `fingerprint`, o sea que el
   // fingerprint cambió. Lucas autorizó explícitamente la promoción: se conserva
-  // la versión comercial y se fija el número exacto del nuevo RC. El 29 es el
-  // primer build que sale de main reconciliado (CORE-247 → CORE-264).
+  // la versión comercial y se fija el número exacto del nuevo RC. El 30 es el
+  // primer build que sale de main reconciliado (CORE-247 → CORE-264); el 29
+  // ya existía en App Store Connect, subido fuera de EAS.
   assert.equal(APP_JSON.expo.runtimeVersion.policy, "fingerprint");
   assert.equal(APP_JSON.expo.version, "1.0.0");
-  assert.equal(APP_JSON.expo.ios.buildNumber, "29");
+  assert.equal(APP_JSON.expo.ios.buildNumber, "30");
 });
 
 // ---------------------------------------------------------------------------
