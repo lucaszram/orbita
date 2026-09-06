@@ -376,7 +376,7 @@ describe("Tránsitos con Plus se ve como el frame (CORE-240)", () => {
       const codigoWeb = readFileSync(join(raiz, "src", "routes", "v492", `reading-${ruta}.web.tsx`), "utf8");
       assert.match(codigoWeb, new RegExp(`<WebAppShell active="transitos">\\s*<${pantalla} \\/>`), ruta);
       const codigoNativo = readFileSync(join(raiz, "src", "routes", "v492", `reading-${ruta}.tsx`), "utf8");
-      assert.match(codigoNativo, new RegExp(`<Redirect href="${destinoNativo.replace(/\\//g, "\\\\/")}" \\/>`), ruta);
+      assert.ok(codigoNativo.includes(`<Redirect href="${destinoNativo}" />`), `${ruta} → ${destinoNativo}`);
       const codigoPantalla = readFileSync(join(raiz, "src", "screens", `${pantalla}.tsx`), "utf8");
       assert.match(codigoPantalla, /<OrbitaScreen canvas="wide"[^>]*>\s*<Section>/, pantalla);
       assert.doesNotMatch(codigoPantalla, /DetailScreen/, pantalla);
