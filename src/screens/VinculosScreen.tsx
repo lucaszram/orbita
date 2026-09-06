@@ -107,7 +107,16 @@ function VinculosVivo() {
   const [modo, setModo] = useState<{ kind: "lista" } | { kind: "alta"; editar?: VinculoPersona }>({ kind: "lista" });
   if (biblioteca === undefined || comparacion === undefined) return <MinimalLoading />;
   if (modo.kind === "alta") {
-    return <AltaDePersona editar={modo.editar} onCancelar={() => setModo({ kind: "lista" })} />;
+    return (
+      <AltaDePersona
+        editar={modo.editar}
+        onCancelar={() => setModo({ kind: "lista" })}
+        // Al guardar, la pantalla vuelve a la biblioteca ANTES de abrir la
+        // comparación: al volver del detalle no puede quedar el alta con los
+        // datos ya guardados y «GUARDAR» habilitado (duplicaría a la persona).
+        onGuardada={() => setModo({ kind: "lista" })}
+      />
+    );
   }
   if (biblioteca.people.length === 0) {
     return <ListaVacia onAgregar={() => setModo({ kind: "alta" })} />;
@@ -233,12 +242,13 @@ function formDesde(p: VinculoPersona): AltaForm {
     fecha: p.birthDate ? p.birthDate.split("-").reverse().join("/") : "",
     hora: p.birthTime ?? "",
     // El lugar guardado no trae coordenadas al cliente: se vuelve a elegir de
-    // la lista si el nivel las necesita; el rótulo se muestra como pista.
+    // la lista si el nivel las necesita. El rótulo guardado viaja aparte como
+    // pista del buscador (`lugarGuardado`).
     lugar: null
   };
 }
 
-function AltaDePersona({ editar, onCancelar }: { editar?: VinculoPersona; onCancelar: () => void }) {
+function AltaDePersona({ editar, onCancelar, onGuardada }: { editar?: VinculoPersona; onCancelar: () => void; onGuardada: () => void }) {
   const [paso, setPaso] = useState<1 | 2 | 3>(1);
   const [form, setForm] = useState<AltaForm>(editar ? formDesde(editar) : FORM_INICIAL);
   const [errores, setErrores] = useState<AltaErrores>({});
@@ -281,6 +291,7 @@ function AltaDePersona({ editar, onCancelar }: { editar?: VinculoPersona; onCanc
         latitude: form.nivel === "signo" ? undefined : form.lugar?.latitude,
         longitude: form.nivel === "signo" ? undefined : form.lugar?.longitude
       });
+      onGuardada();
       router.push({ pathname: "/reading/vinculo-result", params: { id: guardada.relationshipProfileId } });
     } catch (err) {
       setFallo(err instanceof Error && err.message ? "No pudimos guardar a esta persona. Probá de nuevo en un momento." : "No pudimos guardar a esta persona.");
@@ -388,7 +399,7 @@ function AltaDePersona({ editar, onCancelar }: { editar?: VinculoPersona; onCanc
           ) : null}
 
           {paso === 3 ? (
-            <DatosPorNivel form={form} errores={errores} patch={patch} />
+            <DatosPorNivel form={form} errores={errores} patch={patch} lugarGuardado={editar?.birthPlaceLabel ?? null} />
           ) : null}
 
           {fallo ? (
@@ -416,11 +427,14 @@ function AltaDePersona({ editar, onCancelar }: { editar?: VinculoPersona; onCanc
 function DatosPorNivel({
   form,
   errores,
-  patch
+  patch,
+  lugarGuardado
 }: {
   form: AltaForm;
   errores: AltaErrores;
   patch: (p: Partial<AltaForm>) => void;
+  /** Al editar: el lugar que ya estaba guardado, como pista para volver a elegirlo. */
+  lugarGuardado?: string | null;
 }) {
   if (form.nivel === "signo") {
     return (
@@ -473,6 +487,7 @@ function DatosPorNivel({
       <BuscadorDeLugar
         rotulo={pideHora ? "LUGAR" : "LUGAR · OPCIONAL"}
         valor={form.lugar}
+        pista={lugarGuardado ?? undefined}
         onElegir={(lugar) => patch({ lugar })}
         error={errores.lugar}
       />
@@ -484,11 +499,14 @@ function DatosPorNivel({
 function BuscadorDeLugar({
   rotulo,
   valor,
+  pista,
   onElegir,
   error
 }: {
   rotulo: string;
   valor: AltaForm["lugar"];
+  /** Lugar guardado antes (sin coordenadas en el cliente): se muestra y hay que volver a elegirlo. */
+  pista?: string;
   onElegir: (lugar: AltaForm["lugar"]) => void;
   error?: string;
 }) {
@@ -541,11 +559,12 @@ function BuscadorDeLugar({
           setTexto(v);
           if (valor) onElegir(null);
         }}
-        placeholder="Ciudad, país"
+        placeholder={pista ?? "Ciudad, país"}
         autoCapitalize="words"
         error={error}
         style={styles.campo}
       />
+      {pista && !valor ? <VNota>Guardado: {pista}. Volvé a elegirlo de la lista para confirmar las coordenadas.</VNota> : null}
       {buscando ? <VNota>Buscando…</VNota> : null}
       {resultados.length > 0 ? (
         <View style={styles.resultados} accessibilityRole="list">
@@ -716,12 +735,16 @@ function Biblioteca({
           <VEtiqueta accessibilityRole="header">VÍNCULOS · TU LISTA</VEtiqueta>
           <VEtiqueta tono="gris">{n === 1 ? (desktop ? "1 PERSONA" : "1 persona guardada") : desktop ? `${n} PERSONAS` : `${n} personas guardadas`}</VEtiqueta>
         </View>
-        <VTitular>Tu lista</VTitular>
-        <VTexto>
-          {n === 1
-            ? `${activa.name} ya está guardada, con su nivel de datos y su comparación lista.`
-            : `${n} personas guardadas. Tocá a una para abrir su comparación; la elegida es ${activa.name}.`}
-        </VTexto>
+        {desktop ? <VTitular>Tu lista</VTitular> : null}
+        {desktop ? (
+          <VTexto>
+            {n === 1
+              ? listaOk
+                ? `${activa.name} ya está guardada, con su nivel de datos y su comparación lista.`
+                : `${activa.name} ya está guardada. Su comparación todavía no se pudo calcular: abajo dice por qué.`
+              : `${n} personas guardadas. Tocá a una para abrir su comparación; la elegida es ${activa.name}.`}
+          </VTexto>
+        ) : null}
         {desktop ? (
           <>
             {acciones}

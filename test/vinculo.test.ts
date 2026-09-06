@@ -174,13 +174,14 @@ describe("la biblioteca de personas guardadas (CORE-213)", () => {
     assert.equal(rotuloDeNivel("fecha"), "NIVEL 2 DE 3");
     assert.match(descripcionDeNivel("signo", false), /sin contactos/);
     assert.match(descripcionDeNivel("fecha", false), /sin casas ni ejes/);
-    assert.match(descripcionDeNivel("fecha", true), /incluye casas y ejes/);
-    assert.match(descripcionDeNivel("carta", true), /incluye casas y ejes/);
+    assert.match(descripcionDeNivel("fecha", true), /suma casas y ejes si tu carta también tiene hora/);
+    assert.match(descripcionDeNivel("carta", true), /suma casas y ejes si tu carta también tiene hora/);
   });
 
   it("un id de perfil se acepta sólo si tiene la forma de un id de Convex", () => {
     assert.equal(perfilIdValido("kn702nxfqb9cjmfey6qft7nwf58apw6w"), "kn702nxfqb9cjmfey6qft7nwf58apw6w");
-    assert.equal(perfilIdValido(" kn702nxfqb9c "), "kn702nxfqb9c");
+    assert.equal(perfilIdValido(" kn702nxfqb9cjmfey6qft7nwf58apw6w "), "kn702nxfqb9cjmfey6qft7nwf58apw6w");
+    assert.equal(perfilIdValido("kn702nxfqb9c"), null, "un id corto no es un id de Convex");
     assert.equal(perfilIdValido("../otra"), null);
     assert.equal(perfilIdValido(""), null);
     assert.equal(perfilIdValido(undefined), null);

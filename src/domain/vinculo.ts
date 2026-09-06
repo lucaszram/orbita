@@ -175,12 +175,12 @@ export function rotuloDeNivel(level: VinculoNivel): string {
 export function descripcionDeNivel(level: VinculoNivel, conHoraYLugar: boolean): string {
   if (level === "signo") return "Sólo el signo: lectura de tono, sin contactos.";
   if (level === "fecha" && !conHoraYLugar) return "Fecha: contactos entre planetas, sin casas ni ejes.";
-  return "Fecha, hora y lugar: la comparación incluye casas y ejes.";
+  return "Fecha, hora y lugar: la comparación suma casas y ejes si tu carta también tiene hora.";
 }
 
-/** Un id de perfil válido para pedir `synastry({ profileId })`; `null` si no lo es. */
+/** Un id de perfil con la forma de un id de Convex (32 caracteres); `null` si no lo es, así la query no rechaza el argumento. */
 export function perfilIdValido(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const limpio = value.trim();
-  return /^[a-z0-9]{10,64}$/.test(limpio) ? limpio : null;
+  return /^[a-z0-9]{32}$/.test(limpio) ? limpio : null;
 }

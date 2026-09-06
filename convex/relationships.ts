@@ -162,6 +162,15 @@ export const addPerson = action({
     const identity = await requireIdentity(ctx as any);
     const name = args.name.trim();
     if (name.length < 1 || name.length > 60) throw new Error("PERSON_NAME_INVALID");
+    // Al editar, la propiedad se comprueba ANTES de llamar al proveedor: un id
+    // ajeno no cuesta una llamada ni llega a la mutation.
+    if (args.profileId) {
+      const owned: any = await ctx.runQuery(internalApi.relationships.ownedProfile, {
+        tokenIdentifier: identity.tokenIdentifier,
+        profileId: args.profileId
+      });
+      if (!owned) throw new Error("RELATIONSHIP_PROFILE_NOT_FOUND");
+    }
     const relationshipType = args.relationshipType ? normalizeKey(args.relationshipType) : undefined;
     if (relationshipType && !RELATION_KINDS.has(relationshipType)) throw new Error("RELATION_KIND_INVALID");
 
@@ -314,11 +323,35 @@ export const persistPerson = internalMutation({
     if (profileId) {
       const existing = await ctx.db.get(profileId);
       if (!existing || existing.userId !== user._id) throw new Error("RELATIONSHIP_PROFILE_NOT_FOUND");
-      await ctx.db.replace(profileId, { ...record, createdAt: existing.createdAt });
+      // Renombrar no puede perder una carta ya calculada: si los insumos de la
+      // carta no cambiaron y el proveedor falló esta vez, se conserva la que
+      // había en vez de bajarla a `error`.
+      const sameInputs =
+        existing.level === record.level &&
+        existing.birthDate === record.birthDate &&
+        existing.birthTime === record.birthTime &&
+        existing.latitude === record.latitude &&
+        existing.longitude === record.longitude;
+      const keepChart = sameInputs && existing.chartStatus === "ready" && existing.chartPayload && record.chartStatus !== "ready";
+      const merged = keepChart
+        ? { ...record, chartStatus: "ready" as const, chartVersion: existing.chartVersion, chartPayload: existing.chartPayload }
+        : record;
+      await ctx.db.replace(profileId, { ...merged, createdAt: existing.createdAt });
       return { id: profileId };
     }
     const id = await ctx.db.insert("relationshipProfiles", { ...record, createdAt: now });
     return { id };
+  }
+});
+
+/** ¿Este perfil es de la persona con sesión? Para validar antes de llamar al proveedor. */
+export const ownedProfile = internalQuery({
+  args: { tokenIdentifier: v.string(), profileId: v.id("relationshipProfiles") },
+  handler: async (ctx, args) => {
+    const user = await findUserByTokenIdentifier(ctx, args.tokenIdentifier);
+    if (!user) return null;
+    const row = await ctx.db.get(args.profileId);
+    return row && row.userId === user._id ? { id: row._id } : null;
   }
 });
 
@@ -368,17 +401,6 @@ export const synastry = query({
     if (!person || person.userId !== user._id) return { status: "no_person" as const, person: null };
 
     const personSummary = personSummaryOf(person);
-    const personSummaryLegacy = {
-      id: person._id,
-      name: person.name as string,
-      relationshipType: (person.relationshipType as string | undefined) ?? null,
-      level: ((person.level as SynastryLevel | undefined) ?? inferLevel(person)) as SynastryLevel,
-      zodiacSign: (person.zodiacSign as string | undefined) ?? null,
-      birthDate: (person.birthDate as string | undefined) ?? null,
-      birthPlaceLabel: (person.birthPlaceLabel as string | undefined) ?? null,
-      chartStatus: (person.chartStatus as string | undefined) ?? (person.chartPayload ? "ready" : "not_needed")
-    };
-    void personSummaryLegacy;
 
     const natalChart = await findCurrentNatalChart(ctx, user._id);
     const chartA = extractNormalizedChartFromPayload(natalChart?.payload);
