@@ -15,7 +15,8 @@ export const NIVELES: ReadonlyArray<{ key: VinculoNivel; titulo: string; pide: s
 ];
 
 export const TIPOS_DE_VINCULO: ReadonlyArray<{ key: string; label: string }> = [
-  { key: "friendship", label: "Amistad" },
+  // Rótulos de los frames `1761:2776`: «Amiga», no «Amistad».
+  { key: "friendship", label: "Amiga" },
   { key: "romantic", label: "Pareja" },
   { key: "sibling", label: "Familia" },
   { key: "work_or_project", label: "Trabajo" }
