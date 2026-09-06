@@ -466,8 +466,8 @@ function AltaDePersona({
           <PBoton label={guardando ? "GUARDANDO…" : "GUARDAR PERSONA"} onPress={enviar} disabled={guardando} variante={desktop ? "hueso" : "cobre"} />
         )}
         {/* Volver y cancelar son salidas secundarias: enlaces mono, no botones (los frames no los dibujan). */}
-        {paso > 1 ? <PEnlace label="ATRÁS" onPress={() => (guardando ? undefined : setPaso((p) => (p - 1) as 1 | 2))} /> : null}
-        <PEnlace label="CANCELAR" onPress={() => (guardando ? undefined : onCancelar())} />
+        {paso > 1 ? <PEnlace label="ATRÁS" onPress={() => setPaso((p) => (p - 1) as 1 | 2)} disabled={guardando} /> : null}
+        <PEnlace label="CANCELAR" onPress={onCancelar} disabled={guardando} />
       </View>
       {!desktop ? <PNota style={styles.nota}>{t.nota}</PNota> : null}
     </>

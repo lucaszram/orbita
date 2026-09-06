@@ -165,12 +165,14 @@ export function PFila({
 }
 
 /** Enlace de pie en mono cobre: «VER LOS 16 CONTACTOS ›», «IR A …». */
-export function PEnlace({ label, onPress, href }: { label: string; onPress?: () => void; href?: Href }) {
+export function PEnlace({ label, onPress, href, disabled }: { label: string; onPress?: () => void; href?: Href; disabled?: boolean }) {
   const inner = (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
       accessibilityRole={href ? "link" : "button"}
-      style={({ pressed }) => [styles.enlace, pressed && styles.apagado]}
+      accessibilityState={{ disabled: !!disabled }}
+      style={({ pressed }) => [styles.enlace, (pressed || disabled) && styles.apagado]}
     >
       <PEtiqueta>{`${label}  ›`}</PEtiqueta>
     </Pressable>
