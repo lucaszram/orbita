@@ -1,5 +1,9 @@
 # Current Task
 
+## Los mocks de contenido sin uso desaparecen de src (CORE-266, 2026-09-06)
+
+**Cambios:** se borran 20 archivos sin ningún importador ni mención en tests: `src/content/{forecast,home,personality,solarReturn,sunSign,transit,values}Mock.ts`, `src/content/onboardingSteps.ts`, `src/components/{EmptyState,PickCardStrip,ReadingCard,RelationshipCard,SectionHeader,TopicSelector,WeeklyEnergyCard}.tsx`, `src/components/home/{OrbitalHero,SintoniaSection}.tsx`, `src/components/v492/CalcularCarta.tsx`, `src/onboarding/components/DataRow.tsx`, `src/services/supabase.ts`. La dependencia `@supabase/supabase-js` queda en `package.json` (config gris) para retirarla con su lockfile en una tarjeta aparte.
+
 ## La Vínculos singular sin importadores desaparece del repo (CORE-265, 2026-09-06)
 
 **Cambios:** se borra `src/screens/VinculoScreen.tsx`, huérfano desde CORE-247 (la web monta `VinculosScreen`; el nativo redirige a `/vinculos`). Nada más.
