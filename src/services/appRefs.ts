@@ -214,6 +214,47 @@ export type TransitDetailPayload = {
   access?: { isPro: boolean; personalized: boolean };
 };
 
+// --- CORE-207: el panorama de hoy -------------------------------------------
+
+export type TransitPanoramaPhase = "acercandose" | "exacto" | "integrandose";
+
+/** Una fila del panorama: un contacto activo de hoy con su identidad y su fase. */
+export type TransitPanoramaRow = {
+  transitId: string;
+  rank: number;
+  title: string;
+  transitPlanet: string;
+  natalPoint: string;
+  aspectType: string;
+  aspectEs: string;
+  aspectAngle: number | null;
+  natalHouse: number | null;
+  phase: TransitPanoramaPhase | null;
+  peakLabel: string | null;
+  /** 0–1 medido en tiempo contra `exactTime`; `null` sin ventana. Nunca un orbe en grados. */
+  closeness: number | null;
+  cadence?: string;
+  body: string;
+  startTime: string | null;
+  exactTime: string | null;
+  endTime: string | null;
+};
+
+/** Sobre de `transits.getPanorama`: siempre con `status`. */
+export type TransitPanorama =
+  | {
+      status: "ready";
+      localDate: string;
+      count: number;
+      rows: TransitPanoramaRow[];
+      /** Aspectos mayores publicados hoy por el proveedor; `null` en lecturas anteriores. La lista se corta en 8. */
+      activeTotal: number | null;
+      cadence: string;
+      access: { isPro: true; personalized: true };
+    }
+  | { status: "empty"; localDate: string; access: { isPro: true; personalized: true } }
+  | { status: "locked"; localDate: string; access: { isPro: false; personalized: false } };
+
 /** Respuesta de `transits.getDetail`: el contacto pedido, o la constancia de que
  *  no está en la lectura de hoy. Nunca otro tránsito en su lugar. */
 export type TransitDetailResult =
@@ -703,6 +744,14 @@ export const proposedApi = {
     "public",
     { localDate: string; transitId: string },
     TransitDetailResult
+  >,
+  // transits.getPanorama({ localDate }): el panorama de hoy (CORE-207). ACTION,
+  // misma lectura persistida del día que getToday / getDetail.
+  transitPanorama: anyApi.transits.getPanorama as FunctionReference<
+    "action",
+    "public",
+    { localDate: string },
+    TransitPanorama
   >,
   // TODO: pendiente backend — places.resolve({ query }): geocoding real para onboarding
   resolvePlace: anyApi.places.resolve as FunctionReference<"action", "public", { query: string }, PlaceLookup>,

@@ -1190,7 +1190,7 @@ export function buildWebB0PersonalityReadingPayload(chartPayload: unknown): WebB
   }) as WebB0PersonalityReadingPayload;
 }
 
-function normalizedTransitFromValue(value: unknown): NormalizedAstroTransit | null {
+export function normalizedTransitFromValue(value: unknown): NormalizedAstroTransit | null {
   const record = asRecord(value);
   const transitPlanet = normalizeKey(record.transitPlanet ?? record.transit_planet);
   const natalPoint = normalizeKey(record.natalPoint ?? record.natal_planet);
@@ -1512,11 +1512,11 @@ function aspectEs(value: unknown) {
   return aspectLabels[key] ?? key;
 }
 
-function asRecord(value: unknown): Record<string, unknown> {
+export function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
 }
 
-function asArray(value: unknown): unknown[] {
+export function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
@@ -2312,6 +2312,14 @@ export function buildDailyReadingPayloadFromAstrology(args: {
     highlightedTransit,
     selectedTransits,
     rankedTransits: rankedTransits.map((transit) => ({ ...transit, displayText: formatTransitDisplay(transit) })),
+    // Cuántos contactos publicó el proveedor y cuántos son aspectos mayores:
+    // el ranking se corta en `RANKED_TRANSITS_LIMIT`, y sin estos números un
+    // consumidor no puede decir «8 de 16» sin inventar el total.
+    transitTotals: {
+      provider: args.transits.length,
+      major: args.transits.filter((transit) => majorAspects.has(transit.aspectType)).length,
+      ranked: rankedTransits.length
+    },
     home,
     modules: home,
     topics,

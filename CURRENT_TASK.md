@@ -1,5 +1,35 @@
 # Current Task
 
+# Current Task
+
+## Tránsitos ordena el cielo de hoy en cualquier pantalla (CORE-207, 2026-09-06)
+
+**Objetivo:** que Tránsitos deje de abrir una lectura individual y muestre el
+panorama de hoy —el segmento AHORA— con la misma jerarquía en móvil y
+escritorio, según el carril de Tránsitos del tablero `02 · WEB — PARIDAD
+PROPUESTA` (`1731:2158` / `1737:2201`, `1732:2179` / `2014:2825`, `1729:2109` /
+`1730:2131`).
+
+**Contrato (aditivo):** `transits.getPanorama({ localDate })` (action), misma
+lectura persistida del día que `getToday` / `getDetail`; sobre con `status`
+`ready` | `empty` | `locked`. Derivación pura en `convex/lib/transitPanorama.ts`.
+Cada fila lleva el `transitId` que abre `/reading/transito?id=…` (CORE-208).
+
+**Decisiones:** la barra mide cercanía al punto exacto **en tiempo** (el
+proveedor no publica orbe en grados: no hay `0°43'` ni puntaje); sin ventana no
+hay barra ni chip; Free recibe `locked` y ve el frame bloqueado sin filas de
+relleno; el segmento «Tu momento» no se dibuja hasta CORE-209/210/211; el CTA de
+Plus va a `/paywall`. La lista y el bloque de Free van dentro de `ReadingBlock`
+para respetar el ancho de lectura dentro del lienzo `wide`.
+
+**Estado:** rama `orb/core-207-panorama-transitos` desde `main` `8a6858b`.
+28 casos nuevos (`transitPanorama` 19, `transitosPanorama` 9); piso 883 → 911. Revisión
+independiente: r1 rechazada (explicación del orden y total inventado) y r2 rechazada
+(residuos de copy en el plegable y en Free), ambas corregidas; el orden se explica como
+`transitPriority` y el total real viaja en `transitTotals`.
+Backend sincronizado en Convex dev `beaming-lobster-442`. Producción bloqueada
+por la divergencia `main` / `release/1.0.0` (ver Linear CORE-191/208).
+
 ## Vínculos — la primera persona y su comparación real (CORE-212, 2026-09-06)
 
 **Objetivo:** que Vínculos deje de ser «Próximamente»: alta de la primera
