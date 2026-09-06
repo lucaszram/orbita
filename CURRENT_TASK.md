@@ -19,7 +19,11 @@ afirmaba «no tomar el día del dispositivo» sobre `useBackendPersistInner` y
 `useOnboardingBirthDataSave` (camino VIVO) que el corte se había llevado; se
 borró `readTriadSign` (huérfano al irse `useOnboardingChartInner`); se quitó el
 import `useEffect`, ya sin uso; se retiró el header de sección que describía el
-hook borrado; y el guard del editor se reancló a
+hook borrado. **Revisión r2 (RECHAZADA) atendida:** se restauró también el
+header de la tríada pública (`useOnboardingComputeTriad`, vivo), que el mismo
+corte se había llevado; se repuso la línea en blanco antes del header «Alta
+durable»; y el JSDoc de `OnboardingChart.resolved` deja de hablar de una query
+de Convex que ya no existe. El guard del editor se reancló a
 `assert.ok(!/useOnboardingBirthDataSave/.test(EDITOR))`.
 
 **Declarado:** `useOnboardingSignupDraft` y `useOnboardingFinalize` NO se borran

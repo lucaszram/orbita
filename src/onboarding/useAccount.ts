@@ -557,12 +557,20 @@ function capitalizeSign(sign: string): string {
 }
 
 export type OnboardingChart = {
-  /** true una vez que la query de Convex resolvió (haya carta o no). */
+  /** true cuando la tríada quedó resuelta (`computeTriad` la devuelve calculada). */
   resolved: boolean;
   sun: string | null;
   moon: string | null;
   ascendant: string | null;
 };
+
+// ---------------------------------------------------------------------------
+// Tríada real SIN login: la calcula `publicOnboarding.computeTriad`, una acción
+// pública mínima (solo Sol/Luna/Ascendente). Antes se usaba el laboratorio
+// (`publicLab.previewDailyHome`), bloqueado en producción por diseño: el
+// cálculo fallaba siempre y el alta seguía de largo sin tríada. La zona horaria
+// la deriva el backend de las coordenadas; acá no se usa la del dispositivo.
+// ---------------------------------------------------------------------------
 
 const HAS_CONVEX = backendConfig.hasConvex;
 
@@ -765,6 +773,7 @@ function useOnboardingBirthDataSaveInner(): OnboardingBirthDataSave {
     [calculateChart, completeBirthData, ensureUser, isSignedIn, resolveTimezone]
   );
 }
+
 // ---------------------------------------------------------------------------
 // Alta durable: borrador remoto anónimo → Clerk → adjuntar → carta → readiness.
 //
