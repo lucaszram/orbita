@@ -1,27 +1,34 @@
 import type { ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 
-import { HOY_GUTTER, HoyEtiqueta, HoyMeta, HoyTitular } from "@/components/home/hoy/HoyLayout";
+import { HOY_GUTTER, HoyEnlace, HoyEtiqueta, HoyMeta, HoyTitular } from "@/components/home/hoy/HoyLayout";
 import type { HoyPrincipal } from "@/domain/hoyPrincipal";
+import { RUTA_TU_MOMENTO } from "@/domain/hoyPrincipal";
 import { orbita } from "@/theme/orbita";
 
 /**
  * `LO PRINCIPAL HOY`: la síntesis editorial que encabeza la sección, como en
- * los frames (Build 30 `1688:109`, WEB V1 `1718:2136`): rótulo mono, la frase
- * grande en serif y debajo una fila mono con el contacto que la sostiene.
+ * los frames WEB V1 `1718:2136` / `1718:1997` (CORE-237): rótulo mono, la
+ * frase completa de la lectura en serif, debajo una fila mono con el contexto
+ * y el enlace «VER TU MOMENTO ›».
  *
  * El titular no se inventa: es la lectura que el backend escribió para el
- * contacto que él mismo puso primero. Va arriba y sin número —los tres bloques
- * numerados empiezan después—, y sin el enlace «Ver tu momento» del frame,
- * porque ese destino no existe todavía como ruta.
+ * contacto que él mismo puso primero. La fila de contexto es el tema del año
+ * (`CONTEXTO · TU AÑO DE …`, de `momento.getTemaDelAno`) cuando la cuenta lo
+ * tiene calculado; si no —Free, sin hora exacta, o todavía en vuelo— es el
+ * contacto que sostiene la frase (`CONTACTO · …`). Nunca las dos, nunca una
+ * inventada.
  */
-export function HoyPrincipalBloque({ principal }: { principal: HoyPrincipal }) {
+export function HoyPrincipalBloque({ principal, contexto }: { principal: HoyPrincipal; contexto: string | null }) {
   return (
     <HoyPrincipalEstado>
       <HoyTitular style={styles.titular}>{principal.titular}</HoyTitular>
-      {principal.aspecto ? (
+      {contexto ? (
+        <HoyMeta items={["CONTEXTO", contexto.toLocaleUpperCase("es")]} style={styles.contacto} />
+      ) : principal.aspecto ? (
         <HoyMeta items={["CONTACTO", principal.aspecto.toLocaleUpperCase("es")]} style={styles.contacto} />
       ) : null}
+      <HoyEnlace href={RUTA_TU_MOMENTO}>VER TU MOMENTO</HoyEnlace>
     </HoyPrincipalEstado>
   );
 }
@@ -45,5 +52,6 @@ const styles = StyleSheet.create({
   principal: { paddingHorizontal: HOY_GUTTER, paddingTop: orbita.spacing.xl },
   rotulo: { color: orbita.colors.mutedDim },
   titular: { fontSize: 30, lineHeight: 38, marginTop: orbita.spacing.md },
+  // El frame 1440 sube la frase a 36/44: es la síntesis del día, no un bloque.
   contacto: { marginTop: orbita.spacing.lg }
 });
