@@ -77,8 +77,10 @@ import { pathToFileURL } from "node:url";
  * La biblioteca de Vínculos como el frame (CORE-235) suma 3 casos en `vinculo.test.ts`: 1009 + 3.
  *
  * La comparación de Vínculos como el frame (CORE-236) suma 5 casos en `vinculo.test.ts`: 1012 + 5.
+ *
+ * Tránsitos honra `?segmento=momento` (CORE-240) suma 2 casos en `hoyPrincipal.test.ts`: 1017 + 2.
  */
-export const DEFAULT_MINIMUM = 1017;
+export const DEFAULT_MINIMUM = 1019;
 
 /**
  * Lee un contador del resumen final del runner de Node.
