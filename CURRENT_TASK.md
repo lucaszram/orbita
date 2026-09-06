@@ -1,5 +1,28 @@
 # Current Task
 
+## El alta de Vínculos sigue el paso a paso del frame (CORE-234, 2026-09-06)
+
+**Objetivo:** que los tres pasos del alta reproduzcan los frames `1761:2776`
+→ `1761:2893` → `1761:3012` (390): cabecera «NUEVA PERSONA», tarjeta con el
+título del paso, los tramos y la ayuda; debajo los campos (NOMBRE, TIPO DE
+VÍNCULO con Amiga / Pareja / Familia / Trabajo; opciones de nivel con rótulo
+derecho y selección con borde cobre; FECHA y HORA en fila, PRECISIÓN, LUGAR),
+el CTA en cobre (CONTINUAR / GUARDAR PERSONA) y la nota del paso al pie. En
+1440 la tarjeta es la columna de trabajo y lleva los campos adentro. Módulo
+vinculo.
+
+**Cambios:** `VinculosScreen`: la barra móvil recibe el rótulo del alta
+(«NUEVA PERSONA» / «EDITAR DATOS» / «REEMPLAZAR PERSONA») por `onCabecera`;
+`AltaDePersona` separa la tarjeta de los campos y los monta fuera de ella en
+móvil; ATRÁS y CANCELAR pasan a enlaces mono (los frames no dibujan botones
+secundarios); la nota del paso va al pie en móvil. `src/domain/vinculo.ts`:
+«Amiga» en vez de «Amistad» (misma clave `friendship`).
+
+**Decisiones:** sin cambio de contrato ni de validaciones. Editar y
+reemplazar reutilizan el mismo alta (CORE-213/214).
+
+**Estado:** rama `orb/core-234-alta-vinculos` desde main 30bb88e.
+
 ## El ranking de Hoy se lee como el de Tránsitos (CORE-238, 2026-09-06)
 
 **Objetivo:** que el ranking de Hoy siga los frames WEB V1 `1991:2775` /

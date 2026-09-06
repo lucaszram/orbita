@@ -36,7 +36,7 @@ import { Column, Columns } from "@/components/orbita/Layout";
 import { H2, H3, OrbitaScreen, Section } from "@/components/orbita/kit";
 import { GuestState } from "@/components/orbita/GuestState";
 import { ErrorState, MinimalLoading } from "@/components/orbita/states";
-import { PBarra, PBoton, PEncabezado, PEtiqueta, PNota, PTarjeta, PTexto } from "@/components/transitos/PanoramaUI";
+import { PBarra, PBoton, PEncabezado, PEnlace, PEtiqueta, PNota, PTarjeta, PTexto } from "@/components/transitos/PanoramaUI";
 import { VCampo, VCerco, VChip, VInicial, VOpcion, VTramos } from "@/components/vinculos/VinculosUI";
 import {
   type AltaErrores,
@@ -72,9 +72,12 @@ export function VinculosScreen() {
   useRequireProfile();
   const { isLive, isAuthLoading, userError, retryUser, auth } = useLiveApp();
   const guest = !isAuthLoading && !userError && !auth?.isSignedIn;
+  // La barra móvil dice qué está pasando en el alta («NUEVA PERSONA», frame
+  // `1761:2776`); fuera del alta muestra la fecha, como el resto de la app.
+  const [cabecera, setCabecera] = useState<string | undefined>(undefined);
 
   return (
-    <OrbitaScreen canvas="wide">
+    <OrbitaScreen canvas="wide" right={cabecera}>
       <Section>
         {userError ? (
           <ErrorState onRetry={retryUser} />
@@ -88,7 +91,7 @@ export function VinculosScreen() {
           <MinimalLoading />
         ) : (
           <VCerco fallback={(reintentar) => <ErrorState onRetry={reintentar} />}>
-            <VinculosVivo />
+            <VinculosVivo onCabecera={setCabecera} />
           </VCerco>
         )}
       </Section>
@@ -102,10 +105,15 @@ export function VinculosScreen() {
  * y su comparación (`synastry`, reactiva). Editar reutiliza el alta con los
  * datos cargados (CORE-213).
  */
-function VinculosVivo() {
+function VinculosVivo({ onCabecera }: { onCabecera: (rotulo: string | undefined) => void }) {
   const biblioteca = useQuery(appCoreApi.relationships.listPeople, {});
   const comparacion = useQuery(appCoreApi.relationships.synastry, {});
   const [modo, setModo] = useState<{ kind: "lista" } | { kind: "limite" } | { kind: "alta"; editar?: VinculoPersona; reemplazar?: boolean }>({ kind: "lista" });
+  const rotuloDeCabecera = modo.kind === "alta" ? (modo.reemplazar ? "REEMPLAZAR PERSONA" : modo.editar ? "EDITAR DATOS" : "NUEVA PERSONA") : undefined;
+  useEffect(() => {
+    onCabecera(rotuloDeCabecera);
+    return () => onCabecera(undefined);
+  }, [onCabecera, rotuloDeCabecera]);
   if (biblioteca === undefined || comparacion === undefined) return <MinimalLoading />;
   // CORE-214: «Agregar» abre el alta, o el límite cuando Free ya usó su cupo.
   // El cupo lo trae el servidor (`access`), derivado del entitlement real.
@@ -392,20 +400,17 @@ function AltaDePersona({
       <PEncabezado izquierda={reemplazar ? "VÍNCULOS · REEMPLAZAR" : editar ? "VÍNCULOS · EDITAR" : "VÍNCULOS · AGREGAR"} derecha={`PASO ${paso} DE 3`} />
       <Titular>{t.titular}</Titular>
       <PTexto style={styles.texto}>{t.texto}</PTexto>
-      <PNota style={styles.nota}>{t.nota}</PNota>
+      {/* En móvil la nota del paso va al pie, después del botón (frames 390). */}
+      {desktop ? <PNota style={styles.nota}>{t.nota}</PNota> : null}
       {reemplazar && editar ? <PNota style={styles.nota}>Reemplazar borra la comparación guardada de {editar.name}.</PNota> : null}
     </>
   );
 
-  const derecha = (
-    <PTarjeta>
-      <View style={styles.tarjetaCabecera}>
-        <Text style={styles.tarjetaTitulo}>{t.tarjeta}</Text>
-        <PEtiqueta tono="gris">PASO {paso} DE 3</PEtiqueta>
-      </View>
-      <VTramos activos={paso} accessibilityLabel={`Paso ${paso} de 3`} style={styles.progreso} />
-      <PNota style={styles.notaCorta}>{t.ayuda}</PNota>
-
+  // Frames `1761:2776` → `1761:3012`: la tarjeta lleva el título del paso, los
+  // tramos y la ayuda; los campos y el botón van DEBAJO de la tarjeta en móvil
+  // y dentro de ella en escritorio (donde la tarjeta es la columna de trabajo).
+  const campos = (
+    <>
       {paso === 1 ? (
         <>
           <VCampo
@@ -460,10 +465,31 @@ function AltaDePersona({
         ) : (
           <PBoton label={guardando ? "GUARDANDO…" : "GUARDAR PERSONA"} onPress={enviar} disabled={guardando} variante={desktop ? "hueso" : "cobre"} />
         )}
-        {paso > 1 ? <PBoton label="ATRÁS" variante="contorno" onPress={() => setPaso((p) => (p - 1) as 1 | 2)} disabled={guardando} /> : null}
-        <PBoton label="CANCELAR" variante="contorno" onPress={onCancelar} disabled={guardando} />
+        {/* Volver y cancelar son salidas secundarias: enlaces mono, no botones (los frames no los dibujan). */}
+        {paso > 1 ? <PEnlace label="ATRÁS" onPress={() => setPaso((p) => (p - 1) as 1 | 2)} disabled={guardando} /> : null}
+        <PEnlace label="CANCELAR" onPress={onCancelar} disabled={guardando} />
       </View>
+      {!desktop ? <PNota style={styles.nota}>{t.nota}</PNota> : null}
+    </>
+  );
+
+  const tarjeta = (
+    <PTarjeta>
+      <View style={styles.tarjetaCabecera}>
+        <Text style={styles.tarjetaTitulo}>{t.tarjeta}</Text>
+        <PEtiqueta tono="gris">PASO {paso} DE 3</PEtiqueta>
+      </View>
+      <VTramos activos={paso} accessibilityLabel={`Paso ${paso} de 3`} style={styles.progreso} />
+      <PNota style={styles.notaCorta}>{t.ayuda}</PNota>
+      {desktop ? campos : null}
     </PTarjeta>
+  );
+
+  const derecha = (
+    <>
+      {tarjeta}
+      {!desktop ? campos : null}
+    </>
   );
 
   return <DosColumnas izquierda={izquierda} derecha={derecha} />;
@@ -914,7 +940,7 @@ const styles = StyleSheet.create({
   rotuloGrupo: { marginTop: orbita.spacing.xl },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: orbita.spacing.sm, marginTop: orbita.spacing.md },
   opciones: { marginTop: orbita.spacing.sm },
-  botones: { flexDirection: "row", flexWrap: "wrap", gap: orbita.spacing.md, marginTop: orbita.spacing.xl },
+  botones: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: orbita.spacing.lg, marginTop: orbita.spacing.xl },
   fallo: { color: orbita.colors.danger, fontFamily: orbita.fonts.body, fontSize: 13, lineHeight: 18, marginTop: orbita.spacing.lg },
 
   resultados: {
