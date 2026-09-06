@@ -70,6 +70,7 @@ describe("deleteAccountData", () => {
         "dailyReadings",
         "transitReadings",
         "transitTimelineCaches",
+        "momentoAnalyses",
         "dailyGuides",
         "voidAnswers",
         "voidPromptSets",

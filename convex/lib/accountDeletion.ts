@@ -31,6 +31,7 @@ export const USER_SCOPED_DELETION_STEPS: readonly IndexedDeletionStep[] = [
   { table: "dailyReadings", index: "by_user", field: "userId" },
   { table: "transitReadings", index: "by_user_date", field: "userId" },
   { table: "transitTimelineCaches", index: "by_user_period", field: "userId" },
+  { table: "momentoAnalyses", index: "by_user_date_kind", field: "userId" },
   { table: "dailyGuides", index: "by_user_date", field: "userId" },
   { table: "voidAnswers", index: "by_user_date", field: "userId" },
   { table: "voidPromptSets", index: "by_user_date", field: "userId" },

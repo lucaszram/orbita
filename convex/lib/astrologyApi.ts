@@ -15,7 +15,7 @@ const DEFAULT_HOUSE_SYSTEM = "placidus";
 const DEFAULT_ASTROLOGY_API_LANGUAGE = "en";
 const DEFAULT_LOCATION_MAX_ROWS = 10;
 
-type AstrologyApiConfig = {
+export type AstrologyApiConfig = {
   baseUrl: string;
   userId?: string;
   apiKey?: string;
@@ -23,7 +23,7 @@ type AstrologyApiConfig = {
   houseSystem: string;
 };
 
-type AstrologyApiBirthRequest = {
+export type AstrologyApiBirthRequest = {
   day: number;
   month: number;
   year: number;
@@ -80,7 +80,7 @@ export type DailyTransitProviderResult = Omit<AstrologyProviderRunResult, "norma
   };
 };
 
-function getAstrologyApiConfig(): AstrologyApiConfig {
+export function getAstrologyApiConfig(): AstrologyApiConfig {
   return {
     baseUrl: (process.env.ASTROLOGY_API_BASE_URL ?? DEFAULT_ASTROLOGY_API_BASE_URL).replace(/\/$/, ""),
     userId: process.env.ASTROLOGY_API_USER_ID,
@@ -90,7 +90,7 @@ function getAstrologyApiConfig(): AstrologyApiConfig {
   };
 }
 
-function hasAstrologyApiCredentials(config: AstrologyApiConfig) {
+export function hasAstrologyApiCredentials(config: AstrologyApiConfig) {
   return Boolean(config.userId && config.apiKey);
 }
 
@@ -225,7 +225,7 @@ function buildBirthRequest(input: BirthChartInput, houseSystem: string) {
   };
 }
 
-async function postAstrologyApi(
+export async function postAstrologyApi(
   config: AstrologyApiConfig,
   endpoint: string,
   body: unknown,

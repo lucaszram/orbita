@@ -43,14 +43,26 @@ export function PNota({ children, style }: { children: ReactNode; style?: object
 }
 
 /**
- * Chip de segmento (AHORA). Mientras «Tu momento» no exista (CORE-209/210/211)
- * hay un solo segmento y no se anuncia como pestaña: es un rótulo, no un control.
+ * Chip de segmento (AHORA · TU MOMENTO). Con `onPress` es una pestaña real
+ * (rol `tab`, estado seleccionado); sin él, un rótulo.
  */
-export function PSegmento({ label, activo }: { label: string; activo: boolean }) {
+export function PSegmento({ label, activo, onPress }: { label: string; activo: boolean; onPress?: () => void }) {
+  if (!onPress) {
+    return (
+      <View style={[styles.segmento, activo && styles.segmentoActivo]} accessibilityRole="header">
+        <Text style={[styles.segmentoTexto, activo && styles.segmentoTextoActivo]}>{label}</Text>
+      </View>
+    );
+  }
   return (
-    <View style={[styles.segmento, activo && styles.segmentoActivo]} accessibilityRole="header">
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="tab"
+      accessibilityState={{ selected: activo }}
+      style={({ pressed }) => [styles.segmento, activo && styles.segmentoActivo, pressed && styles.apagado]}
+    >
       <Text style={[styles.segmentoTexto, activo && styles.segmentoTextoActivo]}>{label}</Text>
-    </View>
+    </Pressable>
   );
 }
 

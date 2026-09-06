@@ -48,8 +48,13 @@ import { pathToFileURL } from "node:url";
  * La biblioteca de personas guardadas (CORE-213) suma 4 casos en
  * `vinculo.test.ts` (línea de persona, resumen del vínculo, nivel, id de
  * perfil): 946 + 4.
+ *
+ * Tu momento · Estación vital (CORE-209) suma 20 casos: 13 en
+ * `estacionVital.test.ts` (fase, ángulo, fechas, sin hora, límites, fallos,
+ * normalizador tropical) y 7 en `momento.test.ts` (copy, números, fechas,
+ * estado): 950 + 20.
  */
-export const DEFAULT_MINIMUM = 950;
+export const DEFAULT_MINIMUM = 970;
 
 /**
  * Lee un contador del resumen final del runner de Node.
