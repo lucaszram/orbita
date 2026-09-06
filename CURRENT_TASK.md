@@ -1,5 +1,28 @@
 # Current Task
 
+## Tránsitos Ahora y Tu momento se ven como el frame con Plus (CORE-240, 2026-09-06)
+
+**Objetivo:** verificar en vivo, con Plus en dev, Ahora (`1737:2201` /
+`1731:2158`), el orden (`2014:2825` / `1732:2179`), el hub de Tu momento
+(`2022:2875` / `1740:2247`), la estación vital, el tema del año y los cuatro
+ritmos, y corregir cada desvío de composición, copy o enlaces. Módulo
+transitos.
+
+**Cambios (parte sin Plus):** «Ver tu momento» en Hoy (CORE-237) llega a
+`/transito?segmento=momento`, pero Tránsitos ignoraba el parámetro y abría
+siempre Ahora. `TransitosScreen` arranca con el segmento que pide la URL
+(`segmentoDeRuta`, en `src/domain/hoyPrincipal.ts` junto a `RUTA_TU_MOMENTO`)
+y lo vuelve a aplicar si el parámetro cambia con la pantalla abierta; sólo
+«momento» cambia el segmento, cualquier otro valor deja Ahora.
+
+**Pendiente (bloqueo):** la verificación con Plus exige el entitlement en
+`beaming-lobster-442` para la cuenta de Lucas (tabla `subscriptions` vacía al
+2026-09-06); el `convex import` está bloqueado para el agente. Cuando Lucas lo
+corra, se cotejan Ahora, el orden y las tres capas de Tu momento en 390 y 1440.
+
+**Estado:** rama `orb/core-240-transitos-plus` desde main 7922a10. Piso del
+gate 1017 → 1019.
+
 ## La comparación de Vínculos se ve como el frame (CORE-236, 2026-09-06)
 
 **Objetivo:** que la comparación reproduzca `1757:2674` (1440) y `1757:2515`

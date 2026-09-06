@@ -36,13 +36,16 @@
  *
  * El segmento «Tu momento» (CORE-209) abre el capítulo actual: la estación
  * vital con cálculo real y las capas 02/03 declaradas pendientes hasta
- * CORE-210/211. El segmento elegido se conserva en la pantalla, no en la URL.
+ * CORE-210/211. El segmento elegido se conserva en la pantalla; la URL sólo
+ * lo pide al entrar (`?segmento=momento` desde «Ver tu momento» en Hoy,
+ * CORE-240) y cada nuevo pedido vuelve a aplicarlo.
  */
 import { useEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useAction } from "convex/react";
 import { OrbitaScreen, Section } from "@/components/orbita/kit";
+import { segmentoDeRuta } from "@/domain/hoyPrincipal";
 import { Column, Columns, ReadingBlock } from "@/components/orbita/Layout";
 import { GuestState } from "@/components/orbita/GuestState";
 import { EmptyState, ErrorState, MinimalLoading } from "@/components/orbita/states";
@@ -126,8 +129,15 @@ function TransitosLive() {
   const getPanorama = useAction(proposedApi.transitPanorama);
   const [estado, setEstado] = useState<PanoramaEstado>({ kind: "cargando" });
   const [intento, setIntento] = useState(0);
-  const [segmento, setSegmento] = useState<Segmento>("ahora");
+  const params = useLocalSearchParams<{ segmento?: string | string[] }>();
+  const [segmento, setSegmento] = useState<Segmento>(() => segmentoDeRuta(params.segmento));
   const localDate = useCanonicalLocalDate();
+
+  // «Ver tu momento» desde Hoy llega con `?segmento=momento`; si la pantalla ya
+  // estaba abierta en Ahora, el nuevo pedido también la cambia.
+  useEffect(() => {
+    if (params.segmento !== undefined) setSegmento(segmentoDeRuta(params.segmento));
+  }, [params.segmento]);
 
   useEffect(() => {
     if (!localDate) return;

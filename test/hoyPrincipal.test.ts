@@ -7,9 +7,12 @@
  * de verdad: no hay una sola afirmación sobre el texto del archivo.
  */
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 
-import { contarModulos, contextoDelAno, esLecturaPlantilla, etiquetaDeContactosActivos, etiquetaDeModulos, filaDeHoyComoVista, filasDelPanoramaParaHoy, guiaPendiente, hoyBloques, hoyPrincipal, hoyRanking, numeroDeBloque, partesDeContacto, principalDesdePanorama } from "../src/domain/hoyPrincipal";
+import { contarModulos, contextoDelAno, esLecturaPlantilla, etiquetaDeContactosActivos, etiquetaDeModulos, filaDeHoyComoVista, filasDelPanoramaParaHoy, guiaPendiente, hoyBloques, hoyPrincipal, hoyRanking, numeroDeBloque, partesDeContacto, principalDesdePanorama, RUTA_TU_MOMENTO, segmentoDeRuta } from "../src/domain/hoyPrincipal";
 import type { DailyGuidePayload } from "../src/services/appRefs";
 
 /** Un payload real mínimo; cada test pisa sólo lo que le importa. */
@@ -347,5 +350,22 @@ describe("el ranking de Hoy como el de Tránsitos (CORE-238)", () => {
     const vista = filaDeHoyComoVista({ clave: "k", rango: 2, aspecto: "Marte en Cáncer trígono tu Sol (casa 7)", titulo: "Marte trígono tu Sol", planeta: "Marte", punto: "Sol", casa: 7, transitId: "marte-trine-sun", lectura: null });
     assert.deepEqual(vista, { transitId: "marte-trine-sun", rango: 2, titulo: "Marte trígono tu Sol", linea: "Marte · Sol", chip: null, meta: "CASA 7", barra: null, cuerpo: "", cadencia: null });
     assert.equal(filaDeHoyComoVista({ clave: "k", rango: 1, aspecto: "a", titulo: "a", planeta: null, punto: null, casa: null, transitId: null, lectura: null }), null, "sin identidad no hay enlace");
+  });
+});
+
+describe("Tránsitos honra el segmento que pide la URL (CORE-240)", () => {
+  it("sólo «momento» cambia el segmento inicial; lo demás deja Ahora", () => {
+    assert.equal(segmentoDeRuta("momento"), "momento");
+    assert.equal(segmentoDeRuta(["momento"]), "momento");
+    assert.equal(segmentoDeRuta("ahora"), "ahora");
+    assert.equal(segmentoDeRuta(undefined), "ahora");
+    assert.equal(segmentoDeRuta("plus"), "ahora");
+    assert.equal(segmentoDeRuta(RUTA_TU_MOMENTO.params.segmento), "momento");
+  });
+
+  it("la pantalla arranca con el segmento de la URL y vuelve a aplicarlo cuando cambia", () => {
+    const fuente = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "src", "screens", "TransitosScreen.tsx"), "utf8");
+    assert.match(fuente, /useState<Segmento>\(\(\) => segmentoDeRuta\(params\.segmento\)\)/);
+    assert.match(fuente, /if \(params\.segmento !== undefined\) setSegmento\(segmentoDeRuta\(params\.segmento\)\);/);
   });
 });

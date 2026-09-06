@@ -242,6 +242,16 @@ export function hoyBloques(cumplelunaHoy: boolean): readonly HoyBloqueKey[] {
 export const RUTA_TU_MOMENTO = { pathname: "/transito", params: { segmento: "momento" } } as const;
 
 /**
+ * Qué segmento de Tránsitos pide la URL (`?segmento=momento`, CORE-240). Sólo
+ * «momento» cambia el segmento inicial; cualquier otra cosa —nada, «ahora»,
+ * un valor inventado o un array— deja «Ahora», que es el frame de entrada.
+ */
+export function segmentoDeRuta(valor: unknown): "ahora" | "momento" {
+  const crudo = Array.isArray(valor) ? valor[0] : valor;
+  return crudo === "momento" ? "momento" : "ahora";
+}
+
+/**
  * La línea `CONTEXTO · TU AÑO DE …` de lo principal: el tema del año de la
  * profección (`momento.getTemaDelAno`, CORE-210) escrito como en el frame
  * (`TU AÑO DE RUTINAS, TAREAS Y ORGANIZACIÓN COTIDIANA`). `null` cuando el
