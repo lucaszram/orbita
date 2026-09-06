@@ -1,5 +1,24 @@
 # Current Task
 
+## Vínculos explica el límite Free (CORE-214, 2026-09-06)
+
+**Objetivo:** que una cuenta Free que alcanza su cupo conserve sus
+comparaciones y vea una entrada honesta a Plus, según los frames Free cupo
+agotado (`2096:3027` / `1757:2579`) y Free una persona (`2092:2975` /
+`1757:2475`) de CORE-142.
+
+**Contrato (aditivo):** `listPeople.access` derivado del entitlement real
+(`personAccess`); `addPerson` sin `profileId` falla cerrado al cupo
+(`RELATIONSHIP_LIMIT_REACHED`) antes del proveedor; reemplazar = `addPerson`
+con `profileId` y datos nuevos.
+
+**Decisiones:** no hay contador local; alcanzar el cupo no oculta ni borra;
+«Agregar» con el cupo lleno abre el límite (Plus o reemplazar) en vez del
+alta; sin precios ni beneficios inventados (van en el paywall).
+
+**Estado:** rama `orb/core-214-limite-free` desde `main` `c25cb8e`. 4 casos
+nuevos; piso 970 → 974 (rebasada sobre CORE-209).
+
 ## Tu momento abre la estación vital (CORE-209, 2026-09-06)
 
 **Objetivo:** que Tránsitos ofrezca el segmento «Tu momento» y que Estación

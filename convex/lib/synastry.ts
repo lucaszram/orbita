@@ -344,3 +344,26 @@ export function synastryPrecision(args: {
 
 /** Cuántos contactos se muestran en Free antes de invitar a Plus. */
 export const FREE_CONTACT_LIMIT = 3;
+
+/** Cuántas personas guarda Free (CORE-214). Plus no tiene tope. */
+export const FREE_PERSON_LIMIT = 1;
+
+export type PersonAccess = {
+  isPro: boolean;
+  /** `null` sin tope. */
+  limit: number | null;
+  /** Cuántas personas más se pueden guardar; `null` sin tope. */
+  remaining: number | null;
+  atLimit: boolean;
+};
+
+/**
+ * El cupo se deriva del entitlement real y de cuántas personas hay guardadas:
+ * no se guarda un contador. Alcanzar el cupo no borra ni oculta a nadie; sólo
+ * impide crear una persona nueva (reemplazar o editar sigue permitido).
+ */
+export function personAccess(args: { isPro: boolean; count: number }): PersonAccess {
+  if (args.isPro) return { isPro: true, limit: null, remaining: null, atLimit: false };
+  const remaining = Math.max(0, FREE_PERSON_LIMIT - Math.max(0, args.count));
+  return { isPro: false, limit: FREE_PERSON_LIMIT, remaining, atLimit: remaining === 0 };
+}

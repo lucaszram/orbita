@@ -12,7 +12,9 @@ import type { NormalizedAstroChart, NormalizedAstroPlacement } from "../convex/l
 import {
   DIMENSION_BODIES,
   FREE_CONTACT_LIMIT,
+  FREE_PERSON_LIMIT,
   LUMINARY_ORB_BONUS,
+  personAccess,
   SYNASTRY_ORBS,
   chartHasRealTime,
   comparablePoints,
@@ -214,6 +216,14 @@ describe("dimensiones y resumen", () => {
 
   it("Free muestra tres contactos antes de invitar a Plus", () => {
     assert.equal(FREE_CONTACT_LIMIT, 3);
+  });
+
+  it("el cupo de personas sale del entitlement y del conteo: Free una, Plus sin tope (CORE-214)", () => {
+    assert.equal(FREE_PERSON_LIMIT, 1);
+    assert.deepEqual(personAccess({ isPro: false, count: 0 }), { isPro: false, limit: 1, remaining: 1, atLimit: false });
+    assert.deepEqual(personAccess({ isPro: false, count: 1 }), { isPro: false, limit: 1, remaining: 0, atLimit: true });
+    assert.deepEqual(personAccess({ isPro: false, count: 3 }), { isPro: false, limit: 1, remaining: 0, atLimit: true });
+    assert.deepEqual(personAccess({ isPro: true, count: 9 }), { isPro: true, limit: null, remaining: null, atLimit: false });
   });
 });
 

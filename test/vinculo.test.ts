@@ -13,6 +13,8 @@ import {
   NIVELES,
   SIGNOS,
   TIPOS_DE_VINCULO,
+  accionDeAgregar,
+  copyDeListaVacia,
   descripcionDeNivel,
   escalaDeDimensiones,
   etiquetaDeNivel,
@@ -22,9 +24,11 @@ import {
   horaNormalizada,
   inicial,
   lineaDePersona,
+  notaDePlan,
   numeroDeNivel,
   perfilIdValido,
   resumenDeVinculo,
+  rotuloDeCupo,
   rotuloDeNivel,
   titularDeContactos,
   validarAlta
@@ -185,5 +189,33 @@ describe("la biblioteca de personas guardadas (CORE-213)", () => {
     assert.equal(perfilIdValido("../otra"), null);
     assert.equal(perfilIdValido(""), null);
     assert.equal(perfilIdValido(undefined), null);
+  });
+});
+
+describe("el límite Free, dicho con honestidad (CORE-214)", () => {
+  const free = { isPro: false, limit: 1, remaining: 0, atLimit: true };
+  const freeLibre = { isPro: false, limit: 1, remaining: 1, atLimit: false };
+  const plus = { isPro: true, limit: null, remaining: null, atLimit: false };
+
+  it("el rótulo del cupo cuenta contra el límite en Free y sin límite en Plus", () => {
+    assert.equal(rotuloDeCupo(free, 1, true), "1 DE 1");
+    assert.equal(rotuloDeCupo(freeLibre, 0, true), "0 DE 1");
+    assert.equal(rotuloDeCupo(free, 1, false), "1 persona incluida");
+    assert.equal(rotuloDeCupo(freeLibre, 0, false), "0 de 1 persona");
+    assert.equal(rotuloDeCupo(plus, 3, true), "3 PERSONAS");
+    assert.equal(rotuloDeCupo(plus, 1, false), "1 persona guardada");
+  });
+
+  it("la nota del plan y la lista vacía no prometen cupos que el plan no tiene", () => {
+    assert.equal(notaDePlan(free), "Órbita Free incluye una persona.");
+    assert.doesNotMatch(notaDePlan(plus), /Plus|Free/, "a quien ya es Plus no se le vende Plus");
+    assert.match(copyDeListaVacia(freeLibre).texto, /Con Órbita Free podés guardar una\.$/);
+    assert.doesNotMatch(copyDeListaVacia(plus).texto, /Free/);
+  });
+
+  it("agregar abre el alta salvo que Free ya haya usado su cupo: entonces muestra el límite", () => {
+    assert.equal(accionDeAgregar(freeLibre), "alta");
+    assert.equal(accionDeAgregar(free), "limite");
+    assert.equal(accionDeAgregar(plus), "alta");
   });
 });
