@@ -142,12 +142,12 @@ function ListaVacia({ onAgregar }: { onAgregar: () => void }) {
       <Column weight={1}>
         <View style={styles.encabezado}>
           <VEtiqueta accessibilityRole="header">VÍNCULOS · TU LISTA</VEtiqueta>
-          <VEtiqueta tono="gris">{desktop ? "0 DE 1" : "0 de 1 persona"}</VEtiqueta>
+          <VEtiqueta tono="gris">{desktop ? "0 PERSONAS" : "0 personas"}</VEtiqueta>
         </View>
         <VTitular>{desktop ? "Todavía no guardaste a nadie." : "Vínculos compara tu carta con la de otra persona."}</VTitular>
         <VTexto>
           {desktop
-            ? "Vínculos compara tu carta con la de otra persona. Con Órbita Free podés guardar una."
+            ? "Vínculos compara tu carta con la de otra persona. Guardá a la primera y su comparación queda en tu lista."
             : "Cada dato que cargues de esa persona abre una capa más de lectura."}
         </VTexto>
         {desktop ? (
@@ -178,7 +178,7 @@ function ListaVacia({ onAgregar }: { onAgregar: () => void }) {
             <View style={styles.cta}>
               <VBoton label="AGREGAR UNA PERSONA" variante="cobre" onPress={onAgregar} />
             </View>
-            <VNota>Órbita Free incluye una persona.</VNota>
+            <VNota>Cada persona guarda su propia comparación.</VNota>
           </>
         ) : null}
       </Column>
@@ -272,6 +272,11 @@ function AltaDePersona({ editar, onCancelar, onGuardada }: { editar?: VinculoPer
 
   const enviar = async () => {
     const e = validarAlta(form);
+    // Al editar, un lugar que ya estaba guardado no se pierde en silencio: si el
+    // nivel lo usa y no se volvió a elegir, se pide antes de guardar.
+    if (editar?.birthPlaceLabel && form.nivel !== "signo" && !form.lugar && !e.lugar) {
+      e.lugar = `Volvé a elegir ${editar.birthPlaceLabel} de la lista para conservar el lugar.`;
+    }
     setErrores(e);
     if (Object.keys(e).length > 0) return;
     setGuardando(true);
