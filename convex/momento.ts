@@ -7,8 +7,10 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { resolveCanonicalDailyContext } from "./daily";
 import { getAstrologyApiConfig, hasAstrologyApiCredentials } from "./lib/astrologyApi";
-import { findCurrentBirthData } from "./lib/birthDataConsistency";
+import { findCurrentBirthData, findCurrentNatalChart } from "./lib/birthDataConsistency";
 import { buildEstacionVital, type EstacionVital } from "./lib/estacionVital";
+import { extractNormalizedChartFromPayload } from "./lib/orbita";
+import { buildTemaDelAno } from "./lib/temaDelAno";
 import { isUserPro } from "./lib/subscriptionAccess";
 import { runAstrologyApiPlanetsTropical } from "./lib/tropicalEphemeris";
 import { findUserByTokenIdentifier, omitUndefined, requireIdentity } from "./lib/users";
@@ -32,9 +34,14 @@ export const getMomentoState = internalQuery({
       .query("momentoAnalyses")
       .withIndex("by_user_date_kind", (q: any) => q.eq("userId", user._id).eq("localDate", args.localDate).eq("kind", args.kind))
       .first();
+    const isPro = await isUserPro(ctx, user._id);
+    // Free recibe `locked`: no se leen datos que no se van a usar.
+    if (!isPro) return { isPro, birthData: null, natalChartPayload: null, cached: null };
+    const natalChart = args.kind === "tema_del_ano" ? await findCurrentNatalChart(ctx, user._id) : null;
     return {
-      isPro: await isUserPro(ctx, user._id),
+      isPro,
       birthData: await findCurrentBirthData(ctx, user._id),
+      natalChartPayload: natalChart?.payload ?? null,
       cached
     };
   }
@@ -158,5 +165,43 @@ export const getEstacionVital = action({
       });
     }
     return { status: "ready" as const, localDate: args.localDate, timezone: birth?.timezone ?? null, access: { isPro: true as const }, estacion, cached: false };
+  }
+});
+
+/**
+ * `momento.getTemaDelAno({ localDate })` — la capa 02: la profección anual de
+ * la persona con sesión para la fecha canónica (CORE-210). Sobre `locked`
+ * (Free) o `ready` con `tema`, que declara su propio `status` (`ready`,
+ * `needs_birth_time`, `needs_natal_chart`, `needs_birth_data`, `unavailable`).
+ * Es un cálculo puro sobre la carta guardada: no llama al proveedor y no se
+ * cachea.
+ */
+export const getTemaDelAno = action({
+  args: { localDate: v.string() },
+  handler: async (ctx, args) => {
+    const identity = await requireIdentity(ctx as any);
+    const dayState: any = await ctx.runQuery(internalApi.daily.getGuideTimezone, { tokenIdentifier: identity.tokenIdentifier });
+    const canonical = resolveCanonicalDailyContext({ birthTimezone: dayState.birthTimezone, latestGuide: dayState.latestGuide });
+    if (args.localDate !== canonical.localDate) {
+      throw new Error("Tu momento usa la fecha canónica del servidor");
+    }
+    const state: any = await ctx.runQuery(internalApi.momento.getMomentoState, {
+      tokenIdentifier: identity.tokenIdentifier,
+      localDate: args.localDate,
+      kind: "tema_del_ano"
+    });
+    if (!state.isPro) {
+      return { status: "locked" as const, localDate: args.localDate, access: { isPro: false as const } };
+    }
+    const birth = state.birthData
+      ? {
+          birthDate: state.birthData.birthDate as string,
+          birthTimePrecision: state.birthData.birthTimePrecision as "known" | "approximate" | "unknown",
+          timezone: state.birthData.timezone as string
+        }
+      : null;
+    const chart = extractNormalizedChartFromPayload(state.natalChartPayload);
+    const tema = buildTemaDelAno({ chart, birth, asOfDate: args.localDate, observedAt: Date.now() });
+    return { status: "ready" as const, localDate: args.localDate, timezone: birth?.timezone ?? null, access: { isPro: true as const }, tema };
   }
 });

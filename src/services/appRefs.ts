@@ -294,6 +294,42 @@ export type MomentoEstacionVital =
   | { status: "locked"; localDate: string; access: { isPro: false } }
   | { status: "ready"; localDate: string; /** Zona natal: las fechas de borde se escriben en ella. */ timezone: string | null; access: { isPro: true }; estacion: EstacionVital; cached: boolean };
 
+// --- CORE-210: Tu momento · Tema del año -------------------------------------
+
+/** La profección anual. Siempre con `status`. */
+export type TemaDelAno =
+  | {
+      status: "ready";
+      precision: "exact";
+      age: number;
+      house: number;
+      houseTheme: string;
+      sign: string;
+      signKey: string;
+      ruler: string;
+      rulerKey: string;
+      periodStart: number;
+      periodEnd: number;
+      periodStartDate: string;
+      periodEndDate: string;
+      monthIndex: number;
+      progress: number;
+      summary: string;
+      limitations: string[];
+      observedAt: number;
+    }
+  | {
+      status: "needs_birth_data" | "needs_natal_chart" | "needs_birth_time" | "unavailable";
+      precision: "not_applicable";
+      missingInputs: string[];
+      limitations: string[];
+      observedAt: number;
+    };
+
+export type MomentoTemaDelAno =
+  | { status: "locked"; localDate: string; access: { isPro: false } }
+  | { status: "ready"; localDate: string; timezone: string | null; access: { isPro: true }; tema: TemaDelAno };
+
 /** Respuesta de `transits.getDetail`: el contacto pedido, o la constancia de que
  *  no está en la lectura de hoy. Nunca otro tránsito en su lugar. */
 export type TransitDetailResult =
@@ -799,6 +835,13 @@ export const proposedApi = {
     "public",
     { localDate: string },
     MomentoEstacionVital
+  >,
+  // momento.getTemaDelAno({ localDate }): Tu momento · Tema del año (CORE-210). ACTION pura sobre la carta guardada.
+  momentoTemaDelAno: anyApi.momento.getTemaDelAno as FunctionReference<
+    "action",
+    "public",
+    { localDate: string },
+    MomentoTemaDelAno
   >,
   // TODO: pendiente backend — places.resolve({ query }): geocoding real para onboarding
   resolvePlace: anyApi.places.resolve as FunctionReference<"action", "public", { query: string }, PlaceLookup>,

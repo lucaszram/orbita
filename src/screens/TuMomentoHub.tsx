@@ -8,9 +8,10 @@
  *     03 · TUS CUATRO RITMOS   (CORE-211)
  *
  * La tarjeta 01 muestra lo que `momento.getEstacionVital` certificó: fase,
- * año dentro de la fase, la acción de la etapa y las fechas reales. Las capas
- * 02 y 03 todavía no tienen cálculo en esta línea y lo dicen: no se dibuja
- * una cifra que no exista. Free recibe `locked` y ve el bloque bloqueado.
+ * año dentro de la fase, la acción de la etapa y las fechas reales. La 02
+ * (CORE-210) muestra la profección anual de `momento.getTemaDelAno`: casa,
+ * mes del año y regente. La 03 todavía no tiene cálculo en esta línea y lo
+ * dice: no se dibuja una cifra que no exista. Free recibe `locked`.
  */
 import { useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
@@ -20,18 +21,35 @@ import { Column, Columns, ReadingBlock } from "@/components/orbita/Layout";
 import { ErrorState, MinimalLoading } from "@/components/orbita/states";
 import { PBoton, PEncabezado, PEnlace, PEsqueleto, PEtiqueta, PNota, PPlegable, PTarjeta, PTexto } from "@/components/transitos/PanoramaUI";
 import { CAPAS_DE_TU_MOMENTO, DE_DONDE_SALE } from "@/screens/EstacionVitalScreen";
-import { SEASON_TRACE, anoDeFase, bordeDeFase, copyDeSinDatos, decimalEs, estadoDeEstacion, seasonHeadline, seasonMeaning, type EstacionEstado } from "@/domain/momento";
+import { anoDeFase, bordeDeFase, copyDeSinDatos, copyDeSinTema, decimalEs, diaMes, estadoDeEstacion, estadoDeTema, SEASON_TRACE, seasonHeadline, seasonMeaning, subtituloDelAno, tituloDelAno, type EstacionEstado, type TemaEstado, YEAR_TRACE, yearMeaning } from "@/domain/momento";
 import { useIsDesktop } from "@/hooks/useLayoutMode";
-import { proposedApi, type MomentoEstacionVital } from "@/services/appRefs";
+import { proposedApi, type MomentoEstacionVital, type MomentoTemaDelAno } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
 
 const DISCLAIMER = "Órbita es entretenimiento y autoconocimiento.";
 
 export function TuMomentoHub({ localDate }: { localDate: string }) {
   const getEstacion = useAction(proposedApi.momentoEstacionVital);
+  const getTema = useAction(proposedApi.momentoTemaDelAno);
   const [estado, setEstado] = useState<EstacionEstado>({ kind: "cargando" });
+  const [tema, setTema] = useState<TemaEstado>({ kind: "cargando" });
   const [intento, setIntento] = useState(0);
   const desktop = useIsDesktop();
+
+  useEffect(() => {
+    let vivo = true;
+    setTema({ kind: "cargando" });
+    getTema({ localDate })
+      .then((r: MomentoTemaDelAno) => {
+        if (vivo) setTema(estadoDeTema(r));
+      })
+      .catch(() => {
+        if (vivo) setTema({ kind: "error" });
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [getTema, intento, localDate]);
 
   useEffect(() => {
     let vivo = true;
@@ -103,6 +121,71 @@ export function TuMomentoHub({ localDate }: { localDate: string }) {
     </View>
   );
 
+  const capa02 = (
+    <View style={styles.tarjeta}>
+      <View style={styles.tarjetaCabecera}>
+        <PEtiqueta>02 · EL TEMA DE TU AÑO</PEtiqueta>
+        {tema.kind === "listo" ? (
+          <PEtiqueta tono="gris">{desktop ? "· DE CUMPLEAÑOS A CUMPLEAÑOS" : `MES ${tema.tema.monthIndex} DE 12`}</PEtiqueta>
+        ) : tema.kind === "cargando" ? (
+          <PEtiqueta tono="gris">CALCULANDO</PEtiqueta>
+        ) : null}
+      </View>
+      {tema.kind === "listo" ? (
+        <>
+          <Text style={styles.tarjetaTitulo}>{tituloDelAno(tema.tema)}</Text>
+          {desktop ? (
+            <>
+              <PEtiqueta tono="gris" style={styles.tarjetaCuerpo}>
+                {subtituloDelAno(tema.tema)}
+              </PEtiqueta>
+              <PTexto style={styles.tarjetaCuerpo}>{yearMeaning(tema.tema.house)?.meaning ?? tema.tema.summary}</PTexto>
+              <PNota>
+                Tu casa {tema.tema.house} empieza en {tema.tema.sign}, así que el regente de este año es {tema.tema.ruler}.
+              </PNota>
+            </>
+          ) : null}
+          {desktop ? (
+            <View style={styles.aTierra}>
+              <PEtiqueta>PARA BAJARLO A TIERRA</PEtiqueta>
+              <PTexto style={styles.tarjetaCuerpo}>{yearMeaning(tema.tema.house)?.action ?? ""}</PTexto>
+              <View style={styles.pista} accessible accessibilityLabel={`Avance del año personal: ${Math.round(tema.tema.progress * 100)} por ciento`}>
+                <View style={[styles.relleno, { flexGrow: tema.tema.progress }]} />
+                <View style={{ flexGrow: 1 - tema.tema.progress }} />
+              </View>
+              <View style={styles.fechas}>
+                <PEtiqueta tono="gris">{diaMes(tema.tema.periodStart, tema.timezone ?? undefined)}</PEtiqueta>
+                <PEtiqueta tono="gris">{diaMes(tema.tema.periodEnd, tema.timezone ?? undefined)}</PEtiqueta>
+              </View>
+            </View>
+          ) : (
+            <PNota>La casa de tu carta que toca tu edad de hoy, y el planeta que la rige.</PNota>
+          )}
+          <PEnlace label={desktop ? "VER TU AÑO" : "VER EL TEMA DEL AÑO"} href="/reading/tema-del-ano" />
+        </>
+      ) : tema.kind === "cargando" ? (
+        <PEsqueleto lineas={2} />
+      ) : tema.kind === "bloqueado" ? (
+        <>
+          <Text style={styles.tarjetaTitulo}>Se abre con Órbita Plus.</Text>
+          <PNota>La casa de tu carta que toca tu edad de hoy, y el planeta que la rige.</PNota>
+          <PBoton label="VER ÓRBITA PLUS" onPress={() => router.push("/paywall")} />
+        </>
+      ) : tema.kind === "error" ? (
+        <>
+          <Text style={styles.tarjetaTitulo}>No pudimos calcular tu año personal.</Text>
+          <PEnlace label="REINTENTAR" onPress={() => setIntento((n) => n + 1)} />
+        </>
+      ) : (
+        <>
+          <Text style={styles.tarjetaTitulo}>{copyDeSinTema(tema.tema).titulo}</Text>
+          <PNota>{copyDeSinTema(tema.tema).cuerpo}</PNota>
+          {tema.tema.status === "unavailable" ? <PEnlace label="REINTENTAR" onPress={() => setIntento((n) => n + 1)} /> : null}
+        </>
+      )}
+    </View>
+  );
+
   const pendiente = (n: string, titulo: string, detalle: string, tarjeta: string) => (
     <View style={styles.tarjeta}>
       <View style={styles.tarjetaCabecera}>
@@ -124,7 +207,7 @@ export function TuMomentoHub({ localDate }: { localDate: string }) {
         movimientos más breves.
       </PTexto>
       {capa01}
-      {pendiente("02", "EL TEMA DE TU AÑO", "La casa de tu carta que toca tu edad de hoy.", "Esta capa todavía no tiene cálculo en Órbita web. Cuando lo tenga, aparece acá con sus datos reales.")}
+      {capa02}
       {pendiente("03", "TUS CUATRO RITMOS", "Cuatro anillos en un solo dibujo.", "De diario a multianual: se dibujan cuando las cuatro capas tengan cálculo. No se estima ninguna.")}
       {!desktop ? (
         <View style={styles.cierre}>
@@ -162,9 +245,20 @@ export function TuMomentoHub({ localDate }: { localDate: string }) {
             años; cada fase dura alrededor de 3,7 años.
           </PTexto>
           <PNota style={styles.nota}>{SEASON_TRACE.interpretiveRule}</PNota>
+          <Text style={[styles.metodoTitulo, styles.item]}>Profección anual</Text>
+          <PTexto>
+            La profección anual recorre una casa de tu carta por cada año de vida. Esa casa señala el área que este método pone en
+            primer plano.
+          </PTexto>
+          <PNota style={styles.nota}>{YEAR_TRACE.interpretiveRule}</PNota>
         </PTarjeta>
         <PPlegable titulo="¿POR QUÉ ÓRBITA TE MUESTRA ESTO?">
+          <PEtiqueta tono="hueso">ESTACIÓN VITAL</PEtiqueta>
           <PTexto>{SEASON_TRACE.calculatedDatum}</PTexto>
+          <PEtiqueta tono="hueso" style={styles.item}>
+            TEMA DEL AÑO
+          </PEtiqueta>
+          <PTexto>{YEAR_TRACE.calculatedDatum}</PTexto>
         </PPlegable>
         <PTarjeta>
           <PNota>{DISCLAIMER}</PNota>
