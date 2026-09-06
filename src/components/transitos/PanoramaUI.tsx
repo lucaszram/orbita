@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Link, type Href } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { FilaVista } from "@/domain/transitosPanorama";
+import { rotuloAccesible } from "@/domain/webLayout";
 import { orbita } from "@/theme/orbita";
 
 /**
@@ -79,21 +80,37 @@ export function PSegmento({ label, activo, onPress }: { label: string; activo: b
 export function PEncabezado({
   izquierda,
   derecha,
-  derechaMinuscula
+  derechaMinuscula,
+  onDerecha
 }: {
   izquierda: string;
   derecha: string | null;
   /** El dato de la derecha tal cual, sin versalitas («0 de 1 persona» en el frame móvil de Vínculos). */
   derechaMinuscula?: boolean;
+  /** Si el dato de la derecha es una acción («‹ VOLVER» en la comparación de Vínculos), qué hace al tocarlo. */
+  onDerecha?: () => void;
 }) {
+  const dato = derecha ? (
+    <PEtiqueta tono="gris" mayusculas={!derechaMinuscula} style={styles.encabezadoDerecha}>
+      {derecha}
+    </PEtiqueta>
+  ) : null;
   return (
     <View style={styles.encabezado}>
       <PEtiqueta accessibilityRole="header">{izquierda}</PEtiqueta>
-      {derecha ? (
-        <PEtiqueta tono="gris" mayusculas={!derechaMinuscula} style={styles.encabezadoDerecha}>
-          {derecha}
-        </PEtiqueta>
-      ) : null}
+      {dato && onDerecha ? (
+        <Pressable
+          onPress={onDerecha}
+          accessibilityRole="button"
+          accessibilityLabel={derecha ? rotuloAccesible(derecha) : undefined}
+          hitSlop={8}
+          style={({ pressed }) => [styles.encabezadoAccion, pressed && styles.apagado]}
+        >
+          {dato}
+        </Pressable>
+      ) : (
+        dato
+      )}
     </View>
   );
 }
@@ -362,6 +379,7 @@ const styles = StyleSheet.create({
 
   encabezado: { alignItems: "flex-start", flexDirection: "row", gap: orbita.spacing.md, justifyContent: "space-between" },
   encabezadoDerecha: { flexShrink: 1, textAlign: "right" },
+  encabezadoAccion: { justifyContent: "center", marginVertical: -orbita.spacing.md, minHeight: 44 },
 
   fila: { paddingVertical: orbita.spacing.lg },
   filaConLinea: { borderBottomColor: orbita.colors.line, borderBottomWidth: 1 },

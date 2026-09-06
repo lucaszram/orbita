@@ -133,6 +133,24 @@ export function VInicial({
   );
 }
 
+/**
+ * Los dos discos superpuestos de la comparación en escritorio (frame
+ * `1757:2674`): la carta propia en cobre, la de la persona en el azul de
+ * armonía, y debajo «Tu carta · Mara» en mono. Ilustra; los nombres van en
+ * el texto, así que para el lector de pantalla es una imagen con rótulo.
+ */
+export function VDiscos({ nombre }: { nombre: string }) {
+  return (
+    <View style={styles.discos} accessible accessibilityRole="image" accessibilityLabel={`Tu carta y la de ${nombre}`}>
+      <View style={styles.discosPar}>
+        <View style={[styles.disco, styles.discoPropio]} />
+        <View style={[styles.disco, styles.discoOtro]} />
+      </View>
+      <Text style={styles.discosRotulo}>{`Tu carta · ${nombre}`}</Text>
+    </View>
+  );
+}
+
 /** Chip con inicial + nombre (encabezado de la comparación). */
 export function VPersonaChip({ inicial, nombre, tono }: { inicial: string; nombre: string; tono: "cobre" | "azul" }) {
   return (
@@ -225,5 +243,12 @@ const styles = StyleSheet.create({
   inicialTexto: { color: orbita.colors.bone, fontFamily: orbita.fonts.monoMedium, fontSize: 12 },
 
   personaChip: { alignItems: "center", flexDirection: "row", gap: orbita.spacing.sm },
+
+  discos: { alignItems: "center" },
+  discosPar: { flexDirection: "row", height: 64, width: 112 },
+  disco: { borderRadius: 999, borderWidth: 1, height: 64, position: "absolute", top: 0, width: 64 },
+  discoPropio: { backgroundColor: orbita.colors.copperTint45, borderColor: orbita.colors.copper, left: 0 },
+  discoOtro: { backgroundColor: orbita.colors.harmonyTint22, borderColor: orbita.colors.harmony, left: 48 },
+  discosRotulo: { color: orbita.colors.muted, fontFamily: orbita.fonts.mono, fontSize: 12, letterSpacing: 0.5, marginTop: orbita.spacing.md },
   personaNombre: { color: orbita.colors.bone, fontFamily: orbita.fonts.body, fontSize: 15 }
 });

@@ -8,7 +8,7 @@ import { PlanBadge } from "@/components/web/plan-badge";
 import { fechaCivilLarga } from "@/domain/lunaCarta";
 import { useCanonicalLocalDate } from "@/hooks/useDailyContext";
 import { PLACEMENT_BODY_SYMBOL } from "@/domain/astroSymbols";
-import { showsScreenHeader, type CanvasVariant } from "@/domain/webLayout";
+import { rotuloAccesible, showsScreenHeader, type CanvasVariant } from "@/domain/webLayout";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
 import { orbita } from "@/theme/orbita";
@@ -38,11 +38,14 @@ const G = orbita.spacing.gutter;
 export function OrbitaScreen({
   children,
   right,
+  onRight,
   canvas = "reading"
 }: {
   children: ReactNode;
   /** Rótulo derecho de la barra móvil. Sin él, la fecha canónica del día (frames WEB V1). */
   right?: string;
+  /** Si el rótulo es una acción («‹ VOLVER» en la comparación de Vínculos), qué hace al tocarlo. */
+  onRight?: () => void;
   canvas?: CanvasVariant;
 }) {
   const insets = useSafeAreaInsets();
@@ -57,7 +60,7 @@ export function OrbitaScreen({
       <StatusBar style="light" />
       {header ? (
         <View style={{ paddingTop: insets.top }}>
-          <TopBar right={right} canvas={canvas} />
+          <TopBar right={right} onRight={onRight} canvas={canvas} />
         </View>
       ) : null}
       <ScrollView
@@ -79,10 +82,19 @@ export function OrbitaScreen({
  * que el contenido: si no, en escritorio quedaban a 350px del texto que
  * encabezan.
  */
-export function TopBar({ right, canvas = "reading" }: { right?: string; canvas?: CanvasVariant }) {
+export function TopBar({ right, onRight, canvas = "reading" }: { right?: string; onRight?: () => void; canvas?: CanvasVariant }) {
   const localDate = useCanonicalLocalDate();
   const fecha = localDate ? fechaCivilLarga(localDate) : null;
   const rotulo = right ?? (fecha ? fecha.toLocaleUpperCase("es") : null);
+  const derecha = rotulo ? (
+    onRight ? (
+      <Pressable onPress={onRight} accessibilityRole="button" accessibilityLabel={rotuloAccesible(rotulo)} hitSlop={8} style={({ pressed }) => [styles.selectorAccion, pressed && { opacity: 0.6 }]}>
+        <Text style={styles.selector}>{rotulo}</Text>
+      </Pressable>
+    ) : (
+      <Text style={styles.selector}>{rotulo}</Text>
+    )
+  ) : null;
   return (
     <View>
       <ContentCanvas variant={canvas}>
@@ -91,7 +103,7 @@ export function TopBar({ right, canvas = "reading" }: { right?: string; canvas?:
             <Text style={styles.brand}>Órbita</Text>
             <PlanBadge />
           </View>
-          {rotulo ? <Text style={styles.selector}>{rotulo}</Text> : null}
+          {derecha}
         </View>
       </ContentCanvas>
       <View style={styles.topbarDivider} />
@@ -264,6 +276,7 @@ export const styles = StyleSheet.create({
   brandRow: { alignItems: "center", flexDirection: "row", gap: orbita.spacing.sm },
   brand: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 22, lineHeight: 26 },
   selector: { color: orbita.colors.muted, flexShrink: 1, fontFamily: orbita.fonts.monoMedium, fontSize: 11, letterSpacing: 1.2, textAlign: "right" },
+  selectorAccion: { justifyContent: "center", minHeight: 44 },
   topbarDivider: { backgroundColor: orbita.colors.line, height: 1 },
 
   section: { paddingHorizontal: G, paddingTop: orbita.spacing.xl, paddingBottom: orbita.spacing.xxl },

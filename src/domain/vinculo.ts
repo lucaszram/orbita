@@ -97,6 +97,13 @@ export function fraccionDeBarra(parte: number, total: number): number {
   return Math.max(0, Math.min(1, parte / total));
 }
 
+/** El titular de escritorio (frame `1757:2674`): `"14 contactos entre las dos cartas."` · `"Un contacto…"` · `"Sin contactos…"`. */
+export function titularDeContactosCorto(total: number): string {
+  if (total <= 0) return "Sin contactos dentro de orbe entre las dos cartas.";
+  if (total === 1) return "Un contacto entre las dos cartas.";
+  return `${total} contactos entre las dos cartas.`;
+}
+
 /** `"14 contactos entre tu carta y la de Vera."` · `"Un contacto…"` · `"Sin contactos…"`. */
 export function titularDeContactos(total: number, nombre: string): string {
   if (total <= 0) return `Sin contactos dentro de orbe entre tu carta y la de ${nombre}.`;

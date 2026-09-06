@@ -1,5 +1,37 @@
 # Current Task
 
+## La comparación de Vínculos se ve como el frame (CORE-236, 2026-09-06)
+
+**Objetivo:** que la comparación reproduzca `1757:2674` (1440) y `1757:2515`
+(390): en escritorio, encabezado «VÍNCULOS · COMPARACIÓN … ‹ VOLVER», los dos
+discos superpuestos con «Tu carta · Mara», titular «N contactos entre las dos
+cartas.», texto del plan y «VER ÓRBITA PLUS» en contorno, y a la derecha
+«Contactos principales» y «N contactos más, en Plus»; en móvil, barra con
+«‹ VOLVER», chips «TU · Tu carta» y «M · Mara», precisión, titular largo,
+barras Armónicos / Tensos, «POR DIMENSIÓN» con barra dual por dimensión y la
+nota del plan. Módulo vinculo; toca `kit.tsx` y `PanoramaUI.tsx` (archivos
+compartidos): corre sola.
+
+**Cambios:** `app/reading/vinculo-result.tsx` envuelve la pantalla en
+`WebAppShell active="vinculo"` en web (antes la ruta quedaba fuera del shell:
+sin nav y en modo móvil también en escritorio). `VinculoComparacionScreen`
+pasa de `DetailScreen` a `OrbitaScreen right="‹ VOLVER" onRight`, compone por
+modo (discos + titular corto en escritorio; chips + titular largo en móvil) y
+lleva las tarjetas a la derecha en 1440 y debajo de la lectura en 390; la meta
+de cada contacto va gris entera («Armónico · orbe 2° 10'»); las dimensiones
+van separadas por una línea fina y con barra de 4. `kit.tsx`: `TopBar` /
+`OrbitaScreen` suman `onRight` (rótulo derecho como acción). `PanoramaUI`:
+`PEncabezado` suma `onDerecha`. `VinculosUI`: `VDiscos`. Dominio:
+`titularDeContactosCorto`.
+
+**Desvíos declarados:** en escritorio las barras por tono y por dimensión
+siguen debajo del CTA, tras una línea (el frame no las dibuja en 1440; son el
+mismo dato que ve el móvil). Los contactos no llevan chevron: no existe un
+detalle por contacto. Sin cambio de contrato.
+
+**Estado:** rama `orb/core-236-comparacion-vinculos` desde main 7fb6bca.
+Piso del gate 1012 → 1017.
+
 ## La biblioteca de Vínculos se ve como el frame (CORE-235, 2026-09-06)
 
 **Objetivo:** que la lista con una persona guardada y el límite Free

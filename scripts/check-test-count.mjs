@@ -75,8 +75,10 @@ import { pathToFileURL } from "node:url";
  * El ranking de Hoy como el de Tránsitos (CORE-238) suma 2 casos en `hoyPrincipal.test.ts`: 1007 + 2.
  *
  * La biblioteca de Vínculos como el frame (CORE-235) suma 3 casos en `vinculo.test.ts`: 1009 + 3.
+ *
+ * La comparación de Vínculos como el frame (CORE-236) suma 5 casos en `vinculo.test.ts`: 1012 + 5.
  */
-export const DEFAULT_MINIMUM = 1012;
+export const DEFAULT_MINIMUM = 1017;
 
 /**
  * Lee un contador del resumen final del runner de Node.
