@@ -1,12 +1,12 @@
 # Current Task
 
-## Órbita 1.0.0 (30) sale de main reconciliado a TestFlight (CORE-264, 2026-09-06)
+## Órbita 1.0.0 (40) sale de main reconciliado a TestFlight (CORE-264, 2026-09-06)
 
-**Objetivo:** primer binario desde main reconciliado (`282c336`): `ios.buildNumber` 28 → 30 (el 29 ya existía en App Store Connect),
+**Objetivo:** primer binario desde main reconciliado (`282c336`): `ios.buildNumber` 28 → 40 (App Store Connect ya tenía 29 y 30; se salta a 40),
 `version` 1.0.0, política de runtime `fingerprint`. Build con `eas build --profile production
 --platform ios` y submit a TestFlight. QA física de Lucas antes de App Review.
 
-**Cambios:** `app.json` (buildNumber 30) y el test que fija el número
+**Cambios:** `app.json` (buildNumber 40) y el test que fija el número
 (`test/arranqueVisualQA23.test.ts`). Nada más.
 
 **Respecto del build 28:** el nativo es release/1.0.0 salvo `kit.tsx`, `VoidExperience.tsx`
