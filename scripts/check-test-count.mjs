@@ -79,8 +79,10 @@ import { pathToFileURL } from "node:url";
  * La comparación de Vínculos como el frame (CORE-236) suma 5 casos en `vinculo.test.ts`: 1012 + 5.
  *
  * Tránsitos honra `?segmento=momento` (CORE-240) suma 2 casos en `hoyPrincipal.test.ts`: 1017 + 2.
+ *
+ * Tránsitos con Plus como el frame (CORE-240, segunda parte) suma 2 casos en `hoyPrincipal.test.ts`: 1019 + 2.
  */
-export const DEFAULT_MINIMUM = 1019;
+export const DEFAULT_MINIMUM = 1021;
 
 /**
  * Lee un contador del resumen final del runner de Node.

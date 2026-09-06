@@ -142,6 +142,9 @@ export function PFila({
   ]
     .filter(Boolean)
     .join(" ");
+  // El padding y la línea van en un View propio: en web, el `Link asChild`
+  // descarta el estilo del `Pressable` y las filas quedaban pegadas entre sí
+  // (CORE-240, cotejado con Plus contra `1731:2158`).
   return (
     <Link href={href} asChild>
       <Pressable
@@ -151,8 +154,10 @@ export function PFila({
         onHoverOut={() => setResaltada(false)}
         onFocus={() => setResaltada(true)}
         onBlur={() => setResaltada(false)}
-        style={({ pressed }) => [styles.fila, !ultima && styles.filaConLinea, (resaltada || pressed) && styles.filaResaltada]}
+        onPressIn={() => setResaltada(true)}
+        onPressOut={() => setResaltada(false)}
       >
+      <View style={[styles.fila, !ultima && styles.filaConLinea, resaltada && styles.filaResaltada]}>
         <View style={styles.filaLinea}>
           <Text style={styles.filaMono}>
             <Text style={styles.filaRango}>{fila.rango}</Text> {fila.linea}
@@ -176,6 +181,7 @@ export function PFila({
           {!fila.chip && !fila.meta && sinFase ? <Text style={styles.metaTexto}>{sinFase}</Text> : null}
         </View>
         {conCuerpo ? <PTexto style={styles.filaCuerpo}>{fila.cuerpo}</PTexto> : null}
+      </View>
       </Pressable>
     </Link>
   );

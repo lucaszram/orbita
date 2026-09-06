@@ -354,6 +354,24 @@ describe("el ranking de Hoy como el de Tránsitos (CORE-238)", () => {
   });
 });
 
+describe("Tránsitos con Plus se ve como el frame (CORE-240)", () => {
+  const raiz = join(dirname(fileURLToPath(import.meta.url)), "..");
+  const panoramaUI = readFileSync(join(raiz, "src", "components", "transitos", "PanoramaUI.tsx"), "utf8");
+  const transitos = readFileSync(join(raiz, "src", "screens", "TransitosScreen.tsx"), "utf8");
+
+  it("el padding y la línea de cada fila del panorama viven en un View propio (en web el Link asChild descarta el estilo del Pressable)", () => {
+    assert.match(panoramaUI, /<View style=\{\[styles\.fila, !ultima && styles\.filaConLinea, resaltada && styles\.filaResaltada\]\}>/);
+    assert.doesNotMatch(panoramaUI, /style=\{\(\{ pressed \}\) => \[styles\.fila,/);
+  });
+
+  it("en escritorio Ahora lleva la tarjeta TU MOMENTO con las tres capas y el salto al segmento (frame 1737:2201)", () => {
+    assert.match(transitos, /<PTarjeta titulo="TU MOMENTO">/);
+    assert.match(transitos, /"01 · TU ESTACIÓN VITAL", "02 · EL TEMA DE TU AÑO", "03 · TUS CUATRO RITMOS"/);
+    assert.match(transitos, /<PEnlace label="IR A TU MOMENTO" onPress=\{onTuMomento\} \/>/);
+    assert.match(transitos, /onTuMomento=\{\(\) => setSegmento\("momento"\)\}/);
+  });
+});
+
 describe("Tránsitos honra el segmento que pide la URL (CORE-240)", () => {
   it("sólo «momento» cambia el segmento inicial; lo demás deja Ahora", () => {
     assert.equal(segmentoDeRuta("momento"), "momento");
