@@ -15,6 +15,13 @@ afirmaba «no tomar el día del dispositivo» sobre `useBackendPersistInner` y
 (`useOnboardingBirthDataSaveInner` y `useProfilePersistInner`). La aserción
 `!useBackendPersistStrict` en el editor se retira porque el hook ya no existe.
 
+**Revisión r1 (RECHAZADA) atendida:** se restauró el JSDoc de
+`useOnboardingBirthDataSave` (camino VIVO) que el corte se había llevado; se
+borró `readTriadSign` (huérfano al irse `useOnboardingChartInner`); se quitó el
+import `useEffect`, ya sin uso; se retiró el header de sección que describía el
+hook borrado; y el guard del editor se reancló a
+`assert.ok(!/useOnboardingBirthDataSave/.test(EDITOR))`.
+
 **Declarado:** `useOnboardingSignupDraft` y `useOnboardingFinalize` NO se borran
 aunque tampoco tengan llamadores: ocho aserciones de integridad de datos
 natales están escritas sobre ellos (orden anti-carrera, `ONBOARDING_FINALIZE_FAILED`,

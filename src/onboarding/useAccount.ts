@@ -1,7 +1,7 @@
 import { Platform } from "react-native";
 import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useAction, useConvex, useMutation, useQuery } from "convex/react";
 
 import {
@@ -552,21 +552,8 @@ function useSignInHydrateInner(): () => Promise<SignInHydrateResult> {
   }, [convex]);
 }
 
-// ---------------------------------------------------------------------------
-// Lectura de la carta real para el preview del onboarding (paso 14).
-// Con la carta ya calculada (post-cuenta), devuelve la tríada real Sol/Luna/Asc.
-// ---------------------------------------------------------------------------
-
 function capitalizeSign(sign: string): string {
   return sign.charAt(0).toUpperCase() + sign.slice(1);
-}
-
-function readTriadSign(triad: unknown, key: string): string | null {
-  if (!triad || typeof triad !== "object") return null;
-  const placement = (triad as Record<string, unknown>)[key];
-  if (!placement || typeof placement !== "object") return null;
-  const sign = (placement as Record<string, unknown>).sign;
-  return typeof sign === "string" && sign !== "pendiente" && sign.trim().length > 0 ? capitalizeSign(sign) : null;
 }
 
 export type OnboardingChart = {
@@ -576,6 +563,7 @@ export type OnboardingChart = {
   moon: string | null;
   ascendant: string | null;
 };
+
 const HAS_CONVEX = backendConfig.hasConvex;
 
 const SIGN_ES: Record<string, string> = {
@@ -714,6 +702,18 @@ export function useProfileBirthDataPersist(): PersistBirthData | null {
   return useProfilePersistInner();
 }
 
+/**
+ * Guardado natal del onboarding AUTH-FIRST: con la sesión activa desde el
+ * paso 0, "Preparar mi carta" escribe los datos natales por el camino
+ * autenticado (`onboarding.completeBirthData`, con el `clientDraftId` del
+ * marcador de alta) y dispara el cálculo de la carta SIN esperarlo: el guardado
+ * es la operación obligatoria y el derivado nunca bloquea la navegación —
+ * Carta lo resuelve o lo reintenta si sigue pendiente.
+ *
+ * La zona horaria se deriva de las coordenadas del lugar en el backend
+ * (Photon no la trae); nunca del reloj del dispositivo. Si la resolución falla,
+ * el error se propaga y no se escribe nada: la pantalla ofrece reintentar.
+ */
 export type OnboardingBirthDataSave = (input: {
   birthDate: string;
   birthTime?: string;

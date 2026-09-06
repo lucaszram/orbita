@@ -135,6 +135,9 @@ test("Editar datos persiste por el endpoint de perfil, con source profile", () =
   assert.ok(!/completeBirthData/.test(inner), "una edición no es completar el onboarding");
   // Y la pantalla usa ese hook, no el del alta.
   assert.ok(/useProfileBirthDataPersist/.test(EDITOR));
+  // Y NO el del alta: una edición no cierra el onboarding (CORE-268 reancla
+  // este guard, que apuntaba al hook borrado `useBackendPersistStrict`).
+  assert.ok(!/useOnboardingBirthDataSave/.test(EDITOR));
 });
 
 test("la persistencia compartida ya no genera el día con la fecha del dispositivo", () => {
