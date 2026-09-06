@@ -1,4 +1,5 @@
-import type { DailyGuidePayload } from "@/services/appRefs";
+import type { DailyGuidePayload, TransitPanorama } from "@/services/appRefs";
+import { filaVista, FILAS_VISIBLES, type FilaVista } from "@/domain/transitosPanorama";
 
 /**
  * La estructura de la sección **Hoy**: qué es «lo principal», qué filas tiene el
@@ -280,4 +281,57 @@ export function etiquetaDeModulos(cantidad: number): string | null {
   if (!Number.isFinite(cantidad) || cantidad <= 0) return null;
   const entero = Math.trunc(cantidad);
   return `${entero} ${entero === 1 ? "CAPA" : "CAPAS"}`;
+}
+
+// --- CORE-238: el ranking de Hoy se lee como el de Tránsitos -----------------
+
+/**
+ * Las filas que Hoy muestra del panorama (Plus): las primeras `FILAS_VISIBLES`
+ * del mismo orden que Tránsitos, con su barra, chip y cuerpo. Es el MISMO dato
+ * que el panorama; Hoy no vuelve a ordenar ni a recortar por su cuenta.
+ */
+export function filasDelPanoramaParaHoy(panorama: TransitPanorama | null | undefined): FilaVista[] {
+  if (!panorama || panorama.status !== "ready") return [];
+  return panorama.rows.slice(0, FILAS_VISIBLES).map(filaVista);
+}
+
+/**
+ * La fila de Hoy en Free, con la forma de una fila del panorama: sin barra
+ * (`null`: no se dibuja una vacía), sin chip y con la casa como meta. Sólo las
+ * filas con identidad pueden abrir su detalle; las demás quedan sin enlace.
+ */
+export function filaDeHoyComoVista(fila: HoyRankingFila): FilaVista | null {
+  if (!fila.transitId) return null;
+  return {
+    transitId: fila.transitId,
+    rango: fila.rango,
+    titulo: fila.titulo,
+    linea: [fila.planeta, fila.punto].filter((p): p is string => Boolean(p)).join(" · "),
+    chip: null,
+    meta: fila.casa !== null ? `CASA ${fila.casa}` : "",
+    barra: null,
+    cuerpo: fila.lectura ?? "",
+    cadencia: null
+  };
+}
+
+/** `"VER LOS 16 CONTACTOS ACTIVOS"` cuando el panorama publicó el total; `null` si no. */
+export function etiquetaDeContactosActivos(panorama: TransitPanorama | null | undefined): string | null {
+  if (!panorama || panorama.status !== "ready") return null;
+  const total = panorama.activeTotal ?? panorama.rows.length;
+  if (total <= 0) return null;
+  return total === 1 ? "VER EL CONTACTO ACTIVO" : `VER LOS ${total} CONTACTOS ACTIVOS`;
+}
+
+/**
+ * Con el panorama listo, lo principal es la lectura del contacto que el
+ * panorama pone primero (frame `1718:2136`: la frase completa del contacto).
+ * Sin panorama, queda la síntesis de la guía.
+ */
+export function principalDesdePanorama(panorama: TransitPanorama | null | undefined, fallback: HoyPrincipal | null): HoyPrincipal | null {
+  if (!panorama || panorama.status !== "ready" || panorama.rows.length === 0) return fallback;
+  const fila = panorama.rows[0];
+  const titular = fila.body.trim();
+  if (!titular) return fallback;
+  return { titular, aspecto: fila.title };
 }

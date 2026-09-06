@@ -107,8 +107,16 @@ describe("la jerarquía de Hoy", () => {
     assert.match(RANKING, /`CASA \$\{fila\.casa\}`/);
     assert.match(RANKING, /fila\.lectura \? <HoyTexto/);
     // El pie del frame: el enlace a la lista completa y «por qué este orden».
-    assert.match(RANKING, /<HoyEnlace href="\/transito">VER TODOS LOS TRÁNSITOS<\/HoyEnlace>/);
+    // CORE-238 (frames `1991:2775` / `1718:2052`): con el panorama, las filas
+    // son `PFila` del kit de Tránsitos y el pie dice «VER LOS N CONTACTOS
+    // ACTIVOS»; sin panorama (Free), «VER TODOS LOS TRÁNSITOS» y sin barra ni chip.
+    assert.match(RANKING, /<PFila key=\{fila\.transitId\} fila=\{fila\} conCuerpo ultima=/);
+    assert.match(RANKING, /sinFase=\{null\}/);
+    assert.match(RANKING, /<HoyEnlace href="\/transito">\{enlace \?\? "VER TODOS LOS TRÁNSITOS"\}<\/HoyEnlace>/);
     assert.match(RANKING, /POR QUÉ ESTE ORDEN/);
+    assert.match(RANKING, /NOTA_DEL_ORDEN/);
+    assert.match(HOME, /<HoyRankingBloque filas=\{ranking\} panorama=\{filasPanorama\} enlace=\{enlaceContactos\} \/>/);
+    assert.match(HOME, /principalDesdePanorama\(panorama, hoyPrincipal\(daily\)\)/);
   });
 
   it("en escritorio, WEB V1 acompaña con las dos tarjetas laterales; en móvil no se montan", () => {

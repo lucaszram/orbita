@@ -103,7 +103,18 @@ export function PEncabezado({
  * punto exacto EN TIEMPO (ver `convex/lib/transitPanorama.ts`); sin ventana no
  * se dibuja. `conCuerpo` agrega la oración del contacto (móvil).
  */
-export function PFila({ fila, conCuerpo, ultima }: { fila: FilaVista; conCuerpo: boolean; ultima: boolean }) {
+export function PFila({
+  fila,
+  conCuerpo,
+  ultima,
+  sinFase = "SIN HORA EXACTA PUBLICADA"
+}: {
+  fila: FilaVista;
+  conCuerpo: boolean;
+  ultima: boolean;
+  /** Qué decir cuando no hay chip ni meta; `null` para no decir nada (Hoy en Free no publica fase). */
+  sinFase?: string | null;
+}) {
   const [resaltada, setResaltada] = useState(false);
   const href: Href = { pathname: "/reading/transito", params: { id: fila.transitId } };
   const label = [
@@ -145,7 +156,7 @@ export function PFila({ fila, conCuerpo, ultima }: { fila: FilaVista; conCuerpo:
             </View>
           ) : null}
           {fila.meta ? <Text style={styles.metaTexto}>{fila.meta}</Text> : null}
-          {!fila.chip && !fila.meta ? <Text style={styles.metaTexto}>SIN HORA EXACTA PUBLICADA</Text> : null}
+          {!fila.chip && !fila.meta && sinFase ? <Text style={styles.metaTexto}>{sinFase}</Text> : null}
         </View>
         {conCuerpo ? <PTexto style={styles.filaCuerpo}>{fila.cuerpo}</PTexto> : null}
       </Pressable>

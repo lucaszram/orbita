@@ -1,5 +1,29 @@
 # Current Task
 
+## El ranking de Hoy se lee como el de Tránsitos (CORE-238, 2026-09-06)
+
+**Objetivo:** que el ranking de Hoy siga los frames WEB V1 `1991:2775` /
+`1718:2052`: filas del panorama con línea mono, título, barra de cercanía,
+chip de fase y cuerpo; «VER LOS N CONTACTOS ACTIVOS ›» a Tránsitos; «Por qué
+este orden» con la misma explicación que Tránsitos. Módulo home; toca
+`PanoramaUI.tsx` (archivo compartido): corre sola.
+
+**Cambios:** `HomeScreen` pide `transits.getPanorama` una vez por cuenta y
+día (misma clave que el tema del año) y, si está `ready`, el ranking muestra
+sus primeras filas con `PFila` y lo principal toma la lectura del contacto
+que el panorama pone primero (`principalDesdePanorama`). Sin panorama (Free,
+vacío, fallo) el ranking sigue saliendo de la guía con la misma composición y
+sin barra ni chip (`filaDeHoyComoVista`, `PFila sinFase={null}`). Dominio en
+`src/domain/hoyPrincipal.ts`; `PFila` suma la prop `sinFase` (aditivo).
+
+**Decisiones:** Free ve las mismas filas sin barra ni chip (Lucas,
+2026-09-06). No se inventa un total: sin `activeTotal` el pie dice «VER TODOS
+LOS TRÁNSITOS». La explicación del orden es `POR_QUE_ESTE_ORDEN` /
+`NOTA_DEL_ORDEN` de Tránsitos (pesos reales de `transitPriority`).
+Verificación con Plus pendiente de Plus en dev; la rama Free se verifica ahora.
+
+**Estado:** rama `orb/core-238-ranking-hoy` desde main ac77ff1. Piso 1009.
+
 ## La cabecera web muestra el plan, el perfil y la fecha como el frame (CORE-239, 2026-09-06)
 
 **Objetivo:** que la cabecera de la web sea la del tablero `1308:2` (`Web/Nav
