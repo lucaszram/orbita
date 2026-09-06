@@ -16,8 +16,8 @@ import { useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { useAction } from "convex/react";
-import { DetailScreen } from "@/components/home/DetailScreen";
 import { Column, Columns, ReadingBlock } from "@/components/orbita/Layout";
+import { OrbitaScreen, Section } from "@/components/orbita/kit";
 import { GuestState } from "@/components/orbita/GuestState";
 import { EmptyState, ErrorState, MinimalLoading } from "@/components/orbita/states";
 import { Mandala } from "@/components/transitos/Mandala";
@@ -75,9 +75,11 @@ export function CuatroRitmosScreen() {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <DetailScreen eyebrow="Tu momento · Capa 03" canvas="wide">
-      {children}
-    </DetailScreen>
+    <OrbitaScreen canvas="wide">
+      <Section>
+        {children}
+      </Section>
+    </OrbitaScreen>
   );
 }
 

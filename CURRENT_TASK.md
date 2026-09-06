@@ -22,7 +22,12 @@ hub de Tu momento contra `2022:2875` / `1740:2247`. Dos desvíos corregidos:
 porque `Link asChild` descarta el estilo del `Pressable`; ahora viven en un
 `View` propio (afecta también al ranking de Hoy, que usa la misma fila);
 (2) en escritorio faltaba la tarjeta «TU MOMENTO» de la columna derecha de
-Ahora, con las tres capas e «IR A TU MOMENTO ›» que cambia de segmento.
+Ahora, con las tres capas e «IR A TU MOMENTO ›» que cambia de segmento;
+(3) estación vital, tema del año y cuatro ritmos viajaban fuera del shell
+web (sin nav, en una columna también en 1440, y con la flecha de detalle en
+vez de la barra de marca): sus rutas se envuelven en `WebAppShell` en web y
+las pantallas pasan de `DetailScreen` a `OrbitaScreen` + `Section`, como los
+frames `2023:2900` / `1740:2308` y `2024:2925` / `1741:2289`.
 
 **Desvíos declarados:** la fila muestra la cadencia («DURA 4 MESES») donde el
 frame pone el orbe en grados, porque el proveedor diario no publica el orbe;
@@ -31,7 +36,7 @@ aspecto), que es lo que el backend hace; el frame la escribe con otros
 rótulos.
 
 **Estado:** ramas `orb/core-240-transitos-plus` (mergeada, #105) y
-`orb/core-240-plus-en-vivo` desde main 16b446b. Piso del gate 1017 → 1021.
+`orb/core-240-plus-en-vivo` desde main 16b446b. Piso del gate 1017 → 1022.
 
 ## La comparación de Vínculos se ve como el frame (CORE-236, 2026-09-06)
 

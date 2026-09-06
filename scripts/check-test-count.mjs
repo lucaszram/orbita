@@ -80,9 +80,9 @@ import { pathToFileURL } from "node:url";
  *
  * Tránsitos honra `?segmento=momento` (CORE-240) suma 2 casos en `hoyPrincipal.test.ts`: 1017 + 2.
  *
- * Tránsitos con Plus como el frame (CORE-240, segunda parte) suma 2 casos en `hoyPrincipal.test.ts`: 1019 + 2.
+ * Tránsitos con Plus como el frame (CORE-240, segunda parte) suma 3 casos en `hoyPrincipal.test.ts`: 1019 + 3.
  */
-export const DEFAULT_MINIMUM = 1021;
+export const DEFAULT_MINIMUM = 1022;
 
 /**
  * Lee un contador del resumen final del runner de Node.

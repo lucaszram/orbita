@@ -364,6 +364,21 @@ describe("Tránsitos con Plus se ve como el frame (CORE-240)", () => {
     assert.doesNotMatch(panoramaUI, /style=\{\(\{ pressed \}\) => \[styles\.fila,/);
   });
 
+  it("las tres lecturas de Tu momento viajan dentro del shell web y usan la barra de marca, no la flecha de detalle (frames 2023:2900 / 1740:2308)", () => {
+    for (const [ruta, pantalla] of [
+      ["estacion-vital", "EstacionVitalScreen"],
+      ["tema-del-ano", "TemaDelAnoScreen"],
+      ["cuatro-ritmos", "CuatroRitmosScreen"]
+    ] as const) {
+      const codigoRuta = readFileSync(join(raiz, "app", "reading", `${ruta}.tsx`), "utf8");
+      assert.match(codigoRuta, new RegExp(`<WebAppShell active="transitos">\\s*<${pantalla} \\/>`), ruta);
+      assert.match(codigoRuta, /process\.env\.EXPO_OS !== "web"/, ruta);
+      const codigoPantalla = readFileSync(join(raiz, "src", "screens", `${pantalla}.tsx`), "utf8");
+      assert.match(codigoPantalla, /<OrbitaScreen canvas="wide">\s*<Section>/, pantalla);
+      assert.doesNotMatch(codigoPantalla, /DetailScreen/, pantalla);
+    }
+  });
+
   it("en escritorio Ahora lleva la tarjeta TU MOMENTO con las tres capas y el salto al segmento (frame 1737:2201)", () => {
     assert.match(transitos, /<PTarjeta titulo="TU MOMENTO">/);
     assert.match(transitos, /"01 · TU ESTACIÓN VITAL", "02 · EL TEMA DE TU AÑO", "03 · TUS CUATRO RITMOS"/);
