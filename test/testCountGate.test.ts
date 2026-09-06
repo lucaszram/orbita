@@ -27,13 +27,13 @@ const resumen = (pass: number, fail = 0) =>
     ""
   ].join("\n");
 
-test("el piso es el del brief más lo que sumaron CORE-191, el detalle del ranking, Vínculos, el panorama de Tránsitos la biblioteca de Vínculos y la estación vital: 970 tests", () => {
+test("el piso es el del brief más lo que sumaron CORE-191, el detalle del ranking, Vínculos, el panorama de Tránsitos la biblioteca de Vínculos, la estación vital y el límite Free: 974 tests", () => {
   // 745 + 116 casos nuevos de la sección Hoy (hoyPrincipal 27, lunaCarta 45,
   // hoySection 44). El piso se sube con lo que se agregó DE VERDAD: los otros
   // archivos que la tarjeta tocó repuntaron sus afirmaciones a la superficie
   // nueva sin agregar ni borrar un solo caso. La profundización del ranking
   // (`transitDetail.test.ts`) suma 22 casos más: 861 + 22.
-  assert.equal(DEFAULT_MINIMUM, 970);
+  assert.equal(DEFAULT_MINIMUM, 974);
 });
 
 test("una corrida completa por encima del piso pasa", () => {
@@ -43,12 +43,12 @@ test("una corrida completa por encima del piso pasa", () => {
   assert.deepEqual(verdict.failures, []);
 });
 
-test("el piso incluye su propio número: exactamente 970 pasa, 969 falla", () => {
-  assert.equal(evaluateTestRun(resumen(970)).ok, true);
+test("el piso incluye su propio número: exactamente 974 pasa, 973 falla", () => {
+  assert.equal(evaluateTestRun(resumen(974)).ok, true);
 
-  const abajo = evaluateTestRun(resumen(969));
+  const abajo = evaluateTestRun(resumen(973));
   assert.equal(abajo.ok, false);
-  assert.match(abajo.failures[0], /969/);
+  assert.match(abajo.failures[0], /973/);
   assert.match(abajo.failures[0], /falta/);
 });
 

@@ -14,6 +14,7 @@ import { isUserPro } from "./lib/subscriptionAccess";
 import {
   computeSynastryContacts,
   FREE_CONTACT_LIMIT,
+  personAccess,
   signTone,
   summarizeSynastry,
   synastryPrecision,
@@ -170,6 +171,11 @@ export const addPerson = action({
         profileId: args.profileId
       });
       if (!owned) throw new Error("RELATIONSHIP_PROFILE_NOT_FOUND");
+    } else {
+      // CORE-214: crear una persona nueva respeta el cupo del plan (falla
+      // cerrado, antes de llamar al proveedor). Editar o reemplazar no cuenta.
+      const cupo: any = await ctx.runQuery(internalApi.relationships.personQuota, { tokenIdentifier: identity.tokenIdentifier });
+      if (cupo.atLimit) throw new Error("RELATIONSHIP_LIMIT_REACHED");
     }
     const relationshipType = args.relationshipType ? normalizeKey(args.relationshipType) : undefined;
     if (relationshipType && !RELATION_KINDS.has(relationshipType)) throw new Error("RELATION_KIND_INVALID");
@@ -344,6 +350,20 @@ export const persistPerson = internalMutation({
   }
 });
 
+/** El cupo de personas de la cuenta con sesión, derivado del entitlement y del conteo (CORE-214). */
+export const personQuota = internalQuery({
+  args: { tokenIdentifier: v.string() },
+  handler: async (ctx, args) => {
+    const user = await findUserByTokenIdentifier(ctx, args.tokenIdentifier);
+    if (!user) throw new Error("User record not found");
+    const rows = await ctx.db
+      .query("relationshipProfiles")
+      .withIndex("by_user", (q: any) => q.eq("userId", user._id))
+      .collect();
+    return personAccess({ isPro: await isUserPro(ctx, user._id), count: rows.length });
+  }
+});
+
 /** ¿Este perfil es de la persona con sesión? Para validar antes de llamar al proveedor. */
 export const ownedProfile = internalQuery({
   args: { tokenIdentifier: v.string(), profileId: v.id("relationshipProfiles") },
@@ -507,14 +527,17 @@ function personSummaryOf(person: any) {
 export const listPeople = query({
   handler: async (ctx) => {
     const user = await findCurrentUser(ctx);
-    if (!user) return { people: [], activeId: null };
+    if (!user) return { people: [], activeId: null, access: personAccess({ isPro: false, count: 0 }) };
     const rows = await ctx.db
       .query("relationshipProfiles")
       .withIndex("by_user", (q: any) => q.eq("userId", user._id))
       .collect();
     const people = rows.map(personSummaryOf).sort((a, b) => b.savedAt - a.savedAt);
     const active = people.find((p) => p.isActive) ?? null;
-    return { people, activeId: active ? active.id : null };
+    // CORE-214: el cupo sale del entitlement real y del conteo, nunca de un
+    // contador guardado. Alcanzarlo no oculta a nadie.
+    const access = personAccess({ isPro: await isUserPro(ctx, user._id), count: people.length });
+    return { people, activeId: active ? active.id : null, access };
   }
 });
 

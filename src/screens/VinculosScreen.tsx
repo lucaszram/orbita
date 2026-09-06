@@ -47,6 +47,8 @@ import {
   NIVELES,
   SIGNOS,
   TIPOS_DE_VINCULO,
+  accionDeAgregar,
+  copyDeListaVacia,
   descripcionDeNivel,
   etiquetaDeNivel,
   fechaIsoDesdeTexto,
@@ -54,7 +56,9 @@ import {
   inicial,
   lineaDePersona,
   numeroDeNivel,
+  notaDePlan,
   resumenDeVinculo,
+  rotuloDeCupo,
   rotuloDeNivel,
   validarAlta
 } from "@/domain/vinculo";
@@ -63,7 +67,7 @@ import { signLabels } from "@/domain/zodiac";
 import { useIsDesktop } from "@/hooks/useLayoutMode";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { useRequireProfile } from "@/hooks/useRequireProfile";
-import { appCoreApi, type VinculoBiblioteca, type VinculoComparacion, type VinculoNivel, type VinculoPersona } from "@/services/appCoreRefs";
+import { appCoreApi, type VinculoAcceso, type VinculoBiblioteca, type VinculoComparacion, type VinculoNivel, type VinculoPersona } from "@/services/appCoreRefs";
 import { type PlaceHit, searchPlaces } from "@/services/geocoding";
 import { orbita } from "@/theme/orbita";
 
@@ -104,12 +108,16 @@ export function VinculosScreen() {
 function VinculosVivo() {
   const biblioteca = useQuery(appCoreApi.relationships.listPeople, {});
   const comparacion = useQuery(appCoreApi.relationships.synastry, {});
-  const [modo, setModo] = useState<{ kind: "lista" } | { kind: "alta"; editar?: VinculoPersona }>({ kind: "lista" });
+  const [modo, setModo] = useState<{ kind: "lista" } | { kind: "limite" } | { kind: "alta"; editar?: VinculoPersona; reemplazar?: boolean }>({ kind: "lista" });
   if (biblioteca === undefined || comparacion === undefined) return <MinimalLoading />;
+  // CORE-214: «Agregar» abre el alta, o el límite cuando Free ya usó su cupo.
+  // El cupo lo trae el servidor (`access`), derivado del entitlement real.
+  const agregar = () => setModo({ kind: accionDeAgregar(biblioteca.access) });
   if (modo.kind === "alta") {
     return (
       <AltaDePersona
         editar={modo.editar}
+        reemplazar={modo.reemplazar}
         onCancelar={() => setModo({ kind: "lista" })}
         // Al guardar, la pantalla vuelve a la biblioteca ANTES de abrir la
         // comparación: al volver del detalle no puede quedar el alta con los
@@ -119,14 +127,17 @@ function VinculosVivo() {
     );
   }
   if (biblioteca.people.length === 0) {
-    return <ListaVacia onAgregar={() => setModo({ kind: "alta" })} />;
+    return <ListaVacia access={biblioteca.access} onAgregar={agregar} />;
   }
   return (
     <Biblioteca
       biblioteca={biblioteca}
       comparacion={comparacion}
-      onAgregar={() => setModo({ kind: "alta" })}
+      limite={modo.kind === "limite"}
+      onAgregar={agregar}
       onEditar={(persona) => setModo({ kind: "alta", editar: persona })}
+      onReemplazar={(persona) => setModo({ kind: "alta", editar: persona, reemplazar: true })}
+      onVolver={() => setModo({ kind: "lista" })}
     />
   );
 }
@@ -135,21 +146,18 @@ function VinculosVivo() {
 // Lista vacía
 // ---------------------------------------------------------------------------
 
-function ListaVacia({ onAgregar }: { onAgregar: () => void }) {
+function ListaVacia({ access, onAgregar }: { access: VinculoAcceso; onAgregar: () => void }) {
   const desktop = useIsDesktop();
+  const copy = copyDeListaVacia(access);
   return (
     <Columns>
       <Column weight={1}>
         <View style={styles.encabezado}>
           <VEtiqueta accessibilityRole="header">VÍNCULOS · TU LISTA</VEtiqueta>
-          <VEtiqueta tono="gris">{desktop ? "0 PERSONAS" : "0 personas"}</VEtiqueta>
+          <VEtiqueta tono="gris">{rotuloDeCupo(access, 0, desktop)}</VEtiqueta>
         </View>
         <VTitular>{desktop ? "Todavía no guardaste a nadie." : "Vínculos compara tu carta con la de otra persona."}</VTitular>
-        <VTexto>
-          {desktop
-            ? "Vínculos compara tu carta con la de otra persona. Guardá a la primera y su comparación queda en tu lista."
-            : "Cada dato que cargues de esa persona abre una capa más de lectura."}
-        </VTexto>
+        <VTexto>{desktop ? copy.texto : "Cada dato que cargues de esa persona abre una capa más de lectura."}</VTexto>
         {desktop ? (
           <>
             <View style={styles.cta}>
@@ -178,7 +186,7 @@ function ListaVacia({ onAgregar }: { onAgregar: () => void }) {
             <View style={styles.cta}>
               <VBoton label="AGREGAR UNA PERSONA" variante="cobre" onPress={onAgregar} />
             </View>
-            <VNota>Cada persona guarda su propia comparación.</VNota>
+            <VNota>{copy.nota}</VNota>
           </>
         ) : null}
       </Column>
@@ -248,9 +256,20 @@ function formDesde(p: VinculoPersona): AltaForm {
   };
 }
 
-function AltaDePersona({ editar, onCancelar, onGuardada }: { editar?: VinculoPersona; onCancelar: () => void; onGuardada: () => void }) {
+function AltaDePersona({
+  editar,
+  reemplazar,
+  onCancelar,
+  onGuardada
+}: {
+  editar?: VinculoPersona;
+  /** CORE-214: reemplazar a la persona guardada (mismo perfil, datos nuevos). Borra su comparación. */
+  reemplazar?: boolean;
+  onCancelar: () => void;
+  onGuardada: () => void;
+}) {
   const [paso, setPaso] = useState<1 | 2 | 3>(1);
-  const [form, setForm] = useState<AltaForm>(editar ? formDesde(editar) : FORM_INICIAL);
+  const [form, setForm] = useState<AltaForm>(editar && !reemplazar ? formDesde(editar) : FORM_INICIAL);
   const [errores, setErrores] = useState<AltaErrores>({});
   const [guardando, setGuardando] = useState(false);
   const [fallo, setFallo] = useState<string | null>(null);
@@ -274,7 +293,7 @@ function AltaDePersona({ editar, onCancelar, onGuardada }: { editar?: VinculoPer
     const e = validarAlta(form);
     // Al editar, un lugar que ya estaba guardado no se pierde en silencio: si el
     // nivel lo usa y no se volvió a elegir, se pide antes de guardar.
-    if (editar?.birthPlaceLabel && form.nivel !== "signo" && !form.lugar && !e.lugar) {
+    if (!reemplazar && editar?.birthPlaceLabel && form.nivel !== "signo" && !form.lugar && !e.lugar) {
       e.lugar = `Volvé a elegir ${editar.birthPlaceLabel} de la lista para conservar el lugar.`;
     }
     setErrores(e);
@@ -307,7 +326,7 @@ function AltaDePersona({ editar, onCancelar, onGuardada }: { editar?: VinculoPer
 
   const titulos: Record<1 | 2 | 3, { titular: string; texto: string; nota: string; tarjeta: string; ayuda: string }> = {
     1: {
-      titular: editar ? `Los datos de ${editar.name}` : "¿Cómo la llamás?",
+      titular: editar && !reemplazar ? `Los datos de ${editar.name}` : "¿Cómo la llamás?",
       texto: "Empezá por el nombre y qué tipo de vínculo es. Con el nombre y el signo ya hay lectura.",
       nota: "Paso 1 de 3. Nada se guarda hasta el final del alta.",
       tarjeta: "Nombre y tipo de vínculo",
@@ -344,12 +363,13 @@ function AltaDePersona({ editar, onCancelar, onGuardada }: { editar?: VinculoPer
     <Columns>
       <Column weight={1}>
         <View style={styles.encabezado}>
-          <VEtiqueta accessibilityRole="header">{editar ? "VÍNCULOS · EDITAR" : "VÍNCULOS · AGREGAR"}</VEtiqueta>
+          <VEtiqueta accessibilityRole="header">{reemplazar ? "VÍNCULOS · REEMPLAZAR" : editar ? "VÍNCULOS · EDITAR" : "VÍNCULOS · AGREGAR"}</VEtiqueta>
           <VEtiqueta tono="gris">PASO {paso} DE 3</VEtiqueta>
         </View>
         <VTitular>{t.titular}</VTitular>
         <VTexto>{t.texto}</VTexto>
         <VNota>{t.nota}</VNota>
+        {reemplazar && editar ? <VNota>Reemplazar borra la comparación guardada de {editar.name}.</VNota> : null}
       </Column>
       <Column weight={1} style={!desktop ? styles.tarjetaMovil : undefined}>
         <VTarjeta>
@@ -404,7 +424,7 @@ function AltaDePersona({ editar, onCancelar, onGuardada }: { editar?: VinculoPer
           ) : null}
 
           {paso === 3 ? (
-            <DatosPorNivel form={form} errores={errores} patch={patch} lugarGuardado={editar?.birthPlaceLabel ?? null} />
+            <DatosPorNivel form={form} errores={errores} patch={patch} lugarGuardado={reemplazar ? null : editar?.birthPlaceLabel ?? null} />
           ) : null}
 
           {fallo ? (
@@ -606,13 +626,20 @@ function BuscadorDeLugar({
 function Biblioteca({
   biblioteca,
   comparacion,
+  limite,
   onAgregar,
-  onEditar
+  onEditar,
+  onReemplazar,
+  onVolver
 }: {
   biblioteca: VinculoBiblioteca;
   comparacion: VinculoComparacion;
+  /** CORE-214: mostrar el límite de Free (frames `2096:3027` / `1757:2579`). */
+  limite: boolean;
   onAgregar: () => void;
   onEditar: (persona: VinculoPersona) => void;
+  onReemplazar: (persona: VinculoPersona) => void;
+  onVolver: () => void;
 }) {
   const desktop = useIsDesktop();
   const elegir = useMutation(appCoreApi.relationships.selectPerson);
@@ -726,11 +753,39 @@ function Biblioteca({
     </VTarjeta>
   );
 
+  const access = biblioteca.access;
   const acciones = (
     <View style={styles.acciones}>
-      <VBoton label="AGREGAR PERSONA" variante={desktop ? "relleno" : "cobre"} onPress={onAgregar} />
-      <VBoton label={`EDITAR DATOS DE ${activa.name.toLocaleUpperCase("es")}`} variante="contorno" onPress={() => onEditar(activa)} />
+      {access.atLimit ? (
+        <>
+          <VBoton label={`EDITAR DATOS DE ${activa.name.toLocaleUpperCase("es")}`} variante="contorno" onPress={() => onEditar(activa)} />
+          <VBoton label="AGREGAR PERSONA" variante="contorno" onPress={onAgregar} accessibilityLabel="Agregar persona. Free ya usó su cupo: muestra el límite." />
+        </>
+      ) : (
+        <>
+          <VBoton label="AGREGAR PERSONA" variante={desktop ? "relleno" : "cobre"} onPress={onAgregar} />
+          <VBoton label={`EDITAR DATOS DE ${activa.name.toLocaleUpperCase("es")}`} variante="contorno" onPress={() => onEditar(activa)} />
+        </>
+      )}
     </View>
+  );
+
+  // El límite de Free: las personas guardadas siguen, sólo no entra una nueva.
+  const limiteCuerpo = (
+    <>
+      <VTexto>
+        Free guarda {access.limit === 1 ? "una persona" : `${access.limit} personas`} por cuenta. Para agregar a alguien más, activá Plus o reemplazá a la
+        persona guardada.
+      </VTexto>
+      <View style={styles.acciones}>
+        <VBoton label="VER ÓRBITA PLUS" variante="cobre" onPress={() => router.push("/paywall")} />
+        <VBoton label="REEMPLAZAR PERSONA" variante="contorno" onPress={() => onReemplazar(activa)} />
+      </View>
+      <VNota>Reemplazar borra la comparación guardada de esa persona.</VNota>
+      <View style={styles.cta}>
+        <VBoton label="VOLVER A LA LISTA" variante="contorno" onPress={onVolver} />
+      </View>
+    </>
   );
 
   return (
@@ -738,10 +793,16 @@ function Biblioteca({
       <Column weight={1}>
         <View style={styles.encabezado}>
           <VEtiqueta accessibilityRole="header">VÍNCULOS · TU LISTA</VEtiqueta>
-          <VEtiqueta tono="gris">{n === 1 ? (desktop ? "1 PERSONA" : "1 persona guardada") : desktop ? `${n} PERSONAS` : `${n} personas guardadas`}</VEtiqueta>
+          <VEtiqueta tono="gris">{rotuloDeCupo(access, n, desktop)}</VEtiqueta>
         </View>
-        {desktop ? <VTitular>Tu lista</VTitular> : null}
-        {desktop ? (
+        {limite ? (
+          <>
+            <VTitular>Llegaste al límite de Órbita Free.</VTitular>
+            {desktop ? limiteCuerpo : null}
+          </>
+        ) : null}
+        {desktop && !limite ? <VTitular>Tu lista</VTitular> : null}
+        {desktop && !limite ? (
           <VTexto>
             {n === 1
               ? listaOk
@@ -750,21 +811,29 @@ function Biblioteca({
               : `${n} personas guardadas. Tocá a una para abrir su comparación; la elegida es ${activa.name}.`}
           </VTexto>
         ) : null}
-        {desktop ? (
+        {desktop && !limite ? (
           <>
             {acciones}
-            <VNota>Tocá a una persona para abrir su comparación o editá los datos de la elegida.</VNota>
+            <VNota>{access.limit !== null ? notaDePlan(access) : "Tocá a una persona para abrir su comparación o editá los datos de la elegida."}</VNota>
           </>
         ) : null}
       </Column>
       <Column weight={1} style={!desktop ? styles.tarjetaMovil : undefined}>
         {personas}
         {vinculo}
-        {nivel}
-        {!desktop ? (
+        {!limite ? nivel : null}
+        {!desktop && limite ? (
+          <VTarjeta style={[styles.tarjetaSiguiente, styles.tarjetaLimite]}>
+            <Text style={styles.tarjetaTitulo} accessibilityRole="header">
+              Llegaste al límite de Órbita Free.
+            </Text>
+            {limiteCuerpo}
+          </VTarjeta>
+        ) : null}
+        {!desktop && !limite ? (
           <>
             {acciones}
-            <VNota>Tocá a una persona para abrir su comparación.</VNota>
+            <VNota>{notaDePlan(access)}</VNota>
           </>
         ) : null}
       </Column>
@@ -845,6 +914,7 @@ const styles = StyleSheet.create({
   personaFilaSiguiente: { borderTopColor: orbita.colors.line, borderTopWidth: 1, marginTop: orbita.spacing.sm, paddingTop: orbita.spacing.md },
   personaAvatarActiva: { backgroundColor: "rgba(196,106,58,0.45)" },
   tarjetaSiguiente: { marginTop: orbita.spacing.lg },
+  tarjetaLimite: { borderColor: orbita.colors.copper },
   resumenLinea: { marginTop: orbita.spacing.md },
   resumenPista: { backgroundColor: "rgba(244,238,228,0.08)", borderRadius: 3, flexDirection: "row", height: 6, marginTop: orbita.spacing.md, overflow: "hidden" },
   resumenSegmento: { height: 6 },

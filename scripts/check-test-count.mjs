@@ -53,8 +53,12 @@ import { pathToFileURL } from "node:url";
  * `estacionVital.test.ts` (fase, ángulo, fechas, sin hora, límites, fallos,
  * normalizador tropical) y 7 en `momento.test.ts` (copy, números, fechas,
  * estado): 950 + 20.
+ *
+ * El límite Free de Vínculos (CORE-214) suma 4 casos: 1 en `synastry.test.ts`
+ * (`personAccess`) y 3 en `vinculo.test.ts` (rótulo del cupo, nota del plan,
+ * acción de agregar): 970 + 4.
  */
-export const DEFAULT_MINIMUM = 970;
+export const DEFAULT_MINIMUM = 974;
 
 /**
  * Lee un contador del resumen final del runner de Node.

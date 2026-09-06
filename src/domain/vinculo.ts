@@ -1,6 +1,6 @@
 import { signLabels } from "@/domain/zodiac";
 import type { ZodiacSign } from "@/domain/types";
-import type { VinculoNivel, VinculoPersona, VinculoResumen } from "@/services/appCoreRefs";
+import type { VinculoAcceso, VinculoNivel, VinculoPersona, VinculoResumen } from "@/services/appCoreRefs";
 
 /**
  * Vínculos — el alta de la primera persona y cómo se cuenta la comparación
@@ -183,4 +183,38 @@ export function perfilIdValido(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const limpio = value.trim();
   return /^[a-z0-9]{32}$/.test(limpio) ? limpio : null;
+}
+
+// --- CORE-214: el límite Free, dicho con honestidad --------------------------
+
+/** `"1 DE 1"` · `"0 DE 1"` (Free, mono de escritorio) · `"1 persona incluida"` (Free, móvil) · `"3 PERSONAS"` (Plus). */
+export function rotuloDeCupo(access: VinculoAcceso, n: number, desktop: boolean): string {
+  if (access.limit !== null) {
+    if (desktop) return `${n} DE ${access.limit}`;
+    return n === 0 ? `0 de ${access.limit} persona${access.limit === 1 ? "" : "s"}` : `${n} persona${n === 1 ? "" : "s"} incluida${n === 1 ? "" : "s"}`;
+  }
+  if (desktop) return n === 1 ? "1 PERSONA" : `${n} PERSONAS`;
+  return n === 1 ? "1 persona guardada" : `${n} personas guardadas`;
+}
+
+/** La frase del plan bajo la lista: Free dice cuántas incluye; Plus no promete cupos. */
+export function notaDePlan(access: VinculoAcceso): string {
+  if (access.limit === null) return "Con Órbita Plus podés guardar más personas.";
+  return access.limit === 1 ? "Órbita Free incluye una persona." : `Órbita Free incluye ${access.limit} personas.`;
+}
+
+/** Copy de la lista vacía según el plan. */
+export function copyDeListaVacia(access: VinculoAcceso): { texto: string; nota: string } {
+  if (access.limit === null) {
+    return { texto: "Vínculos compara tu carta con la de otra persona. Guardá a la primera y su comparación queda en tu lista.", nota: "Cada persona guarda su propia comparación." };
+  }
+  return {
+    texto: `Vínculos compara tu carta con la de otra persona. Con Órbita Free podés guardar ${access.limit === 1 ? "una" : String(access.limit)}.`,
+    nota: notaDePlan(access)
+  };
+}
+
+/** Qué pasa al tocar «Agregar»: el alta, o el límite (Free con el cupo lleno). */
+export function accionDeAgregar(access: VinculoAcceso): "alta" | "limite" {
+  return access.atLimit ? "limite" : "alta";
 }
