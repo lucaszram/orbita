@@ -1,5 +1,38 @@
 # Current Task
 
+## La cabecera web muestra el plan, el perfil y la fecha como el frame (CORE-239, 2026-09-06)
+
+**Objetivo:** que la cabecera de la web sea la del tablero `1308:2` (`Web/Nav
+· Desktop`, `Web/Header · Mobile`, `Web/Badge · Plan`) y de todos los frames de
+paridad: en escritorio la marca con la píldora de plan, las cinco secciones en
+mono y el atajo `PERFIL`; en móvil la marca con la píldora y la fecha canónica
+del día (o el rótulo que pida la pantalla). Módulo web, archivo compartido:
+corre sola.
+
+**Cambios:** `src/components/web/plan-badge.tsx` (píldora `PLUS` / `FREE`
+desde `subscriptions.getCurrent` vía `useLiveAppDocs`; nada mientras no
+resolvió); `src/components/orbita/kit.tsx` (`TopBar` = marca serif + píldora +
+fecha canónica en mono, `OrbitaScreen` sin `right` por defecto);
+`HomeHeader` (Hoy) monta el mismo `TopBar`; `src/components/web/web-nav.tsx`
+(píldora junto a la marca, secciones en mono, `PERFIL` con punto cobre hacia
+`/perfil`). `CartaScreen` y `VinculosScreen` dejan de pasar `right`: la barra
+muestra la fecha, como los frames. En Hoy móvil la fecha ya no se repite en
+el encabezado de la sección.
+
+**Decisiones:** Perfil sigue sin ser una sección de la barra (`items` no
+cambia): `PERFIL` es un atajo de cuenta, como el frame; no hay botón de
+entrar ni enlace al login. Lucas aprobó el 2026-09-06 seguir el frame por
+sobre la decisión de CORE-113 de no tener atajo de cuenta. Regresiones
+actualizadas con motivo: `responsiveShells` (la Carta ya no pasa `right`),
+`hoySection` (fecha sólo en escritorio en el encabezado). `DetailScreen`
+(pantallas de lectura) no cambia en esta tarjeta.
+
+**Desvíos deliberados respecto del frame** (protegidos por regresiones
+previas): la marca conserva el ícono real de la app junto al wordmark, y las
+secciones van agrupadas a la derecha con PERFIL, no centradas.
+
+**Estado:** rama `orb/core-239-cabecera-web` desde main fcc98db.
+
 ## Vínculos usa el mismo kit visual que Hoy y Tránsitos (CORE-233, 2026-09-06)
 
 **Objetivo:** que Vínculos deje de dibujar con un kit propio y componga con las

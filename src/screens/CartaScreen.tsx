@@ -88,7 +88,7 @@ export function CartaScreen() {
  */
 function CartaShell({ children }: { children: ReactNode }) {
   return (
-    <OrbitaScreen right="Carta" canvas="wide">
+    <OrbitaScreen canvas="wide">
       {children}
     </OrbitaScreen>
   );

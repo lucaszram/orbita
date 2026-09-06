@@ -282,9 +282,9 @@ test("el alta suelta usa la UI oficial de Clerk, no un segundo formulario propio
 
 // --- Chrome de la app autenticada ------------------------------------------
 
-test("la barra de la app no tiene avatar, botón de entrar ni atajo de cuenta", () => {
+test("la barra de la app no tiene botón de entrar ni salida al login (el atajo PERFIL es a /perfil, CORE-239)", () => {
   const nav = sinComentarios(readFileSync(join(ROOT, "src/components/web/web-nav.tsx"), "utf8"));
-  for (const prohibido of ["avatar", "Entrar", "AuthArea", "AuthPill", "useOrbitaAuth"]) {
+  for (const prohibido of ["Entrar", "AuthArea", "AuthPill", "useOrbitaAuth"]) {
     assert.ok(!new RegExp(prohibido, "i").test(nav), `la barra autenticada no puede tener ${prohibido}`);
   }
   assert.ok(!/\/iniciar-sesion/.test(nav), "la barra de la app no enlaza al login");
@@ -301,14 +301,16 @@ test("en móvil no hay barra superior, sólo la inferior fija con área segura",
   assert.ok(/contentSafeBottom/.test(shell), "y lo hace como padding del contenido, no con un View suelto");
 });
 
-test("Perfil sale de la barra sin dejar de ser /perfil ni volverse el login", () => {
-  // El destino de la cuenta no se movió: sigue siendo `/perfil`. Lo que cambió
-  // es desde dónde se entra — ya no es una de las cinco secciones de la barra,
-  // sino el cierre de la Carta.
+test("Perfil no es una sección de la barra, aunque la cabecera tenga el atajo PERFIL (CORE-239)", () => {
+  // El destino de la cuenta no se movió: sigue siendo `/perfil`. No es una de
+  // las cinco secciones (`items`): se entra por el atajo PERFIL de la cabecera
+  // (frame `1718:2136`) y por el cierre de la Carta.
   const nav = sinComentarios(readFileSync(join(ROOT, "src/components/web/web-nav.tsx"), "utf8"));
-  for (const rastro of ['key: "perfil"', 'label: "Perfil"', 'href: "/perfil"']) {
-    assert.ok(!nav.includes(rastro), `Perfil ya no es una sección de la barra: ${rastro}`);
+  const items = nav.slice(nav.indexOf("const items"), nav.indexOf("];", nav.indexOf("const items")));
+  for (const rastro of ['key: "perfil"', 'label: "Perfil"', '"/perfil"']) {
+    assert.ok(!items.includes(rastro), `Perfil ya no es una sección de la barra: ${rastro}`);
   }
+  assert.match(nav, /accessibilityLabel="Perfil y cuenta"/, "el atajo de cuenta de la cabecera existe");
   const carta = sinComentarios(readFileSync(join(ROOT, "src/screens/CartaScreen.tsx"), "utf8"));
   assert.match(
     carta,

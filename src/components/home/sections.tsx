@@ -9,6 +9,7 @@ import { HomeReading, HomeTopic, Topic } from "@/domain/types";
 import type { DailyGuidePayload, DailyTopic } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
 import { EditorialThumb } from "@/components/orbita/HeroImage";
+import { TopBar } from "@/components/orbita/kit";
 
 const HERO_HOME = require("../../../assets/orbita/optimized/core/orbita_home_hero_orbital_b.jpg");
 const NEBULA = require("../../../assets/orbita/optimized/core/orbita_daily_texture_b.jpg");
@@ -41,16 +42,9 @@ export function LabeledBlock({ label, copy }: { label: string; copy: string }) {
 }
 
 /** Header superior (Figma V4.7): brand mono ÓRBITA + selector HOY, con divisor. */
+/** La cabecera móvil de Hoy es la misma barra que el resto de la app (CORE-239). */
 export function HomeHeader() {
-  return (
-    <View>
-      <View style={styles.header}>
-        <Text style={styles.brand}>ÓRBITA</Text>
-        <Text style={styles.selector}>HOY ˅</Text>
-      </View>
-      <View style={styles.headerDivider} />
-    </View>
-  );
+  return <TopBar canvas="wide" />;
 }
 
 /** CTA pill bone → texto oscuro. El fondo va en un View interno (el bg directo
@@ -354,17 +348,6 @@ export function ExtrasSection({ reading }: { reading: HomeReading }) {
 }
 
 const styles = StyleSheet.create({
-  header: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingHorizontal: G,
-    paddingTop: orbita.spacing.md,
-    paddingBottom: orbita.spacing.lg
-  },
-  brand: { color: orbita.colors.bone, fontFamily: orbita.fonts.monoMedium, fontSize: 17, letterSpacing: 2 },
-  selector: { color: orbita.colors.bone, fontFamily: orbita.fonts.monoMedium, fontSize: 14, letterSpacing: 1 },
-  headerDivider: { backgroundColor: orbita.colors.line, height: 1 },
 
   section: { paddingHorizontal: G, paddingTop: orbita.spacing.xl, paddingBottom: orbita.spacing.xxl },
   guiaNebula: { ...StyleSheet.absoluteFillObject },

@@ -235,7 +235,8 @@ test("el lienzo no se anida consigo mismo dentro de un shell", () => {
  */
 const VARIANTE: Record<string, RegExp> = {
   "src/screens/HomeScreen.tsx": /<ContentCanvas variant="wide">/,
-  "src/screens/CartaScreen.tsx": /<OrbitaScreen right="Carta" canvas="wide">/,
+  // CORE-239: la barra móvil muestra la fecha canónica; ninguna pantalla pasa `right`.
+  "src/screens/CartaScreen.tsx": /<OrbitaScreen canvas="wide">/,
   "src/screens/TransitosScreen.tsx": /<OrbitaScreen canvas="wide">/,
   "src/screens/ValoresScreen.tsx": /<DetailScreen eyebrow="Mapa de valores" canvas="wide">/,
   // Y todos sus estados pasan por ese shell, no sólo el del mapa cargado.
@@ -268,7 +269,7 @@ test("ningún estado se queda con un lienzo distinto al de su pantalla", () => {
     },
     "src/screens/CartaScreen.tsx": {
       shell: /function CartaShell\(\{ children \}/,
-      crudo: /<OrbitaScreen(?! right="Carta" canvas="wide">)/
+      crudo: /<OrbitaScreen(?! canvas="wide">)/
     }
   };
   for (const [rel, { shell, crudo }] of Object.entries(SHELL_UNICO)) {
@@ -419,8 +420,8 @@ test("la navegación de escritorio va arriba a la derecha, sin celda vacía", ()
   assert.match(nav, /justifyContent: "space-between"/, "marca a la izquierda, acciones a la derecha");
   assert.doesNotMatch(nav, /styles\.right/, "la celda vacía de la derecha no puede volver");
   assert.doesNotMatch(nav, /right: \{ alignItems: "center", flexDirection: "row", gap: 14 \}/);
-  // Y sigue sin atajos de cuenta: todo eso vive en /perfil.
-  for (const prohibido of ["avatar", "AuthPill", "iniciar-sesion"]) {
+  // Y sigue sin salida al login: el atajo PERFIL (CORE-239) va a /perfil.
+  for (const prohibido of ["AuthPill", "iniciar-sesion"]) {
     assert.ok(!new RegExp(prohibido, "i").test(nav), `la barra autenticada no puede tener ${prohibido}`);
   }
 });

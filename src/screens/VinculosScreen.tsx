@@ -74,7 +74,7 @@ export function VinculosScreen() {
   const guest = !isAuthLoading && !userError && !auth?.isSignedIn;
 
   return (
-    <OrbitaScreen canvas="wide" right="Vínculos">
+    <OrbitaScreen canvas="wide">
       <Section>
         {userError ? (
           <ErrorState onRetry={retryUser} />
