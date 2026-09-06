@@ -93,14 +93,28 @@ export function Section({ children, style }: { children: ReactNode; style?: obje
 export function Eyebrow({ children }: { children: ReactNode }) {
   return <Text style={styles.eyebrow}>{children}</Text>;
 }
+// Los titulares son encabezados también para el lector de pantalla: el rotor
+// de títulos tiene que poder saltar de sección en sección (CORE-233).
 export function H1({ children }: { children: ReactNode }) {
-  return <Text style={styles.h1}>{children}</Text>;
+  return (
+    <Text style={styles.h1} accessibilityRole="header">
+      {children}
+    </Text>
+  );
 }
 export function H2({ children }: { children: ReactNode }) {
-  return <Text style={styles.h2}>{children}</Text>;
+  return (
+    <Text style={styles.h2} accessibilityRole="header">
+      {children}
+    </Text>
+  );
 }
 export function H3({ children }: { children: ReactNode }) {
-  return <Text style={styles.h3}>{children}</Text>;
+  return (
+    <Text style={styles.h3} accessibilityRole="header">
+      {children}
+    </Text>
+  );
 }
 export function Body({ children, bone }: { children: ReactNode; bone?: boolean }) {
   return <Text style={[styles.body, bone && styles.bodyBone]}>{children}</Text>;

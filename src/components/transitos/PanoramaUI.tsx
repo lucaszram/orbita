@@ -16,17 +16,26 @@ import { orbita } from "@/theme/orbita";
 export function PEtiqueta({
   children,
   tono = "cobre",
+  mayusculas = true,
   style,
   accessibilityRole
 }: {
   children: ReactNode;
   tono?: "cobre" | "gris" | "hueso";
+  /** `false` para rótulos que el frame escribe en minúscula («0 de 1 persona»). */
+  mayusculas?: boolean;
   style?: object;
   accessibilityRole?: "header";
 }) {
   return (
     <Text
-      style={[styles.etiqueta, tono === "gris" && styles.etiquetaGris, tono === "hueso" && styles.etiquetaHueso, style]}
+      style={[
+        styles.etiqueta,
+        tono === "gris" && styles.etiquetaGris,
+        tono === "hueso" && styles.etiquetaHueso,
+        !mayusculas && styles.etiquetaMinuscula,
+        style
+      ]}
       accessibilityRole={accessibilityRole}
     >
       {children}
@@ -67,11 +76,24 @@ export function PSegmento({ label, activo, onPress }: { label: string; activo: b
 }
 
 /** Encabezado del bloque: rótulo cobre a la izquierda, dato mono gris a la derecha. */
-export function PEncabezado({ izquierda, derecha }: { izquierda: string; derecha: string | null }) {
+export function PEncabezado({
+  izquierda,
+  derecha,
+  derechaMinuscula
+}: {
+  izquierda: string;
+  derecha: string | null;
+  /** El dato de la derecha tal cual, sin versalitas («0 de 1 persona» en el frame móvil de Vínculos). */
+  derechaMinuscula?: boolean;
+}) {
   return (
     <View style={styles.encabezado}>
       <PEtiqueta accessibilityRole="header">{izquierda}</PEtiqueta>
-      {derecha ? <PEtiqueta tono="gris" style={styles.encabezadoDerecha}>{derecha}</PEtiqueta> : null}
+      {derecha ? (
+        <PEtiqueta tono="gris" mayusculas={!derechaMinuscula} style={styles.encabezadoDerecha}>
+          {derecha}
+        </PEtiqueta>
+      ) : null}
     </View>
   );
 }
@@ -215,16 +237,78 @@ export function PPlegable({ titulo, children }: { titulo: string; children: Reac
   );
 }
 
-/** Botón relleno cobre (CTA de Plus). */
-export function PBoton({ label, onPress, variante = "cobre" }: { label: string; onPress?: () => void; variante?: "cobre" | "contorno" }) {
+/**
+ * Botón de píldora: `cobre` (el CTA de Plus y el CTA principal en móvil),
+ * `hueso` (el CTA principal de escritorio: «AGREGAR PERSONA», «CONTINUAR»),
+ * `contorno` (secundario) y `cobreContorno` (la entrada a Plus en contexto).
+ */
+export function PBoton({
+  label,
+  onPress,
+  variante = "cobre",
+  disabled,
+  accessibilityLabel
+}: {
+  label: string;
+  onPress?: () => void;
+  variante?: "cobre" | "hueso" | "contorno" | "cobreContorno";
+  disabled?: boolean;
+  accessibilityLabel?: string;
+}) {
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
       accessibilityRole="button"
-      style={({ pressed }) => [styles.boton, variante === "contorno" && styles.botonContorno, pressed && styles.apagado]}
+      accessibilityLabel={accessibilityLabel ?? label}
+      accessibilityState={{ disabled: !!disabled }}
+      style={({ pressed }) => [
+        styles.boton,
+        variante === "hueso" && styles.botonHueso,
+        variante === "contorno" && styles.botonContorno,
+        variante === "cobreContorno" && styles.botonCobreContorno,
+        (pressed || disabled) && styles.apagado
+      ]}
     >
-      <Text style={[styles.botonTexto, variante === "contorno" && styles.botonTextoContorno]}>{label}</Text>
+      <Text
+        style={[
+          styles.botonTexto,
+          variante === "contorno" && styles.botonTextoContorno,
+          variante === "cobreContorno" && styles.botonTextoCobreContorno
+        ]}
+      >
+        {label}
+      </Text>
     </Pressable>
+  );
+}
+
+/**
+ * Pista de proporción con uno o varios segmentos (`fraccion` 0–1 cada uno,
+ * en orden). Es la misma barra de las filas del panorama, disponible para las
+ * tarjetas de Vínculos: conteo por tono, por dimensión y el resumen del vínculo.
+ * Ilustra un dato que siempre está escrito al lado; el lector de pantalla
+ * recibe `accessibilityLabel`, nunca un porcentaje inventado.
+ */
+export function PBarra({
+  segmentos,
+  grosor = 3,
+  accessibilityLabel,
+  style
+}: {
+  segmentos: ReadonlyArray<{ fraccion: number; color: string }>;
+  grosor?: number;
+  accessibilityLabel: string;
+  style?: object;
+}) {
+  const usado = segmentos.reduce((a, s) => a + Math.max(0, Math.min(1, s.fraccion)), 0);
+  return (
+    <View style={[styles.barraPista, { height: grosor }, style]} accessible accessibilityLabel={accessibilityLabel}>
+      {segmentos.map((s, i) =>
+        s.fraccion > 0 ? <View key={i} style={{ backgroundColor: s.color, flexGrow: Math.max(0, Math.min(1, s.fraccion)), height: grosor }} /> : null
+      )}
+      <View style={{ flexGrow: Math.max(0, 1 - usado) }} />
+    </View>
   );
 }
 
@@ -246,6 +330,7 @@ const styles = StyleSheet.create({
   etiqueta: { color: orbita.colors.copper, fontFamily: orbita.fonts.monoMedium, fontSize: 11, letterSpacing: 1.2, textTransform: "uppercase" },
   etiquetaGris: { color: orbita.colors.mutedDim },
   etiquetaHueso: { color: orbita.colors.bone },
+  etiquetaMinuscula: { textTransform: "none" },
   texto: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 15, lineHeight: 22 },
   nota: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.body, fontSize: 13, lineHeight: 18 },
   apagado: { opacity: 0.6 },
@@ -310,9 +395,12 @@ const styles = StyleSheet.create({
     minHeight: 48,
     paddingHorizontal: orbita.spacing.xl
   },
+  botonHueso: { backgroundColor: orbita.colors.bone },
   botonContorno: { backgroundColor: "transparent", borderColor: orbita.colors.line, borderWidth: 1 },
+  botonCobreContorno: { backgroundColor: "transparent", borderColor: orbita.colors.copper, borderWidth: 1 },
   botonTexto: { color: orbita.colors.onLight, fontFamily: orbita.fonts.monoMedium, fontSize: 13, letterSpacing: 1.2 },
   botonTextoContorno: { color: orbita.colors.bone },
+  botonTextoCobreContorno: { color: orbita.colors.copper },
 
   esqueleto: { gap: orbita.spacing.md, marginTop: orbita.spacing.lg },
   esqueletoLinea: { backgroundColor: "rgba(244,238,228,0.08)", borderRadius: 3, height: 6, marginTop: orbita.spacing.sm },

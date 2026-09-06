@@ -1,5 +1,42 @@
 # Current Task
 
+## Vínculos usa el mismo kit visual que Hoy y Tránsitos (CORE-233, 2026-09-06)
+
+**Objetivo:** que Vínculos deje de dibujar con un kit propio y componga con las
+mismas piezas que Hoy, Tránsitos y Carta, según los frames `1757:2613` /
+`1757:2383` (lista vacía), `1761:2776`→`1761:3012` (alta), `2092:2975` /
+`1757:2475` (biblioteca), `2096:3027` / `1757:2579` (límite) y `1757:2674` /
+`1757:2515` (comparación). Reestructuración: sin cambio de contrato.
+
+**Cambios:** `src/components/vinculos/VinculosUI.tsx` queda sólo con lo que el
+kit no tiene (`VCampo`, `VChip`, `VOpcion`, `VTramos`, `VInicial`,
+`VPersonaChip`, `VCerco`); `VinculosScreen` y `VinculoComparacionScreen`
+componen con `PEncabezado`, `PEtiqueta`, `PTexto`, `PNota`, `PTarjeta`,
+`PBoton`, `PBarra` (`src/components/transitos/PanoramaUI.tsx`) y `H2` / `H3`
+(`kit.tsx`), en `Columns` 3:4 (texto / tarjeta) como los frames 1440.
+`PanoramaUI` suma `PEtiqueta mayusculas`, `PEncabezado derechaMinuscula`, las
+variantes `hueso` / `cobreContorno` de `PBoton` y la barra `PBarra`. Los tintes
+con alfa pasan a `src/theme/orbita.ts` (`copperTint10/16/25/45`,
+`harmonyTint22`, `boneTint08/12`).
+
+**Decisiones:** el rótulo de cupo va en la misma fila que el eyebrow y en
+minúscula en móvil («0 de 1 persona»), como el frame. La lógica (queries,
+alta, biblioteca, límite) no cambia: es la misma de CORE-212/213/214.
+
+**Cambios visuales declarados (además del kit):** «CONTINUAR» en móvil pasa a
+cobre como los frames 390 del alta; el numeral de «Las tres capas» usa
+`VInicial` (tinte 25 %, texto hueso); los tonos de las barras son los del
+frame en las dos pantallas (armónicos cobre claro, tensos rojo, fusiones
+azul). Los campos del alta siguen dentro de la tarjeta (preexistente; V2 lo
+revisa contra el frame 390).
+
+**Revisión:** r1 RECHAZADA (título «NIVEL DE DATOS DE X» en cobre; el frame
+lo tiene en gris) → corregido; la pista de las filas del panorama vuelve a
+su valor original (0.10 / radio 2) para que el cambio en `PanoramaUI` sea
+estrictamente aditivo.
+
+**Estado:** rama `orb/core-233-vinculos-kit` desde main f9c8264.
+
 ## Lo principal de Hoy se lee como en el frame (CORE-237, 2026-09-06)
 
 **Objetivo:** que «Lo principal hoy» siga los frames WEB V1 `1718:2136` (1440)

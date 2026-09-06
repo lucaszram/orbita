@@ -2,15 +2,23 @@
  * **Vínculos** — la lista de personas y el alta de la primera (CORE-212).
  *
  * Frames: `1757:2613` / `1757:2383` (lista vacía, 1440 / 390), `1761:2776`,
- * `1761:2893`, `1761:3012` (alta en tres pasos), `1757:2475` (una persona
- * guardada). En escritorio la columna izquierda lleva el rótulo, el titular y
- * la explicación; la derecha la tarjeta que hace el trabajo (lista, alta o
- * persona). En móvil todo se apila en el orden del JSX.
+ * `1761:2893`, `1761:3012` (alta en tres pasos), `2092:2975` / `1757:2475`
+ * (biblioteca) y `2096:3027` / `1757:2579` (límite Free). En escritorio la
+ * columna izquierda lleva el rótulo, el titular y la explicación; la derecha,
+ * más ancha, la tarjeta que hace el trabajo (lista, alta o persona). En móvil
+ * todo se apila en el orden del JSX.
+ *
+ * Compone con el kit compartido de la web (CORE-233): `PEncabezado`,
+ * `PEtiqueta`, `PTexto`, `PNota`, `PTarjeta`, `PBoton`, `PBarra` y los
+ * titulares `H2` / `H3` son los mismos que usan Hoy, Tránsitos y Carta; en
+ * `VinculosUI` quedan sólo el campo, el chip, la opción de nivel, los tramos,
+ * el avatar y el cerco de error.
  *
  * ## De dónde sale cada cosa (cero maqueta)
  *
- * - La lista y la comparación salen de `relationships.synastry`, reactiva:
- *   apenas se guarda una persona la pantalla cambia sola.
+ * - La lista y la comparación salen de `relationships.listPeople` y
+ *   `relationships.synastry`, reactivas: apenas se guarda una persona la
+ *   pantalla cambia sola.
  * - El alta llama a `relationships.addPerson`, que valida por nivel y calcula
  *   la carta de la persona en el servidor cuando el nivel lo pide.
  * - Nada se guarda hasta el último paso. Un fallo del servidor se muestra en
@@ -20,27 +28,16 @@
  * aun así llega alguien sin sesión (web sin `RequireSession`), la sección lo
  * dice y ofrece entrar.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { Column, Columns } from "@/components/orbita/Layout";
-import { OrbitaScreen, Section } from "@/components/orbita/kit";
+import { H2, H3, OrbitaScreen, Section } from "@/components/orbita/kit";
 import { GuestState } from "@/components/orbita/GuestState";
 import { ErrorState, MinimalLoading } from "@/components/orbita/states";
-import {
-  VBoton,
-  VCampo,
-  VCerco,
-  VChip,
-  VEtiqueta,
-  VNota,
-  VOpcion,
-  VProgreso,
-  VTarjeta,
-  VTexto,
-  VTitular
-} from "@/components/vinculos/VinculosUI";
+import { PBarra, PBoton, PEncabezado, PEtiqueta, PNota, PTarjeta, PTexto } from "@/components/transitos/PanoramaUI";
+import { VCampo, VCerco, VChip, VInicial, VOpcion, VTramos } from "@/components/vinculos/VinculosUI";
 import {
   type AltaErrores,
   type AltaForm,
@@ -52,6 +49,7 @@ import {
   descripcionDeNivel,
   etiquetaDeNivel,
   fechaIsoDesdeTexto,
+  fraccionDeBarra,
   horaNormalizada,
   inicial,
   lineaDePersona,
@@ -63,7 +61,6 @@ import {
   validarAlta
 } from "@/domain/vinculo";
 import type { ZodiacSign } from "@/domain/types";
-import { signLabels } from "@/domain/zodiac";
 import { useIsDesktop } from "@/hooks/useLayoutMode";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { useRequireProfile } from "@/hooks/useRequireProfile";
@@ -143,55 +140,79 @@ function VinculosVivo() {
 }
 
 // ---------------------------------------------------------------------------
+// Composición compartida por los tres estados
+// ---------------------------------------------------------------------------
+
+/**
+ * La composición del carril de Vínculos: texto a la izquierda (3), tarjeta a
+ * la derecha (4), como los frames 1440. En móvil apila en el orden del JSX y
+ * la tarjeta se separa del texto con un margen.
+ */
+function DosColumnas({ izquierda, derecha }: { izquierda: ReactNode; derecha: ReactNode }) {
+  const desktop = useIsDesktop();
+  return (
+    <Columns gap={orbita.spacing.xxl * 1.5}>
+      <Column weight={3}>{izquierda}</Column>
+      <Column weight={4} style={!desktop ? styles.columnaMovil : undefined}>
+        {derecha}
+      </Column>
+    </Columns>
+  );
+}
+
+/** El titular serif de la columna de texto: `H2` en escritorio, `H3` en móvil. */
+function Titular({ children }: { children: string }) {
+  const desktop = useIsDesktop();
+  return <View style={styles.titular}>{desktop ? <H2>{children}</H2> : <H3>{children}</H3>}</View>;
+}
+
+// ---------------------------------------------------------------------------
 // Lista vacía
 // ---------------------------------------------------------------------------
 
 function ListaVacia({ access, onAgregar }: { access: VinculoAcceso; onAgregar: () => void }) {
   const desktop = useIsDesktop();
   const copy = copyDeListaVacia(access);
-  return (
-    <Columns>
-      <Column weight={1}>
-        <View style={styles.encabezado}>
-          <VEtiqueta accessibilityRole="header">VÍNCULOS · TU LISTA</VEtiqueta>
-          <VEtiqueta tono="gris">{rotuloDeCupo(access, 0, desktop)}</VEtiqueta>
-        </View>
-        <VTitular>{desktop ? "Todavía no guardaste a nadie." : "Vínculos compara tu carta con la de otra persona."}</VTitular>
-        <VTexto>{desktop ? copy.texto : "Cada dato que cargues de esa persona abre una capa más de lectura."}</VTexto>
-        {desktop ? (
-          <>
-            <View style={styles.cta}>
-              <VBoton label="AGREGAR PERSONA" onPress={onAgregar} />
-            </View>
-            <VNota>
-              Necesitás su fecha, hora y lugar de nacimiento. Si no sabés la hora, se puede guardar igual con menos
-              precisión.
-            </VNota>
-          </>
-        ) : null}
-      </Column>
-      <Column weight={1}>
-        {desktop ? (
-          <VTarjeta style={styles.tarjetaVacia}>
-            <View style={styles.anillo}>
-              <View style={styles.anilloInterior} />
-            </View>
-            <Text style={styles.vaciaTitulo}>Tu lista está vacía</Text>
-            <Text style={styles.vaciaCuerpo}>Las personas que guardes aparecen acá.</Text>
-          </VTarjeta>
-        ) : null}
-        <TresCapas />
-        {!desktop ? (
-          <>
-            <View style={styles.cta}>
-              <VBoton label="AGREGAR UNA PERSONA" variante="cobre" onPress={onAgregar} />
-            </View>
-            <VNota>{copy.nota}</VNota>
-          </>
-        ) : null}
-      </Column>
-    </Columns>
+  const izquierda = (
+    <>
+      <PEncabezado izquierda="VÍNCULOS · TU LISTA" derecha={rotuloDeCupo(access, 0, desktop)} derechaMinuscula={!desktop} />
+      <Titular>{desktop ? "Todavía no guardaste a nadie." : "Vínculos compara tu carta con la de otra persona."}</Titular>
+      <PTexto style={styles.texto}>{desktop ? copy.texto : "Cada dato que cargues de esa persona abre una capa más de lectura."}</PTexto>
+      {desktop ? (
+        <>
+          <View style={styles.cta}>
+            <PBoton label="AGREGAR PERSONA" variante="hueso" onPress={onAgregar} />
+          </View>
+          <PNota style={styles.nota}>
+            Necesitás su fecha, hora y lugar de nacimiento. Si no sabés la hora, se puede guardar igual con menos precisión.
+          </PNota>
+        </>
+      ) : null}
+    </>
   );
+  const derecha = (
+    <>
+      {desktop ? (
+        <PTarjeta style={styles.tarjetaVacia}>
+          <View style={styles.anillo}>
+            <View style={styles.anilloInterior} />
+          </View>
+          <Text style={styles.vaciaTitulo}>Tu lista está vacía</Text>
+          <PTexto style={styles.vaciaCuerpo}>Las personas que guardes aparecen acá.</PTexto>
+        </PTarjeta>
+      ) : null}
+      <TresCapas />
+      {!desktop ? (
+        <>
+          <View style={styles.cta}>
+            <PBoton label="AGREGAR UNA PERSONA" onPress={onAgregar} />
+          </View>
+          <PNota style={styles.nota}>{copy.nota}</PNota>
+        </>
+      ) : null}
+    </>
+  );
+  return <DosColumnas izquierda={izquierda} derecha={derecha} />;
 }
 
 /** La tarjeta «Las tres capas de datos», igual en las dos anchuras. */
@@ -204,31 +225,31 @@ function TresCapas() {
   ];
   const filas = capas.map((c) => (
     <View key={c.n} style={styles.capa}>
-      <View style={styles.capaNumero}>
-        <Text style={styles.capaNumeroTexto}>{c.n}</Text>
-      </View>
+      <VInicial inicial={String(c.n)} />
       <View style={styles.capaCuerpo}>
         <Text style={styles.capaTitulo}>{c.titulo}</Text>
-        <Text style={styles.capaDetalle}>{c.detalle}</Text>
+        <PEtiqueta tono="gris" style={styles.capaDetalle}>
+          {c.detalle}
+        </PEtiqueta>
       </View>
     </View>
   ));
   if (desktop) {
     return (
-      <VTarjeta style={styles.tarjetaCapas}>
-        <VEtiqueta tono="gris" accessibilityRole="header">
+      <PTarjeta style={styles.tarjetaCapas}>
+        <PEtiqueta tono="gris" accessibilityRole="header">
           LAS TRES CAPAS DE DATOS
-        </VEtiqueta>
+        </PEtiqueta>
         {filas}
-      </VTarjeta>
+      </PTarjeta>
     );
   }
   return (
     <View style={styles.capasMovil}>
       <View style={styles.linea} />
-      <VEtiqueta tono="gris" accessibilityRole="header">
+      <PEtiqueta tono="gris" accessibilityRole="header">
         LAS TRES CAPAS DE DATOS
-      </VEtiqueta>
+      </PEtiqueta>
       {filas}
     </View>
   );
@@ -366,93 +387,86 @@ function AltaDePersona({
   };
   const t = titulos[paso];
 
-  return (
-    <Columns>
-      <Column weight={1}>
-        <View style={styles.encabezado}>
-          <VEtiqueta accessibilityRole="header">{reemplazar ? "VÍNCULOS · REEMPLAZAR" : editar ? "VÍNCULOS · EDITAR" : "VÍNCULOS · AGREGAR"}</VEtiqueta>
-          <VEtiqueta tono="gris">PASO {paso} DE 3</VEtiqueta>
-        </View>
-        <VTitular>{t.titular}</VTitular>
-        <VTexto>{t.texto}</VTexto>
-        <VNota>{t.nota}</VNota>
-        {reemplazar && editar ? <VNota>Reemplazar borra la comparación guardada de {editar.name}.</VNota> : null}
-      </Column>
-      <Column weight={1} style={!desktop ? styles.tarjetaMovil : undefined}>
-        <VTarjeta>
-          <View style={styles.encabezado}>
-            <Text style={styles.tarjetaTitulo}>{t.tarjeta}</Text>
-            <VEtiqueta tono="gris">PASO {paso} DE 3</VEtiqueta>
-          </View>
-          <VProgreso paso={paso} />
-          <VNota>{t.ayuda}</VNota>
-
-          {paso === 1 ? (
-            <>
-              <VCampo
-                rotulo="NOMBRE"
-                value={form.nombre}
-                onChangeText={(v) => patch({ nombre: v })}
-                placeholder="Cómo la llamás"
-                autoCapitalize="words"
-                autoFocus
-                error={errores.nombre}
-                style={styles.campo}
-              />
-              <VEtiqueta tono="gris" style={styles.rotuloGrupo}>
-                TIPO DE VÍNCULO
-              </VEtiqueta>
-              <View style={styles.chips} accessibilityRole="radiogroup">
-                {TIPOS_DE_VINCULO.map((tipo) => (
-                  <VChip
-                    key={tipo.key}
-                    label={tipo.label}
-                    activo={form.tipo === tipo.key}
-                    onPress={() => patch({ tipo: form.tipo === tipo.key ? null : tipo.key })}
-                  />
-                ))}
-              </View>
-            </>
-          ) : null}
-
-          {paso === 2 ? (
-            <View accessibilityRole="radiogroup" style={styles.opciones}>
-              {NIVELES.map((n) => (
-                <VOpcion
-                  key={n.key}
-                  titulo={n.titulo}
-                  rotulo={n.pide}
-                  detalle={n.detalle}
-                  activo={form.nivel === n.key}
-                  onPress={() => patch({ nivel: n.key as VinculoNivel })}
-                />
-              ))}
-            </View>
-          ) : null}
-
-          {paso === 3 ? (
-            <DatosPorNivel form={form} errores={errores} patch={patch} lugarGuardado={reemplazar ? null : editar?.birthPlaceLabel ?? null} />
-          ) : null}
-
-          {fallo ? (
-            <Text style={styles.fallo} accessibilityRole="alert">
-              {fallo}
-            </Text>
-          ) : null}
-
-          <View style={styles.botones}>
-            {paso < 3 ? (
-              <VBoton label="CONTINUAR" onPress={continuar} />
-            ) : (
-              <VBoton label={guardando ? "GUARDANDO…" : "GUARDAR PERSONA"} onPress={enviar} disabled={guardando} variante={desktop ? "relleno" : "cobre"} />
-            )}
-            {paso > 1 ? <VBoton label="ATRÁS" variante="contorno" onPress={() => setPaso((p) => (p - 1) as 1 | 2)} disabled={guardando} /> : null}
-            <VBoton label="CANCELAR" variante="contorno" onPress={onCancelar} disabled={guardando} />
-          </View>
-        </VTarjeta>
-      </Column>
-    </Columns>
+  const izquierda = (
+    <>
+      <PEncabezado izquierda={reemplazar ? "VÍNCULOS · REEMPLAZAR" : editar ? "VÍNCULOS · EDITAR" : "VÍNCULOS · AGREGAR"} derecha={`PASO ${paso} DE 3`} />
+      <Titular>{t.titular}</Titular>
+      <PTexto style={styles.texto}>{t.texto}</PTexto>
+      <PNota style={styles.nota}>{t.nota}</PNota>
+      {reemplazar && editar ? <PNota style={styles.nota}>Reemplazar borra la comparación guardada de {editar.name}.</PNota> : null}
+    </>
   );
+
+  const derecha = (
+    <PTarjeta>
+      <View style={styles.tarjetaCabecera}>
+        <Text style={styles.tarjetaTitulo}>{t.tarjeta}</Text>
+        <PEtiqueta tono="gris">PASO {paso} DE 3</PEtiqueta>
+      </View>
+      <VTramos activos={paso} accessibilityLabel={`Paso ${paso} de 3`} style={styles.progreso} />
+      <PNota style={styles.notaCorta}>{t.ayuda}</PNota>
+
+      {paso === 1 ? (
+        <>
+          <VCampo
+            rotulo="NOMBRE"
+            value={form.nombre}
+            onChangeText={(v) => patch({ nombre: v })}
+            placeholder="Cómo la llamás"
+            autoCapitalize="words"
+            autoFocus
+            error={errores.nombre}
+            style={styles.campo}
+          />
+          <PEtiqueta tono="gris" style={styles.rotuloGrupo}>
+            TIPO DE VÍNCULO
+          </PEtiqueta>
+          <View style={styles.chips} accessibilityRole="radiogroup">
+            {TIPOS_DE_VINCULO.map((tipo) => (
+              <VChip key={tipo.key} label={tipo.label} activo={form.tipo === tipo.key} onPress={() => patch({ tipo: form.tipo === tipo.key ? null : tipo.key })} />
+            ))}
+          </View>
+        </>
+      ) : null}
+
+      {paso === 2 ? (
+        <View accessibilityRole="radiogroup" style={styles.opciones}>
+          {NIVELES.map((n) => (
+            <VOpcion
+              key={n.key}
+              titulo={n.titulo}
+              rotulo={n.pide}
+              detalle={n.detalle}
+              activo={form.nivel === n.key}
+              onPress={() => patch({ nivel: n.key as VinculoNivel })}
+            />
+          ))}
+        </View>
+      ) : null}
+
+      {paso === 3 ? (
+        <DatosPorNivel form={form} errores={errores} patch={patch} lugarGuardado={reemplazar ? null : editar?.birthPlaceLabel ?? null} />
+      ) : null}
+
+      {fallo ? (
+        <Text style={styles.fallo} accessibilityRole="alert">
+          {fallo}
+        </Text>
+      ) : null}
+
+      <View style={styles.botones}>
+        {paso < 3 ? (
+          <PBoton label="CONTINUAR" variante={desktop ? "hueso" : "cobre"} onPress={continuar} />
+        ) : (
+          <PBoton label={guardando ? "GUARDANDO…" : "GUARDAR PERSONA"} onPress={enviar} disabled={guardando} variante={desktop ? "hueso" : "cobre"} />
+        )}
+        {paso > 1 ? <PBoton label="ATRÁS" variante="contorno" onPress={() => setPaso((p) => (p - 1) as 1 | 2)} disabled={guardando} /> : null}
+        <PBoton label="CANCELAR" variante="contorno" onPress={onCancelar} disabled={guardando} />
+      </View>
+    </PTarjeta>
+  );
+
+  return <DosColumnas izquierda={izquierda} derecha={derecha} />;
 }
 
 /** Paso 3: los campos que pide el nivel elegido. */
@@ -471,9 +485,9 @@ function DatosPorNivel({
   if (form.nivel === "signo") {
     return (
       <>
-        <VEtiqueta tono="gris" style={styles.rotuloGrupo}>
+        <PEtiqueta tono="gris" style={styles.rotuloGrupo}>
           SIGNO SOLAR
-        </VEtiqueta>
+        </PEtiqueta>
         <View style={styles.chips} accessibilityRole="radiogroup">
           {SIGNOS.map((s) => (
             <VChip key={s.key} label={s.label} activo={form.signo === s.key} onPress={() => patch({ signo: s.key as ZodiacSign })} />
@@ -490,9 +504,9 @@ function DatosPorNivel({
   const pideHora = form.nivel === "carta";
   return (
     <>
-      <VEtiqueta tono="gris" style={styles.rotuloGrupo}>
+      <PEtiqueta tono="gris" style={styles.rotuloGrupo}>
         DATOS DE LA PERSONA
-      </VEtiqueta>
+      </PEtiqueta>
       <View style={styles.filaCampos}>
         <VCampo
           rotulo="FECHA"
@@ -513,9 +527,9 @@ function DatosPorNivel({
           style={styles.campoMitad}
         />
       </View>
-      <VEtiqueta tono="gris" style={styles.rotuloGrupo}>
+      <PEtiqueta tono="gris" style={styles.rotuloGrupo}>
         {pideHora ? "PRECISIÓN · SUMA CASAS Y EJES" : "PRECISIÓN · CON HORA Y LUGAR SUMA CASAS Y EJES"}
-      </VEtiqueta>
+      </PEtiqueta>
       <BuscadorDeLugar
         rotulo={pideHora ? "LUGAR" : "LUGAR · OPCIONAL"}
         valor={form.lugar}
@@ -596,8 +610,8 @@ function BuscadorDeLugar({
         error={error}
         style={styles.campo}
       />
-      {pista && !valor ? <VNota>Guardado: {pista}. Volvé a elegirlo de la lista para confirmar las coordenadas.</VNota> : null}
-      {buscando ? <VNota>Buscando…</VNota> : null}
+      {pista && !valor ? <PNota style={styles.notaCorta}>Guardado: {pista}. Volvé a elegirlo de la lista para confirmar las coordenadas.</PNota> : null}
+      {buscando ? <PNota style={styles.notaCorta}>Buscando…</PNota> : null}
       {resultados.length > 0 ? (
         <View style={styles.resultados} accessibilityRole="list">
           {resultados.map((r) => (
@@ -614,14 +628,14 @@ function BuscadorDeLugar({
         </View>
       ) : null}
       {!buscando && texto.trim().length >= 2 && resultados.length === 0 && !valor ? (
-        <VNota>Sin resultados para ese lugar. Probá con la ciudad y el país.</VNota>
+        <PNota style={styles.notaCorta}>Sin resultados para ese lugar. Probá con la ciudad y el país.</PNota>
       ) : null}
     </View>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Una persona guardada
+// La biblioteca: una o más personas guardadas
 // ---------------------------------------------------------------------------
 
 /**
@@ -676,7 +690,7 @@ function Biblioteca({
   const conHoraYLugar = Boolean(activa.birthTime && activa.birthPlaceLabel);
 
   const personas = (
-    <VTarjeta>
+    <PTarjeta>
       {biblioteca.people.map((p, i) => (
         <Pressable
           key={p.id}
@@ -686,12 +700,12 @@ function Biblioteca({
           accessibilityLabel={`${p.name}. ${lineaDePersona(p)}.${p.isActive ? " Persona elegida." : ""} Abrir su comparación.`}
           style={({ pressed }) => [styles.personaFila, i > 0 && styles.personaFilaSiguiente, pressed && { opacity: 0.6 }]}
         >
-          <View style={[styles.personaAvatar, p.isActive && styles.personaAvatarActiva]}>
-            <Text style={styles.personaAvatarTexto}>{inicial(p.name)}</Text>
-          </View>
-          <View style={{ flex: 1, minWidth: 0 }}>
+          <VInicial inicial={inicial(p.name)} tamano={40} activa={p.isActive} />
+          <View style={styles.personaCuerpo}>
             <Text style={styles.personaNombre}>{p.name}</Text>
-            <Text style={styles.personaDetalle}>{lineaDePersona(p)}</Text>
+            <PEtiqueta tono="gris" mayusculas={false} style={styles.personaDetalle}>
+              {lineaDePersona(p)}
+            </PEtiqueta>
           </View>
           <Text style={styles.personaFlecha}>{eligiendo === p.id ? "…" : "›"}</Text>
         </Pressable>
@@ -701,35 +715,40 @@ function Biblioteca({
           {falloEleccion}
         </Text>
       ) : null}
-    </VTarjeta>
+    </PTarjeta>
   );
 
   const vinculo = (
-    <VTarjeta style={styles.tarjetaSiguiente}>
+    <PTarjeta>
       <Text style={styles.tarjetaTitulo} accessibilityRole="header">
         Tu vínculo con {activa.name}
       </Text>
       {resumen ? (
         <>
-          <VEtiqueta tono="gris" style={styles.resumenLinea}>
+          <PEtiqueta tono="gris" style={styles.resumenLinea}>
             {resumenDeVinculo(resumen)}
-          </VEtiqueta>
+          </PEtiqueta>
           {resumen.total > 0 ? (
-            <View style={styles.resumenPista} accessibilityLabel={resumenDeVinculo(resumen)}>
-              <View style={[styles.resumenSegmento, { backgroundColor: orbita.colors.harmony, flexGrow: resumen.armonicos }]} />
-              <View style={[styles.resumenSegmento, { backgroundColor: orbita.colors.tension, flexGrow: resumen.tensos }]} />
-              <View style={[styles.resumenSegmento, { backgroundColor: orbita.colors.copperSoft, flexGrow: resumen.fusiones }]} />
-            </View>
+            <PBarra
+              grosor={4}
+              segmentos={[
+                { fraccion: fraccionDeBarra(resumen.armonicos, resumen.total), color: orbita.colors.copperSoft },
+                { fraccion: fraccionDeBarra(resumen.tensos, resumen.total), color: orbita.colors.tension },
+                { fraccion: fraccionDeBarra(resumen.fusiones, resumen.total), color: orbita.colors.harmony }
+              ]}
+              accessibilityLabel={resumenDeVinculo(resumen)}
+              style={styles.resumenBarra}
+            />
           ) : null}
         </>
       ) : (
-        <VNota>
+        <PNota style={styles.notaCorta}>
           {comparacion.status === "needs_natal_chart"
             ? "Para comparar hace falta tu carta natal calculada. Cuando esté, la comparación aparece acá."
             : comparacion.status === "person_chart_unavailable"
               ? "Guardamos a la persona, pero el proveedor no devolvió su carta. Editá sus datos para volver a intentar."
               : "La comparación se calcula con la persona elegida."}
-        </VNota>
+        </PNota>
       )}
       <Pressable
         onPress={() => abrir(activa)}
@@ -739,25 +758,21 @@ function Biblioteca({
       >
         <Text style={styles.verComparacionTexto}>Ver comparación  ›</Text>
       </Pressable>
-    </VTarjeta>
+    </PTarjeta>
   );
 
   const nivel = (
-    <VTarjeta style={styles.tarjetaSiguiente}>
-      <VEtiqueta tono="gris" accessibilityRole="header">
+    <PTarjeta>
+      <PEtiqueta tono="gris" accessibilityRole="header">
         NIVEL DE DATOS DE {activa.name.toLocaleUpperCase("es")}
-      </VEtiqueta>
-      <View style={[styles.encabezado, styles.nivelFila]}>
+      </PEtiqueta>
+      <View style={[styles.tarjetaCabecera, styles.nivelFila]}>
         <Text style={styles.nivelTitulo}>{etiquetaDeNivel(activa.level)}</Text>
-        <VEtiqueta tono="gris">{rotuloDeNivel(activa.level)}</VEtiqueta>
+        <PEtiqueta tono="gris">{rotuloDeNivel(activa.level)}</PEtiqueta>
       </View>
-      <View style={styles.nivelTramos} accessibilityLabel={rotuloDeNivel(activa.level)}>
-        {[1, 2, 3].map((k) => (
-          <View key={k} style={[styles.nivelTramo, k <= numeroDeNivel(activa.level) && styles.nivelTramoActivo]} />
-        ))}
-      </View>
-      <VNota>{descripcionDeNivel(activa.level, conHoraYLugar)}</VNota>
-    </VTarjeta>
+      <VTramos activos={numeroDeNivel(activa.level)} accessibilityLabel={rotuloDeNivel(activa.level)} style={styles.nivelTramos} />
+      <PNota style={styles.notaCorta}>{descripcionDeNivel(activa.level, conHoraYLugar)}</PNota>
+    </PTarjeta>
   );
 
   const access = biblioteca.access;
@@ -765,13 +780,13 @@ function Biblioteca({
     <View style={styles.acciones}>
       {access.atLimit ? (
         <>
-          <VBoton label={`EDITAR DATOS DE ${activa.name.toLocaleUpperCase("es")}`} variante="contorno" onPress={() => onEditar(activa)} />
-          <VBoton label="AGREGAR PERSONA" variante="contorno" onPress={onAgregar} accessibilityLabel="Agregar persona. Free ya usó su cupo: muestra el límite." />
+          <PBoton label={`EDITAR DATOS DE ${activa.name.toLocaleUpperCase("es")}`} variante="contorno" onPress={() => onEditar(activa)} />
+          <PBoton label="AGREGAR PERSONA" variante="contorno" onPress={onAgregar} accessibilityLabel="Agregar persona. Free ya usó su cupo: muestra el límite." />
         </>
       ) : (
         <>
-          <VBoton label="AGREGAR PERSONA" variante={desktop ? "relleno" : "cobre"} onPress={onAgregar} />
-          <VBoton label={`EDITAR DATOS DE ${activa.name.toLocaleUpperCase("es")}`} variante="contorno" onPress={() => onEditar(activa)} />
+          <PBoton label="AGREGAR PERSONA" variante={desktop ? "hueso" : "cobre"} onPress={onAgregar} />
+          <PBoton label={`EDITAR DATOS DE ${activa.name.toLocaleUpperCase("es")}`} variante="contorno" onPress={() => onEditar(activa)} />
         </>
       )}
     </View>
@@ -780,77 +795,81 @@ function Biblioteca({
   // El límite de Free: las personas guardadas siguen, sólo no entra una nueva.
   const limiteCuerpo = (
     <>
-      <VTexto>
+      <PTexto style={styles.texto}>
         Free guarda {access.limit === 1 ? "una persona" : `${access.limit} personas`} por cuenta. Para agregar a alguien más, activá Plus o reemplazá a la
         persona guardada.
-      </VTexto>
+      </PTexto>
       <View style={styles.acciones}>
-        <VBoton label="VER ÓRBITA PLUS" variante="cobre" onPress={() => router.push("/paywall")} />
-        <VBoton label="REEMPLAZAR PERSONA" variante="contorno" onPress={() => onReemplazar(activa)} />
+        <PBoton label="VER ÓRBITA PLUS" onPress={() => router.push("/paywall")} />
+        <PBoton label="REEMPLAZAR PERSONA" variante="contorno" onPress={() => onReemplazar(activa)} />
       </View>
-      {desktop ? <VNota>Reemplazar borra la comparación guardada de esa persona.</VNota> : null}
+      {desktop ? <PNota style={styles.nota}>Reemplazar borra la comparación guardada de esa persona.</PNota> : null}
       <View style={styles.cta}>
-        <VBoton label="VOLVER A LA LISTA" variante="contorno" onPress={onVolver} />
+        <PBoton label="VOLVER A LA LISTA" variante="contorno" onPress={onVolver} />
       </View>
     </>
   );
 
-  return (
-    <Columns>
-      <Column weight={1}>
-        <View style={styles.encabezado}>
-          <VEtiqueta accessibilityRole="header">VÍNCULOS · TU LISTA</VEtiqueta>
-          <VEtiqueta tono="gris">{rotuloDeCupo(access, n, desktop)}</VEtiqueta>
-        </View>
-        {limite && desktop ? (
-          <>
-            <VTitular>Llegaste al límite de Órbita Free.</VTitular>
-            {limiteCuerpo}
-          </>
-        ) : null}
-        {desktop && !limite ? <VTitular>Tu lista</VTitular> : null}
-        {desktop && !limite ? (
-          <VTexto>
-            {n === 1
-              ? `${access.limit !== null ? `${notaDePlan(access)} ` : ""}${activa.name} ya está guardada${
-                  listaOk ? ", con su nivel de datos y su comparación lista." : ". Su comparación todavía no se pudo calcular: abajo dice por qué."
-                }`
-              : `${n} personas guardadas. Tocá a una para abrir su comparación; la elegida es ${activa.name}.`}
-          </VTexto>
-        ) : null}
-        {desktop && !limite ? (
-          <>
-            {acciones}
-            <VNota>Tocá a {activa.name} para abrir su perfil o editar sus datos.</VNota>
-          </>
-        ) : null}
-      </Column>
-      <Column weight={1} style={!desktop ? styles.tarjetaMovil : undefined}>
-        {personas}
-        {vinculo}
-        {!limite ? nivel : null}
-        {!desktop && limite ? (
-          <VTarjeta style={[styles.tarjetaSiguiente, styles.tarjetaLimite]}>
-            <Text style={styles.tarjetaTitulo} accessibilityRole="header">
-              Llegaste al límite de Órbita Free.
-            </Text>
-            {limiteCuerpo}
-          </VTarjeta>
-        ) : null}
-        {!desktop && limite ? <VNota>Reemplazar borra la comparación guardada de esa persona.</VNota> : null}
-        {!desktop && !limite ? (
-          <>
-            {acciones}
-            <VNota>{notaDePlan(access)}</VNota>
-          </>
-        ) : null}
-      </Column>
-    </Columns>
+  const izquierda = (
+    <>
+      <PEncabezado izquierda="VÍNCULOS · TU LISTA" derecha={rotuloDeCupo(access, n, desktop)} derechaMinuscula={!desktop} />
+      {limite && desktop ? (
+        <>
+          <Titular>Llegaste al límite de Órbita Free.</Titular>
+          {limiteCuerpo}
+        </>
+      ) : null}
+      {desktop && !limite ? <Titular>Tu lista</Titular> : null}
+      {desktop && !limite ? (
+        <PTexto style={styles.texto}>
+          {n === 1
+            ? `${access.limit !== null ? `${notaDePlan(access)} ` : ""}${activa.name} ya está guardada${
+                listaOk ? ", con su nivel de datos y su comparación lista." : ". Su comparación todavía no se pudo calcular: abajo dice por qué."
+              }`
+            : `${n} personas guardadas. Tocá a una para abrir su comparación; la elegida es ${activa.name}.`}
+        </PTexto>
+      ) : null}
+      {desktop && !limite ? (
+        <>
+          {acciones}
+          <PNota style={styles.nota}>Tocá a {activa.name} para abrir su perfil o editar sus datos.</PNota>
+        </>
+      ) : null}
+    </>
   );
+
+  const derecha = (
+    <>
+      {personas}
+      {vinculo}
+      {!limite ? nivel : null}
+      {!desktop && limite ? (
+        <PTarjeta style={styles.tarjetaLimite}>
+          <Text style={styles.tarjetaTitulo} accessibilityRole="header">
+            Llegaste al límite de Órbita Free.
+          </Text>
+          {limiteCuerpo}
+        </PTarjeta>
+      ) : null}
+      {!desktop && limite ? <PNota style={styles.nota}>Reemplazar borra la comparación guardada de esa persona.</PNota> : null}
+      {!desktop && !limite ? (
+        <>
+          {acciones}
+          <PNota style={styles.nota}>{notaDePlan(access)}</PNota>
+        </>
+      ) : null}
+    </>
+  );
+
+  return <DosColumnas izquierda={izquierda} derecha={derecha} />;
 }
 
 const styles = StyleSheet.create({
-  encabezado: { alignItems: "center", flexDirection: "row", gap: orbita.spacing.md, justifyContent: "space-between" },
+  columnaMovil: { marginTop: orbita.spacing.xxl },
+  titular: { marginTop: orbita.spacing.md },
+  texto: { marginTop: orbita.spacing.lg },
+  nota: { marginTop: orbita.spacing.md },
+  notaCorta: { marginTop: orbita.spacing.sm },
   cta: { marginTop: orbita.spacing.xl },
   linea: { backgroundColor: orbita.colors.line, height: 1, marginBottom: orbita.spacing.lg },
 
@@ -866,9 +885,9 @@ const styles = StyleSheet.create({
   },
   anilloInterior: { borderColor: orbita.colors.copper, borderRadius: 999, borderWidth: 2, height: 16, width: 16 },
   vaciaTitulo: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 20, marginTop: orbita.spacing.xl },
-  vaciaCuerpo: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 15, marginTop: orbita.spacing.sm },
+  vaciaCuerpo: { marginTop: orbita.spacing.sm },
 
-  tarjetaCapas: { marginTop: orbita.spacing.xl },
+  tarjetaCapas: { marginTop: orbita.spacing.sm },
   capasMovil: { marginTop: orbita.spacing.xxl },
   capa: {
     alignItems: "center",
@@ -881,23 +900,14 @@ const styles = StyleSheet.create({
     marginTop: orbita.spacing.md,
     padding: orbita.spacing.lg
   },
-  capaNumero: {
-    alignItems: "center",
-    backgroundColor: "rgba(196,106,58,0.16)",
-    borderColor: orbita.colors.copper,
-    borderRadius: 999,
-    borderWidth: 1,
-    height: 32,
-    justifyContent: "center",
-    width: 32
-  },
-  capaNumeroTexto: { color: orbita.colors.copperSoft, fontFamily: orbita.fonts.monoMedium, fontSize: 12 },
   capaCuerpo: { flex: 1, minWidth: 0 },
   capaTitulo: { color: orbita.colors.bone, fontFamily: orbita.fonts.body, fontSize: 16 },
-  capaDetalle: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.mono, fontSize: 10, letterSpacing: 1, marginTop: 2 },
+  capaDetalle: { fontSize: 10, marginTop: 2 },
 
-  tarjetaMovil: { marginTop: orbita.spacing.xxl },
-  tarjetaTitulo: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 20, flexShrink: 1 },
+  tarjetaCabecera: { alignItems: "center", flexDirection: "row", gap: orbita.spacing.md, justifyContent: "space-between" },
+  tarjetaTitulo: { color: orbita.colors.bone, flexShrink: 1, fontFamily: orbita.fonts.serif, fontSize: 20 },
+  tarjetaLimite: { borderColor: orbita.colors.copper },
+  progreso: { marginTop: orbita.spacing.md },
   campo: { marginTop: orbita.spacing.lg },
   campoMitad: { flex: 1, minWidth: 140 },
   filaCampos: { flexDirection: "row", flexWrap: "wrap", gap: orbita.spacing.md, marginTop: orbita.spacing.md },
@@ -915,37 +925,21 @@ const styles = StyleSheet.create({
     marginTop: orbita.spacing.sm,
     overflow: "hidden"
   },
-  resultado: { borderBottomColor: orbita.colors.line, borderBottomWidth: StyleSheet.hairlineWidth, minHeight: 44, justifyContent: "center", paddingHorizontal: orbita.spacing.lg },
+  resultado: { borderBottomColor: orbita.colors.line, borderBottomWidth: StyleSheet.hairlineWidth, justifyContent: "center", minHeight: 44, paddingHorizontal: orbita.spacing.lg },
   resultadoTexto: { color: orbita.colors.bone, fontFamily: orbita.fonts.body, fontSize: 15 },
 
   personaFila: { alignItems: "center", flexDirection: "row", gap: orbita.spacing.md, minHeight: 44, paddingVertical: orbita.spacing.sm },
   personaFilaSiguiente: { borderTopColor: orbita.colors.line, borderTopWidth: 1, marginTop: orbita.spacing.sm, paddingTop: orbita.spacing.md },
-  personaAvatarActiva: { backgroundColor: "rgba(196,106,58,0.45)" },
-  tarjetaSiguiente: { marginTop: orbita.spacing.lg },
-  tarjetaLimite: { borderColor: orbita.colors.copper },
+  personaCuerpo: { flex: 1, minWidth: 0 },
+  personaNombre: { color: orbita.colors.bone, fontFamily: orbita.fonts.body, fontSize: 16 },
+  personaDetalle: { fontFamily: orbita.fonts.mono, letterSpacing: 0.5, marginTop: 2 },
+  personaFlecha: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.body, fontSize: 20 },
   resumenLinea: { marginTop: orbita.spacing.md },
-  resumenPista: { backgroundColor: "rgba(244,238,228,0.08)", borderRadius: 3, flexDirection: "row", height: 6, marginTop: orbita.spacing.md, overflow: "hidden" },
-  resumenSegmento: { height: 6 },
+  resumenBarra: { marginTop: orbita.spacing.md },
   verComparacion: { alignSelf: "flex-start", justifyContent: "center", marginTop: orbita.spacing.md, minHeight: 44 },
   verComparacionTexto: { color: orbita.colors.copper, fontFamily: orbita.fonts.body, fontSize: 15 },
-  nivelFila: { marginTop: orbita.spacing.md },
+  nivelFila: { marginTop: orbita.spacing.sm },
   nivelTitulo: { color: orbita.colors.bone, fontFamily: orbita.fonts.body, fontSize: 16 },
-  nivelTramos: { flexDirection: "row", gap: orbita.spacing.sm, marginTop: orbita.spacing.md },
-  nivelTramo: { backgroundColor: "rgba(244,238,228,0.12)", borderRadius: 2, flex: 1, height: 3 },
-  nivelTramoActivo: { backgroundColor: orbita.colors.copper },
-  acciones: { flexDirection: "row", flexWrap: "wrap", gap: orbita.spacing.md, marginTop: orbita.spacing.xl },
-  personaAvatar: {
-    alignItems: "center",
-    backgroundColor: "rgba(196,106,58,0.25)",
-    borderColor: orbita.colors.copper,
-    borderRadius: 999,
-    borderWidth: 1,
-    height: 40,
-    justifyContent: "center",
-    width: 40
-  },
-  personaAvatarTexto: { color: orbita.colors.bone, fontFamily: orbita.fonts.monoMedium, fontSize: 14 },
-  personaNombre: { color: orbita.colors.bone, fontFamily: orbita.fonts.body, fontSize: 16 },
-  personaDetalle: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.mono, fontSize: 11, letterSpacing: 0.5, marginTop: 2 },
-  personaFlecha: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.body, fontSize: 20 }
+  nivelTramos: { marginTop: orbita.spacing.md },
+  acciones: { flexDirection: "row", flexWrap: "wrap", gap: orbita.spacing.md, marginTop: orbita.spacing.xl }
 });
