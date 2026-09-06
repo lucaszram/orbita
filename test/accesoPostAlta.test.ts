@@ -27,7 +27,10 @@ const RECEPCION = sinComentarios(leer("app/recepcion.tsx"));
 const CARTA = sinComentarios(leer("src/screens/CartaScreen.tsx"));
 const PAYWALL = sinComentarios(leer("src/components/web/orbita-paywall.tsx"));
 const PLAN_BLOCK = sinComentarios(leer("src/components/orbita/ManageSubscription.tsx"));
-const HOME = sinComentarios(leer("src/screens/HomeScreen.tsx"));
+// El ritual del Tarot dejó de vivir en la Home con CORE-191: su superficie es
+// el panel del Umbral, y el copy del tope de Free vive en su módulo de estado.
+const TAROT = sinComentarios(leer("src/components/web/umbral-tarot.tsx"));
+const TAROT_STATE = sinComentarios(leer("src/components/web/umbral-tarot-state.ts"));
 
 // --- 1. El alta termina en la recepción -------------------------------------
 
@@ -136,20 +139,26 @@ test("la carta natal completa se nombra donde se ofrece Plus: rueda, casas, aspe
   assert.match(CARTA, /Los siete capítulos de tu carta son parte de Órbita Plus/);
 });
 
-test("el límite del Tarot se explica en la Home, no después del CTA", () => {
-  assert.match(HOME, /Órbita Free incluye siete cartas de Tarot/);
+test("el límite del Tarot se explica donde vive el ritual, no después del CTA", () => {
+  // La explicación vive con el ritual, que desde CORE-191 es el panel del
+  // Umbral y ya no la Home. El copy no se movió de tono: sigue nombrando el
+  // tope real y qué se desbloquea, antes de mandar a ningún pago.
+  assert.match(TAROT_STATE, /titulo: "Órbita Free incluye siete cartas\./);
   // Voseo, como el resto de la marca.
-  assert.match(HOME, /seguís sacando una carta/);
+  assert.match(TAROT_STATE, /seguís sacando una carta cada día/);
+  // Y el panel lo DIBUJA: un copy que nadie monta no explica nada.
+  assert.match(TAROT, /\{TAROT_LIMITE_FREE\.titulo\}/);
+  assert.match(TAROT, /\{TAROT_LIMITE_FREE\.detalle\}/);
 });
 
 test("ninguna de esas superficies escribe precios: el importe es el de Stripe", () => {
-  for (const [nombre, src] of [["Perfil", PLAN_BLOCK], ["Carta", CARTA], ["Home", HOME]] as const) {
+  for (const [nombre, src] of [["Perfil", PLAN_BLOCK], ["Carta", CARTA], ["Tarot", TAROT]] as const) {
     assert.doesNotMatch(src, /\$\s?\d|USD\s?\d/, `${nombre} escribe un importe a mano`);
   }
   // El único camino a checkout sigue siendo `/paywall`.
   assert.doesNotMatch(PLAN_BLOCK, /createCheckoutSession/);
   assert.doesNotMatch(CARTA, /createCheckoutSession/);
-  assert.doesNotMatch(HOME, /createCheckoutSession/);
+  assert.doesNotMatch(TAROT, /createCheckoutSession/);
 });
 
 test("`/paywall` abre Stripe directo, así que los CTA existentes siguen sirviendo", () => {
@@ -209,7 +218,12 @@ test("una cuenta Plus conserva la gestión de suscripción y el camino de soport
   );
 });
 
-// --- 6. El límite Free del Tarot en la Home --------------------------------
+// --- 6. El límite Free del Tarot, donde se vive ------------------------------
+//
+// CORE-191 sacó el ritual de la Home: `Hoy` es la sección de lo que se mueve
+// sobre la carta y el Tarot vive en el Umbral. El marcador del backend, el
+// reconocimiento del rechazo y la salida a Plus no cambiaron de contrato; lo
+// que cambió es QUÉ superficie los monta. Se afirman sobre esa superficie.
 
 test("el marcador del frontend es exactamente el que publica el backend", () => {
   assert.equal(FREE_TAROT_LIMIT_MARKER, FREE_TAROT_REVEAL_LIMIT_REACHED);
@@ -261,24 +275,37 @@ test("cualquier otro fallo conserva el comportamiento de siempre", () => {
   assert.equal(revealFailureKind(undefined), "desconocido");
 });
 
-test("la Home no muestra el giro como exitoso y abre una salida a Plus", () => {
-  const pull = HOME.slice(HOME.indexOf("async function pullCard()"), HOME.indexOf("const prevRevealed"));
-  assert.match(pull, /revealFailureKind\(e\) === "limite_free"/);
-  assert.match(pull, /setTarotLimite\(true\);\s*return false;/, "el reveal fallido nunca devuelve true");
-  // El error desconocido conserva su rama: aviso en consola y `false`.
-  assert.match(pull, /console\.warn\("\[orbita\] daily\.revealCard falló:"/);
-  assert.match(HOME, /DESBLOQUEAR TAROT DIARIO/);
-  assert.match(pull, /if \(tarotLimite\) \{\s*router\.push\("\/paywall"\);\s*return false;/);
-  assert.match(HOME, /onReveal=\{handleCardPress\}/);
-  assert.match(HOME, /ctaMode=\{tarotLimite \? "unlock" : "reveal"\}/);
-  assert.match(HOME, /\{tarotLimite \? \(/);
+test("el panel no muestra el giro como exitoso y abre una salida a Plus", () => {
+  const inicio = TAROT.indexOf("async function pull(");
+  const pull = TAROT.slice(inicio, TAROT.indexOf("return (", inicio));
+  assert.ok(inicio !== -1 && pull.length > 0, "no se encontró el tirón del panel");
+
+  // El rechazo se clasifica con el mismo lector de siempre y se recuerda.
+  assert.match(pull, /const kind = revealFailureKind\(e\);/);
+  assert.match(pull, /setRevealError\(kind\);/);
+  // El error desconocido conserva su rama: aviso en consola, SIEMPRE.
+  assert.match(pull, /console\.warn\("\[orbita\] daily\.revealCard rechazó el tirón:"/);
+  // Un tirón que falla vuelve al dorso: nunca se presenta como éxito.
+  const rescate = pull.slice(pull.indexOf("} catch (e) {"));
+  assert.match(rescate, /return false;/, "el tirón fallido tiene que volver al dorso");
+  assert.doesNotMatch(rescate, /return true;/, "un reveal fallido nunca puede devolver true");
+
+  // Con el límite alcanzado no se finge un giro imposible: el dorso ES el CTA.
+  assert.match(pull, /if \(limite\) \{\s*router\.push\("\/paywall"\);\s*return false;/);
+  assert.match(TAROT, /onReveal=\{pull\}/);
+  assert.match(TAROT, /ctaMode=\{limite \? "unlock" : "reveal"\}/);
+  assert.match(TAROT, /ctaLabel=\{limite \? TAROT_LIMITE_FREE\.cta : "TOCÁ PARA DARLA VUELTA"\}/);
+  assert.match(TAROT_STATE, /cta: "DESBLOQUEAR TAROT DIARIO"/);
 });
 
 test("el estado del límite no agrega un botón duplicado: la carta es el CTA", () => {
-  const bloque = HOME.slice(HOME.indexOf("{tarotLimite ? ("), HOME.indexOf("{revealed && primerRitualHoy ? ("));
-  assert.doesNotMatch(bloque, /REINTENTAR|Pressable|router\.push|DESBLOQUEAR TAROT DIARIO/);
-  assert.match(bloque, /Usaste tus siete cartas\./);
-  assert.match(HOME, /if \(tarotLimite\) \{\s*cartaCtaLabel = "DESBLOQUEAR TAROT DIARIO";/);
+  const bloque = TAROT.slice(TAROT.indexOf("{limite ? ("), TAROT.indexOf("{revealErrorNote(revealError) ? ("));
+  assert.ok(bloque.length > 0, "no se encontró el bloque del límite");
+  assert.doesNotMatch(bloque, /REINTENTAR|Pressable|router\.push|onPress/);
+  assert.match(bloque, /\{TAROT_LIMITE_FREE\.titulo\}/);
+  // Un único CTA en toda la superficie: el dorso rotulado como desbloqueo.
+  assert.doesNotMatch(TAROT, /<Pressable/);
+  assert.match(TAROT_STATE, /tagline: "Usaste tus siete cartas\.", micro: "FREE · SIETE DE SIETE"/);
 });
 
 test("la carta en modo unlock navega sin animar un reveal imposible", () => {

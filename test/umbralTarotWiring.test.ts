@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import test from "node:test";
 import {
@@ -26,6 +26,18 @@ const src = (p: string) => readFileSync(join(ROOT, p), "utf8");
 /** Un comentario no es conducta: una afirmación no puede pasar por citarlo. */
 const sinComentarios = (s: string) =>
   s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
+/** Los archivos del producto que MONTAN `<Nombre …>`, ordenados. */
+function montajesDe(component: string): string[] {
+  return ["src", "app"]
+    .flatMap((dir) =>
+      readdirSync(join(ROOT, dir), { recursive: true, encoding: "utf8" })
+        .filter((rel) => rel.endsWith(".tsx"))
+        .map((rel) => `${dir}/${rel}`)
+    )
+    .filter((rel) => new RegExp(`<${component}\\b`).test(sinComentarios(src(rel))))
+    .sort();
+}
 
 /** El bloque JSX de `<Nombre ... />`, para mirar qué props recibe de verdad. */
 function jsxProps(source: string, component: string): string {
@@ -170,12 +182,19 @@ test("`embedded` es lo único que apaga la regla superior y el rótulo", () => {
   assert.match(carta, /section: \{ borderTopColor: orbita\.colors\.line, borderTopWidth: 1 \}/);
 });
 
-test("el default conserva la variante existente: Home y nativo no cambian", () => {
+test("el default sigue siendo `section`, y sólo el Umbral opta por `embedded`", () => {
   // Si el default fuera `embedded`, este parche visual del Umbral se llevaría
-  // puesta la separación de la Home sin que nadie lo pidiera.
+  // puesta la separación de cualquier otro montaje sin que nadie lo pidiera.
   assert.match(sinComentarios(src("src/components/home/CartaDelDia.tsx")), /variant = "section"/);
-  const home = sinComentarios(src("src/screens/HomeScreen.tsx"));
-  assert.doesNotMatch(jsxProps(home, "CartaDelDia"), /variant=/, "la Home no opta por ocultar nada");
+  // CORE-191 sacó el ritual de la Home, así que hoy el ÚNICO montaje es el
+  // panel del Umbral. Se afirma la lista completa: un montaje nuevo obliga a
+  // volver acá y decidir su variante a conciencia, en vez de heredarla.
+  assert.deepEqual(montajesDe("CartaDelDia"), ["src/components/web/umbral-tarot.tsx"]);
+  assert.match(
+    jsxProps(sinComentarios(src("src/components/web/umbral-tarot.tsx")), "CartaDelDia"),
+    /variant="embedded"/,
+    "el único montaje elige su variante explícitamente"
+  );
 });
 
 test("el aviso de fallo no sobrevive a que la carta se revele por otra vía", () => {

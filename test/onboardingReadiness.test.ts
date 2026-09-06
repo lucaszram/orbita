@@ -201,17 +201,41 @@ test("la salida del alta la autoriza el estado autoritativo, no la escritura", (
   assert.match(flow, /if \(enterLock\.current\) return;\s*enterLock\.current = true;/);
 });
 
-test("Home muestra un estado navegable de carta pendiente antes que cualquier spinner", () => {
+test("Hoy no se bloquea detrás de la carta, y su cascada nunca inventa datos", () => {
+  // El gate viejo (`chartReady`/`heroTriad`) se fue con el ritual en CORE-191.
+  // La garantía no cambió —el proveedor de cartas no puede convertir el alta en
+  // una pantalla terminal—, cambió cómo se cumple: Hoy ya no depende de la
+  // carta para abrirse, y el módulo que sí la necesita explica su ausencia.
   const home = sinComentarios(leer("src/screens/HomeScreen.tsx"));
-  const renderState = home.slice(home.indexOf("{!chartReady || !heroTriad"));
-  assert.ok(renderState.length > 0);
-  assert.ok(
-    renderState.indexOf("!chartReady || !heroTriad") < renderState.indexOf('dailyState.status === "error"'),
-    "la falta de carta se resuelve antes de esperar la guía diaria"
+  assert.doesNotMatch(home, /chartReady|heroTriad/, "Hoy volvió a condicionarse a la carta natal");
+
+  // La cascada honesta, en orden: sesión en vuelo → fallo de sesión → sin fecha
+  // canónica → contenido. El invitado confirmado NO es una rama que reemplace
+  // la sección: el tablero se monta y cada módulo resuelve su propio estado.
+  let prev = -1;
+  for (const rama of ["{sessionPending ? (", ") : userError ? (", ") : contextPending ? (", ") : sinFecha ? ("]) {
+    const i = home.indexOf(rama);
+    assert.ok(i > prev, `la rama \`${rama.trim()}\` falta o quedó fuera de orden`);
+    prev = i;
+  }
+  assert.doesNotMatch(home, /\) : guest \? \(/, "el invitado volvió a tapar la sección entera");
+  assert.match(home, /if \(guest\) return <HoyFalta lineas=\{\[INVITADO\[key\]\]\} \/>;/);
+  // Mientras la sesión resuelve se muestra CARGA, jamás datos de nadie; y sólo
+  // con Clerk ya resuelto se afirma "invitado".
+  assert.match(home, /const sessionPending = isAuthLoading;/);
+  assert.match(home, /const guest = !isAuthLoading && !userError && !auth\?\.isSignedIn;/);
+  assert.match(home, /<LoadingState \/>/);
+  // Ninguna de las dos fuentes se consulta sin cuenta Y sin día canónico: sin
+  // eso, un readiness a medias dispararía la lectura de otra cuenta.
+  assert.match(home, /const claveDelDia = today \? userKey : null;/);
+
+  // Y la carta pendiente no deja la pantalla girando: el módulo que la necesita
+  // dice por qué le falta, con el motivo del propio sobre.
+  assert.match(home, /lineasDeFalta\(sobre, "cumpleluna"\)/);
+  assert.match(
+    sinComentarios(leer("src/domain/lunaCarta.ts")),
+    /natal_chart: "Todavía no tenemos tu carta natal calculada\."/
   );
-  assert.match(renderState, /Tus datos ya están guardados\./);
-  assert.match(renderState, /router\.push\("\/\(tabs\)\/carta"\)/);
-  assert.match(renderState, /VER MI CARTA/);
 });
 
 test("Carta intenta calcular al abrir y conserva un reintento manual", () => {
