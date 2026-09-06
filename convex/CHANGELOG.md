@@ -1,5 +1,16 @@
 # Contrato — CHANGELOG
 
+# Contrato — CHANGELOG
+
+## 2026-09-06 — Tránsitos ordena el cielo de hoy: `transits.getPanorama` (CORE-207)
+
+- **Qué cambia (aditivo):** nueva action pública `transits.getPanorama({ localDate })`. Devuelve **siempre** un sobre con `status`: `ready` (con `rows`, `count`, `activeTotal`, `cadence: "Cambia a diario"` y `access`), `empty` (la lectura del día no tiene contactos dentro de orbe) o `locked` (Free: el ranking se calcula con la carta y es Plus; **no** viaja la lista). `getToday` y `getDetail` no cambian.
+- **Misma fuente:** el panorama sale de la MISMA lectura persistida del día que alimenta `getToday` y `getDetail` (`resolveTodayReading`), así que cada fila lleva el `transitId` que `getDetail` acepta —`rankedTransits` con identidad guardada en lecturas nuevas; en documentos anteriores se reconstruye la selección y la identidad legacy (`listRankedTransits`)—. Ninguna fila se calcula por posición.
+- **Qué publica cada fila:** `title` («Luna trígono tu Marte»), `transitPlanet` / `natalPoint` (mono), `aspectType` / `aspectEs` / `aspectAngle` (sólo los cinco aspectos mayores; `null` en otro caso), `natalHouse`, la ventana (`startTime`, `exactTime`, `endTime`), `phase` (`acercandose` | `exacto` | `integrandose`, por el día civil del exacto respecto de `localDate`), `peakLabel` (`EXACTO HOY` · `PICO MAÑANA` · `PICO EN N DÍAS` · `PICO HACE N DÍAS`), `closeness` 0–1, `cadence` (la de `transitCadence`) y `body` (una oración honesta sobre el contacto y su fase).
+- **Qué NO se inventa:** el proveedor diario no publica el orbe en grados ni la posición del planeta, así que no hay `0°43'` ni puntaje. `closeness` mide cercanía **en tiempo**: la distancia entre el mediodía de `localDate` y `exactTime` sobre la mitad de la ventana (escala mínima: media jornada). Sin ventana o sin exacto, `closeness`, `phase` y `peakLabel` son `null` y el front no dibuja barra ni chip. Las horas del proveedor (`2026-09-05T14:30`, sin zona) se leen como instantes ingenuos (`parseNaiveTime`) y sólo se comparan entre sí.
+- **Orden:** el del backend (`selectRelevantTransits`, prioridad del proveedor), el mismo que usa el ranking de la guía diaria; el front no reordena.
+- **Pruebas:** `test/transitPanorama.test.ts` (backend puro) y `test/transitosPanorama.test.ts` (front puro).
+
 ## 2026-09-06 — Vínculos: la primera persona y su comparación real (CORE-212)
 
 - **Qué cambia (aditivo):** dos funciones nuevas en `relationships`. `addPerson({ name, level, relationshipType?, zodiacSign?, birthDate?, birthTime?, birthPlaceLabel?, latitude?, longitude? })` (action) guarda a la persona como perfil activo —reemplaza al anterior: en esta tarjeta hay una sola— y, cuando el nivel lo pide, calcula su carta con el mismo proveedor que la carta propia. `synastry({})` (query, reactiva) devuelve **siempre** un sobre con `status`: `no_person`, `needs_natal_chart`, `person_chart_unavailable` o `ready`. `getActive` y `upsert` no cambian.
