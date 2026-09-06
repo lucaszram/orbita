@@ -120,7 +120,8 @@ test("ninguna pantalla de la carta lee el ancho de la ventana", () => {
 test("la rueda y el radar reciben el lado del contenedor medido", () => {
   const codigo = sinComentarios(CARTA);
   assert.ok(/<MeasuredSquare max=\{360\}>/.test(codigo), "la rueda mide su contenedor");
-  assert.ok(/<MeasuredSquare max=\{340\}>/.test(codigo), "el radar también");
+  // Desde CORE-215 el radar (mapa de valores) vive en la carta completa.
+  assert.ok(/<MeasuredSquare max=\{340\}>/.test(sinComentarios(leer("src/screens/CartaCompletaScreen.tsx"))), "el radar también");
   assert.ok(/size=\{size\}/.test(codigo), "el lado viene del callback de medición");
   assert.ok(/<MeasuredSquare max=\{232\}>/.test(sinComentarios(CARTA_CARD)), "la mini-rueda también");
 });

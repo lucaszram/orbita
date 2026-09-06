@@ -61,8 +61,12 @@ import { pathToFileURL } from "node:url";
  * El tema del año (CORE-210) suma 13 casos: 10 en `temaDelAno.test.ts`
  * (profección, bordes del año, gap de medianoche, lo que no se calcula) y 3
  * en `momento.test.ts` (titular Build 30, lectura, estado de pantalla): 974 + 13.
+ *
+ * La Carta responsive (CORE-215) suma 10 casos en `cartaCompleta.test.ts`
+ * (códigos, tríada, resumen, posiciones, ejes, contactos, casas, datos
+ * natales, último cálculo, piso de grado): 987 + 10.
  */
-export const DEFAULT_MINIMUM = 987;
+export const DEFAULT_MINIMUM = 997;
 
 /**
  * Lee un contador del resumen final del runner de Node.

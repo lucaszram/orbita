@@ -199,12 +199,16 @@ describe("carta.tsx — cableado anti-bloqueo", () => {
   });
 
   it("los siete capítulos largos se muestran intactos cuando la lectura está lista", () => {
-    // Los capítulos se dibujan desde una sola función (`explicada`), montada
-    // con la primera y la segunda mitad. Antes eran dos bloques duplicados; el
-    // contenido y el corte son los mismos.
-    assert.match(CARTA, /chapters\.map\(\(s, i\) => \(\s*<SectorBlock key=\{s\.key\} s=\{s\} n=\{from \+ i\} \/>/);
-    assert.match(CARTA, /\{explicada\(sectionsA, 1, true\)\}/);
-    assert.match(CARTA, /\{explicada\(sectionsB, mid \+ 1, false\)\}/);
-    assert.match(CARTA, /reading\?\.sections \?\? \[\]/);
+    // Desde CORE-215 los capítulos viven en la carta completa (una sola ruta
+    // con seis bloques), que comparte el MISMO estado de lectura que el hub
+    // (`useCartaNatal`): ningún capítulo se corta ni se duplica, y el hub sólo
+    // anuncia cuántos hay y abre la ruta.
+    const COMPLETA = readFileSync(path.join(process.cwd(), "src/screens/CartaCompletaScreen.tsx"), "utf8");
+    assert.match(COMPLETA, /sections\.map\(\(s, i\) => \(/);
+    assert.match(COMPLETA, /CAPÍTULO \{String\(i \+ 1\)\.padStart\(2, "0"\)\}/);
+    assert.match(COMPLETA, /sections=\{readingPhase === "listo" \? reading\?\.sections \?\? \[\] : null\}/);
+    assert.match(COMPLETA, /useCartaNatal\(\)/);
+    assert.match(CARTA, /export function useCartaNatal\(\)/);
+    assert.match(CARTA, /VER CARTA COMPLETA/);
   });
 });

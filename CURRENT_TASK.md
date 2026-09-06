@@ -1,5 +1,32 @@
 # Current Task
 
+## Carta conserva el mapa natal completo en cualquier pantalla (CORE-215, 2026-09-06)
+
+**Objetivo:** que Carta presente el mismo mapa natal, sus capas y sus acciones
+en 390 y 1440 sin separar implementaciones, según el carril de Carta del
+tablero `02 · WEB — PARIDAD PROPUESTA` (hub `1839:3622` / `1821:3186`, Free
+`1837:3524` / `1834:3432`, carta completa `1825:3302`…`1872:4672`).
+
+**Qué cambia (sólo front, sin contrato nuevo):** `CartaScreen` pasa a ser el hub
+(«Carta · Tu base»: rueda, tríada en filas, resumen de la base, bloque 02 «La
+carta completa» con el estado real de la lectura, tarjetas laterales en
+escritorio); la lectura larga, los contactos con orbe, las doce casas, los
+ejes con la precisión natal y el mapa de valores viven en la ruta nueva
+`/reading/carta-completa` (`CartaCompletaScreen`), que comparte el mismo hook
+`useCartaNatal` (mismas queries, mismo gate de datos natales, misma generación
+de la lectura). `src/domain/cartaCompleta.ts` es puro y probado.
+
+**Decisiones:** el orden móvil del hub es el del frame (encabezado, rueda,
+tríada); se conservan la tabla (CÍRCULO / TABLA), la tríada, las posiciones,
+los aspectos, las casas, el mapa de valores y los estados honestos; Free ve el
+bloque 02 bloqueado con «Desbloquear mi carta natal» y la carta completa le
+responde con la entrada a Plus; «Tipo lunar natal» y «Mapa elemental» del
+frame quedan fuera (la ficha no los lista) y no se dibujan enlaces a rutas que
+no existen. Sin hora exacta, ejes y casas se declaran, no se rellenan.
+
+**Estado:** rama `orb/core-215-carta-responsive` desde `main` `48cb4c8`.
+9 casos nuevos; piso 974 → 983.
+
 ## Tu momento abre el tema de tu año (CORE-210, 2026-09-06)
 
 **Objetivo:** que Tu momento abra la capa 02, el tema del año (profección
