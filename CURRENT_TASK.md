@@ -1,5 +1,26 @@
 # Current Task
 
+## Tu momento abre la estación vital (CORE-209, 2026-09-06)
+
+**Objetivo:** que Tránsitos ofrezca el segmento «Tu momento» y que Estación
+vital muestre la fase de la lunación progresada de la cuenta, según Build 30
+(contenido) y los frames `1740:2247` / `2022:2875` (hub) y `1740:2308` /
+`2023:2900` (detalle).
+
+**Contrato (aditivo):** `momento.getEstacionVital({ localDate })` (action) +
+tabla `momentoAnalyses` (cache por persona, día y capa). Libs portadas tal
+cual de `release/1.0.0`: `layersMath.ts`, `civilTime.ts`, cliente
+`planets/tropical` (`tropicalEphemeris.ts`); derivación en `estacionVital.ts`
+con proveedor inyectable (probada sin red).
+
+**Decisiones:** sin hora exacta, fase sólo si las tres muestras del día natal
+la certifican; fechas refinadas por raíces sobre muestras reales, nunca por
+movimiento medio; Free recibe `locked`; las capas 02/03 se declaran
+pendientes en el hub sin cifras estimadas (CORE-210/211).
+
+**Estado:** rama `orb/core-209-estacion-vital` desde `main` `c25cb8e`.
+20 casos nuevos; piso 950 → 970.
+
 # Current Task
 
 ## Vínculos conserva las personas guardadas (CORE-213, 2026-09-06)

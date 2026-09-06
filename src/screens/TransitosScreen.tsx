@@ -34,9 +34,9 @@
  * - Free recibe `locked`: el ranking se calcula con la carta y es Plus. La
  *   pantalla lo dice con el frame bloqueado, sin filas de relleno.
  *
- * Fuera de esta tarjeta: el segmento «Tu momento» (Estación vital, Tema del
- * año, Cuatro ritmos → CORE-209/210/211). No se dibuja un segmento que no lleva
- * a ningún lado.
+ * El segmento «Tu momento» (CORE-209) abre el capítulo actual: la estación
+ * vital con cálculo real y las capas 02/03 declaradas pendientes hasta
+ * CORE-210/211. El segmento elegido se conserva en la pantalla, no en la URL.
  */
 import { useEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
@@ -74,6 +74,7 @@ import { useIsDesktop } from "@/hooks/useLayoutMode";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { useCanonicalLocalDate } from "@/hooks/useDailyContext";
 import { proposedApi, type TransitPanorama } from "@/services/appRefs";
+import { TuMomentoHub } from "@/screens/TuMomentoHub";
 import { orbita } from "@/theme/orbita";
 
 const DISCLAIMER = "Órbita es entretenimiento y autoconocimiento.";
@@ -119,10 +120,13 @@ function TransitosShell({ children }: { children: React.ReactNode }) {
 }
 
 /** Con sesión: el panorama REAL del día. Carga mínima; fallo → error con reintento. */
+type Segmento = "ahora" | "momento";
+
 function TransitosLive() {
   const getPanorama = useAction(proposedApi.transitPanorama);
   const [estado, setEstado] = useState<PanoramaEstado>({ kind: "cargando" });
   const [intento, setIntento] = useState(0);
+  const [segmento, setSegmento] = useState<Segmento>("ahora");
   const localDate = useCanonicalLocalDate();
 
   useEffect(() => {
@@ -155,6 +159,20 @@ function TransitosLive() {
       </TransitosShell>
     );
   }
+  const segmentos = (
+    <View style={styles.segmentos} accessibilityRole="tablist">
+      <PSegmento label="AHORA" activo={segmento === "ahora"} onPress={() => setSegmento("ahora")} />
+      <PSegmento label="TU MOMENTO" activo={segmento === "momento"} onPress={() => setSegmento("momento")} />
+    </View>
+  );
+  if (segmento === "momento") {
+    return (
+      <TransitosShell>
+        {segmentos}
+        <TuMomentoHub localDate={localDate} />
+      </TransitosShell>
+    );
+  }
   if (estado.kind === "bloqueado") {
     return (
       <TransitosShell>
@@ -177,6 +195,7 @@ function TransitosLive() {
   }
   return (
     <TransitosShell>
+      {segmentos}
       <PanoramaAhora panorama={estado.panorama} />
     </TransitosShell>
   );
@@ -194,9 +213,6 @@ function PanoramaAhora({ panorama }: { panorama: Extract<TransitPanorama, { stat
 
   const lista = (
     <ReadingBlock>
-      <View style={styles.segmentos}>
-        <PSegmento label="AHORA" activo />
-      </View>
       <PEncabezado izquierda="TRÁNSITOS · AHORA" derecha={encabezadoDeAhora(panorama)} />
       <PTexto style={styles.intro}>{introDeAhora(panorama)}</PTexto>
       <PEtiqueta tono="gris" style={styles.leyenda}>
