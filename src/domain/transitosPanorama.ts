@@ -80,11 +80,10 @@ export function encabezadoDeAhora(panorama: Extract<TransitPanorama, { status: "
 }
 
 /** La intro dice «todos» sólo cuando se sabe que están todos. */
-export function introDeAhora(panorama: Extract<TransitPanorama, { status: "ready" }>, desktop: boolean): string {
+export function introDeAhora(panorama: Extract<TransitPanorama, { status: "ready" }>): string {
   const todos = panorama.activeTotal !== null && panorama.activeTotal <= panorama.rows.length;
   const quienes = todos ? "Todos los contactos activos de hoy" : "Los contactos principales de hoy";
-  const orden = "ordenados por el peso del contacto: qué planeta pasa, qué punto de tu carta toca y qué aspecto forma";
-  return desktop ? `${quienes}, ${orden}.` : `${quienes}, ${orden}.`;
+  return `${quienes}, ordenados por el peso del contacto: qué planeta pasa, qué punto de tu carta toca y qué aspecto forma.`;
 }
 
 /** Estado de pantalla a partir del sobre (o de su ausencia). */

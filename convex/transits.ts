@@ -406,6 +406,10 @@ export const getPanorama = action({
     const identity = await requireIdentity(ctx as any);
     const access: any = await ctx.runQuery(internalApi.transits.getAccess, { tokenIdentifier: identity.tokenIdentifier });
     if (!access.isPro) {
+      // Misma regla de fecha canónica que `getToday` / `getDetail`, sin proveedor.
+      const dayState: any = await ctx.runQuery(internalApi.daily.getGuideTimezone, { tokenIdentifier: identity.tokenIdentifier });
+      const canonical = resolveCanonicalDailyContext({ birthTimezone: dayState.birthTimezone, latestGuide: dayState.latestGuide });
+      if (args.localDate !== canonical.localDate) throw new Error("Los tránsitos diarios usan la fecha canónica del servidor");
       return buildTransitPanorama({ payload: null, localDate: args.localDate, isPro: false });
     }
     const { payload, isPro } = await resolveTodayReading(ctx, args.localDate);

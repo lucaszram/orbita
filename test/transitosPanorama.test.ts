@@ -104,10 +104,10 @@ describe("plegado y encabezado", () => {
   });
 
   it("la intro dice «todos» sólo cuando se sabe que están todos, y describe el orden real", () => {
-    assert.match(introDeAhora(listo(5, 5), true), /^Todos los contactos activos de hoy, ordenados por el peso del contacto/);
-    assert.match(introDeAhora(listo(8, 16), false), /^Los contactos principales de hoy/);
-    assert.match(introDeAhora(listo(8, null), true), /^Los contactos principales de hoy/);
-    assert.doesNotMatch(introDeAhora(listo(8, 16), true), /cercanía al punto exacto/);
+    assert.match(introDeAhora(listo(5, 5)), /^Todos los contactos activos de hoy, ordenados por el peso del contacto/);
+    assert.match(introDeAhora(listo(8, 16)), /^Los contactos principales de hoy/);
+    assert.match(introDeAhora(listo(8, null)), /^Los contactos principales de hoy/);
+    assert.doesNotMatch(introDeAhora(listo(8, 16)), /cercanía al punto exacto/);
   });
 });
 

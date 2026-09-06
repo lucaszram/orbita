@@ -198,7 +198,7 @@ function PanoramaAhora({ panorama }: { panorama: Extract<TransitPanorama, { stat
         <PSegmento label="AHORA" activo />
       </View>
       <PEncabezado izquierda="TRÁNSITOS · AHORA" derecha={encabezadoDeAhora(panorama)} />
-      <PTexto style={styles.intro}>{introDeAhora(panorama, desktop)}</PTexto>
+      <PTexto style={styles.intro}>{introDeAhora(panorama)}</PTexto>
       <PEtiqueta tono="gris" style={styles.leyenda}>
         LAS BARRAS MIDEN CERCANÍA AL PUNTO EXACTO EN EL TIEMPO, DESDE AHORA
       </PEtiqueta>
@@ -231,8 +231,9 @@ function PanoramaAhora({ panorama }: { panorama: Extract<TransitPanorama, { stat
         </PTarjeta>
         <PPlegable titulo="¿POR QUÉ ÓRBITA TE MUESTRA ESTO?">
           <PTexto>
-            Un tránsito es un planeta de hoy tocando un punto de tu carta natal. Órbita los ordena para que primero
-            leas lo que está más cerca de su punto exacto y lo que toca las partes centrales de tu carta.
+            Un tránsito es un planeta de hoy tocando un punto de tu carta natal. Órbita los ordena por el peso del
+            contacto —qué planeta pasa, qué punto de tu carta toca y qué aspecto forma— y cada fila muestra, aparte,
+            cuánto falta para su punto exacto.
           </PTexto>
         </PPlegable>
         <PTarjeta>
@@ -256,7 +257,7 @@ function PanoramaBloqueado() {
       <PEncabezado izquierda="TRÁNSITOS" derecha="REQUIERE PLUS" />
       <PTexto style={styles.intro}>
         {desktop
-          ? "Un tránsito es un planeta de hoy tocando un punto de tu carta natal. Ordenarlos por cercanía al punto exacto necesita tu carta calculada."
+          ? "Un tránsito es un planeta de hoy tocando un punto de tu carta natal. Ordenarlos sobre tu carta —qué punto tocan y cuánto pesa cada contacto— es parte de Plus."
           : "Un tránsito es un planeta de hoy tocando un punto de tu carta natal."}
       </PTexto>
       <View style={styles.lineaSuperior} />
@@ -274,7 +275,7 @@ function PanoramaBloqueado() {
         </PTexto>
         {!desktop ? (
           <View style={styles.vinetas}>
-            {["Todos los contactos activos de hoy", "La barra de cercanía al punto exacto", "El detalle de arco de cada tránsito"].map((t) => (
+            {["Los contactos principales de hoy, ordenados por su peso", "La barra de cercanía al punto exacto", "El detalle de arco de cada tránsito"].map((t) => (
               <PTexto key={t} style={styles.vineta}>
                 <PEtiqueta>■</PEtiqueta> {t}
               </PTexto>
@@ -328,7 +329,7 @@ function PanoramaBloqueado() {
       <Column weight={1}>
         <PTarjeta titulo="QUÉ ABRE PLUS EN TRÁNSITOS">
           {[
-            "Ahora: todos los contactos activos del día, ordenados por cercanía al punto exacto.",
+            "Ahora: los contactos principales del día, ordenados por el peso de cada contacto sobre tu carta.",
             "El detalle de arco de cada tránsito: inicio, punto exacto y cierre.",
             "Tu momento: tu estación vital, el tema de tu año y tus cuatro ritmos."
           ].map((t) => (

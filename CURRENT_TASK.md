@@ -23,7 +23,10 @@ Plus va a `/paywall`. La lista y el bloque de Free van dentro de `ReadingBlock`
 para respetar el ancho de lectura dentro del lienzo `wide`.
 
 **Estado:** rama `orb/core-207-panorama-transitos` desde `main` `8a6858b`.
-22 casos nuevos (`transitPanorama` 13, `transitosPanorama` 9); piso 883 → 905.
+28 casos nuevos (`transitPanorama` 19, `transitosPanorama` 9); piso 883 → 911. Revisión
+independiente: r1 rechazada (explicación del orden y total inventado) y r2 rechazada
+(residuos de copy en el plegable y en Free), ambas corregidas; el orden se explica como
+`transitPriority` y el total real viaja en `transitTotals`.
 Backend sincronizado en Convex dev `beaming-lobster-442`. Producción bloqueada
 por la divergencia `main` / `release/1.0.0` (ver Linear CORE-191/208).
 
