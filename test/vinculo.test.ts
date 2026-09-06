@@ -34,6 +34,7 @@ import {
   rotuloDeCupo,
   rotuloDeNivel,
   titularDeContactos,
+  titularDeContactosCorto,
   validarAlta
 } from "../src/domain/vinculo";
 
@@ -123,6 +124,12 @@ describe("cómo se cuenta la comparación", () => {
     assert.equal(titularDeContactos(14, "Mara"), "14 contactos entre tu carta y la de Mara.");
     assert.equal(titularDeContactos(1, "Mara"), "Un contacto entre tu carta y la de Mara.");
     assert.equal(titularDeContactos(0, "Mara"), "Sin contactos dentro de orbe entre tu carta y la de Mara.");
+  });
+
+  it("en escritorio el titular es el corto del frame 1757:2674: entre las dos cartas", () => {
+    assert.equal(titularDeContactosCorto(14), "14 contactos entre las dos cartas.");
+    assert.equal(titularDeContactosCorto(1), "Un contacto entre las dos cartas.");
+    assert.equal(titularDeContactosCorto(0), "Sin contactos dentro de orbe entre las dos cartas.");
   });
 
   it("la fracción de una barra queda entre 0 y 1 y no divide por cero", () => {
@@ -242,5 +249,28 @@ describe("la biblioteca se ve como el frame (CORE-235)", () => {
     assert.match(biblioteca, /!desktop && styles\.accionesApiladas/);
     assert.match(biblioteca, /\{!limite && !desktop \? <View style=\{styles\.separador\} \/> : null\}\s*\{!limite \? nivel : null\}/);
     assert.match(fuente, /accionesApiladas: \{ alignItems: "flex-start", flexDirection: "column" \}/);
+  });
+});
+
+describe("la comparación se ve como el frame (CORE-236)", () => {
+  const raiz = join(dirname(fileURLToPath(import.meta.url)), "..");
+  const pantalla = readFileSync(join(raiz, "src", "screens", "VinculoComparacionScreen.tsx"), "utf8");
+  const ruta = readFileSync(join(raiz, "app", "reading", "vinculo-result.tsx"), "utf8");
+
+  it("en web la ruta viaja dentro del shell con Vínculos activa, como /transito", () => {
+    assert.match(ruta, /<WebAppShell active="vinculo">\s*<VinculoComparacionScreen \/>/);
+    assert.match(ruta, /process\.env\.EXPO_OS !== "web"/);
+  });
+
+  it("la barra móvil dice ‹ VOLVER y es una acción; en escritorio el encabezado lleva el mismo rótulo", () => {
+    assert.match(pantalla, /<OrbitaScreen canvas="wide" right=\{ROTULO_VOLVER\} onRight=\{volver\}>/);
+    assert.match(pantalla, /<PEncabezado izquierda="VÍNCULOS · COMPARACIÓN" derecha=\{ROTULO_VOLVER\} onDerecha=\{volver\} \/>/);
+    assert.doesNotMatch(pantalla, /DetailScreen/);
+  });
+
+  it("las dos cartas son discos en escritorio y chips en móvil; el titular corto sólo en escritorio", () => {
+    assert.match(pantalla, /desktop \? \(\s*<View style=\{styles\.discos\}>\s*<VDiscos nombre=\{nombre\} \/>/);
+    assert.match(pantalla, /<VPersonaChip inicial=\{inicial\(nombre\)\} nombre=\{nombre\} tono="cobre" \/>/);
+    assert.match(pantalla, /desktop \? titularDeContactosCorto\(total\) : titularDeContactos\(total, nombre\)/);
   });
 });

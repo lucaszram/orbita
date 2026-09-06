@@ -79,21 +79,31 @@ export function PSegmento({ label, activo, onPress }: { label: string; activo: b
 export function PEncabezado({
   izquierda,
   derecha,
-  derechaMinuscula
+  derechaMinuscula,
+  onDerecha
 }: {
   izquierda: string;
   derecha: string | null;
   /** El dato de la derecha tal cual, sin versalitas («0 de 1 persona» en el frame móvil de Vínculos). */
   derechaMinuscula?: boolean;
+  /** Si el dato de la derecha es una acción («‹ VOLVER» en la comparación de Vínculos), qué hace al tocarlo. */
+  onDerecha?: () => void;
 }) {
+  const dato = derecha ? (
+    <PEtiqueta tono="gris" mayusculas={!derechaMinuscula} style={styles.encabezadoDerecha}>
+      {derecha}
+    </PEtiqueta>
+  ) : null;
   return (
     <View style={styles.encabezado}>
       <PEtiqueta accessibilityRole="header">{izquierda}</PEtiqueta>
-      {derecha ? (
-        <PEtiqueta tono="gris" mayusculas={!derechaMinuscula} style={styles.encabezadoDerecha}>
-          {derecha}
-        </PEtiqueta>
-      ) : null}
+      {dato && onDerecha ? (
+        <Pressable onPress={onDerecha} accessibilityRole="button" accessibilityLabel={derecha ?? undefined} hitSlop={8} style={({ pressed }) => pressed && styles.apagado}>
+          {dato}
+        </Pressable>
+      ) : (
+        dato
+      )}
     </View>
   );
 }
