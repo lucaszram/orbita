@@ -1,9 +1,13 @@
 /**
  * **Vínculos · Comparación** — la comparación real entre la carta propia y la
- * de la persona guardada (CORE-212). Frames `1757:2674` (390) y `1757:2515`
- * (1440): chips de las dos cartas, precisión, titular con el conteo, barras
+ * de la persona guardada (CORE-212). Frames `1757:2674` (1440) y `1757:2515`
+ * (390): chips de las dos cartas, precisión, titular con el conteo, barras
  * por tono, «Por dimensión», contactos principales y —en Free— cuántos quedan
  * en Plus.
+ *
+ * Compone con el kit compartido de la web (CORE-233): rótulos, textos, notas,
+ * tarjetas, botones y barras son los de Tránsitos y Hoy; la columna de lectura
+ * queda a la izquierda y las tarjetas a la derecha, como en el resto.
  *
  * Todo sale de `relationships.synastry`. No hay porcentaje de
  * compatibilidad: son contactos reales (aspectos mayores dentro de orbe) y sus
@@ -14,11 +18,13 @@ import { StyleSheet, Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useQuery } from "convex/react";
 import { DetailScreen } from "@/components/home/DetailScreen";
+import { H2, H3 } from "@/components/orbita/kit";
 import { Column, Columns } from "@/components/orbita/Layout";
 import { GuestState } from "@/components/orbita/GuestState";
 import { EmptyState, ErrorState, MinimalLoading } from "@/components/orbita/states";
-import { VBarra, VBoton, VCerco, VEtiqueta, VNota, VPersonaChip, VTarjeta, VTexto, VTitular } from "@/components/vinculos/VinculosUI";
-import { escalaDeDimensiones, inicial, perfilIdValido, titularDeContactos } from "@/domain/vinculo";
+import { PBarra, PBoton, PEtiqueta, PNota, PTarjeta, PTexto } from "@/components/transitos/PanoramaUI";
+import { VCerco, VPersonaChip } from "@/components/vinculos/VinculosUI";
+import { escalaDeDimensiones, fraccionDeBarra, inicial, perfilIdValido, titularDeContactos } from "@/domain/vinculo";
 import { useIsDesktop } from "@/hooks/useLayoutMode";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { appCoreApi, type VinculoComparacion, type VinculoContacto } from "@/services/appCoreRefs";
@@ -99,6 +105,7 @@ function Comparacion({ c }: { c: Extract<VinculoComparacion, { status: "ready" }
   const escalaTono = Math.max(1, total);
   const escalaDim = escalaDeDimensiones(c.summary);
   const restantes = c.hiddenContacts;
+  const Titulo = desktop ? H2 : H3;
 
   const izquierda = (
     <View>
@@ -106,33 +113,37 @@ function Comparacion({ c }: { c: Extract<VinculoComparacion, { status: "ready" }
         <VPersonaChip inicial="TU" nombre="Tu carta" tono="cobre" />
         <VPersonaChip inicial={inicial(nombre)} nombre={nombre} tono="azul" />
       </View>
-      <VEtiqueta tono="gris" style={styles.precision}>
+      <PEtiqueta tono="gris" style={styles.precision}>
         {c.precision.label}
-      </VEtiqueta>
-      <VTitular style={styles.titular}>
-        {esSigno ? (c.tone?.headline ?? `${c.pairing}.`) : titularDeContactos(total, nombre)}
-      </VTitular>
-      <VTexto>
+      </PEtiqueta>
+      <View style={styles.titular}>
+        <Titulo>{esSigno ? (c.tone?.headline ?? `${c.pairing}.`) : titularDeContactos(total, nombre)}</Titulo>
+      </View>
+      <PTexto style={styles.texto}>
         {esSigno
           ? c.tone?.body ?? c.precision.limitations[0]
           : "Son contactos reales entre las dos cartas, no un porcentaje de compatibilidad."}
-      </VTexto>
+      </PTexto>
       {esSigno ? (
-        c.precision.limitations.map((l) => <VNota key={l}>{l}</VNota>)
+        c.precision.limitations.map((l) => (
+          <PNota key={l} style={styles.nota}>
+            {l}
+          </PNota>
+        ))
       ) : (
         <>
-          <VBarra rotulo="Armónicos" valor={cuenta(c.summary.armonicos)} segmentos={[{ cantidad: c.summary.armonicos, color: COLOR_TONO.armonico }]} escala={escalaTono} />
-          <VBarra rotulo="Tensos" valor={cuenta(c.summary.tensos)} segmentos={[{ cantidad: c.summary.tensos, color: COLOR_TONO.tenso }]} escala={escalaTono} />
+          <Conteo rotulo="Armónicos" valor={cuenta(c.summary.armonicos)} segmentos={[{ cantidad: c.summary.armonicos, color: COLOR_TONO.armonico }]} escala={escalaTono} />
+          <Conteo rotulo="Tensos" valor={cuenta(c.summary.tensos)} segmentos={[{ cantidad: c.summary.tensos, color: COLOR_TONO.tenso }]} escala={escalaTono} />
           {c.summary.fusiones > 0 ? (
-            <VBarra rotulo="Fusiones" valor={cuenta(c.summary.fusiones)} segmentos={[{ cantidad: c.summary.fusiones, color: COLOR_TONO.fusion }]} escala={escalaTono} />
+            <Conteo rotulo="Fusiones" valor={cuenta(c.summary.fusiones)} segmentos={[{ cantidad: c.summary.fusiones, color: COLOR_TONO.fusion }]} escala={escalaTono} />
           ) : null}
           <View style={styles.linea} />
-          <VEtiqueta tono="gris" accessibilityRole="header">
+          <PEtiqueta tono="gris" accessibilityRole="header">
             POR DIMENSIÓN
-          </VEtiqueta>
-          <VNota>Un vínculo puede fluir en un plano y trabarse en otro. No hay un puntaje único.</VNota>
+          </PEtiqueta>
+          <PNota style={styles.notaCorta}>Un vínculo puede fluir en un plano y trabarse en otro. No hay un puntaje único.</PNota>
           {c.summary.dimensions.map((d) => (
-            <VBarra
+            <Conteo
               key={d.key}
               rotulo={d.label}
               valor={cuenta(d.total)}
@@ -145,52 +156,82 @@ function Comparacion({ c }: { c: Extract<VinculoComparacion, { status: "ready" }
             />
           ))}
           {c.precision.limitations.map((l) => (
-            <VNota key={l}>{l}</VNota>
+            <PNota key={l} style={styles.nota}>
+              {l}
+            </PNota>
           ))}
         </>
       )}
       {!c.access.isPro && restantes > 0 ? (
         <>
-          <VTexto>Con Free ves los contactos principales. El detalle por capas y el resto de la lista son parte de Plus.</VTexto>
+          <PTexto style={styles.texto}>Con Free ves los contactos principales. El detalle por capas y el resto de la lista son parte de Plus.</PTexto>
           <View style={styles.cta}>
-            <VBoton label="VER ÓRBITA PLUS" variante="cobreContorno" onPress={() => router.push("/paywall")} />
+            <PBoton label="VER ÓRBITA PLUS" variante="cobreContorno" onPress={() => router.push("/paywall")} />
           </View>
         </>
       ) : (
-        <VNota>{c.access.isPro ? "Órbita Plus muestra la lista completa." : "Órbita Free compara con la persona que tenés guardada."}</VNota>
+        <PNota style={styles.nota}>{c.access.isPro ? "Órbita Plus muestra la lista completa." : "Órbita Free compara con la persona que tenés guardada."}</PNota>
       )}
-      <VNota>{c.disclaimer}</VNota>
+      <PNota style={styles.nota}>{c.disclaimer}</PNota>
     </View>
   );
 
   const derecha = esSigno ? null : (
     <View style={!desktop ? styles.columnaMovil : undefined}>
-      <VTarjeta>
+      <PTarjeta>
         <Text style={styles.tarjetaTitulo} accessibilityRole="header">
           Contactos principales
         </Text>
         {c.contacts.length === 0 ? (
-          <VNota>Ningún aspecto mayor entre las dos cartas cae dentro de orbe. Es un resultado real, no un error.</VNota>
+          <PNota style={styles.notaCorta}>Ningún aspecto mayor entre las dos cartas cae dentro de orbe. Es un resultado real, no un error.</PNota>
         ) : (
           c.contacts.map((k, i) => <FilaContacto key={k.id} contacto={k} ultima={i === c.contacts.length - 1} />)
         )}
-      </VTarjeta>
+      </PTarjeta>
       {!c.access.isPro && restantes > 0 ? (
-        <VTarjeta style={styles.tarjetaPlus}>
+        <PTarjeta>
           <Text style={styles.tarjetaTitulo} accessibilityRole="header">
             {restantes === 1 ? "Un contacto más, en Plus" : `${restantes} contactos más, en Plus`}
           </Text>
-          <VTexto>La lista completa y la distribución por capas se abren con Órbita Plus.</VTexto>
-        </VTarjeta>
+          <PTexto style={styles.notaCorta}>La lista completa y la distribución por capas se abren con Órbita Plus.</PTexto>
+        </PTarjeta>
       ) : null}
     </View>
   );
 
   return (
-    <Columns>
-      <Column weight={1}>{izquierda}</Column>
-      {derecha ? <Column weight={1}>{derecha}</Column> : null}
+    <Columns gap={orbita.spacing.xxl * 1.5}>
+      <Column weight={3}>{izquierda}</Column>
+      {derecha ? <Column weight={4}>{derecha}</Column> : null}
     </Columns>
+  );
+}
+
+/** Rótulo, valor y la barra compartida debajo: conteo por tono o por dimensión. */
+function Conteo({
+  rotulo,
+  valor,
+  segmentos,
+  escala
+}: {
+  rotulo: string;
+  valor: string;
+  segmentos: ReadonlyArray<{ cantidad: number; color: string }>;
+  escala: number;
+}) {
+  return (
+    <View style={styles.conteo}>
+      <View style={styles.conteoFila}>
+        <Text style={styles.conteoRotulo}>{rotulo}</Text>
+        <Text style={styles.conteoValor}>{valor}</Text>
+      </View>
+      <PBarra
+        grosor={6}
+        segmentos={segmentos.map((s) => ({ fraccion: fraccionDeBarra(s.cantidad, escala), color: s.color }))}
+        accessibilityLabel={`${rotulo}: ${valor}`}
+        style={styles.conteoBarra}
+      />
+    </View>
   );
 }
 
@@ -218,11 +259,18 @@ const styles = StyleSheet.create({
   chips: { flexDirection: "row", flexWrap: "wrap", gap: orbita.spacing.lg },
   precision: { marginTop: orbita.spacing.lg },
   titular: { marginTop: orbita.spacing.sm },
+  texto: { marginTop: orbita.spacing.lg },
+  nota: { marginTop: orbita.spacing.md },
+  notaCorta: { marginTop: orbita.spacing.sm },
   linea: { backgroundColor: orbita.colors.line, height: 1, marginVertical: orbita.spacing.xl },
   cta: { marginTop: orbita.spacing.lg },
   columnaMovil: { marginTop: orbita.spacing.xxl },
   tarjetaTitulo: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 22 },
-  tarjetaPlus: { marginTop: orbita.spacing.lg },
+  conteo: { marginTop: orbita.spacing.lg },
+  conteoFila: { alignItems: "baseline", flexDirection: "row", justifyContent: "space-between" },
+  conteoRotulo: { color: orbita.colors.bone, fontFamily: orbita.fonts.body, fontSize: 16 },
+  conteoValor: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.mono, fontSize: 12 },
+  conteoBarra: { marginTop: orbita.spacing.sm },
   contacto: { borderBottomColor: orbita.colors.line, borderBottomWidth: 1, paddingVertical: orbita.spacing.lg },
   contactoUltimo: { borderBottomWidth: 0, paddingBottom: 0 },
   contactoTitulo: { color: orbita.colors.bone, fontFamily: orbita.fonts.body, fontSize: 17 },

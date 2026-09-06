@@ -1,96 +1,20 @@
 import { Component, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View, type TextInputProps } from "react-native";
+import { PEtiqueta } from "@/components/transitos/PanoramaUI";
 import { orbita } from "@/theme/orbita";
-import { fraccionDeBarra } from "@/domain/vinculo";
 
 /**
- * Piezas de la sección Vínculos (CORE-212), calcadas de los frames
- * `1757:2613` / `1757:2383` (lista), `1761:2776`→`1761:3012` (alta) y
- * `1757:2515` / `1757:2674` (comparación): tarjeta de superficie, rótulo mono
- * cobre, botones relleno/contorno, campo de texto con rótulo, barra de conteo
- * y el chip de persona. Sin lógica de datos: todo lo que se ve entra por props.
+ * Lo que Vínculos necesita y el kit compartido no tiene (CORE-233).
+ *
+ * Rótulos, textos, notas, tarjetas, botones, enlaces y barras salen de
+ * `src/components/transitos/PanoramaUI.tsx` y `src/components/orbita/kit.tsx`,
+ * los mismos que usan Hoy, Tránsitos y Carta: Vínculos no vuelve a definir su
+ * propia escala ni su propio ritmo vertical. Acá quedan sólo las piezas de
+ * formulario y de identidad de los frames `1761:2776`→`1761:3012` (alta) y
+ * `1757:2515` / `1757:2674` (comparación): campo con rótulo, chip
+ * seleccionable, opción de nivel, tramos de progreso, avatar con inicial y el
+ * cerco de error de las queries. Sin datos propios: todo entra por props.
  */
-
-export function VTarjeta({ children, style }: { children: ReactNode; style?: object }) {
-  return <View style={[styles.tarjeta, style]}>{children}</View>;
-}
-
-export function VEtiqueta({
-  children,
-  tono = "cobre",
-  style,
-  accessibilityRole
-}: {
-  children: ReactNode;
-  tono?: "cobre" | "gris";
-  style?: object;
-  accessibilityRole?: "header";
-}) {
-  return (
-    <Text style={[styles.etiqueta, tono === "gris" && styles.etiquetaGris, style]} accessibilityRole={accessibilityRole}>
-      {children}
-    </Text>
-  );
-}
-
-export function VTitular({ children, style }: { children: ReactNode; style?: object }) {
-  return (
-    <Text style={[styles.titular, style]} accessibilityRole="header">
-      {children}
-    </Text>
-  );
-}
-
-export function VTexto({ children, style }: { children: ReactNode; style?: object }) {
-  return <Text style={[styles.texto, style]}>{children}</Text>;
-}
-
-export function VNota({ children, style }: { children: ReactNode; style?: object }) {
-  return <Text style={[styles.nota, style]}>{children}</Text>;
-}
-
-/** Botón: `relleno` (hueso), `contorno` (línea), `cobre` (relleno cobre, el CTA móvil). */
-export function VBoton({
-  label,
-  onPress,
-  variante = "relleno",
-  disabled,
-  accessibilityLabel
-}: {
-  label: string;
-  onPress?: () => void;
-  variante?: "relleno" | "contorno" | "cobre" | "cobreContorno";
-  disabled?: boolean;
-  accessibilityLabel?: string;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel ?? label}
-      accessibilityState={{ disabled: !!disabled }}
-      style={({ pressed }) => [
-        styles.boton,
-        variante === "contorno" && styles.botonContorno,
-        variante === "cobre" && styles.botonCobre,
-        variante === "cobreContorno" && styles.botonCobreContorno,
-        (pressed || disabled) && styles.botonApagado
-      ]}
-    >
-      <Text
-        style={[
-          styles.botonTexto,
-          variante === "contorno" && styles.botonTextoContorno,
-          variante === "cobre" && styles.botonTextoCobre,
-          variante === "cobreContorno" && styles.botonTextoCobreContorno
-        ]}
-      >
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
 
 /** Campo de texto con rótulo mono y error debajo. */
 export function VCampo({
@@ -101,9 +25,9 @@ export function VCampo({
 }: TextInputProps & { rotulo: string; error?: string; style?: object }) {
   return (
     <View style={style}>
-      <VEtiqueta tono="gris" style={styles.campoRotulo}>
+      <PEtiqueta tono="gris" style={styles.campoRotulo}>
         {rotulo}
-      </VEtiqueta>
+      </PEtiqueta>
       <TextInput
         placeholderTextColor={orbita.colors.mutedDim}
         accessibilityLabel={rotulo}
@@ -126,7 +50,7 @@ export function VChip({ label, activo, onPress }: { label: string; activo: boole
       onPress={onPress}
       accessibilityRole="radio"
       accessibilityState={{ selected: activo }}
-      style={({ pressed }) => [styles.chip, activo && styles.chipActivo, pressed && styles.botonApagado]}
+      style={({ pressed }) => [styles.chip, activo && styles.chipActivo, pressed && styles.apagado]}
     >
       <Text style={[styles.chipTexto, activo && styles.chipTextoActivo]}>{label}</Text>
     </Pressable>
@@ -153,70 +77,68 @@ export function VOpcion({
       accessibilityRole="radio"
       accessibilityState={{ selected: activo }}
       accessibilityLabel={`${titulo}. ${rotulo}. ${detalle}`}
-      style={({ pressed }) => [styles.opcion, activo && styles.opcionActiva, pressed && styles.botonApagado]}
+      style={({ pressed }) => [styles.opcion, activo && styles.opcionActiva, pressed && styles.apagado]}
     >
       <View style={styles.opcionFila}>
         <Text style={styles.opcionTitulo}>{titulo}</Text>
-        <Text style={[styles.opcionRotulo, activo && styles.opcionRotuloActivo]}>{rotulo}</Text>
+        <PEtiqueta tono={activo ? "cobre" : "gris"} style={styles.opcionRotulo}>
+          {rotulo}
+        </PEtiqueta>
       </View>
       <Text style={styles.opcionDetalle}>{detalle}</Text>
     </Pressable>
   );
 }
 
-/** Barra de conteo: rótulo, valor y una pista con uno o varios segmentos. */
-export function VBarra({
-  rotulo,
-  valor,
-  segmentos,
-  escala
+/**
+ * Tramos de progreso: `activos` de `total`, los cumplidos en cobre. Es la
+ * misma pieza para «PASO 2 DE 3» del alta y «NIVEL 3 DE 3» de la biblioteca.
+ */
+export function VTramos({
+  activos,
+  total = 3,
+  accessibilityLabel,
+  style
 }: {
-  rotulo: string;
-  valor: string;
-  /** Cada segmento es {cantidad, color}; se dibujan en orden sobre la escala común. */
-  segmentos: ReadonlyArray<{ cantidad: number; color: string }>;
-  escala: number;
+  activos: number;
+  total?: number;
+  accessibilityLabel: string;
+  style?: object;
 }) {
   return (
-    <View style={styles.barra} accessibilityLabel={`${rotulo}: ${valor}`}>
-      <View style={styles.barraFila}>
-        <Text style={styles.barraRotulo}>{rotulo}</Text>
-        <Text style={styles.barraValor}>{valor}</Text>
-      </View>
-      <View style={styles.barraPista}>
-        {segmentos.map((s, i) =>
-          s.cantidad > 0 ? (
-            <View
-              key={i}
-              style={{ backgroundColor: s.color, flexGrow: fraccionDeBarra(s.cantidad, escala), height: 6 }}
-            />
-          ) : null
-        )}
-        <View style={{ flexGrow: 1 - fraccionDeBarra(segmentos.reduce((a, s) => a + s.cantidad, 0), escala) }} />
-      </View>
+    <View style={[styles.tramos, style]} accessible accessibilityLabel={accessibilityLabel}>
+      {Array.from({ length: total }, (_, i) => (
+        <View key={i} style={[styles.tramo, i < activos && styles.tramoActivo]} />
+      ))}
     </View>
   );
 }
 
-/** Chip redondo con inicial + nombre (encabezado de la comparación). */
+/** Avatar redondo con inicial: `cobre` (la persona) o `azul` (la otra carta). */
+export function VInicial({
+  inicial,
+  tono = "cobre",
+  tamano = 32,
+  activa
+}: {
+  inicial: string;
+  tono?: "cobre" | "azul";
+  tamano?: number;
+  activa?: boolean;
+}) {
+  return (
+    <View style={[styles.inicial, { height: tamano, width: tamano }, tono === "azul" && styles.inicialAzul, activa && styles.inicialActiva]}>
+      <Text style={styles.inicialTexto}>{inicial}</Text>
+    </View>
+  );
+}
+
+/** Chip con inicial + nombre (encabezado de la comparación). */
 export function VPersonaChip({ inicial, nombre, tono }: { inicial: string; nombre: string; tono: "cobre" | "azul" }) {
   return (
     <View style={styles.personaChip}>
-      <View style={[styles.personaInicial, tono === "azul" && styles.personaInicialAzul]}>
-        <Text style={styles.personaInicialTexto}>{inicial}</Text>
-      </View>
+      <VInicial inicial={inicial} tono={tono} />
       <Text style={styles.personaNombre}>{nombre}</Text>
-    </View>
-  );
-}
-
-/** Barra de progreso del alta: tres tramos, los cumplidos en cobre. */
-export function VProgreso({ paso }: { paso: 1 | 2 | 3 }) {
-  return (
-    <View style={styles.progreso} accessibilityLabel={`Paso ${paso} de 3`}>
-      {[1, 2, 3].map((n) => (
-        <View key={n} style={[styles.progresoTramo, n <= paso && styles.progresoTramoActivo]} />
-      ))}
     </View>
   );
 }
@@ -243,42 +165,7 @@ export class VCerco extends Component<
 }
 
 const styles = StyleSheet.create({
-  tarjeta: {
-    backgroundColor: orbita.colors.surface,
-    borderColor: orbita.colors.line,
-    borderRadius: orbita.radius.lg,
-    borderWidth: 1,
-    padding: orbita.spacing.xl
-  },
-  etiqueta: {
-    color: orbita.colors.copper,
-    fontFamily: orbita.fonts.monoMedium,
-    fontSize: 11,
-    letterSpacing: 1.2,
-    textTransform: "uppercase"
-  },
-  etiquetaGris: { color: orbita.colors.mutedDim },
-  titular: { color: orbita.colors.bone, fontFamily: orbita.fonts.serif, fontSize: 32, lineHeight: 38, marginTop: orbita.spacing.md },
-  texto: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 15, lineHeight: 22, marginTop: orbita.spacing.lg },
-  nota: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.body, fontSize: 13, lineHeight: 18, marginTop: orbita.spacing.md },
-
-  boton: {
-    alignItems: "center",
-    alignSelf: "flex-start",
-    backgroundColor: orbita.colors.bone,
-    borderRadius: 999,
-    justifyContent: "center",
-    minHeight: 48,
-    paddingHorizontal: orbita.spacing.xl
-  },
-  botonContorno: { backgroundColor: "transparent", borderColor: orbita.colors.line, borderWidth: 1 },
-  botonCobre: { backgroundColor: orbita.colors.copper },
-  botonCobreContorno: { backgroundColor: "transparent", borderColor: orbita.colors.copper, borderWidth: 1 },
-  botonApagado: { opacity: 0.55 },
-  botonTexto: { color: orbita.colors.onLight, fontFamily: orbita.fonts.monoMedium, fontSize: 13, letterSpacing: 1 },
-  botonTextoContorno: { color: orbita.colors.bone },
-  botonTextoCobre: { color: orbita.colors.onLight },
-  botonTextoCobreContorno: { color: orbita.colors.copper },
+  apagado: { opacity: 0.55 },
 
   campoRotulo: { marginBottom: orbita.spacing.sm },
   campo: {
@@ -300,11 +187,11 @@ const styles = StyleSheet.create({
     borderColor: orbita.colors.line,
     borderRadius: 999,
     borderWidth: 1,
-    minHeight: 44,
     justifyContent: "center",
+    minHeight: 44,
     paddingHorizontal: orbita.spacing.lg
   },
-  chipActivo: { backgroundColor: "rgba(196,106,58,0.16)", borderColor: orbita.colors.copper },
+  chipActivo: { backgroundColor: orbita.colors.copperTint16, borderColor: orbita.colors.copper },
   chipTexto: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 15 },
   chipTextoActivo: { color: orbita.colors.bone },
 
@@ -315,42 +202,28 @@ const styles = StyleSheet.create({
     marginTop: orbita.spacing.md,
     padding: orbita.spacing.lg
   },
-  opcionActiva: { backgroundColor: "rgba(196,106,58,0.10)", borderColor: orbita.colors.copper },
+  opcionActiva: { backgroundColor: orbita.colors.copperTint10, borderColor: orbita.colors.copper },
   opcionFila: { alignItems: "center", flexDirection: "row", gap: orbita.spacing.md, justifyContent: "space-between" },
-  opcionTitulo: { color: orbita.colors.bone, fontFamily: orbita.fonts.body, fontSize: 16, flexShrink: 1 },
-  opcionRotulo: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.monoMedium, fontSize: 10, letterSpacing: 1, textAlign: "right" },
-  opcionRotuloActivo: { color: orbita.colors.copper },
+  opcionTitulo: { color: orbita.colors.bone, flexShrink: 1, fontFamily: orbita.fonts.body, fontSize: 16 },
+  opcionRotulo: { fontSize: 10, textAlign: "right" },
   opcionDetalle: { color: orbita.colors.muted, fontFamily: orbita.fonts.body, fontSize: 14, lineHeight: 20, marginTop: orbita.spacing.xs },
 
-  barra: { marginTop: orbita.spacing.lg },
-  barraFila: { alignItems: "baseline", flexDirection: "row", justifyContent: "space-between" },
-  barraRotulo: { color: orbita.colors.bone, fontFamily: orbita.fonts.body, fontSize: 16 },
-  barraValor: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.mono, fontSize: 12 },
-  barraPista: {
-    backgroundColor: "rgba(244,238,228,0.08)",
-    borderRadius: 3,
-    flexDirection: "row",
-    height: 6,
-    marginTop: orbita.spacing.sm,
-    overflow: "hidden"
-  },
+  tramos: { flexDirection: "row", gap: orbita.spacing.sm },
+  tramo: { backgroundColor: orbita.colors.boneTint12, borderRadius: 2, flex: 1, height: 3 },
+  tramoActivo: { backgroundColor: orbita.colors.copper },
 
-  personaChip: { alignItems: "center", flexDirection: "row", gap: orbita.spacing.sm },
-  personaInicial: {
+  inicial: {
     alignItems: "center",
-    backgroundColor: "rgba(196,106,58,0.25)",
+    backgroundColor: orbita.colors.copperTint25,
     borderColor: orbita.colors.copper,
     borderRadius: 999,
     borderWidth: 1,
-    height: 32,
-    justifyContent: "center",
-    width: 32
+    justifyContent: "center"
   },
-  personaInicialAzul: { backgroundColor: "rgba(140,166,196,0.22)", borderColor: orbita.colors.harmony },
-  personaInicialTexto: { color: orbita.colors.bone, fontFamily: orbita.fonts.monoMedium, fontSize: 12 },
-  personaNombre: { color: orbita.colors.bone, fontFamily: orbita.fonts.body, fontSize: 15 },
+  inicialAzul: { backgroundColor: orbita.colors.harmonyTint22, borderColor: orbita.colors.harmony },
+  inicialActiva: { backgroundColor: orbita.colors.copperTint45 },
+  inicialTexto: { color: orbita.colors.bone, fontFamily: orbita.fonts.monoMedium, fontSize: 12 },
 
-  progreso: { flexDirection: "row", gap: orbita.spacing.sm, marginTop: orbita.spacing.md },
-  progresoTramo: { backgroundColor: "rgba(244,238,228,0.12)", borderRadius: 2, flex: 1, height: 3 },
-  progresoTramoActivo: { backgroundColor: orbita.colors.copper }
+  personaChip: { alignItems: "center", flexDirection: "row", gap: orbita.spacing.sm },
+  personaNombre: { color: orbita.colors.bone, fontFamily: orbita.fonts.body, fontSize: 15 }
 });

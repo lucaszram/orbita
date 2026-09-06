@@ -18,6 +18,16 @@ export const orbita = {
     // Aspectos de la carta natal.
     harmony: "#8CA6C4",
     tension: "#C46A3A",
+    // Tintes con alfa para fondos de chips, avatares y pistas. Antes vivían
+    // hardcodeados en cada pantalla; el mismo cobre al 16% tiene que ser el
+    // mismo en Vínculos, Tránsitos y Hoy.
+    copperTint10: "rgba(196, 106, 58, 0.10)",
+    copperTint16: "rgba(196, 106, 58, 0.16)",
+    copperTint25: "rgba(196, 106, 58, 0.25)",
+    copperTint45: "rgba(196, 106, 58, 0.45)",
+    harmonyTint22: "rgba(140, 166, 196, 0.22)",
+    boneTint08: "rgba(244, 238, 228, 0.08)",
+    boneTint12: "rgba(244, 238, 228, 0.12)",
   },
   fonts: {
     body: "Inter_400Regular",
