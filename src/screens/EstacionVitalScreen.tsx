@@ -17,8 +17,8 @@ import { useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { useAction } from "convex/react";
-import { DetailScreen } from "@/components/home/DetailScreen";
 import { Column, Columns, ReadingBlock } from "@/components/orbita/Layout";
+import { OrbitaScreen, Section } from "@/components/orbita/kit";
 import { GuestState } from "@/components/orbita/GuestState";
 import { EmptyState, ErrorState, MinimalLoading } from "@/components/orbita/states";
 import { PBoton, PEncabezado, PEnlace, PEtiqueta, PNota, PPlegable, PTarjeta, PTexto } from "@/components/transitos/PanoramaUI";
@@ -40,6 +40,7 @@ import {
   type EstacionEstado
 } from "@/domain/momento";
 import { sessionPhase } from "@/domain/screenPhase";
+import { RUTA_TU_MOMENTO } from "@/domain/hoyPrincipal";
 import { useIsDesktop } from "@/hooks/useLayoutMode";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { useCanonicalLocalDate } from "@/hooks/useDailyContext";
@@ -88,11 +89,22 @@ export function EstacionVitalScreen() {
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
+  // En web la barra lleva la fecha (frame `1740:2308`) y la vuelta es la nav;
+  // en nativo la pantalla vive en un stack sin pestañas, así que la barra
+  // ofrece «‹ VOLVER» (CORE-240, revisión r1).
   return (
-    <DetailScreen eyebrow="Tu momento · Capa 01" canvas="wide">
-      {children}
-    </DetailScreen>
+    <OrbitaScreen canvas="wide" right={IS_WEB ? undefined : "‹ VOLVER"} onRight={IS_WEB ? undefined : volverAlHub}>
+      <Section>
+        {children}
+      </Section>
+    </OrbitaScreen>
   );
+}
+
+const IS_WEB = process.env.EXPO_OS === "web";
+function volverAlHub() {
+  if (router.canGoBack()) router.back();
+  else router.replace(RUTA_TU_MOMENTO);
 }
 
 function EstacionVitalLive() {
@@ -166,7 +178,7 @@ function EstacionVitalLive() {
                 ? router.push("/editar-datos")
                 : router.canGoBack()
                   ? router.back()
-                  : router.replace("/transito")
+                  : router.replace(RUTA_TU_MOMENTO)
           }
         />
       </Shell>
@@ -190,7 +202,7 @@ function EstacionVitalLista({ estacion, timezone }: { estacion: Extract<Estacion
   const principal = (
     <ReadingBlock>
       <View style={styles.cabecera}>
-        <PEnlace label="TU MOMENTO" href="/transito" />
+        <PEnlace label="TU MOMENTO" href={RUTA_TU_MOMENTO} />
         <PEtiqueta tono="gris">CAPA 01</PEtiqueta>
       </View>
       <View style={styles.titular}>
@@ -265,7 +277,7 @@ function EstacionVitalLista({ estacion, timezone }: { estacion: Extract<Estacion
               {c.n} · {c.label}
             </PEtiqueta>
           ))}
-          <PEnlace label="IR A TU MOMENTO" href="/transito" />
+          <PEnlace label="IR A TU MOMENTO" href={RUTA_TU_MOMENTO} />
         </PTarjeta>
         <PTarjeta titulo="DE DÓNDE SALE CADA CAPA">
           {DE_DONDE_SALE.map((d) => (

@@ -239,7 +239,12 @@ export function hoyBloques(cumplelunaHoy: boolean): readonly HoyBloqueKey[] {
  * sección Tránsitos, pidiendo el segmento de Tu momento. Tránsitos decide
  * qué hacer con el parámetro; Hoy sólo declara el destino.
  */
-export const RUTA_TU_MOMENTO = { pathname: "/transito", params: { segmento: "momento" } } as const;
+export function rutaTuMomento(web: boolean) {
+  // En web la sección vive en `/transito` (la ruta que envuelve el shell); en
+  // nativo `/transito` redirige a Hoy, así que se apunta a la pestaña.
+  return { pathname: web ? "/transito" : "/(tabs)/transitos", params: { segmento: "momento" } } as const;
+}
+export const RUTA_TU_MOMENTO = rutaTuMomento(process.env.EXPO_OS === "web");
 
 /**
  * Qué segmento de Tránsitos pide la URL (`?segmento=momento`, CORE-240). Sólo

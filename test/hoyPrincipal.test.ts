@@ -13,7 +13,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 
-import { contarModulos, contextoDelAno, esLecturaPlantilla, etiquetaDeContactosActivos, etiquetaDeModulos, filaDeHoyComoVista, filasDelPanoramaParaHoy, guiaPendiente, hoyBloques, hoyPrincipal, hoyRanking, numeroDeBloque, partesDeContacto, principalDesdePanorama, RUTA_TU_MOMENTO, segmentoDeRuta } from "../src/domain/hoyPrincipal";
+import { contarModulos, contextoDelAno, esLecturaPlantilla, etiquetaDeContactosActivos, etiquetaDeModulos, filaDeHoyComoVista, filasDelPanoramaParaHoy, guiaPendiente, hoyBloques, hoyPrincipal, hoyRanking, numeroDeBloque, partesDeContacto, principalDesdePanorama, RUTA_TU_MOMENTO, rutaTuMomento, segmentoDeRuta } from "../src/domain/hoyPrincipal";
 import type { DailyGuidePayload } from "../src/services/appRefs";
 
 /** Un payload real mínimo; cada test pisa sólo lo que le importa. */
@@ -351,6 +351,50 @@ describe("el ranking de Hoy como el de Tránsitos (CORE-238)", () => {
     const vista = filaDeHoyComoVista({ clave: "k", rango: 2, aspecto: "Marte en Cáncer trígono tu Sol (casa 7)", titulo: "Marte trígono tu Sol", planeta: "Marte", punto: "Sol", casa: 7, transitId: "marte-trine-sun", lectura: null });
     assert.deepEqual(vista, { transitId: "marte-trine-sun", rango: 2, titulo: "Marte trígono tu Sol", linea: "Marte · Sol", chip: null, meta: "CASA 7", barra: null, cuerpo: "", cadencia: null });
     assert.equal(filaDeHoyComoVista({ clave: "k", rango: 1, aspecto: "a", titulo: "a", planeta: null, punto: null, casa: null, transitId: null, lectura: null }), null, "sin identidad no hay enlace");
+  });
+});
+
+describe("Tránsitos con Plus se ve como el frame (CORE-240)", () => {
+  const raiz = join(dirname(fileURLToPath(import.meta.url)), "..");
+  const panoramaUI = readFileSync(join(raiz, "src", "components", "transitos", "PanoramaUI.tsx"), "utf8");
+  const transitos = readFileSync(join(raiz, "src", "screens", "TransitosScreen.tsx"), "utf8");
+
+  it("el padding y la línea de cada fila del panorama viven en un View propio (en web el Link asChild descarta el estilo del Pressable)", () => {
+    assert.match(panoramaUI, /<View style=\{\[styles\.fila, !ultima && styles\.filaConLinea, resaltada && styles\.filaResaltada\]\}>/);
+    assert.doesNotMatch(panoramaUI, /style=\{\(\{ pressed \}\) => \[styles\.fila,/);
+  });
+
+  it("las tres lecturas de Tu momento viajan dentro del shell web y usan la barra de marca, no la flecha de detalle (frames 2023:2900 / 1740:2308)", () => {
+    for (const [ruta, pantalla] of [
+      ["estacion-vital", "EstacionVitalScreen"],
+      ["tema-del-ano", "TemaDelAnoScreen"],
+      ["cuatro-ritmos", "CuatroRitmosScreen"]
+    ] as const) {
+      const codigoRuta = readFileSync(join(raiz, "app", "reading", `${ruta}.tsx`), "utf8");
+      assert.match(codigoRuta, new RegExp(`<WebAppShell active="transitos">\\s*<${pantalla} \\/>`), ruta);
+      assert.match(codigoRuta, /process\.env\.EXPO_OS !== "web"/, ruta);
+      const codigoPantalla = readFileSync(join(raiz, "src", "screens", `${pantalla}.tsx`), "utf8");
+      assert.match(codigoPantalla, /<OrbitaScreen canvas="wide"[^>]*>\s*<Section>/, pantalla);
+      assert.doesNotMatch(codigoPantalla, /DetailScreen/, pantalla);
+    }
+  });
+
+  it("el enlace a Tu momento apunta a la sección con el segmento en web y a la pestaña en nativo, donde /transito redirige a Hoy", () => {
+    assert.deepEqual(rutaTuMomento(true), { pathname: "/transito", params: { segmento: "momento" } });
+    assert.deepEqual(rutaTuMomento(false), { pathname: "/(tabs)/transitos", params: { segmento: "momento" } });
+    for (const pantalla of ["EstacionVitalScreen", "TemaDelAnoScreen", "CuatroRitmosScreen"]) {
+      const codigo = readFileSync(join(raiz, "src", "screens", `${pantalla}.tsx`), "utf8");
+      assert.doesNotMatch(codigo, /href="\/transito"|router\.replace\("\/transito"\)/, pantalla);
+      assert.match(codigo, /right=\{IS_WEB \? undefined : "‹ VOLVER"\} onRight=\{IS_WEB \? undefined : volverAlHub\}/, pantalla);
+    }
+    assert.match(panoramaUI, /<View style=\{\[styles\.enlace, \(apretado \|\| disabled\) && styles\.apagado\]\}>/);
+  });
+
+  it("en escritorio Ahora lleva la tarjeta TU MOMENTO con las tres capas y el salto al segmento (frame 1737:2201)", () => {
+    assert.match(transitos, /<PTarjeta titulo="TU MOMENTO">/);
+    assert.match(transitos, /"01 · TU ESTACIÓN VITAL", "02 · EL TEMA DE TU AÑO", "03 · TUS CUATRO RITMOS"/);
+    assert.match(transitos, /<PEnlace label="IR A TU MOMENTO" onPress=\{onTuMomento\} \/>/);
+    assert.match(transitos, /onTuMomento=\{\(\) => setSegmento\("momento"\)\}/);
   });
 });
 

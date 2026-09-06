@@ -210,7 +210,7 @@ function TransitosLive() {
   return (
     <TransitosShell>
       {segmentos}
-      <PanoramaAhora panorama={estado.panorama} />
+      <PanoramaAhora panorama={estado.panorama} onTuMomento={() => setSegmento("momento")} />
     </TransitosShell>
   );
 }
@@ -219,7 +219,7 @@ function TransitosLive() {
 // AHORA · el ranking del día
 // ---------------------------------------------------------------------------
 
-function PanoramaAhora({ panorama }: { panorama: Extract<TransitPanorama, { status: "ready" }> }) {
+function PanoramaAhora({ panorama, onTuMomento }: { panorama: Extract<TransitPanorama, { status: "ready" }>; onTuMomento: () => void }) {
   const desktop = useIsDesktop();
   const [desplegado, setDesplegado] = useState(false);
   const filas = filasParaMostrar(panorama.rows, desplegado);
@@ -258,6 +258,18 @@ function PanoramaAhora({ panorama }: { panorama: Extract<TransitPanorama, { stat
         <PTarjeta titulo="POR QUÉ ESTE ORDEN">
           <PPorQue enFila={false} />
           <PNota style={styles.notaOrden}>{NOTA_DEL_ORDEN}</PNota>
+        </PTarjeta>
+        {/* La tarjeta «TU MOMENTO» del frame `1737:2201`: las tres capas y el salto al segmento. */}
+        <PTarjeta titulo="TU MOMENTO">
+          <PTexto>Los ciclos lentos: tu estación vital, el tema de tu año y tus cuatro ritmos.</PTexto>
+          <View style={styles.capasDeMomento}>
+            {["01 · TU ESTACIÓN VITAL", "02 · EL TEMA DE TU AÑO", "03 · TUS CUATRO RITMOS"].map((capa) => (
+              <PEtiqueta key={capa} tono="hueso" style={styles.capaDeMomento}>
+                {capa}
+              </PEtiqueta>
+            ))}
+          </View>
+          <PEnlace label="IR A TU MOMENTO" onPress={onTuMomento} />
         </PTarjeta>
         <PPlegable titulo="¿POR QUÉ ÓRBITA TE MUESTRA ESTO?">
           <PTexto>
@@ -394,6 +406,8 @@ function PanoramaBloqueado() {
 
 const styles = StyleSheet.create({
   segmentos: { flexDirection: "row", gap: orbita.spacing.sm, marginBottom: orbita.spacing.lg },
+  capasDeMomento: { marginTop: orbita.spacing.md },
+  capaDeMomento: { marginTop: orbita.spacing.sm },
   intro: { marginTop: orbita.spacing.md },
   leyenda: { marginTop: orbita.spacing.lg },
   lineaSuperior: { backgroundColor: orbita.colors.line, height: 1, marginTop: orbita.spacing.lg },

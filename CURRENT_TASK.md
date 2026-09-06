@@ -15,13 +15,32 @@ siempre Ahora. `TransitosScreen` arranca con el segmento que pide la URL
 y lo vuelve a aplicar si el parámetro cambia con la pantalla abierta; sólo
 «momento» cambia el segmento, cualquier otro valor deja Ahora.
 
-**Pendiente (bloqueo):** la verificación con Plus exige el entitlement en
-`beaming-lobster-442` para la cuenta de Lucas (tabla `subscriptions` vacía al
-2026-09-06); el `convex import` está bloqueado para el agente. Cuando Lucas lo
-corra, se cotejan Ahora, el orden y las tres capas de Tu momento en 390 y 1440.
+**Cambios (segunda parte, con Plus en dev, autorizado por Lucas el
+2026-09-06):** cotejo en vivo de Ahora contra `1737:2201` / `1731:2158` y del
+hub de Tu momento contra `2022:2875` / `1740:2247`. Tres desvíos corregidos:
+(1) las filas del panorama (`PFila`) perdían el padding y la línea en web
+porque `Link asChild` descarta el estilo del `Pressable`; ahora viven en un
+`View` propio (afecta también al ranking de Hoy, que usa la misma fila);
+(2) en escritorio faltaba la tarjeta «TU MOMENTO» de la columna derecha de
+Ahora, con las tres capas e «IR A TU MOMENTO ›» que cambia de segmento;
+(3) estación vital, tema del año y cuatro ritmos viajaban fuera del shell
+web (sin nav, en una columna también en 1440, y con la flecha de detalle en
+vez de la barra de marca): sus rutas se envuelven en `WebAppShell` en web y
+las pantallas pasan de `DetailScreen` a `OrbitaScreen` + `Section`, como los
+frames `2023:2900` / `1740:2308` y `2024:2925` / `1741:2289`. En nativo la
+barra ofrece «‹ VOLVER» y el enlace «TU MOMENTO ›» de cada lectura lleva al
+hub (`RUTA_TU_MOMENTO`, que en nativo apunta a la pestaña de Tránsitos con
+`segmento=momento`; antes iba a `/transito`, que en nativo redirige a Hoy).
+`PEnlace` recibe el mismo arreglo de estilo que `PFila`.
 
-**Estado:** rama `orb/core-240-transitos-plus` desde main 7922a10. Piso del
-gate 1017 → 1019.
+**Desvíos declarados:** la fila muestra la cadencia («DURA 4 MESES») donde el
+frame pone el orbe en grados, porque el proveedor diario no publica el orbe;
+la explicación del orden sigue la de CORE-207 (pesos por planeta, punto y
+aspecto), que es lo que el backend hace; el frame la escribe con otros
+rótulos.
+
+**Estado:** ramas `orb/core-240-transitos-plus` (mergeada, #105) y
+`orb/core-240-plus-en-vivo` desde main 16b446b. Piso del gate 1017 → 1023.
 
 ## La comparación de Vínculos se ve como el frame (CORE-236, 2026-09-06)
 

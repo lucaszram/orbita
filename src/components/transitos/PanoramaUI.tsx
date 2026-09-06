@@ -142,6 +142,9 @@ export function PFila({
   ]
     .filter(Boolean)
     .join(" ");
+  // El padding y la línea van en un View propio: en web, el `Link asChild`
+  // descarta el estilo del `Pressable` y las filas quedaban pegadas entre sí
+  // (CORE-240, cotejado con Plus contra `1731:2158`).
   return (
     <Link href={href} asChild>
       <Pressable
@@ -151,8 +154,10 @@ export function PFila({
         onHoverOut={() => setResaltada(false)}
         onFocus={() => setResaltada(true)}
         onBlur={() => setResaltada(false)}
-        style={({ pressed }) => [styles.fila, !ultima && styles.filaConLinea, (resaltada || pressed) && styles.filaResaltada]}
+        onPressIn={() => setResaltada(true)}
+        onPressOut={() => setResaltada(false)}
       >
+      <View style={[styles.fila, !ultima && styles.filaConLinea, resaltada && styles.filaResaltada]}>
         <View style={styles.filaLinea}>
           <Text style={styles.filaMono}>
             <Text style={styles.filaRango}>{fila.rango}</Text> {fila.linea}
@@ -176,6 +181,7 @@ export function PFila({
           {!fila.chip && !fila.meta && sinFase ? <Text style={styles.metaTexto}>{sinFase}</Text> : null}
         </View>
         {conCuerpo ? <PTexto style={styles.filaCuerpo}>{fila.cuerpo}</PTexto> : null}
+      </View>
       </Pressable>
     </Link>
   );
@@ -183,15 +189,21 @@ export function PFila({
 
 /** Enlace de pie en mono cobre: «VER LOS 16 CONTACTOS ›», «IR A …». */
 export function PEnlace({ label, onPress, href, disabled }: { label: string; onPress?: () => void; href?: Href; disabled?: boolean }) {
+  // Como en `PFila`: el estilo va en un View propio porque en web el
+  // `Link asChild` descarta el del `Pressable` (el área táctil de 44 se perdía).
+  const [apretado, setApretado] = useState(false);
   const inner = (
     <Pressable
       onPress={onPress}
       disabled={disabled}
       accessibilityRole={href ? "link" : "button"}
       accessibilityState={{ disabled: !!disabled }}
-      style={({ pressed }) => [styles.enlace, (pressed || disabled) && styles.apagado]}
+      onPressIn={() => setApretado(true)}
+      onPressOut={() => setApretado(false)}
     >
-      <PEtiqueta>{`${label}  ›`}</PEtiqueta>
+      <View style={[styles.enlace, (apretado || disabled) && styles.apagado]}>
+        <PEtiqueta>{`${label}  ›`}</PEtiqueta>
+      </View>
     </Pressable>
   );
   return href ? (
