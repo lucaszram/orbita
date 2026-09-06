@@ -10,19 +10,9 @@ import { EmptyState, ErrorState, MinimalLoading } from "@/components/orbita/stat
 import { sessionPhase } from "@/domain/screenPhase";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { useCanonicalLocalDate } from "@/hooks/useDailyContext";
+import { pedidoDeRutaTransito } from "@/domain/hoyPrincipal";
 import { proposedApi, type TransitDetailPayload } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
-
-/**
- * La identidad del contacto pedido en la ruta (`/reading/transito?id=…`), o
- * `null` para el destacado del día. Se valida con el mismo alfabeto que exige
- * el backend: un id malformado no viaja ni abre otro tránsito.
- */
-function transitIdDeRuta(value: string | string[] | undefined): string | null {
-  const raw = Array.isArray(value) ? value[0] : value;
-  const limpio = typeof raw === "string" ? raw.trim() : "";
-  return /^[a-z0-9_-]{1,120}$/.test(limpio) ? limpio : null;
-}
 
 const PLANET_IMG = require("../../assets/orbita/optimized/core/orbita_home_hero_orbital_b.jpg");
 const VENUS_IMG = require("../../assets/orbita/optimized/core/orbita_moon_phase_waxing.jpg");
@@ -39,7 +29,9 @@ export default function TransitoDetalleScreen() {
   const live = useLiveApp();
   const phase = sessionPhase(live);
   const params = useLocalSearchParams<{ id?: string | string[] }>();
-  const transitId = transitIdDeRuta(params.id);
+  // Sin `id`: el destacado del día. Con `id` válido: ese contacto. Con `id`
+  // presente pero inválido: se dice, en vez de abrir otro tránsito.
+  const pedido = pedidoDeRutaTransito(params.id);
   // Sin mocks: invitado confirmado → estado honesto; sesión resolviendo → carga mínima.
   if (phase === "cargando") {
     return (
@@ -66,7 +58,18 @@ export default function TransitoDetalleScreen() {
       </DetailScreen>
     );
   }
-  return transitId ? <TransitoContactoLive transitId={transitId} /> : <TransitoDetalleLive />;
+  if (pedido.kind === "invalido") {
+    return (
+      <DetailScreen eyebrow="Tránsito · Hoy">
+        <EmptyState
+          eyebrow="TRÁNSITO"
+          title={"Este enlace no señala\nun tránsito."}
+          body="La identidad del enlace no es válida. Volvé a Hoy y abrí el tránsito desde el ranking, o mirá todos los tránsitos."
+        />
+      </DetailScreen>
+    );
+  }
+  return pedido.kind === "contacto" ? <TransitoContactoLive transitId={pedido.transitId} /> : <TransitoDetalleLive />;
 }
 
 /**

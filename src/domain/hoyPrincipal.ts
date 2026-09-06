@@ -115,9 +115,24 @@ export function partesDeContacto(aspecto: string): {
 }
 
 /** La identidad tal como la publica el backend (`planeta-aspecto-punto`), o `null`. */
-function transitIdValido(value: unknown): string | null {
+export function transitIdValido(value: unknown): string | null {
   const limpio = texto(value);
   return limpio && /^[a-z0-9_-]{1,120}$/.test(limpio) ? limpio : null;
+}
+
+/**
+ * Qué pide una ruta `/reading/transito[?id=…]`: `destacado` cuando no viene
+ * `id`, `{ transitId }` cuando viene uno válido, y `invalido` cuando viene
+ * algo que no es una identidad (mayúsculas, acentos, `../`, vacío). Un id
+ * presente pero inválido NUNCA cae al destacado: abriría otro tránsito.
+ */
+export function pedidoDeRutaTransito(
+  value: string | string[] | undefined | null
+): { kind: "destacado" } | { kind: "contacto"; transitId: string } | { kind: "invalido" } {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (raw === undefined || raw === null) return { kind: "destacado" };
+  const transitId = transitIdValido(raw);
+  return transitId ? { kind: "contacto", transitId } : { kind: "invalido" };
 }
 
 /** ¿La «lectura» es la plantilla de fallback del backend, `Hoy <contacto>.`? */

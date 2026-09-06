@@ -12,16 +12,20 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
+import { composePayload } from "../convex/daily";
 import {
   assignTransitIds,
   buildDailyReadingPayloadFromAstrology,
   buildWebB0TransitDetailPayload,
   buildWebB0TransitDetailPayloadFor,
   findTransitInPayload,
+  selectRelevantTransits,
+  transitCadence,
   transitIdFor,
   type NormalizedAstroTransit
 } from "../convex/lib/orbita";
-import { hoyRanking } from "../src/domain/hoyPrincipal";
+import type { TarotDraw } from "../convex/lib/tarot";
+import { hoyRanking, pedidoDeRutaTransito, transitIdValido } from "../src/domain/hoyPrincipal";
 import type { DailyGuidePayload } from "../src/services/appRefs";
 import { ROOT } from "./moduleGraph";
 
@@ -165,6 +169,64 @@ describe("findTransitInPayload — exactamente el contacto pedido, o nada", () =
   });
 });
 
+// --- 2b. La guía y la lectura coinciden contacto por contacto ---------------
+
+describe("cada transitId que publica la guía resuelve al mismo contacto en la lectura", () => {
+  const carta: TarotDraw = {
+    id: 71,
+    key: "pentacles_08",
+    nombre: "Ocho de Oros",
+    arcana: "minor",
+    suit: "pentacles",
+    rank: "08",
+    correspondencia: "Oros · Tierra",
+    orientacion: "derecho"
+  };
+  const generated = {
+    headline: "Un día para sostener",
+    body: "cuerpo",
+    clima: "Constante.",
+    destacadoLectura: "Lectura real del destacado."
+  };
+  // Cinco contactos, con uno repetido: la guía se queda con cuatro (su límite) y
+  // la lectura conserva ocho. Ambas parten de la MISMA lista normalizada.
+  const lista = [venus, transito(), marteJupiter, saturno, transito({ exactTime: "2026-09-05T23:00", priority: 10 })];
+
+  it("la guía selecciona con el mismo algoritmo y publica identidades que la lectura resuelve", () => {
+    const guia = composePayload({ carta, generated, transits: selectRelevantTransits(lista, 4) });
+    const lectura = buildDailyReadingPayloadFromAstrology({
+      localDate: "2026-09-05",
+      timezone: "America/Argentina/Buenos_Aires",
+      chart: null,
+      transits: lista
+    });
+    const filas = [guia.destacado, ...guia.secundarios];
+    assert.equal(filas.length, 4);
+    for (const fila of filas) {
+      assert.ok(fila.transitId, `la fila «${fila.aspecto}» viene sin identidad`);
+      const resuelto = findTransitInPayload(lectura, fila.transitId as string);
+      assert.ok(resuelto, `la lectura no resuelve ${fila.transitId}`);
+      // El contacto resuelto es el mismo que la guía escribió en su línea.
+      assert.ok(
+        fila.aspecto.startsWith(resuelto.transitPlanetEs) && fila.aspecto.includes(`tu ${resuelto.natalPointEs}`),
+        `${fila.transitId} abrió «${resuelto.transitPlanetEs} → ${resuelto.natalPointEs}» para la fila «${fila.aspecto}»`
+      );
+    }
+    // Y dos filas nunca abren el mismo contacto.
+    assert.equal(new Set(filas.map((f) => f.transitId)).size, filas.length);
+  });
+
+  it("el quinto contacto, que la guía no muestra, sigue existiendo en la lectura con su propia identidad", () => {
+    const lectura = buildDailyReadingPayloadFromAstrology({
+      localDate: "2026-09-05",
+      timezone: "America/Argentina/Buenos_Aires",
+      chart: null,
+      transits: lista
+    });
+    assert.equal(findTransitInPayload(lectura, "mars-square-venus-2")?.exactTime, "2026-09-05T23:00");
+  });
+});
+
 // --- 3. El detalle por contacto ---------------------------------------------
 
 describe("buildWebB0TransitDetailPayloadFor — el detalle del contacto elegido", () => {
@@ -177,7 +239,7 @@ describe("buildWebB0TransitDetailPayloadFor — el detalle del contacto elegido"
     assert.equal(detalle.aspect.angleLabel, "90 grados");
     assert.equal(detalle.natalHouse, 3);
     assert.equal(typeof detalle.houseTheme, "string");
-    assert.equal(detalle.cadence, "Cambia a diario");
+    assert.equal(detalle.cadence, "Dura 2 días");
     assert.equal(detalle.window.label, "Pico estimado");
     assert.ok(detalle.earth.headline.length > 0);
     assert.ok(detalle.earth.suggestions.length > 0);
@@ -190,6 +252,17 @@ describe("buildWebB0TransitDetailPayloadFor — el detalle del contacto elegido"
     assert.match(detalle.reading.plain, /casa natal queda pendiente/);
     assert.equal(detalle.window.label, "Fecha local");
     assert.deepEqual(detalle.frequency.timeline, [{ label: "2026-09-05", current: true }]);
+  });
+
+  it("la cadencia sale de la ventana real del contacto, o no se afirma", () => {
+    assert.equal(transitCadence({ transitPlanet: "moon", startTime: "2026-09-05T02:00", endTime: "2026-09-05T20:00" }), "Cambia dentro del día");
+    assert.equal(transitCadence({ transitPlanet: "mars", startTime: "2026-09-01T00:00", endTime: "2026-09-09T00:00" }), "Dura 8 días");
+    assert.equal(transitCadence({ transitPlanet: "saturn", startTime: "2026-08-01T00:00", endTime: "2026-09-12T00:00" }), "Dura 6 semanas");
+    assert.equal(transitCadence({ transitPlanet: "pluto", startTime: "2026-01-01T00:00", endTime: "2026-12-01T00:00" }), "Dura 11 meses");
+    assert.equal(transitCadence({ transitPlanet: "venus", startTime: null, endTime: null }), undefined);
+    assert.equal(transitCadence({ transitPlanet: "venus", startTime: "2026-09-09T00:00", endTime: "2026-09-01T00:00" }), undefined);
+    assert.equal(buildWebB0TransitDetailPayloadFor({ ...saturno, transitId: "saturn-square-jupiter" }, "2026-09-05").cadence, "Dura 2 días");
+    assert.equal(buildWebB0TransitDetailPayloadFor({ ...venus, transitId: "venus-square-ascendant" }, "2026-09-05").cadence, undefined);
   });
 
   it("el destacado del día conserva la identidad guardada en la lectura", () => {
@@ -240,6 +313,17 @@ describe("el ranking de Hoy lleva la identidad hasta la ruta", () => {
     assert.equal(filas[0].transitId, null);
   });
 
+  it("la ruta distingue «sin id» (destacado), id válido (contacto) e id inválido (nunca el destacado)", () => {
+    assert.deepEqual(pedidoDeRutaTransito(undefined), { kind: "destacado" });
+    assert.deepEqual(pedidoDeRutaTransito(null), { kind: "destacado" });
+    assert.deepEqual(pedidoDeRutaTransito("mars-square-venus"), { kind: "contacto", transitId: "mars-square-venus" });
+    assert.deepEqual(pedidoDeRutaTransito(["saturn-square-jupiter", "otro"]), { kind: "contacto", transitId: "saturn-square-jupiter" });
+    for (const malo of ["", "   ", "Mars-Square-Venus", "marte-cuadratura-vénus", "mars square venus", "../otro?id=1", "a".repeat(121)]) {
+      assert.deepEqual(pedidoDeRutaTransito(malo), { kind: "invalido" }, `«${malo}» tendría que ser inválido`);
+      assert.equal(transitIdValido(malo), null);
+    }
+  });
+
   const RANKING = sinComentarios(leer("src/components/home/hoy/HoyRanking.tsx"));
   const DETALLE = sinComentarios(leer("app/reading/transito.tsx"));
   const APPREFS = sinComentarios(leer("src/services/appRefs.ts"));
@@ -247,7 +331,7 @@ describe("el ranking de Hoy lleva la identidad hasta la ruta", () => {
   it("la fila con identidad es un enlace accesible a su propio detalle", () => {
     assert.match(RANKING, /<Link href=\{\{ pathname: "\/reading\/transito", params: \{ id: transitId \} \}\} asChild>/);
     assert.match(RANKING, /accessibilityRole="link"/);
-    assert.match(RANKING, /accessibilityLabel=\{`\$\{fila\.titulo\}\. Abrir el detalle de este tránsito\.`\}/);
+    assert.match(RANKING, /accessibilityLabel=\{`\$\{fila\.rango\}\. \$\{fila\.titulo\}\.\$\{fila\.casa !== null \? ` Casa \$\{fila\.casa\}\.` : ""\} Abrir el detalle de este tránsito\.`\}/);
     assert.match(RANKING, /onHoverIn=/);
     assert.match(RANKING, /onFocus=/);
     assert.match(RANKING, /minHeight: 44/);
@@ -266,10 +350,13 @@ describe("el ranking de Hoy lleva la identidad hasta la ruta", () => {
 
   it("la pantalla abre exactamente el id de la ruta con el contrato compartido por web y nativo", () => {
     assert.match(DETALLE, /useLocalSearchParams<\{ id\?: string \| string\[\] \}>\(\)/);
-    assert.match(DETALLE, /const transitId = transitIdDeRuta\(params\.id\);/);
+    assert.match(DETALLE, /const pedido = pedidoDeRutaTransito\(params\.id\);/);
     assert.match(DETALLE, /useAction\(proposedApi\.transitDetail\)/);
     assert.match(DETALLE, /getDetail\(\{ localDate, transitId \}\)/);
-    assert.match(DETALLE, /transitId \? <TransitoContactoLive transitId=\{transitId\} \/> : <TransitoDetalleLive \/>/);
+    assert.match(DETALLE, /pedido\.kind === "contacto" \? <TransitoContactoLive transitId=\{pedido\.transitId\} \/> : <TransitoDetalleLive \/>/);
+    // Un id presente pero inválido tiene su propio estado y no cae al destacado.
+    assert.match(DETALLE, /if \(pedido\.kind === "invalido"\) \{/);
+    assert.match(DETALLE, /Este enlace no señala/);
     assert.match(APPREFS, /transitDetail: anyApi\.transits\.getDetail as FunctionReference</);
     assert.match(APPREFS, /\{ localDate: string; transitId: string \},\s*TransitDetailResult/);
   });

@@ -9,7 +9,7 @@
 //
 // Falla (exit 1) si:
 //   · algún test falló;
-//   · pasaron menos de 879 tests;
+//   · pasaron menos de 883 tests;
 //   · la salida no tiene resumen (la corrida se cayó antes de terminar).
 //
 // El último punto es el que importa de verdad: sin él, una corrida que explota
@@ -28,15 +28,15 @@ import { pathToFileURL } from "node:url";
  * CORE-191 (la sección Hoy) suma 116 casos: 27 en `hoyPrincipal.test.ts`, 45 en
  * `lunaCarta.test.ts` y 44 en `hoySection.test.ts`. El piso es 745 + 116.
  *
- * La profundización del ranking (cada tránsito abre su detalle) suma 18 casos
- * en `transitDetail.test.ts`: 861 + 18.
+ * La profundización del ranking (cada tránsito abre su detalle) suma 22 casos
+ * en `transitDetail.test.ts`: 861 + 22.
  *
  * Los otros cinco archivos que la tarjeta tocó —`responsiveShells`,
  * `accesoPostAlta`, `onboardingReadiness`, `umbralTarotWiring` y
  * `parityFoundations`— no mueven el número: sus casos cambiaron de superficie
  * (el ritual del Tarot vive ahora en el Umbral), no de cantidad.
  */
-export const DEFAULT_MINIMUM = 879;
+export const DEFAULT_MINIMUM = 883;
 
 /**
  * Lee un contador del resumen final del runner de Node.

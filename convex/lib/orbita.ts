@@ -1331,6 +1331,23 @@ function buildPendingTransitDetail(localDate: string): WebB0TransitDetailPayload
 }
 
 /**
+ * Cada cuánto cambia ESTE contacto, derivado de la ventana que publicó el
+ * proveedor (inicio y cierre): un tránsito de la Luna dura horas, uno de
+ * Saturno semanas. Sin ventana no se afirma cadencia. Es un dato del contacto,
+ * no una constante de la capa.
+ */
+export function transitCadence(transit: Pick<NormalizedAstroTransit, "startTime" | "endTime" | "transitPlanet">): string | undefined {
+  const start = transit.startTime ? Date.parse(transit.startTime) : Number.NaN;
+  const end = transit.endTime ? Date.parse(transit.endTime) : Number.NaN;
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return undefined;
+  const days = (end - start) / 86_400_000;
+  if (days <= 2) return "Cambia dentro del día";
+  if (days <= 14) return `Dura ${Math.round(days)} días`;
+  if (days <= 60) return `Dura ${Math.round(days / 7)} semanas`;
+  return `Dura ${Math.round(days / 30)} meses`;
+}
+
+/**
  * El detalle de UN contacto concreto, identificado. Es lo que abre cada fila del
  * ranking: cuerpos, aspecto, casa si la hay, lectura, ventana, cadencia y «cómo
  * se juega en la Tierra». Nada se rellena: sin casa se dice que falta; sin hora
@@ -1399,7 +1416,7 @@ export function buildWebB0TransitDetailPayloadFor(
     transitId: transit.transitId,
     natalHouse: transit.natalHouse,
     houseTheme: transit.natalHouse !== null ? (houseThemes[transit.natalHouse] ?? null) : null,
-    cadence: "Cambia a diario"
+    cadence: transitCadence(transit)
   }) as WebB0TransitDetailPayload;
 }
 

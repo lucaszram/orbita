@@ -52,7 +52,7 @@ function HoyRankingFilaEnlace({ fila, transitId }: { fila: HoyRankingFila; trans
     <Link href={{ pathname: "/reading/transito", params: { id: transitId } }} asChild>
       <Pressable
         accessibilityRole="link"
-        accessibilityLabel={`${fila.titulo}. Abrir el detalle de este tránsito.`}
+        accessibilityLabel={`${fila.rango}. ${fila.titulo}.${fila.casa !== null ? ` Casa ${fila.casa}.` : ""} Abrir el detalle de este tránsito.`}
         onHoverIn={() => setResaltada(true)}
         onHoverOut={() => setResaltada(false)}
         onFocus={() => setResaltada(true)}
