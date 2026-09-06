@@ -614,7 +614,6 @@ test("en la app autenticada el viewport lo lee UN solo archivo: el shell web", (
   // decisión explícita y no un descuido.
   const FUERA_DEL_CONTRATO = new Set([
     "src/components/backoffice/BackofficeLab.tsx",
-    "src/components/web/immersive-bg.tsx",
     "src/components/web/orbita-lab.tsx",
     "src/components/web/orbita-landing.tsx",
     "src/components/web/orbita-paywall.tsx",

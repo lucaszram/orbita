@@ -307,14 +307,10 @@ test("las superficies que perdían sus estilos usan el hook", () => {
   // o alguien podría "arreglarlos" borrando el estado de presionado.
   const migradas = [
     "src/screens/CartaScreen.tsx",
-    "src/components/Tag.tsx",
-    "src/components/ShareCardPreview.tsx",
     "src/components/orbita/GlyphRow.tsx",
-    "src/components/AppButton.tsx",
     "src/components/orbita/kit.tsx",
     "src/components/home/CartaCard.tsx",
     "src/components/home/sections.tsx",
-    "src/components/home/CartaBanner.tsx",
     "src/components/void/VoidExperience.tsx",
     "src/components/orbita/TabBar.web.tsx"
   ];

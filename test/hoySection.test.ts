@@ -357,11 +357,11 @@ describe("Hoy ya no es el ritual", () => {
   });
 
   it("los componentes, sus datos y sus rutas siguen existiendo", () => {
-    // La tarjeta pide dejar de RENDERIZARLO en Hoy, no borrarlo del producto:
-    // el Umbral sigue montando el mismo componente con los mismos datos.
+    // La tarjeta pedía dejar de RENDERIZARLO en Hoy, no borrarlo del producto:
+    // el Umbral sigue montando la carta con los mismos datos. `DiarioStrip`
+    // sí se borró (CORE-267): nadie lo montaba.
     for (const rel of [
       "src/components/home/CartaDelDia.tsx",
-      "src/components/diario/DiarioStrip.tsx",
       "src/components/web/umbral-tarot.tsx"
     ]) {
       assert.ok(leer(rel).length > 0, `${rel} no puede borrarse`);

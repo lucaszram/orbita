@@ -15,8 +15,8 @@ import { getTimezoneOffsetHours } from "./lib/astrologyApi";
  * los campos de texto. Órbita NO expone ese texto crudo: toma el **dato**
  * astronómico (fase, signo lunar, iluminación) y reescribe `copy`/`action` en
  * voz propia (entretenimiento + autoconocimiento, sin determinismo). Si el
- * proveedor no está configurado o falla, devolvemos `null` y el front cae al
- * mock (`src/content/moonPhaseMock.ts`).
+ * proveedor no está configurado o falla, devolvemos `null` y el front muestra
+ * su estado sin dato (no hay mock).
  */
 
 const DEFAULT_ASTROLOGY_API_BASE_URL = "https://json.astrologyapi.com/v1";
