@@ -112,7 +112,7 @@ describe("la jerarquía de Hoy", () => {
     // ACTIVOS»; sin panorama (Free), «VER TODOS LOS TRÁNSITOS» y sin barra ni chip.
     assert.match(RANKING, /<PFila key=\{fila\.transitId\} fila=\{fila\} conCuerpo ultima=/);
     assert.match(RANKING, /sinFase=\{null\}/);
-    assert.match(RANKING, /<HoyEnlace href="\/transito">\{enlace \?\? "VER TODOS LOS TRÁNSITOS"\}<\/HoyEnlace>/);
+    assert.match(RANKING, /<HoyEnlace href=\{RUTA_TRANSITOS\}>\{enlace \?\? "VER TODOS LOS TRÁNSITOS"\}<\/HoyEnlace>/);
     assert.match(RANKING, /POR QUÉ ESTE ORDEN/);
     assert.match(RANKING, /NOTA_DEL_ORDEN/);
     assert.match(HOME, /<HoyRankingBloque filas=\{ranking\} panorama=\{filasPanorama\} enlace=\{enlaceContactos\} \/>/);
@@ -123,7 +123,7 @@ describe("la jerarquía de Hoy", () => {
     assert.match(HOME, /const tarjetas = desktop \? \(/);
     assert.match(HOME, /<HoyTarjeta titulo="LAS CUATRO CAPAS DE HOY">/);
     assert.match(HOME, /<HoyTarjeta titulo="TU MOMENTO">/);
-    assert.match(HOME, /<HoyEnlace href="\/transito">IR A TRÁNSITOS<\/HoyEnlace>/);
+    assert.match(HOME, /<HoyEnlace href=\{RUTA_TRANSITOS\}>IR A TRÁNSITOS<\/HoyEnlace>/);
     // CORE-237: la tarjeta lleva los dos enlaces del frame, `IR A TRÁNSITOS › · TU MOMENTO ›`.
     assert.match(HOME, /<HoyEnlace href=\{RUTA_TU_MOMENTO\}>TU MOMENTO<\/HoyEnlace>/);
     assert.equal((HOME.match(/\{tarjetas\}/g) ?? []).length, 1);

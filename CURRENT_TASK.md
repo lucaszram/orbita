@@ -1,5 +1,18 @@
 # Current Task
 
+## Los enlaces de Hoy a Tránsitos abren Tránsitos en la app nativa (CORE-246, 2026-09-06)
+
+**Objetivo:** «Ir a Tránsitos» y «Ver todos los tránsitos» apuntaban a la ruta
+web `/transito`, que en nativo redirige a Hoy. Módulo home.
+
+**Cambios:** `rutaTransitos(web)` / `RUTA_TRANSITOS` en `src/domain/hoyPrincipal.ts`
+(web `/transito`, nativo `/(tabs)/transitos`), usado por `HomeScreen` y
+`HoyRanking`. Misma bifurcación que `rutaTuMomento` (CORE-240). En web no
+cambia nada.
+
+**Estado:** rama `orb/core-246-hoy-enlaces-transitos` desde main c71d219.
+Piso del gate 1023 → 1024.
+
 ## Tránsitos Ahora y Tu momento se ven como el frame con Plus (CORE-240, 2026-09-06)
 
 **Objetivo:** verificar en vivo, con Plus en dev, Ahora (`1737:2201` /

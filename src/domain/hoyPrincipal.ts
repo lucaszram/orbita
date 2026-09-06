@@ -247,6 +247,16 @@ export function rutaTuMomento(web: boolean) {
 export const RUTA_TU_MOMENTO = rutaTuMomento(process.env.EXPO_OS === "web");
 
 /**
+ * A dónde llevan «Ir a Tránsitos» y «Ver todos los tránsitos» (CORE-246): la
+ * sección Tránsitos en Ahora. Misma bifurcación por plataforma que Tu momento:
+ * en nativo `/transito` redirige a Hoy y el usuario se quedaba donde estaba.
+ */
+export function rutaTransitos(web: boolean) {
+  return web ? "/transito" : "/(tabs)/transitos";
+}
+export const RUTA_TRANSITOS = rutaTransitos(process.env.EXPO_OS === "web");
+
+/**
  * Qué segmento de Tránsitos pide la URL (`?segmento=momento`, CORE-240). Sólo
  * «momento» cambia el segmento inicial; cualquier otra cosa —nada, «ahora»,
  * un valor inventado o un array— deja «Ahora», que es el frame de entrada.

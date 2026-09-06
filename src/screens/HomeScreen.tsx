@@ -88,6 +88,7 @@ import {
   hoyRanking,
   numeroDeBloque,
   principalDesdePanorama,
+  RUTA_TRANSITOS,
   RUTA_TU_MOMENTO,
   type HoyBloqueKey
 } from "@/domain/hoyPrincipal";
@@ -334,7 +335,7 @@ export function HomeScreen() {
       <HoyTarjeta titulo="TU MOMENTO">
         <HoyTexto>Los ciclos lentos: tu estación vital, el tema de tu año y tus cuatro ritmos.</HoyTexto>
         <View style={styles.enlaces}>
-          <HoyEnlace href="/transito">IR A TRÁNSITOS</HoyEnlace>
+          <HoyEnlace href={RUTA_TRANSITOS}>IR A TRÁNSITOS</HoyEnlace>
           <HoyEnlace href={RUTA_TU_MOMENTO}>TU MOMENTO</HoyEnlace>
         </View>
       </HoyTarjeta>

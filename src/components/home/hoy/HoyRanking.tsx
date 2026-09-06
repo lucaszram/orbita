@@ -2,7 +2,7 @@ import { StyleSheet, Text, View } from "react-native";
 
 import { HoyEnlace, HoyEtiqueta, HoyMeta, HoyNota, HoyTexto } from "@/components/home/hoy/HoyLayout";
 import { NOTA_DEL_ORDEN, PFila, PPorQue } from "@/components/transitos/PanoramaUI";
-import { filaDeHoyComoVista, type HoyRankingFila } from "@/domain/hoyPrincipal";
+import { filaDeHoyComoVista, type HoyRankingFila, RUTA_TRANSITOS } from "@/domain/hoyPrincipal";
 import type { FilaVista } from "@/domain/transitosPanorama";
 import { orbita } from "@/theme/orbita";
 
@@ -48,7 +48,7 @@ export function HoyRankingBloque({
               </View>
             );
           })}
-      <HoyEnlace href="/transito">{enlace ?? "VER TODOS LOS TRÁNSITOS"}</HoyEnlace>
+      <HoyEnlace href={RUTA_TRANSITOS}>{enlace ?? "VER TODOS LOS TRÁNSITOS"}</HoyEnlace>
       <View style={styles.porQue}>
         <HoyEtiqueta style={styles.porQueRotulo}>POR QUÉ ESTE ORDEN</HoyEtiqueta>
         {conPanorama ? (
