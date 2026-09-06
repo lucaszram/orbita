@@ -65,8 +65,12 @@ import { pathToFileURL } from "node:url";
  * La Carta responsive (CORE-215) suma 10 casos en `cartaCompleta.test.ts`
  * (códigos, tríada, resumen, posiciones, ejes, contactos, casas, datos
  * natales, último cálculo, piso de grado): 987 + 10.
+ *
+ * Los cuatro ritmos (CORE-211) suman 9 casos: 6 en `cuatroRitmos.test.ts`
+ * (anillos, franjas, tránsito, vacíos, fuente caída, límites) y 3 en
+ * `momento.test.ts` (lectura del mandala, arco, estado): 997 + 9.
  */
-export const DEFAULT_MINIMUM = 997;
+export const DEFAULT_MINIMUM = 1006;
 
 /**
  * Lee un contador del resumen final del runner de Node.

@@ -1,5 +1,53 @@
 # Current Task
 
+## Tu momento abre tus cuatro ritmos (CORE-211, 2026-09-06)
+
+**Objetivo:** que Tu momento abra la capa 03, el mandala temporal, con Build 30
+como contenido y los frames `transitos-cuatro-ritmos-390/1440` y
+`transitos-tu-momento-1440` (tarjeta 03) como diseño.
+
+**Contrato (aditivo):** `momento.getCuatroRitmos({ localDate })` (action que
+compone `getEstacionVital`, `getTemaDelAno`, `home.getLunaSobreLaCarta` y
+`transits.getPanorama`; Free → `locked` antes de tocar fuentes; una fuente que
+falla deja su anillo vacío). Módulo puro `convex/lib/cuatroRitmos.ts`, réplica
+de `buildTemporalMandalaData` de `release/1.0.0` (claves, rótulos, política de
+avance punto/franja/vacío). Ver `convex/CHANGELOG.md`.
+
+**Front:** `src/domain/momento.ts` (copy del mandala de Build 30:
+`MANDALA_RINGS`, `mandalaReading`, `MANDALA_METHOD`, `MANDALA_TRACE`;
+`arcoDeAnillo`, `estadoDeRitmos`), `src/components/transitos/Mandala.tsx`
+(SVG: arco por avance en punto, franja en rango, pista punteada sin cálculo),
+`src/screens/CuatroRitmosScreen.tsx` + `app/reading/cuatro-ritmos.tsx`, tarjeta
+03 real en `TuMomentoHub` (mandala + cuatro líneas, bloqueado con salida a
+Plus, error con reintento).
+
+**Decisiones:** el tránsito activo es la fila 1 del panorama (el criterio de
+orden ya está explicado en Tránsitos); su avance es la posición de «ahora»
+(zona natal, `naiveNowIn`) dentro de la ventana inicio→fin, como
+`adaptTransitArcToData` de release, no la cercanía al exacto; sin las horas
+de la ventana el anillo existe pero no se ubica (`progressMode: unavailable`)
+y lo declara. Rótulos de fase de release («se acerca», «máxima precisión»,
+«sigue activo después del punto más preciso»). El ritmo lunar de main nunca
+es `exact` y su ventana del día del ciclo tiene ancho real aun con hora
+exacta (variación de velocidad lunar): ese anillo es siempre franja; el punto
+queda sólo para una ventana degenerada. El hub pide los cuatro
+ritmos recién cuando la estación y el tema respondieron (evita correr la
+estación dos veces contra el proveedor). En 390 la tarjeta 03 es texto, como
+el frame; en 1440 lleva el mandala y las cuatro líneas. `convex/_generated`
+se regeneró con `convex codegen` (no a mano).
+
+**Revisión:** r1 RECHAZADA (el tránsito avanzaba por `closeness`) → corregido;
+laterales atendidos (rótulos y estado sin tránsito de release, detalle de la
+estación sin frase inventada, `failed` en el contrato para el reintento,
+tarjeta 03 en 390 según frame, pedido secuencial en el hub). «Lo que este cálculo no dice» lista las limitaciones de cada fuente,
+por ritmo. Verificación visual autenticada: QA integral con la sesión de
+Lucas.
+
+**Estado:** rama `orb/core-211-cuatro-ritmos` rebasada sobre main 470871a
+(tras CORE-215). Piso del gate 1006 (997 + 9). r2 APROBADA; laterales
+atendidos (ventana lunar, ficha, cabecera del hub, tarjeta 03 en 390,
+reintento sólo de la capa 03).
+
 ## Carta conserva el mapa natal completo en cualquier pantalla (CORE-215, 2026-09-06)
 
 **Objetivo:** que Carta presente el mismo mapa natal, sus capas y sus acciones

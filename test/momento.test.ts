@@ -25,9 +25,14 @@ import {
   subtituloDelAno,
   tituloDelAno,
   yearMeaning,
-  yearReading
+  yearReading,
+  arcoDeAnillo,
+  estadoDeRitmos,
+  MANDALA_RINGS,
+  mandalaReading,
+  resumenDeAnillos
 } from "../src/domain/momento";
-import type { EstacionVital, MomentoEstacionVital } from "../src/services/appRefs";
+import type { Anillo, EstacionVital, MomentoEstacionVital } from "../src/services/appRefs";
 
 const lista: Extract<EstacionVital, { status: "ready" }> = {
   status: "ready",
@@ -173,5 +178,57 @@ describe("el tema del año en pantalla (CORE-210)", () => {
     assert.equal(e.kind, "sin_datos");
     assert.match(copyDeSinTema(sinHora).titulo, /hora exacta/);
     assert.equal(estadoDeTema(null).kind, "error");
+  });
+});
+
+describe("los cuatro ritmos en pantalla (CORE-211)", () => {
+  const anillo = (key: Anillo["key"], extra: Partial<Anillo> = {}): Anillo => ({
+    key,
+    label: MANDALA_RINGS.find((r) => r.key === key)?.label ?? key,
+    cadence: "",
+    state: "Nueva",
+    status: "ready",
+    precision: "exact",
+    progressMode: "point",
+    progress: 0.4,
+    detail: "",
+    available: true,
+    failed: false,
+    limitations: [],
+    ...extra
+  });
+  const completo = [anillo("progressed_lunation"), anillo("annual_profection"), anillo("cumpleluna"), anillo("transit_arc")];
+
+  it("la lectura del mandala es fija salvo la combinación de hoy, que nombra los anillos vacíos", () => {
+    const todo = mandalaReading({ rings: completo, exact: true });
+    assert.match(todo.combination, /^Hoy los cuatro anillos tienen cálculo/);
+    assert.match(todo.combination, /la coincidencia se mira, no se convierte en una causa\.$/);
+    assert.equal(todo.caveat, null);
+    assert.match(todo.concept, /no para sumarlos/);
+    assert.match(todo.question, /ciclo de días o a uno de años/);
+    const dos = mandalaReading({ rings: [completo[0], { ...completo[1], available: false }, completo[2], { ...completo[3], available: false }], exact: false });
+    assert.match(dos.combination, /^Hoy se pueden calcular 2 de los cuatro ritmos: estación vital y tu ritmo lunar\. Los anillos de año personal y tránsito activo quedan vacíos/);
+    assert.match(dos.caveat ?? "", /imagen de hoy está incompleta/);
+    assert.match(dos.caveat ?? "", /Sin tu hora exacta de nacimiento/);
+    const nada = mandalaReading({ rings: completo.map((r) => ({ ...r, available: false })), exact: true });
+    assert.match(nada.combination, /^Hoy ninguno de los cuatro ritmos se puede calcular/);
+    assert.equal(MANDALA_RINGS.map((r) => r.label).join(" · "), "Estación vital · Año personal · Tu ritmo lunar · Tránsito activo");
+  });
+
+  it("cada anillo se dibuja como punto, franja o vacío según lo que su fuente certificó", () => {
+    assert.deepEqual(arcoDeAnillo(anillo("cumpleluna", { progress: 0.67 })), { modo: "punto", from: 0, to: 0.67 });
+    assert.deepEqual(arcoDeAnillo(anillo("cumpleluna", { progressMode: "range", progress: null, progressRange: { from: 0.6, to: 0.72 } })), { modo: "franja", from: 0.6, to: 0.72 });
+    assert.deepEqual(arcoDeAnillo(anillo("transit_arc", { progressMode: "unavailable", progress: null })), { modo: "vacio" });
+    assert.deepEqual(arcoDeAnillo(anillo("transit_arc", { progress: 1.7 })), { modo: "punto", from: 0, to: 1 });
+  });
+
+  it("estado de pantalla de los ritmos: bloqueado, listo con cuatro anillos, error", () => {
+    const ritmos = { status: "ready" as const, exact: true, rings: completo, availableCount: 4, summary: "", observedAt: 0 };
+    assert.equal(estadoDeRitmos({ status: "locked", localDate: "2026-09-06", access: { isPro: false } }).kind, "bloqueado");
+    const listo = estadoDeRitmos({ status: "ready", localDate: "2026-09-06", timezone: "UTC", access: { isPro: true }, ritmos });
+    assert.equal(listo.kind, "listo");
+    assert.equal(resumenDeAnillos(ritmos), "4 DE 4 ANILLOS CON CÁLCULO");
+    assert.equal(estadoDeRitmos({ status: "ready", localDate: "2026-09-06", timezone: null, access: { isPro: true }, ritmos: { ...ritmos, rings: completo.slice(0, 3) } }).kind, "error");
+    assert.equal(estadoDeRitmos(null).kind, "error");
   });
 });

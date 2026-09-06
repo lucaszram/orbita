@@ -1,4 +1,4 @@
-import type { EstacionVital, EstacionVitalFase, MomentoEstacionVital, MomentoTemaDelAno, TemaDelAno } from "@/services/appRefs";
+import type { EstacionVital, EstacionVitalFase, MomentoEstacionVital, MomentoTemaDelAno, TemaDelAno, Anillo, AnilloKey, CuatroRitmos, MomentoCuatroRitmos } from "@/services/appRefs";
 
 /**
  * Tu momento — cómo se lee la estación vital en pantalla (CORE-209).
@@ -436,4 +436,145 @@ export function copyDeSinTema(tema: Exclude<TemaDelAno, { status: "ready" }>): {
     default:
       return { titulo: "No pudimos ubicar tu año personal.", cuerpo: tema.limitations[0] ?? "Probá de nuevo en un momento." };
   }
+}
+
+// ---------------------------------------------------------------------------
+// Tus cuatro ritmos — el mandala temporal (CORE-211). Copy de Build 30,
+// portada de `release/1.0.0` (`MANDALA_RING_THEORY`, `mandalaReading`,
+// `MANDALA_METHOD`, `MANDALA_TRACE` en `src/domain/layerReading.ts`).
+// ---------------------------------------------------------------------------
+
+export const MANDALA_DETAIL_EYEBROW = "TUS CUATRO RITMOS";
+export const MANDALA_CONCEPT_HEADING = "QUÉ ES ESTE DIBUJO";
+export const MANDALA_RINGS_HEADING = "LOS CUATRO ANILLOS";
+export const MANDALA_NOW_HEADING = "TU CONFIGURACIÓN DE HOY";
+export const MANDALA_COMBINATION_HEADING = "CÓMO SE COMBINAN HOY";
+
+export const MANDALA_TRACE = {
+  calculatedDatum:
+    "En qué punto de su recorrido está hoy cada uno de los cuatro ritmos: la estación vital, el año personal, tu ritmo lunar —el que va de un cumpleluna al siguiente— y el tránsito activo más cercano a su punto exacto.",
+  interpretiveRule:
+    "Cada anillo avanza a su propio ritmo y se lee por separado. Verlos juntos muestra qué ciclos coinciden ahora mismo; el dibujo no los combina en un resultado único ni convierte una coincidencia en una causa."
+} as const;
+
+/** Qué es un anillo: dónde está, qué mide y a qué velocidad avanza. */
+export type MandalaRingTheory = { key: AnilloKey; label: string; position: string; measures: string; pace: string };
+
+const MANDALA_RING_THEORY: Record<AnilloKey, Omit<MandalaRingTheory, "key">> = {
+  progressed_lunation: {
+    label: "Estación vital",
+    position: "El anillo de afuera.",
+    measures: "En qué fase del ciclo largo entre tu Sol y tu Luna progresados estás, y cuándo empezó esa fase.",
+    pace: "Ocho fases en unos 30 años: cada una dura alrededor de 3,7 años."
+  },
+  annual_profection: {
+    label: "Año personal",
+    position: "El segundo anillo desde afuera.",
+    measures: "Qué casa de tu carta le toca a tu edad de hoy y qué planeta la rige.",
+    pace: "Una casa por año, de un cumpleaños al siguiente."
+  },
+  cumpleluna: {
+    label: "Tu ritmo lunar",
+    position: "El tercer anillo desde afuera.",
+    measures: "En qué punto estás del recorrido que va de una repetición de tu ángulo natal Sol–Luna a la siguiente.",
+    pace: "Una vuelta completa cada 29 días y medio, aproximadamente."
+  },
+  transit_arc: {
+    label: "Tránsito activo",
+    position: "El anillo de adentro.",
+    measures: "Qué contacto entre el cielo de hoy y un punto de tu carta está más cerca de su ángulo exacto.",
+    pace: "Dura días o semanas, y se reemplaza varias veces por mes."
+  }
+};
+
+/** El orden del dibujo: del ciclo más lento afuera al más rápido adentro. */
+export const MANDALA_RING_ORDER: readonly AnilloKey[] = ["progressed_lunation", "annual_profection", "cumpleluna", "transit_arc"];
+
+export const MANDALA_RINGS: readonly MandalaRingTheory[] = MANDALA_RING_ORDER.map((key) => ({ key, ...MANDALA_RING_THEORY[key] }));
+
+export type MandalaReading = { concept: string; combination: string; use: string; question: string; caveat: string | null };
+
+const MANDALA_CONCEPT =
+  "El mandala es una sola imagen con los cuatro ritmos que Órbita puede medir sobre tu carta al mismo tiempo. Cada anillo dibuja un ciclo distinto y avanza a su propia velocidad: el de afuera se mide en años y el de adentro en días. Están juntos para poder compararlos, no para sumarlos.";
+
+const MANDALA_RULE = "Dos anillos que coinciden no se explican entre sí: la coincidencia se mira, no se convierte en una causa.";
+
+const MANDALA_USE =
+  "Sirve para elegir a qué escala responder. Antes de reaccionar a algo, mirá a qué anillo pertenece: lo del anillo de adentro se agota en días y casi nunca pide una decisión de fondo; lo del anillo de afuera no se resuelve en una semana y conviene darle ese tiempo.";
+
+const MANDALA_QUESTION = "¿Lo que te está ocupando hoy pertenece a un ciclo de días o a uno de años?";
+
+export const MANDALA_METHOD =
+  "El mandala no calcula nada por su cuenta: toma el resultado de los cuatro análisis que ya corrieron por separado —cada uno con su método, su precisión y su trazabilidad— y los dibuja en la misma imagen, del más lento afuera al más rápido adentro. Un ritmo sin cálculo no recibe un anillo estimado: se deja vacío y su ausencia se explica con palabras.";
+
+const MANDALA_INCOMPLETE =
+  "Con anillos vacíos la imagen de hoy está incompleta: lo que se afirma es lo que dice cada ritmo que sí tiene cálculo, y nada sobre los que faltan.";
+
+const MANDALA_WITHOUT_TIME =
+  "Sin tu hora exacta de nacimiento el avance de los anillos se calcula con un margen, así que lo que se afirma es el tramo del recorrido y no un punto dentro de él.";
+
+function enumerar(items: readonly string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  return `${items.slice(0, -1).join(", ")} y ${items[items.length - 1]}`;
+}
+
+function mandalaConfiguration(presentes: readonly MandalaRingTheory[], faltantes: readonly MandalaRingTheory[]): string {
+  const nombres = (ritmos: readonly MandalaRingTheory[]) => enumerar(ritmos.map((r) => r.label.toLocaleLowerCase("es")));
+  if (presentes.length === 0) {
+    return "Hoy ninguno de los cuatro ritmos se puede calcular, así que el dibujo queda sin anillos: lo que hay para leer es qué le falta a cada uno, y eso lo dice su línea.";
+  }
+  if (faltantes.length === 0) {
+    return "Hoy los cuatro anillos tienen cálculo, así que el dibujo está completo: la escala de años, la del año en curso, la de las semanas y la de los días se ven a la vez.";
+  }
+  const vacios = faltantes.length === 1 ? `El anillo de ${nombres(faltantes)} queda vacío` : `Los anillos de ${nombres(faltantes)} quedan vacíos`;
+  return `Hoy se pueden calcular ${presentes.length} de los cuatro ritmos: ${nombres(presentes)}. ${vacios}, y el motivo lo dice su propia línea: la comparación de escalas se hace con lo que sí está.`;
+}
+
+/**
+ * El mandala leído como una sola cosa. El concepto, el uso y la pregunta son
+ * fijos; `combination` y `caveat` dependen sólo de qué anillos hay y de si la
+ * raíz natal es exacta. Un ritmo sin cálculo se nombra, no se disculpa dos veces.
+ */
+export function mandalaReading(input: { rings: readonly { key: string; available: boolean }[]; exact: boolean }): MandalaReading {
+  const disponible = new Set(input.rings.filter((r) => r.available).map((r) => r.key));
+  const presentes = MANDALA_RINGS.filter((r) => disponible.has(r.key));
+  const faltantes = MANDALA_RINGS.filter((r) => !disponible.has(r.key));
+  const limites = [faltantes.length > 0 ? MANDALA_INCOMPLETE : null, input.exact ? null : MANDALA_WITHOUT_TIME].filter((l): l is string => l !== null);
+  return {
+    concept: MANDALA_CONCEPT,
+    combination: `${mandalaConfiguration(presentes, faltantes)} ${MANDALA_RULE}`,
+    use: MANDALA_USE,
+    question: MANDALA_QUESTION,
+    caveat: limites.length > 0 ? limites.join(" ") : null
+  };
+}
+
+/** Cómo se dibuja un anillo: el arco que ocupa (`from`→`to`, 0–1) o nada. */
+export type ArcoDeAnillo = { modo: "punto"; from: 0; to: number } | { modo: "franja"; from: number; to: number } | { modo: "vacio" };
+
+export function arcoDeAnillo(anillo: Pick<Anillo, "progressMode" | "progress" | "progressRange">): ArcoDeAnillo {
+  const c = (n: number) => Math.max(0, Math.min(1, n));
+  if (anillo.progressMode === "point" && typeof anillo.progress === "number" && Number.isFinite(anillo.progress)) return { modo: "punto", from: 0, to: c(anillo.progress) };
+  if (anillo.progressMode === "range" && anillo.progressRange) return { modo: "franja", from: c(anillo.progressRange.from), to: c(anillo.progressRange.to) };
+  return { modo: "vacio" };
+}
+
+/** `4 DE 4 ANILLOS CON CÁLCULO`. */
+export function resumenDeAnillos(ritmos: Pick<CuatroRitmos, "availableCount">): string {
+  return `${ritmos.availableCount} DE 4 ANILLOS CON CÁLCULO`;
+}
+
+export type RitmosEstado =
+  | { kind: "cargando" }
+  | { kind: "error" }
+  | { kind: "bloqueado" }
+  | { kind: "listo"; ritmos: CuatroRitmos; timezone: string | null };
+
+export function estadoDeRitmos(value: MomentoCuatroRitmos | null | undefined): RitmosEstado {
+  if (!value || typeof value !== "object" || !("status" in value)) return { kind: "error" };
+  if (value.status === "locked") return { kind: "bloqueado" };
+  if (value.status === "ready" && value.ritmos && Array.isArray(value.ritmos.rings) && value.ritmos.rings.length === 4) {
+    return { kind: "listo", ritmos: value.ritmos, timezone: value.timezone ?? null };
+  }
+  return { kind: "error" };
 }
