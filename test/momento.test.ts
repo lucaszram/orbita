@@ -193,6 +193,7 @@ describe("los cuatro ritmos en pantalla (CORE-211)", () => {
     progress: 0.4,
     detail: "",
     available: true,
+    failed: false,
     limitations: [],
     ...extra
   });

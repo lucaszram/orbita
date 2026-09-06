@@ -22,11 +22,23 @@ avance punto/franja/vacío). Ver `convex/CHANGELOG.md`.
 Plus, error con reintento).
 
 **Decisiones:** el tránsito activo es la fila 1 del panorama (el criterio de
-orden ya está explicado en Tránsitos); sin hora del exacto el anillo existe
-pero no ubica su fase (`progressMode: unavailable`) y lo declara. El ritmo
-lunar de main nunca es `exact` (es una estimación por movimiento medio): con
-tolerancia natal 0 se dibuja como punto (`estimated`), con `range` como
-franja. «Lo que este cálculo no dice» lista las limitaciones de cada fuente,
+orden ya está explicado en Tránsitos); su avance es la posición de «ahora»
+(zona natal, `naiveNowIn`) dentro de la ventana inicio→fin, como
+`adaptTransitArcToData` de release, no la cercanía al exacto; sin las horas
+de la ventana el anillo existe pero no se ubica (`progressMode: unavailable`)
+y lo declara. Rótulos de fase de release («se acerca», «máxima precisión»,
+«sigue activo después del punto más preciso»). El ritmo lunar de main nunca
+es `exact` (estimación por movimiento medio): una ventana de un único día se
+dibuja como punto, una ventana real como franja. El hub pide los cuatro
+ritmos recién cuando la estación y el tema respondieron (evita correr la
+estación dos veces contra el proveedor). En 390 la tarjeta 03 es texto, como
+el frame; en 1440 lleva el mandala y las cuatro líneas. `convex/_generated`
+se regeneró con `convex codegen` (no a mano).
+
+**Revisión:** r1 RECHAZADA (el tránsito avanzaba por `closeness`) → corregido;
+laterales atendidos (rótulos y estado sin tránsito de release, detalle de la
+estación sin frase inventada, `failed` en el contrato para el reintento,
+tarjeta 03 en 390 según frame, pedido secuencial en el hub). «Lo que este cálculo no dice» lista las limitaciones de cada fuente,
 por ritmo. Verificación visual autenticada: QA integral con la sesión de
 Lucas.
 

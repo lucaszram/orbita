@@ -178,7 +178,7 @@ function CuatroRitmosLista({ ritmos, onRetry }: { ritmos: CuatroRitmos; onRetry:
               · {r.label}: {r.detail}
             </PNota>
           ))}
-          {vacios.some((r) => /No pudimos obtener/.test(r.detail)) ? <PEnlace label="REINTENTAR" onPress={onRetry} /> : null}
+          {vacios.some((r) => r.failed) ? <PEnlace label="REINTENTAR" onPress={onRetry} /> : null}
         </View>
       ) : null}
     </View>

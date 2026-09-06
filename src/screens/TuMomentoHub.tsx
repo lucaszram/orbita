@@ -54,7 +54,13 @@ export function TuMomentoHub({ localDate }: { localDate: string }) {
     };
   }, [getTema, intento, localDate]);
 
+  // Los cuatro ritmos se piden recién cuando la estación y el tema ya
+  // respondieron: `getCuatroRitmos` vuelve a llamar a esas dos fuentes y, si
+  // corrieran a la vez en la primera carga, la estación pegaría dos veces al
+  // proveedor y competiría por su propio cache.
+  const fuentesListas = estado.kind !== "cargando" && tema.kind !== "cargando";
   useEffect(() => {
+    if (!fuentesListas) return;
     let vivo = true;
     setRitmos({ kind: "cargando" });
     getRitmos({ localDate })
@@ -67,7 +73,7 @@ export function TuMomentoHub({ localDate }: { localDate: string }) {
     return () => {
       vivo = false;
     };
-  }, [getRitmos, intento, localDate]);
+  }, [fuentesListas, getRitmos, localDate]);
 
   useEffect(() => {
     let vivo = true;
@@ -209,12 +215,21 @@ export function TuMomentoHub({ localDate }: { localDate: string }) {
       <View style={styles.tarjetaCabecera}>
         <PEtiqueta>03 · TUS CUATRO RITMOS</PEtiqueta>
         {ritmos.kind === "listo" ? (
-          <PEtiqueta tono="gris">{desktop ? "· MULTICAPA · DE DIARIO A MULTIANUAL" : resumenDeAnillos(ritmos.ritmos)}</PEtiqueta>
+          <PEtiqueta tono="gris">{desktop ? "· MULTICAPA · DE DIARIO A MULTIANUAL" : "MULTICAPA"}</PEtiqueta>
         ) : ritmos.kind === "cargando" ? (
           <PEtiqueta tono="gris">CALCULANDO</PEtiqueta>
         ) : null}
       </View>
-      {ritmos.kind === "listo" ? (
+      {ritmos.kind === "listo" && !desktop ? (
+        <>
+          <Text style={styles.tarjetaTitulo}>Cuatro anillos en un solo dibujo</Text>
+          <PNota>De diario a multianual: están juntos para compararlos, no para sumarlos.</PNota>
+          <PEtiqueta tono="gris" style={styles.nota}>
+            {resumenDeAnillos(ritmos.ritmos)}
+          </PEtiqueta>
+          <PEnlace label="VER TUS CUATRO RITMOS" href="/reading/cuatro-ritmos" />
+        </>
+      ) : ritmos.kind === "listo" ? (
         <>
           <View style={styles.mandala}>
             <Mandala rings={ritmos.ritmos.rings} size={desktop ? 112 : 88} testID="mandala-hub" />
@@ -227,7 +242,6 @@ export function TuMomentoHub({ localDate }: { localDate: string }) {
               ))}
             </View>
           </View>
-          {!desktop ? <PNota>Cuatro anillos en un solo dibujo: del más lento afuera al más rápido adentro.</PNota> : null}
           <PEnlace label="VER TUS CUATRO RITMOS" href="/reading/cuatro-ritmos" />
         </>
       ) : ritmos.kind === "cargando" ? (

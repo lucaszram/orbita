@@ -12,7 +12,7 @@ import { buildCuatroRitmos, type RitmoLunarFuente } from "./lib/cuatroRitmos";
 import { buildEstacionVital, type EstacionVital } from "./lib/estacionVital";
 import { extractNormalizedChartFromPayload } from "./lib/orbita";
 import { buildTemaDelAno, type TemaDelAno } from "./lib/temaDelAno";
-import type { TransitPanorama } from "./lib/transitPanorama";
+import { naiveNowIn, type TransitPanorama } from "./lib/transitPanorama";
 import { isUserPro } from "./lib/subscriptionAccess";
 import { runAstrologyApiPlanetsTropical } from "./lib/tropicalEphemeris";
 import { findUserByTokenIdentifier, omitUndefined, requireIdentity } from "./lib/users";
@@ -255,7 +255,15 @@ export const getCuatroRitmos = action({
     const lunar: RitmoLunarFuente | null = luna
       ? { cumpleluna: (luna.cumpleluna as RitmoLunarFuente["cumpleluna"]) ?? null, limitations: Array.isArray(luna.limitations) ? (luna.limitations as string[]) : [] }
       : null;
-    const ritmos = buildCuatroRitmos({ observedAt: Date.now(), exact, estacion, tema, lunar, transito: (panorama as TransitPanorama | null) ?? null });
+    const ritmos = buildCuatroRitmos({
+      observedAt: Date.now(),
+      exact,
+      estacion,
+      tema,
+      lunar,
+      transito: (panorama as TransitPanorama | null) ?? null,
+      transitNow: naiveNowIn(timezone ?? undefined)
+    });
     return { status: "ready" as const, localDate: args.localDate, timezone, access: { isPro: true as const }, ritmos };
   }
 });

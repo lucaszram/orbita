@@ -358,6 +358,8 @@ export type Anillo = {
   progressRange?: { from: number; to: number };
   detail: string;
   available: boolean;
+  /** `true` sólo cuando la fuente falló hoy: habilita reintentar. */
+  failed: boolean;
   limitations: string[];
 };
 

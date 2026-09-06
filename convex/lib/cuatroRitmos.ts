@@ -8,15 +8,18 @@
  * describe como cuatro anillos, del más lento afuera al más rápido adentro.
  * Reproduce `buildTemporalMandalaData` de la línea `release/1.0.0`
  * (`convex/lib/layerAssembly.ts`): mismas claves, mismos rótulos, misma
- * política de avance (`point` con precisión exacta, `range` con margen,
- * `unavailable` sin cálculo).
+ * política de avance: `point` cuando la fuente certifica un solo valor
+ * (precisión exacta, o una ventana de un único día), `range` cuando publica
+ * un margen, `unavailable` sin cálculo. El tránsito avanza por su posición
+ * dentro de la ventana (`(ahora − inicio) / (fin − inicio)`, como
+ * `adaptTransitArcToData` de release), no por su cercanía al exacto.
  *
  * Qué NO se inventa: un ritmo sin cálculo no recibe un anillo estimado; se
  * declara `available: false` con el motivo en sus propias palabras.
  */
 import type { EstacionVital } from "./estacionVital";
 import type { TemaDelAno } from "./temaDelAno";
-import type { TransitPanorama, TransitPanoramaRow } from "./transitPanorama";
+import { parseNaiveTime, type TransitPanorama, type TransitPanoramaRow } from "./transitPanorama";
 
 export type AnilloKey = "progressed_lunation" | "annual_profection" | "cumpleluna" | "transit_arc";
 
@@ -43,6 +46,8 @@ export type Anillo = {
   progressRange?: { from: number; to: number };
   detail: string;
   available: boolean;
+  /** `true` sólo cuando la fuente falló hoy (no cuando el ritmo no aplica): habilita reintentar. */
+  failed: boolean;
   limitations: string[];
 };
 
@@ -105,17 +110,18 @@ function avanceRango(from: number, to: number): Avance {
 
 const SIN_AVANCE: Avance = { progressMode: "unavailable", progress: null };
 
-function anilloVacio(key: AnilloKey, cadence: string, detail: string, limitations: string[]): Anillo {
+function anilloVacio(key: AnilloKey, cadence: string, detail: string, limitations: string[], state = "Sin cálculo disponible"): Anillo {
   return {
     key,
     label: ROTULO_DE_ANILLO[key],
     cadence,
-    state: "Sin cálculo disponible",
+    state,
     status: "unavailable",
     precision: "not_applicable",
     ...SIN_AVANCE,
     detail,
     available: false,
+    failed: detail === SIN_FUENTE,
     limitations
   };
 }
@@ -149,8 +155,9 @@ function anilloEstacion(estacion: EstacionVital | null, observedAt: number): Ani
     status: "ready",
     precision: estacion.precision,
     ...avance,
-    detail: `Fase ${estacion.name.toLocaleLowerCase("es")} del ciclo largo entre tu Sol y tu Luna progresados: llevás ${d1(estacion.yearsIntoPhase)} de unos ${d1(estacion.phaseYears)} años.`,
+    detail: `La fase actual de tu estación vital es ${estacion.name}.`,
     available: true,
+    failed: false,
     limitations: estacion.limitations
   };
 }
@@ -176,6 +183,7 @@ function anilloTema(tema: TemaDelAno | null): Anillo {
     ...avancePunto(tema.progress),
     detail: tema.summary,
     available: true,
+    failed: false,
     limitations: tema.limitations
   };
 }
@@ -187,7 +195,11 @@ function anilloLunar(fuente: RitmoLunarFuente | null): Anillo {
   if (!c) {
     return anilloVacio("cumpleluna", cadence, "Necesitamos calcular dos Cumplelunas personales consecutivas para ubicar tu ritmo lunar.", fuente.limitations);
   }
-  const enRango = c.precision === "range";
+  // Release dibuja como franja toda precisión distinta de `exact`; la
+  // Cumpleluna de main nunca es `exact`, pero con hora natal exacta publica
+  // una ventana de un único día. Ese único valor se dibuja como punto; una
+  // ventana real, como franja.
+  const enRango = c.cycleDayWindowDays.to > c.cycleDayWindowDays.from;
   const state = enRango
     ? `Día entre ${d1(Math.max(0, c.cycleDayWindowDays.from))} y ${d1(Math.max(0, c.cycleDayWindowDays.to))} de ${d1(c.cycleLengthDays)}`
     : `Día ${d1(c.cycleDay)} de ${d1(c.cycleLengthDays)}`;
@@ -209,37 +221,49 @@ function anilloLunar(fuente: RitmoLunarFuente | null): Anillo {
     ...avance,
     detail: `${faltan} Este ritmo va de una repetición de tu ángulo natal Sol–Luna a la siguiente.`,
     available: true,
+    failed: false,
     limitations: fuente.limitations
   };
 }
 
-export function etiquetaDeFase(row: Pick<TransitPanoramaRow, "phase" | "closeness">): string {
+/** Los rótulos de fase de release (`transitStateLabel`); sin hora del exacto no hay fase. */
+export function etiquetaDeFase(row: Pick<TransitPanoramaRow, "phase">): string {
   if (row.phase === "exacto") return "máxima precisión";
-  if (row.phase === "acercandose") return "acercándose al exacto";
-  if (row.phase === "integrandose") return "integrándose";
+  if (row.phase === "acercandose") return "se acerca";
+  if (row.phase === "integrandose") return "sigue activo después del punto más preciso";
   return "sin hora exacta";
+}
+
+/** Posición de «ahora» dentro de la ventana del tránsito (0 al empezar, 1 al terminar), o `null`. */
+export function avanceDelTransito(row: Pick<TransitPanoramaRow, "startTime" | "endTime">, ahora: string | null | undefined): number | null {
+  const inicio = parseNaiveTime(row.startTime);
+  const fin = parseNaiveTime(row.endTime);
+  const now = parseNaiveTime(ahora);
+  if (inicio === null || fin === null || now === null || fin <= inicio) return null;
+  return clamp01((now - inicio) / (fin - inicio));
 }
 
 const SIN_TRANSITO = "No hay un contacto entre el cielo de hoy y tu carta lo bastante cercano como para seguirlo como un proceso.";
 const LIMITE_DEL_TRANSITO = "La exactitud geométrica no garantiza el momento de mayor intensidad subjetiva.";
 
-function anilloTransito(panorama: TransitPanorama | null): Anillo {
+function anilloTransito(panorama: TransitPanorama | null, ahora: string | null | undefined): Anillo {
   const cadence = "dura días o semanas";
   if (!panorama) return anilloVacio("transit_arc", cadence, SIN_FUENTE, []);
-  if (panorama.status !== "ready" || panorama.rows.length === 0) return anilloVacio("transit_arc", cadence, SIN_TRANSITO, []);
+  if (panorama.status !== "ready" || panorama.rows.length === 0) return anilloVacio("transit_arc", cadence, SIN_TRANSITO, [], "Sin tránsito activo");
   const row = panorama.rows[0];
-  const conFase = typeof row.closeness === "number" && Number.isFinite(row.closeness);
+  const avance = avanceDelTransito(row, ahora);
   return {
     key: "transit_arc",
     label: ROTULO_DE_ANILLO.transit_arc,
     cadence: row.cadence ?? cadence,
     state: `${row.transitPlanet} con tu ${row.natalPoint} · ${etiquetaDeFase(row)}`,
     status: "ready",
-    precision: conFase ? "exact" : "estimated",
-    ...(conFase ? avancePunto(row.closeness as number) : SIN_AVANCE),
+    precision: avance === null ? "estimated" : "exact",
+    ...(avance === null ? SIN_AVANCE : avancePunto(avance)),
     detail: row.body,
     available: true,
-    limitations: conFase ? [LIMITE_DEL_TRANSITO] : [LIMITE_DEL_TRANSITO, "Sin la hora del punto exacto, la fase de este contacto no se ubica dentro de su ventana."]
+    failed: false,
+    limitations: avance === null ? [LIMITE_DEL_TRANSITO, "Sin las horas de esta ventana, el avance del contacto no se ubica dentro de ella."] : [LIMITE_DEL_TRANSITO]
   };
 }
 
@@ -252,8 +276,10 @@ export function buildCuatroRitmos(args: {
   tema: TemaDelAno | null;
   lunar: RitmoLunarFuente | null;
   transito: TransitPanorama | null;
+  /** «Ahora» en la zona natal, `YYYY-MM-DD HH:mm`, como `naiveNowIn`: ubica el tránsito en su ventana. */
+  transitNow?: string | null;
 }): CuatroRitmos {
-  const rings = [anilloEstacion(args.estacion, args.observedAt), anilloTema(args.tema), anilloLunar(args.lunar), anilloTransito(args.transito)];
+  const rings = [anilloEstacion(args.estacion, args.observedAt), anilloTema(args.tema), anilloLunar(args.lunar), anilloTransito(args.transito, args.transitNow)];
   return {
     status: "ready",
     exact: args.exact,
