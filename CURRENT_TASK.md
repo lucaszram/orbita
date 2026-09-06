@@ -1,5 +1,38 @@
 # Current Task
 
+## Tu momento abre tus cuatro ritmos (CORE-211, 2026-09-06)
+
+**Objetivo:** que Tu momento abra la capa 03, el mandala temporal, con Build 30
+como contenido y los frames `transitos-cuatro-ritmos-390/1440` y
+`transitos-tu-momento-1440` (tarjeta 03) como diseño.
+
+**Contrato (aditivo):** `momento.getCuatroRitmos({ localDate })` (action que
+compone `getEstacionVital`, `getTemaDelAno`, `home.getLunaSobreLaCarta` y
+`transits.getPanorama`; Free → `locked` antes de tocar fuentes; una fuente que
+falla deja su anillo vacío). Módulo puro `convex/lib/cuatroRitmos.ts`, réplica
+de `buildTemporalMandalaData` de `release/1.0.0` (claves, rótulos, política de
+avance punto/franja/vacío). Ver `convex/CHANGELOG.md`.
+
+**Front:** `src/domain/momento.ts` (copy del mandala de Build 30:
+`MANDALA_RINGS`, `mandalaReading`, `MANDALA_METHOD`, `MANDALA_TRACE`;
+`arcoDeAnillo`, `estadoDeRitmos`), `src/components/transitos/Mandala.tsx`
+(SVG: arco por avance en punto, franja en rango, pista punteada sin cálculo),
+`src/screens/CuatroRitmosScreen.tsx` + `app/reading/cuatro-ritmos.tsx`, tarjeta
+03 real en `TuMomentoHub` (mandala + cuatro líneas, bloqueado con salida a
+Plus, error con reintento).
+
+**Decisiones:** el tránsito activo es la fila 1 del panorama (el criterio de
+orden ya está explicado en Tránsitos); sin hora del exacto el anillo existe
+pero no ubica su fase (`progressMode: unavailable`) y lo declara. El ritmo
+lunar de main nunca es `exact` (es una estimación por movimiento medio): con
+tolerancia natal 0 se dibuja como punto (`estimated`), con `range` como
+franja. «Lo que este cálculo no dice» lista las limitaciones de cada fuente,
+por ritmo. Verificación visual autenticada: QA integral con la sesión de
+Lucas.
+
+**Estado:** rama `orb/core-211-cuatro-ritmos` desde main 9003a5d. Piso del
+gate 996 (987 + 9).
+
 ## Carta conserva el mapa natal completo en cualquier pantalla (CORE-215, 2026-09-06)
 
 **Objetivo:** que Carta presente el mismo mapa natal, sus capas y sus acciones

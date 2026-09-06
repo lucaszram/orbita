@@ -19,11 +19,12 @@ import { router } from "expo-router";
 import { useAction } from "convex/react";
 import { Column, Columns, ReadingBlock } from "@/components/orbita/Layout";
 import { ErrorState, MinimalLoading } from "@/components/orbita/states";
+import { Mandala } from "@/components/transitos/Mandala";
 import { PBoton, PEncabezado, PEnlace, PEsqueleto, PEtiqueta, PNota, PPlegable, PTarjeta, PTexto } from "@/components/transitos/PanoramaUI";
 import { CAPAS_DE_TU_MOMENTO, DE_DONDE_SALE } from "@/screens/EstacionVitalScreen";
-import { anoDeFase, bordeDeFase, copyDeSinDatos, copyDeSinTema, decimalEs, diaMes, estadoDeEstacion, estadoDeTema, SEASON_TRACE, seasonHeadline, seasonMeaning, subtituloDelAno, tituloDelAno, type EstacionEstado, type TemaEstado, YEAR_TRACE, yearMeaning } from "@/domain/momento";
+import { anoDeFase, bordeDeFase, copyDeSinDatos, copyDeSinTema, decimalEs, diaMes, estadoDeEstacion, estadoDeRitmos, estadoDeTema, MANDALA_TRACE, resumenDeAnillos, SEASON_TRACE, seasonHeadline, seasonMeaning, subtituloDelAno, tituloDelAno, type EstacionEstado, type RitmosEstado, type TemaEstado, YEAR_TRACE, yearMeaning } from "@/domain/momento";
 import { useIsDesktop } from "@/hooks/useLayoutMode";
-import { proposedApi, type MomentoEstacionVital, type MomentoTemaDelAno } from "@/services/appRefs";
+import { proposedApi, type MomentoCuatroRitmos, type MomentoEstacionVital, type MomentoTemaDelAno } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
 
 const DISCLAIMER = "Órbita es entretenimiento y autoconocimiento.";
@@ -31,8 +32,10 @@ const DISCLAIMER = "Órbita es entretenimiento y autoconocimiento.";
 export function TuMomentoHub({ localDate }: { localDate: string }) {
   const getEstacion = useAction(proposedApi.momentoEstacionVital);
   const getTema = useAction(proposedApi.momentoTemaDelAno);
+  const getRitmos = useAction(proposedApi.momentoCuatroRitmos);
   const [estado, setEstado] = useState<EstacionEstado>({ kind: "cargando" });
   const [tema, setTema] = useState<TemaEstado>({ kind: "cargando" });
+  const [ritmos, setRitmos] = useState<RitmosEstado>({ kind: "cargando" });
   const [intento, setIntento] = useState(0);
   const desktop = useIsDesktop();
 
@@ -50,6 +53,21 @@ export function TuMomentoHub({ localDate }: { localDate: string }) {
       vivo = false;
     };
   }, [getTema, intento, localDate]);
+
+  useEffect(() => {
+    let vivo = true;
+    setRitmos({ kind: "cargando" });
+    getRitmos({ localDate })
+      .then((r: MomentoCuatroRitmos) => {
+        if (vivo) setRitmos(estadoDeRitmos(r));
+      })
+      .catch(() => {
+        if (vivo) setRitmos({ kind: "error" });
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [getRitmos, intento, localDate]);
 
   useEffect(() => {
     let vivo = true;
@@ -186,16 +204,46 @@ export function TuMomentoHub({ localDate }: { localDate: string }) {
     </View>
   );
 
-  const pendiente = (n: string, titulo: string, detalle: string, tarjeta: string) => (
+  const capa03 = (
     <View style={styles.tarjeta}>
       <View style={styles.tarjetaCabecera}>
-        <PEtiqueta>
-          {n} · {titulo}
-        </PEtiqueta>
-        <PEtiqueta tono="gris">PRÓXIMAMENTE</PEtiqueta>
+        <PEtiqueta>03 · TUS CUATRO RITMOS</PEtiqueta>
+        {ritmos.kind === "listo" ? (
+          <PEtiqueta tono="gris">{desktop ? "· MULTICAPA · DE DIARIO A MULTIANUAL" : resumenDeAnillos(ritmos.ritmos)}</PEtiqueta>
+        ) : ritmos.kind === "cargando" ? (
+          <PEtiqueta tono="gris">CALCULANDO</PEtiqueta>
+        ) : null}
       </View>
-      <Text style={styles.tarjetaTitulo}>{detalle}</Text>
-      <PNota>{tarjeta}</PNota>
+      {ritmos.kind === "listo" ? (
+        <>
+          <View style={styles.mandala}>
+            <Mandala rings={ritmos.ritmos.rings} size={desktop ? 112 : 88} testID="mandala-hub" />
+            <View style={styles.mandalaLineas}>
+              {ritmos.ritmos.rings.map((r) => (
+                <View key={r.key} style={styles.mandalaLinea} accessible accessibilityLabel={`${r.label}: ${r.available ? r.state : "sin cálculo"}`}>
+                  <PEtiqueta tono={r.available ? "cobre" : "gris"}>{r.label.toLocaleUpperCase("es")}</PEtiqueta>
+                  <Text style={[styles.mandalaValor, !r.available && styles.mandalaVacio]}>· {r.available ? r.state : "Sin cálculo"}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+          {!desktop ? <PNota>Cuatro anillos en un solo dibujo: del más lento afuera al más rápido adentro.</PNota> : null}
+          <PEnlace label="VER TUS CUATRO RITMOS" href="/reading/cuatro-ritmos" />
+        </>
+      ) : ritmos.kind === "cargando" ? (
+        <PEsqueleto lineas={2} />
+      ) : ritmos.kind === "bloqueado" ? (
+        <>
+          <Text style={styles.tarjetaTitulo}>Se abre con Órbita Plus.</Text>
+          <PNota>Los cuatro ciclos que Órbita mide sobre tu carta, en un solo dibujo.</PNota>
+          <PBoton label="VER ÓRBITA PLUS" onPress={() => router.push("/paywall")} />
+        </>
+      ) : (
+        <>
+          <Text style={styles.tarjetaTitulo}>No pudimos armar tus cuatro ritmos.</Text>
+          <PEnlace label="REINTENTAR" onPress={() => setIntento((n) => n + 1)} />
+        </>
+      )}
     </View>
   );
 
@@ -208,12 +256,12 @@ export function TuMomentoHub({ localDate }: { localDate: string }) {
       </PTexto>
       {capa01}
       {capa02}
-      {pendiente("03", "TUS CUATRO RITMOS", "Cuatro anillos en un solo dibujo.", "De diario a multianual: se dibujan cuando las cuatro capas tengan cálculo. No se estima ninguna.")}
+      {capa03}
       {!desktop ? (
         <View style={styles.cierre}>
           <PEtiqueta tono="gris">CÓMO SE RELACIONAN</PEtiqueta>
           <PTexto style={styles.tarjetaCuerpo}>
-            Las tres capas corren a la vez y a distinta velocidad: la estación vital dura años y el tema del año, doce meses.
+            Las tres capas corren a la vez y a distinta velocidad: la estación vital dura años, el tema del año doce meses, y los cuatro ritmos los ponen en un solo dibujo con lo que cambia en días.
           </PTexto>
           <PNota style={styles.nota}>{DISCLAIMER}</PNota>
         </View>
@@ -228,7 +276,7 @@ export function TuMomentoHub({ localDate }: { localDate: string }) {
       <Column weight={2}>{lista}</Column>
       <Column weight={1}>
         <PTarjeta titulo="CÓMO SE RELACIONAN">
-          <PTexto>Las tres capas corren a la vez y a distinta velocidad: la estación vital dura años y el tema del año, doce meses.</PTexto>
+          <PTexto>Las tres capas corren a la vez y a distinta velocidad: la estación vital dura años, el tema del año doce meses, y los cuatro ritmos los ponen en un solo dibujo con lo que cambia en días.</PTexto>
         </PTarjeta>
         <PTarjeta titulo="DE DÓNDE SALE CADA CAPA">
           {DE_DONDE_SALE.map((d) => (
@@ -251,6 +299,12 @@ export function TuMomentoHub({ localDate }: { localDate: string }) {
             primer plano.
           </PTexto>
           <PNota style={styles.nota}>{YEAR_TRACE.interpretiveRule}</PNota>
+          <Text style={[styles.metodoTitulo, styles.item]}>Mandala temporal</Text>
+          <PTexto>
+            Tus cuatro ritmos no calculan nada por su cuenta: dibujan en la misma imagen la estación vital, el año personal, tu
+            ritmo lunar y el tránsito activo, del más lento afuera al más rápido adentro.
+          </PTexto>
+          <PNota style={styles.nota}>{MANDALA_TRACE.interpretiveRule}</PNota>
         </PTarjeta>
         <PPlegable titulo="¿POR QUÉ ÓRBITA TE MUESTRA ESTO?">
           <PEtiqueta tono="hueso">ESTACIÓN VITAL</PEtiqueta>
@@ -259,6 +313,10 @@ export function TuMomentoHub({ localDate }: { localDate: string }) {
             TEMA DEL AÑO
           </PEtiqueta>
           <PTexto>{YEAR_TRACE.calculatedDatum}</PTexto>
+          <PEtiqueta tono="hueso" style={styles.item}>
+            CUATRO RITMOS
+          </PEtiqueta>
+          <PTexto>{MANDALA_TRACE.calculatedDatum}</PTexto>
         </PPlegable>
         <PTarjeta>
           <PNota>{DISCLAIMER}</PNota>
@@ -292,5 +350,10 @@ const styles = StyleSheet.create({
   cierre: { marginTop: orbita.spacing.xl },
   nota: { marginTop: orbita.spacing.md },
   item: { marginTop: orbita.spacing.md },
-  metodoTitulo: { color: orbita.colors.bone, fontFamily: orbita.fonts.body, fontSize: 16, marginBottom: orbita.spacing.xs }
+  metodoTitulo: { color: orbita.colors.bone, fontFamily: orbita.fonts.body, fontSize: 16, marginBottom: orbita.spacing.xs },
+  mandala: { alignItems: "center", flexDirection: "row", gap: orbita.spacing.xl, marginTop: orbita.spacing.lg },
+  mandalaLineas: { flex: 1, gap: orbita.spacing.sm },
+  mandalaLinea: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: orbita.spacing.sm },
+  mandalaValor: { color: orbita.colors.bone, fontFamily: orbita.fonts.body, fontSize: 14, lineHeight: 20 },
+  mandalaVacio: { color: orbita.colors.muted }
 });
