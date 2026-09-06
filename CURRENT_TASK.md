@@ -30,7 +30,7 @@ mismo dato que ve el móvil). Los contactos no llevan chevron: no existe un
 detalle por contacto. Sin cambio de contrato.
 
 **Estado:** rama `orb/core-236-comparacion-vinculos` desde main 7fb6bca.
-Piso del gate 1012 → 1016.
+Piso del gate 1012 → 1017.
 
 ## La biblioteca de Vínculos se ve como el frame (CORE-235, 2026-09-06)
 

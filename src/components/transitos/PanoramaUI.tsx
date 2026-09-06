@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Link, type Href } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { FilaVista } from "@/domain/transitosPanorama";
+import { rotuloAccesible } from "@/domain/webLayout";
 import { orbita } from "@/theme/orbita";
 
 /**
@@ -98,7 +99,13 @@ export function PEncabezado({
     <View style={styles.encabezado}>
       <PEtiqueta accessibilityRole="header">{izquierda}</PEtiqueta>
       {dato && onDerecha ? (
-        <Pressable onPress={onDerecha} accessibilityRole="button" accessibilityLabel={derecha ?? undefined} hitSlop={8} style={({ pressed }) => pressed && styles.apagado}>
+        <Pressable
+          onPress={onDerecha}
+          accessibilityRole="button"
+          accessibilityLabel={derecha ? rotuloAccesible(derecha) : undefined}
+          hitSlop={8}
+          style={({ pressed }) => [styles.encabezadoAccion, pressed && styles.apagado]}
+        >
           {dato}
         </Pressable>
       ) : (
@@ -372,6 +379,7 @@ const styles = StyleSheet.create({
 
   encabezado: { alignItems: "flex-start", flexDirection: "row", gap: orbita.spacing.md, justifyContent: "space-between" },
   encabezadoDerecha: { flexShrink: 1, textAlign: "right" },
+  encabezadoAccion: { justifyContent: "center", marginVertical: -orbita.spacing.md, minHeight: 44 },
 
   fila: { paddingVertical: orbita.spacing.lg },
   filaConLinea: { borderBottomColor: orbita.colors.line, borderBottomWidth: 1 },

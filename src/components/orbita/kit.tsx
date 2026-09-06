@@ -8,7 +8,7 @@ import { PlanBadge } from "@/components/web/plan-badge";
 import { fechaCivilLarga } from "@/domain/lunaCarta";
 import { useCanonicalLocalDate } from "@/hooks/useDailyContext";
 import { PLACEMENT_BODY_SYMBOL } from "@/domain/astroSymbols";
-import { showsScreenHeader, type CanvasVariant } from "@/domain/webLayout";
+import { rotuloAccesible, showsScreenHeader, type CanvasVariant } from "@/domain/webLayout";
 import { useLayoutMode } from "@/hooks/useLayoutMode";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
 import { orbita } from "@/theme/orbita";
@@ -88,7 +88,7 @@ export function TopBar({ right, onRight, canvas = "reading" }: { right?: string;
   const rotulo = right ?? (fecha ? fecha.toLocaleUpperCase("es") : null);
   const derecha = rotulo ? (
     onRight ? (
-      <Pressable onPress={onRight} accessibilityRole="button" accessibilityLabel={rotulo} hitSlop={8} style={({ pressed }) => [styles.selectorAccion, pressed && { opacity: 0.6 }]}>
+      <Pressable onPress={onRight} accessibilityRole="button" accessibilityLabel={rotuloAccesible(rotulo)} hitSlop={8} style={({ pressed }) => [styles.selectorAccion, pressed && { opacity: 0.6 }]}>
         <Text style={styles.selector}>{rotulo}</Text>
       </Pressable>
     ) : (

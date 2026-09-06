@@ -7,6 +7,7 @@
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { rotuloAccesible } from "../src/domain/webLayout";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
@@ -266,6 +267,11 @@ describe("la comparación se ve como el frame (CORE-236)", () => {
     assert.match(pantalla, /<OrbitaScreen canvas="wide" right=\{ROTULO_VOLVER\} onRight=\{volver\}>/);
     assert.match(pantalla, /<PEncabezado izquierda="VÍNCULOS · COMPARACIÓN" derecha=\{ROTULO_VOLVER\} onDerecha=\{volver\} \/>/);
     assert.doesNotMatch(pantalla, /DetailScreen/);
+  });
+
+  it("el lector de pantalla oye «Volver», no el chevron", () => {
+    assert.equal(rotuloAccesible("‹ VOLVER"), "Volver");
+    assert.equal(rotuloAccesible("NUEVA PERSONA"), "Nueva persona");
   });
 
   it("las dos cartas son discos en escritorio y chips en móvil; el titular corto sólo en escritorio", () => {

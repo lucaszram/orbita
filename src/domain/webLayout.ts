@@ -118,3 +118,9 @@ export function resetsScrollOnRoute(input: { web: boolean; mode: LayoutMode }): 
 export function reservesBottomNav(input: { web: boolean; mode: LayoutMode }): boolean {
   return input.web && input.mode === "mobile";
 }
+
+/** El chevron es visual: al lector de pantalla le llega «Volver», no «‹ VOLVER». */
+export function rotuloAccesible(rotulo: string): string {
+  const limpio = rotulo.replace(/[‹›]/g, "").trim();
+  return limpio.charAt(0).toLocaleUpperCase("es") + limpio.slice(1).toLocaleLowerCase("es");
+}
