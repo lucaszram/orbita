@@ -30,7 +30,10 @@ import { useLiveApp } from "@/hooks/useLiveApp";
 import { appCoreApi, type VinculoComparacion, type VinculoContacto } from "@/services/appCoreRefs";
 import { orbita } from "@/theme/orbita";
 
-const COLOR_TONO = { armonico: orbita.colors.harmony, tenso: orbita.colors.tension, fusion: orbita.colors.copperSoft } as const;
+// Como los frames `1757:2515` / `2092:2975`: los armónicos en cobre claro, los
+// tensos en el rojo de tensión y las fusiones en el azul de armonía. Es la
+// misma paleta que la barra «Tu vínculo con …» de la biblioteca.
+const COLOR_TONO = { armonico: orbita.colors.copperSoft, tenso: orbita.colors.tension, fusion: orbita.colors.harmony } as const;
 const NOMBRE_TONO = { armonico: "Armónico", tenso: "Tenso", fusion: "Fusión" } as const;
 
 export function VinculoComparacionScreen() {

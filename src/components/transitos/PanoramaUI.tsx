@@ -358,7 +358,7 @@ const styles = StyleSheet.create({
   filaRango: { color: orbita.colors.copper, fontFamily: orbita.fonts.monoMedium },
   filaCadencia: { color: orbita.colors.mutedDim, fontFamily: orbita.fonts.mono, fontSize: 10, letterSpacing: 1 },
   filaTitulo: { color: orbita.colors.bone, fontFamily: orbita.fonts.body, fontSize: 17, lineHeight: 24, marginTop: orbita.spacing.xs },
-  barraPista: { backgroundColor: orbita.colors.boneTint08, borderRadius: 3, flexDirection: "row", height: 3, marginTop: orbita.spacing.md, overflow: "hidden" },
+  barraPista: { backgroundColor: "rgba(244,238,228,0.10)", borderRadius: 2, flexDirection: "row", height: 3, marginTop: orbita.spacing.md, overflow: "hidden" },
   barraRelleno: { backgroundColor: orbita.colors.copper, height: 3 },
   filaMeta: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: orbita.spacing.md, marginTop: orbita.spacing.md },
   chip: { borderColor: orbita.colors.copper, borderRadius: 999, borderWidth: 1, paddingHorizontal: orbita.spacing.md, paddingVertical: 4 },

@@ -762,7 +762,10 @@ function Biblioteca({
   );
 
   const nivel = (
-    <PTarjeta titulo={`NIVEL DE DATOS DE ${activa.name.toLocaleUpperCase("es")}`}>
+    <PTarjeta>
+      <PEtiqueta tono="gris" accessibilityRole="header">
+        NIVEL DE DATOS DE {activa.name.toLocaleUpperCase("es")}
+      </PEtiqueta>
       <View style={[styles.tarjetaCabecera, styles.nivelFila]}>
         <Text style={styles.nivelTitulo}>{etiquetaDeNivel(activa.level)}</Text>
         <PEtiqueta tono="gris">{rotuloDeNivel(activa.level)}</PEtiqueta>

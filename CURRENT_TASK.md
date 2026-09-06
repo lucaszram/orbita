@@ -23,6 +23,18 @@ con alfa pasan a `src/theme/orbita.ts` (`copperTint10/16/25/45`,
 minúscula en móvil («0 de 1 persona»), como el frame. La lógica (queries,
 alta, biblioteca, límite) no cambia: es la misma de CORE-212/213/214.
 
+**Cambios visuales declarados (además del kit):** «CONTINUAR» en móvil pasa a
+cobre como los frames 390 del alta; el numeral de «Las tres capas» usa
+`VInicial` (tinte 25 %, texto hueso); los tonos de las barras son los del
+frame en las dos pantallas (armónicos cobre claro, tensos rojo, fusiones
+azul). Los campos del alta siguen dentro de la tarjeta (preexistente; V2 lo
+revisa contra el frame 390).
+
+**Revisión:** r1 RECHAZADA (título «NIVEL DE DATOS DE X» en cobre; el frame
+lo tiene en gris) → corregido; la pista de las filas del panorama vuelve a
+su valor original (0.10 / radio 2) para que el cambio en `PanoramaUI` sea
+estrictamente aditivo.
+
 **Estado:** rama `orb/core-233-vinculos-kit` desde main f9c8264.
 
 ## Lo principal de Hoy se lee como en el frame (CORE-237, 2026-09-06)
