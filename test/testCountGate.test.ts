@@ -37,9 +37,9 @@ test("el piso es el del brief más lo que sumaron CORE-191, el detalle del ranki
 });
 
 test("una corrida completa por encima del piso pasa", () => {
-  const verdict = evaluateTestRun(resumen(1000));
+  const verdict = evaluateTestRun(resumen(1100));
   assert.equal(verdict.ok, true);
-  assert.equal(verdict.pass, 1000);
+  assert.equal(verdict.pass, 1100);
   assert.deepEqual(verdict.failures, []);
 });
 
@@ -53,7 +53,7 @@ test("el piso incluye su propio número: exactamente 1006 pasa, 1005 falla", () 
 });
 
 test("un test fallado hace fallar el gate aunque sobre cobertura", () => {
-  const verdict = evaluateTestRun(resumen(1000, 3));
+  const verdict = evaluateTestRun(resumen(1100, 3));
   assert.equal(verdict.ok, false);
   assert.equal(verdict.fail, 3);
   assert.match(verdict.failures[0], /3 test\(s\) fallaron/);
@@ -67,19 +67,19 @@ test("una corrida sin resumen NO pasa: la ausencia de `fail` no es `fail 0`", ()
 });
 
 test("el formato TAP del runner también se lee", () => {
-  const tap = ["# tests 1000", "# pass 1000", "# fail 0", ""].join("\n");
+  const tap = ["# tests 1100", "# pass 1100", "# fail 0", ""].join("\n");
   const verdict = evaluateTestRun(tap);
   assert.equal(verdict.ok, true);
-  assert.equal(verdict.pass, 1000);
+  assert.equal(verdict.pass, 1100);
 });
 
 test("un nombre de test que imita el resumen no le gana al resumen real", () => {
   // El resumen va al final; se toma la última aparición, no la primera.
-  const salida = ["✔ pass 1 no debería contar (0.1ms)", resumen(1000)].join("\n");
-  assert.equal(readCounter(salida, "pass"), 1000);
+  const salida = ["✔ pass 1 no debería contar (0.1ms)", resumen(1100)].join("\n");
+  assert.equal(readCounter(salida, "pass"), 1100);
 });
 
 test("el mínimo es configurable para poder subir el piso sin tocar la lógica", () => {
-  assert.equal(evaluateTestRun(resumen(1000), { minimum: 1100 }).ok, false);
-  assert.equal(evaluateTestRun(resumen(1000), { minimum: 800 }).ok, true);
+  assert.equal(evaluateTestRun(resumen(1100), { minimum: 1200 }).ok, false);
+  assert.equal(evaluateTestRun(resumen(1100), { minimum: 800 }).ok, true);
 });
