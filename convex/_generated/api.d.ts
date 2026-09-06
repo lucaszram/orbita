@@ -26,6 +26,7 @@ import type * as lib_backoffice from "../lib/backoffice.js";
 import type * as lib_birthDataConsistency from "../lib/birthDataConsistency.js";
 import type * as lib_civilTime from "../lib/civilTime.js";
 import type * as lib_commerce from "../lib/commerce.js";
+import type * as lib_cuatroRitmos from "../lib/cuatroRitmos.js";
 import type * as lib_entitlements from "../lib/entitlements.js";
 import type * as lib_environment from "../lib/environment.js";
 import type * as lib_estacionVital from "../lib/estacionVital.js";
@@ -100,6 +101,7 @@ declare const fullApi: ApiFromModules<{
   "lib/birthDataConsistency": typeof lib_birthDataConsistency;
   "lib/civilTime": typeof lib_civilTime;
   "lib/commerce": typeof lib_commerce;
+  "lib/cuatroRitmos": typeof lib_cuatroRitmos;
   "lib/entitlements": typeof lib_entitlements;
   "lib/environment": typeof lib_environment;
   "lib/estacionVital": typeof lib_estacionVital;

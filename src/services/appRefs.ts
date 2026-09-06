@@ -340,6 +340,40 @@ export type MomentoTemaDelAno =
   | { status: "locked"; localDate: string; access: { isPro: false } }
   | { status: "ready"; localDate: string; timezone: string | null; access: { isPro: true }; tema: TemaDelAno };
 
+// --- CORE-211: Tu momento · Tus cuatro ritmos ---------------------------------
+
+export type AnilloKey = "progressed_lunation" | "annual_profection" | "cumpleluna" | "transit_arc";
+
+/** Un anillo del mandala: qué ritmo es, en qué estado está y cuánto avanzó. */
+export type Anillo = {
+  key: AnilloKey;
+  label: string;
+  cadence: string;
+  state: string;
+  status: "ready" | "unavailable";
+  precision: "exact" | "estimated" | "range" | "not_applicable";
+  /** `point`: `progress` vale; `range`: `progressRange` vale; `unavailable`: el anillo se dibuja vacío. */
+  progressMode: "point" | "range" | "unavailable";
+  progress: number | null;
+  progressRange?: { from: number; to: number };
+  detail: string;
+  available: boolean;
+  limitations: string[];
+};
+
+export type CuatroRitmos = {
+  status: "ready";
+  exact: boolean;
+  rings: Anillo[];
+  availableCount: number;
+  summary: string;
+  observedAt: number;
+};
+
+export type MomentoCuatroRitmos =
+  | { status: "locked"; localDate: string; access: { isPro: false } }
+  | { status: "ready"; localDate: string; timezone: string | null; access: { isPro: true }; ritmos: CuatroRitmos };
+
 /** Respuesta de `transits.getDetail`: el contacto pedido, o la constancia de que
  *  no está en la lectura de hoy. Nunca otro tránsito en su lugar. */
 export type TransitDetailResult =
@@ -852,6 +886,14 @@ export const proposedApi = {
     "public",
     { localDate: string },
     MomentoTemaDelAno
+  >,
+  // momento.getCuatroRitmos({ localDate }): Tu momento · Tus cuatro ritmos (CORE-211). ACTION que compone
+  // los cuatro sobres existentes; no calcula ni cachea por su cuenta.
+  momentoCuatroRitmos: anyApi.momento.getCuatroRitmos as FunctionReference<
+    "action",
+    "public",
+    { localDate: string },
+    MomentoCuatroRitmos
   >,
   // TODO: pendiente backend — places.resolve({ query }): geocoding real para onboarding
   resolvePlace: anyApi.places.resolve as FunctionReference<"action", "public", { query: string }, PlaceLookup>,

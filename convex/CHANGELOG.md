@@ -1,5 +1,12 @@
 # Contrato — CHANGELOG
 
+## 2026-09-06 — Tu momento abre tus cuatro ritmos: `momento.getCuatroRitmos` (CORE-211)
+
+- **Qué cambia (aditivo):** nueva action pública `momento.getCuatroRitmos({ localDate })`. Devuelve **siempre** un sobre con `status`: `locked` (Free, decidido antes de tocar ninguna fuente) o `ready` con `ritmos` (`CuatroRitmos`), `timezone` y `access`. `getEstacionVital`, `getTemaDelAno`, `home.getLunaSobreLaCarta` y `transits.getPanorama` no cambian.
+- **Método:** el mandala no calcula nada por su cuenta. Compone los cuatro sobres ya existentes para la fecha canónica y los describe como cuatro anillos, del más lento afuera al más rápido adentro (`convex/lib/cuatroRitmos.ts`, réplica de `buildTemporalMandalaData` de `release/1.0.0`): `progressed_lunation` (estación vital), `annual_profection` (año personal), `cumpleluna` (ritmo lunar) y `transit_arc` (el contacto con rango 1 del panorama). Cada fuente corre por separado: si una falla, su anillo queda vacío y las demás siguen.
+- **Qué publica cada `Anillo`:** `key`, `label`, `cadence`, `state` (p. ej. `Nueva`, `Casa 6 · mes 10 de 12`, `Día 19,7 de 29,4`, `Luna con tu Marte · máxima precisión`), `status` (`ready` | `unavailable`), `precision`, `progressMode` (`point` con `progress`, `range` con `progressRange`, `unavailable`), `detail`, `available` y `limitations` (las de su propia fuente). El sobre suma `exact` (hora natal exacta: avances en punto; sin ella, franjas), `availableCount`, `summary` y `observedAt`. Un ritmo sin cálculo no recibe un anillo estimado.
+- **Front:** la tarjeta 03 del hub de Tu momento muestra el mandala y las cuatro líneas reales; `/reading/cuatro-ritmos` según los frames `transitos-cuatro-ritmos-390/1440` con la copy del mandala de Build 30 (`MANDALA_RINGS`, `mandalaReading`, `MANDALA_METHOD`, `MANDALA_TRACE`, portadas de `release/1.0.0` en `src/domain/momento.ts`).
+
 ## 2026-09-06 — Tu momento abre el tema de tu año: `momento.getTemaDelAno` (CORE-210)
 
 - **Qué cambia (aditivo):** nueva action pública `momento.getTemaDelAno({ localDate })`. Devuelve **siempre** un sobre con `status`: `locked` (Free) o `ready` con `tema`, que declara su propio `status`: `ready` (profección calculada), `needs_birth_time` (sin hora exacta no hay Ascendente confiable), `needs_natal_chart`, `needs_birth_data` o `unavailable` (Ascendente ilegible o fechas imposibles). Es un cálculo puro sobre la carta guardada: no llama al proveedor y no se cachea. `getEstacionVital` no cambia.

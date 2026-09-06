@@ -4,18 +4,21 @@ import {
   internalQueryGeneric as internalQuery
 } from "convex/server";
 import { v } from "convex/values";
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { resolveCanonicalDailyContext } from "./daily";
 import { getAstrologyApiConfig, hasAstrologyApiCredentials } from "./lib/astrologyApi";
 import { findCurrentBirthData, findCurrentNatalChart } from "./lib/birthDataConsistency";
+import { buildCuatroRitmos, type RitmoLunarFuente } from "./lib/cuatroRitmos";
 import { buildEstacionVital, type EstacionVital } from "./lib/estacionVital";
 import { extractNormalizedChartFromPayload } from "./lib/orbita";
-import { buildTemaDelAno } from "./lib/temaDelAno";
+import { buildTemaDelAno, type TemaDelAno } from "./lib/temaDelAno";
+import type { TransitPanorama } from "./lib/transitPanorama";
 import { isUserPro } from "./lib/subscriptionAccess";
 import { runAstrologyApiPlanetsTropical } from "./lib/tropicalEphemeris";
 import { findUserByTokenIdentifier, omitUndefined, requireIdentity } from "./lib/users";
 
 const internalApi = internal as any;
+const publicApi = api as any;
 export const ESTACION_VITAL_VERSION = "orbita-estacion-vital-v1";
 
 /**
@@ -203,5 +206,56 @@ export const getTemaDelAno = action({
     const chart = extractNormalizedChartFromPayload(state.natalChartPayload);
     const tema = buildTemaDelAno({ chart, birth, asOfDate: args.localDate, observedAt: Date.now() });
     return { status: "ready" as const, localDate: args.localDate, timezone: birth?.timezone ?? null, access: { isPro: true as const }, tema };
+  }
+});
+
+/**
+ * `momento.getCuatroRitmos({ localDate })` — la capa 03: el mandala temporal
+ * (CORE-211). No calcula nada por su cuenta: compone los sobres de
+ * `getEstacionVital`, `getTemaDelAno`, `home.getLunaSobreLaCarta` y
+ * `transits.getPanorama` para la fecha canónica y los describe como cuatro
+ * anillos (`convex/lib/cuatroRitmos.ts`). Una fuente que falla deja su anillo
+ * vacío y no tira las demás. Free recibe `locked` antes de tocar ninguna
+ * fuente. No se cachea: cada fuente ya tiene su propio cache.
+ */
+export const getCuatroRitmos = action({
+  args: { localDate: v.string() },
+  handler: async (ctx, args) => {
+    const identity = await requireIdentity(ctx as any);
+    const dayState: any = await ctx.runQuery(internalApi.daily.getGuideTimezone, { tokenIdentifier: identity.tokenIdentifier });
+    const canonical = resolveCanonicalDailyContext({ birthTimezone: dayState.birthTimezone, latestGuide: dayState.latestGuide });
+    if (args.localDate !== canonical.localDate) {
+      throw new Error("Tu momento usa la fecha canónica del servidor");
+    }
+    const state: any = await ctx.runQuery(internalApi.momento.getMomentoState, {
+      tokenIdentifier: identity.tokenIdentifier,
+      localDate: args.localDate,
+      kind: "cuatro_ritmos"
+    });
+    if (!state.isPro) {
+      return { status: "locked" as const, localDate: args.localDate, access: { isPro: false as const } };
+    }
+    const timezone = (state.birthData?.timezone as string | undefined) ?? null;
+    const exact = state.birthData?.birthTimePrecision === "known";
+    const fuente = async <T>(run: () => Promise<T>): Promise<T | null> => {
+      try {
+        return await run();
+      } catch {
+        return null;
+      }
+    };
+    const [estacionSobre, temaSobre, luna, panorama] = await Promise.all([
+      fuente(() => ctx.runAction(publicApi.momento.getEstacionVital, { localDate: args.localDate })),
+      fuente(() => ctx.runAction(publicApi.momento.getTemaDelAno, { localDate: args.localDate })),
+      fuente(() => ctx.runAction(publicApi.home.getLunaSobreLaCarta, {})),
+      fuente(() => ctx.runAction(publicApi.transits.getPanorama, { localDate: args.localDate }))
+    ]);
+    const estacion: EstacionVital | null = estacionSobre && estacionSobre.status === "ready" ? (estacionSobre.estacion as EstacionVital) : null;
+    const tema: TemaDelAno | null = temaSobre && temaSobre.status === "ready" ? (temaSobre.tema as TemaDelAno) : null;
+    const lunar: RitmoLunarFuente | null = luna
+      ? { cumpleluna: (luna.cumpleluna as RitmoLunarFuente["cumpleluna"]) ?? null, limitations: Array.isArray(luna.limitations) ? (luna.limitations as string[]) : [] }
+      : null;
+    const ritmos = buildCuatroRitmos({ observedAt: Date.now(), exact, estacion, tema, lunar, transito: (panorama as TransitPanorama | null) ?? null });
+    return { status: "ready" as const, localDate: args.localDate, timezone, access: { isPro: true as const }, ritmos };
   }
 });
