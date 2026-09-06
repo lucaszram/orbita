@@ -200,13 +200,18 @@ export function HomeScreen() {
   // listo —Free, sin hora exacta, fallo— deja la línea de contacto, que
   // siempre sale de la misma guía. Nunca bloquea la sección ni la reintenta.
   const getTema = useAction(proposedApi.momentoTemaDelAno);
-  const [temaSobre, setTemaSobre] = useState<{ dia: string; sobre: MomentoTemaDelAno } | null>(null);
+  // Clave por cuenta Y día, como la guía: un cambio de cuenta el mismo día no
+  // puede mostrar el contexto de la cuenta anterior ni un instante.
+  const claveDelTema = today && claveDelDia && !isAuthLoading ? `${claveDelDia}:${today}` : null;
+  const [temaSobre, setTemaSobre] = useState<{ clave: string; sobre: MomentoTemaDelAno } | null>(null);
   useEffect(() => {
-    if (!today || !claveDelDia || isAuthLoading) return;
+    if (!claveDelTema || !today) return;
+    // Ya está el sobre de esta cuenta y este día: una reconexión no lo vuelve a pedir.
+    if (temaSobre?.clave === claveDelTema) return;
     let vivo = true;
     getTema({ localDate: today })
       .then((sobre) => {
-        if (vivo) setTemaSobre({ dia: today, sobre });
+        if (vivo) setTemaSobre({ clave: claveDelTema, sobre });
       })
       .catch(() => {
         if (vivo) setTemaSobre(null);
@@ -214,8 +219,10 @@ export function HomeScreen() {
     return () => {
       vivo = false;
     };
-  }, [getTema, today, claveDelDia, isAuthLoading]);
-  const tema = temaSobre && temaSobre.dia === today && temaSobre.sobre.status === "ready" ? temaSobre.sobre.tema : null;
+    // `temaSobre` se lee sólo para no repetir el pedido; no es un disparador.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [getTema, claveDelTema, today]);
+  const tema = temaSobre && temaSobre.clave === claveDelTema && temaSobre.sobre.status === "ready" ? temaSobre.sobre.tema : null;
   const contexto = contextoDelAno(tema, tema && tema.status === "ready" ? TEMA_DE_CASA_TITULAR[tema.house] ?? null : null);
 
   const daily = dailyState.status === "ready" ? dailyState.payload : null;

@@ -69,8 +69,10 @@ import { pathToFileURL } from "node:url";
  * Los cuatro ritmos (CORE-211) suman 9 casos: 6 en `cuatroRitmos.test.ts`
  * (anillos, franjas, tránsito, vacíos, fuente caída, límites) y 3 en
  * `momento.test.ts` (lectura del mandala, arco, estado): 997 + 9.
+ *
+ * Lo principal de Hoy (CORE-237) suma 1 caso en `hoyPrincipal.test.ts` (el contexto del año): 1006 + 1.
  */
-export const DEFAULT_MINIMUM = 1006;
+export const DEFAULT_MINIMUM = 1007;
 
 /**
  * Lee un contador del resumen final del runner de Node.

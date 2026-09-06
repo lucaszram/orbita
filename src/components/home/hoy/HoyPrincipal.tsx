@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 
 import { HOY_GUTTER, HoyEnlace, HoyEtiqueta, HoyMeta, HoyTitular } from "@/components/home/hoy/HoyLayout";
+import { useIsDesktop } from "@/hooks/useLayoutMode";
 import type { HoyPrincipal } from "@/domain/hoyPrincipal";
 import { RUTA_TU_MOMENTO } from "@/domain/hoyPrincipal";
 import { orbita } from "@/theme/orbita";
@@ -20,9 +21,12 @@ import { orbita } from "@/theme/orbita";
  * inventada.
  */
 export function HoyPrincipalBloque({ principal, contexto }: { principal: HoyPrincipal; contexto: string | null }) {
+  // El frame 1440 (`1718:2136`) sube la frase a 36/44: es la síntesis del día,
+  // no un bloque. En 390 (`1718:1997`) queda en 30/38.
+  const desktop = useIsDesktop();
   return (
     <HoyPrincipalEstado>
-      <HoyTitular style={styles.titular}>{principal.titular}</HoyTitular>
+      <HoyTitular style={[styles.titular, desktop && styles.titularAncho]}>{principal.titular}</HoyTitular>
       {contexto ? (
         <HoyMeta items={["CONTEXTO", contexto.toLocaleUpperCase("es")]} style={styles.contacto} />
       ) : principal.aspecto ? (
@@ -52,6 +56,6 @@ const styles = StyleSheet.create({
   principal: { paddingHorizontal: HOY_GUTTER, paddingTop: orbita.spacing.xl },
   rotulo: { color: orbita.colors.mutedDim },
   titular: { fontSize: 30, lineHeight: 38, marginTop: orbita.spacing.md },
-  // El frame 1440 sube la frase a 36/44: es la síntesis del día, no un bloque.
+  titularAncho: { fontSize: 36, lineHeight: 44 },
   contacto: { marginTop: orbita.spacing.lg }
 });
