@@ -27,13 +27,13 @@ const resumen = (pass: number, fail = 0) =>
     ""
   ].join("\n");
 
-test("el piso es el del brief más lo que sumaron CORE-191, el detalle del ranking, Vínculos, el panorama de Tránsitos, la biblioteca de Vínculos, la estación vital, el límite Free el tema del año, la Carta responsive los cuatro ritmos lo principal de Hoy, su ranking, la biblioteca y la comparación de Vínculos como el frame más el segmento de Tránsitos por URL y con Plus: 1023 tests", () => {
+test("el piso es el del brief más lo que sumaron CORE-191, el detalle del ranking, Vínculos, el panorama de Tránsitos, la biblioteca de Vínculos, la estación vital, el límite Free el tema del año, la Carta responsive los cuatro ritmos lo principal de Hoy, su ranking, la biblioteca y la comparación de Vínculos como el frame más el segmento de Tránsitos por URL y con Plus más los enlaces de Hoy en nativo: 1024 tests", () => {
   // 745 + 116 casos nuevos de la sección Hoy (hoyPrincipal 27, lunaCarta 45,
   // hoySection 44). El piso se sube con lo que se agregó DE VERDAD: los otros
   // archivos que la tarjeta tocó repuntaron sus afirmaciones a la superficie
   // nueva sin agregar ni borrar un solo caso. La profundización del ranking
   // (`transitDetail.test.ts`) suma 22 casos más: 861 + 22.
-  assert.equal(DEFAULT_MINIMUM, 1023);
+  assert.equal(DEFAULT_MINIMUM, 1024);
 });
 
 test("una corrida completa por encima del piso pasa", () => {
@@ -43,12 +43,12 @@ test("una corrida completa por encima del piso pasa", () => {
   assert.deepEqual(verdict.failures, []);
 });
 
-test("el piso incluye su propio número: exactamente 1023 pasa, 1022 falla", () => {
-  assert.equal(evaluateTestRun(resumen(1023)).ok, true);
+test("el piso incluye su propio número: exactamente 1024 pasa, 1023 falla", () => {
+  assert.equal(evaluateTestRun(resumen(1024)).ok, true);
 
-  const abajo = evaluateTestRun(resumen(1022));
+  const abajo = evaluateTestRun(resumen(1023));
   assert.equal(abajo.ok, false);
-  assert.match(abajo.failures[0], /1022/);
+  assert.match(abajo.failures[0], /1023/);
   assert.match(abajo.failures[0], /falta/);
 });
 

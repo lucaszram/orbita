@@ -13,7 +13,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 
-import { contarModulos, contextoDelAno, esLecturaPlantilla, etiquetaDeContactosActivos, etiquetaDeModulos, filaDeHoyComoVista, filasDelPanoramaParaHoy, guiaPendiente, hoyBloques, hoyPrincipal, hoyRanking, numeroDeBloque, partesDeContacto, principalDesdePanorama, RUTA_TU_MOMENTO, rutaTuMomento, segmentoDeRuta } from "../src/domain/hoyPrincipal";
+import { contarModulos, contextoDelAno, esLecturaPlantilla, etiquetaDeContactosActivos, etiquetaDeModulos, filaDeHoyComoVista, filasDelPanoramaParaHoy, guiaPendiente, hoyBloques, hoyPrincipal, hoyRanking, numeroDeBloque, partesDeContacto, principalDesdePanorama, RUTA_TU_MOMENTO, rutaTransitos, rutaTuMomento, segmentoDeRuta } from "../src/domain/hoyPrincipal";
 import type { DailyGuidePayload } from "../src/services/appRefs";
 
 /** Un payload real mínimo; cada test pisa sólo lo que le importa. */
@@ -413,5 +413,12 @@ describe("Tránsitos honra el segmento que pide la URL (CORE-240)", () => {
     assert.match(fuente, /const pedido = params\.segmento === undefined \? undefined : segmentoDeRuta\(params\.segmento\);/);
     assert.match(fuente, /useState<Segmento>\(pedido \?\? "ahora"\)/);
     assert.match(fuente, /if \(pedido !== undefined\) setSegmento\(pedido\);\s*\}, \[pedido\]\);/);
+  });
+});
+
+describe("los enlaces de Hoy a Tránsitos abren Tránsitos en nativo (CORE-246)", () => {
+  it("la ruta es /transito en web y la pestaña en nativo, donde /transito redirige a Hoy", () => {
+    assert.equal(rutaTransitos(true), "/transito");
+    assert.equal(rutaTransitos(false), "/(tabs)/transitos");
   });
 });

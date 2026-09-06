@@ -352,7 +352,7 @@ describe("el ranking de Hoy lleva la identidad hasta la ruta", () => {
   it("«Ver todos los tránsitos» sigue yendo a /transito", () => {
     // CORE-238: con el panorama el pie dice «VER LOS N CONTACTOS ACTIVOS»; sin
     // total conocido, «VER TODOS LOS TRÁNSITOS». El destino no cambia.
-    assert.match(RANKING, /<HoyEnlace href="\/transito">\{enlace \?\? "VER TODOS LOS TRÁNSITOS"\}<\/HoyEnlace>/);
+    assert.match(RANKING, /<HoyEnlace href=\{RUTA_TRANSITOS\}>\{enlace \?\? "VER TODOS LOS TRÁNSITOS"\}<\/HoyEnlace>/);
   });
 
   it("la pantalla abre exactamente el id de la ruta con el contrato compartido por web y nativo", () => {
