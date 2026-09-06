@@ -28,8 +28,9 @@ orden ya está explicado en Tránsitos); su avance es la posición de «ahora»
 de la ventana el anillo existe pero no se ubica (`progressMode: unavailable`)
 y lo declara. Rótulos de fase de release («se acerca», «máxima precisión»,
 «sigue activo después del punto más preciso»). El ritmo lunar de main nunca
-es `exact` (estimación por movimiento medio): una ventana de un único día se
-dibuja como punto, una ventana real como franja. El hub pide los cuatro
+es `exact` y su ventana del día del ciclo tiene ancho real aun con hora
+exacta (variación de velocidad lunar): ese anillo es siempre franja; el punto
+queda sólo para una ventana degenerada. El hub pide los cuatro
 ritmos recién cuando la estación y el tema respondieron (evita correr la
 estación dos veces contra el proveedor). En 390 la tarjeta 03 es texto, como
 el frame; en 1440 lleva el mandala y las cuatro líneas. `convex/_generated`
@@ -42,8 +43,10 @@ tarjeta 03 en 390 según frame, pedido secuencial en el hub). «Lo que este cál
 por ritmo. Verificación visual autenticada: QA integral con la sesión de
 Lucas.
 
-**Estado:** rama `orb/core-211-cuatro-ritmos` desde main 9003a5d. Piso del
-gate 996 (987 + 9).
+**Estado:** rama `orb/core-211-cuatro-ritmos` rebasada sobre main 470871a
+(tras CORE-215). Piso del gate 1006 (997 + 9). r2 APROBADA; laterales
+atendidos (ventana lunar, ficha, cabecera del hub, tarjeta 03 en 390,
+reintento sólo de la capa 03).
 
 ## Carta conserva el mapa natal completo en cualquier pantalla (CORE-215, 2026-09-06)
 

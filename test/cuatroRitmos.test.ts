@@ -55,10 +55,11 @@ const lunar = {
   cumpleluna: {
     cycleFraction: 0.67,
     cycleDay: 19.7,
-    cycleDayWindowDays: { from: 19.7, to: 19.7 },
+    // Con hora exacta la ventana igual tiene ancho: la velocidad de la Luna varía dentro del ciclo.
+    cycleDayWindowDays: { from: 18.3, to: 21.0 },
     cycleLengthDays: 29.4,
     daysRemaining: 9.7,
-    daysRemainingWindowDays: { from: 9.7, to: 9.7 },
+    daysRemainingWindowDays: { from: 8.4, to: 11.1 },
     precision: "estimated" as const
   },
   limitations: ["No es un retorno lunar: no busca que la Luna vuelva a su longitud natal."]
@@ -99,19 +100,24 @@ describe("los cuatro anillos con cálculo", () => {
     assert.equal(r.exact, true);
     assert.deepEqual(
       r.rings.map((a) => a.state),
-      ["Nueva", "Casa 6 · mes 10 de 12", "Día 19,7 de 29,4", "Luna con tu Marte · máxima precisión"]
+      ["Nueva", "Casa 6 · mes 10 de 12", "Día entre 18,3 y 21,0 de 29,4", "Luna con tu Marte · máxima precisión"]
     );
     assert.deepEqual(
       r.rings.map((a) => a.progressMode),
-      ["point", "point", "point", "point"]
+      ["point", "point", "range", "point"],
+      "el ritmo lunar es siempre franja: su ventana tiene ancho aun con hora exacta"
     );
     assert.equal(r.rings[0].progress, 0.16);
     assert.equal(r.rings[1].progress, 0.82);
-    assert.equal(r.rings[2].progress, 0.67);
+    assert.equal(r.rings[2].progress, null);
+    assert.deepEqual(r.rings[2].progressRange, { from: Math.round((18.3 / 29.4) * 1e6) / 1e6, to: Math.round((21 / 29.4) * 1e6) / 1e6 });
     assert.equal(r.rings[3].progress, 0.25, "a las 09:00 de una ventana 06:00–18:00 va por un cuarto");
     assert.equal(r.rings[3].precision, "exact");
     assert.ok(r.rings.every((a) => a.failed === false));
-    assert.match(r.rings[2].detail, /Faltan 10 días para tu próxima Cumpleluna personal\./);
+    assert.match(r.rings[2].detail, /Faltan entre 8,4 y 11,1 días para tu próxima Cumpleluna personal\./);
+    const degenerada = buildCuatroRitmos({ observedAt: HOY, exact: true, estacion, tema, lunar: { ...lunar, cumpleluna: { ...lunar.cumpleluna, cycleDayWindowDays: { from: 19.7, to: 19.7 }, daysRemainingWindowDays: { from: 9.7, to: 9.7 } } }, transito: panorama, transitNow: AHORA });
+    assert.equal(degenerada.rings[2].state, "Día 19,7 de 29,4", "sólo una ventana de arco cero se escribe como un único día");
+    assert.equal(degenerada.rings[2].progress, 0.67);
     assert.equal(r.rings[0].detail, "La fase actual de tu estación vital es Nueva.");
     assert.equal(r.rings[1].detail, tema.summary);
     assert.equal(r.rings[3].detail, "La Luna pasa hoy por tu Marte.");

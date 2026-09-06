@@ -1,17 +1,18 @@
 /**
  * **Tránsitos · Tu momento** — el capítulo actual: las tres capas lentas
- * (CORE-209 abre la primera). Frames `1740:2247` (390) y `2022:2875` (1440).
+ * (CORE-209 abrió la 01, CORE-210 la 02 y CORE-211 la 03, el mandala).
  *
  *     TU MOMENTO · EL CAPÍTULO ACTUAL                     3 CAPAS
  *     01 · TU ESTACIÓN VITAL   Nueva · año 0,6 de 3,7   VER TU ESTACIÓN ›
- *     02 · EL TEMA DE TU AÑO   (CORE-210)
- *     03 · TUS CUATRO RITMOS   (CORE-211)
+ *     02 · EL TEMA DE TU AÑO   Casa 6 · rutinas…        VER TU AÑO ›
+ *     03 · TUS CUATRO RITMOS   mandala + cuatro líneas  VER TUS CUATRO RITMOS ›
  *
  * La tarjeta 01 muestra lo que `momento.getEstacionVital` certificó: fase,
  * año dentro de la fase, la acción de la etapa y las fechas reales. La 02
- * (CORE-210) muestra la profección anual de `momento.getTemaDelAno`: casa,
- * mes del año y regente. La 03 todavía no tiene cálculo en esta línea y lo
- * dice: no se dibuja una cifra que no exista. Free recibe `locked`.
+ * muestra la profección anual de `momento.getTemaDelAno`: casa, mes del año
+ * y regente. La 03 muestra el mandala de `momento.getCuatroRitmos`, que se
+ * pide recién cuando la 01 y la 02 respondieron; un ritmo sin cálculo queda
+ * como anillo vacío, nunca estimado. Free recibe `locked`.
  */
 import { useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
@@ -22,7 +23,7 @@ import { ErrorState, MinimalLoading } from "@/components/orbita/states";
 import { Mandala } from "@/components/transitos/Mandala";
 import { PBoton, PEncabezado, PEnlace, PEsqueleto, PEtiqueta, PNota, PPlegable, PTarjeta, PTexto } from "@/components/transitos/PanoramaUI";
 import { CAPAS_DE_TU_MOMENTO, DE_DONDE_SALE } from "@/screens/EstacionVitalScreen";
-import { anoDeFase, bordeDeFase, copyDeSinDatos, copyDeSinTema, decimalEs, diaMes, estadoDeEstacion, estadoDeRitmos, estadoDeTema, MANDALA_TRACE, resumenDeAnillos, SEASON_TRACE, seasonHeadline, seasonMeaning, subtituloDelAno, tituloDelAno, type EstacionEstado, type RitmosEstado, type TemaEstado, YEAR_TRACE, yearMeaning } from "@/domain/momento";
+import { anoDeFase, bordeDeFase, copyDeSinDatos, copyDeSinTema, decimalEs, diaMes, estadoDeEstacion, estadoDeRitmos, estadoDeTema, MANDALA_TRACE, SEASON_TRACE, seasonHeadline, seasonMeaning, subtituloDelAno, tituloDelAno, type EstacionEstado, type RitmosEstado, type TemaEstado, YEAR_TRACE, yearMeaning } from "@/domain/momento";
 import { useIsDesktop } from "@/hooks/useLayoutMode";
 import { proposedApi, type MomentoCuatroRitmos, type MomentoEstacionVital, type MomentoTemaDelAno } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
@@ -36,6 +37,7 @@ export function TuMomentoHub({ localDate }: { localDate: string }) {
   const [estado, setEstado] = useState<EstacionEstado>({ kind: "cargando" });
   const [tema, setTema] = useState<TemaEstado>({ kind: "cargando" });
   const [ritmos, setRitmos] = useState<RitmosEstado>({ kind: "cargando" });
+  const [intentoRitmos, setIntentoRitmos] = useState(0);
   const [intento, setIntento] = useState(0);
   const desktop = useIsDesktop();
 
@@ -73,7 +75,7 @@ export function TuMomentoHub({ localDate }: { localDate: string }) {
     return () => {
       vivo = false;
     };
-  }, [fuentesListas, getRitmos, localDate]);
+  }, [fuentesListas, getRitmos, intentoRitmos, localDate]);
 
   useEffect(() => {
     let vivo = true;
@@ -224,9 +226,6 @@ export function TuMomentoHub({ localDate }: { localDate: string }) {
         <>
           <Text style={styles.tarjetaTitulo}>Cuatro anillos en un solo dibujo</Text>
           <PNota>De diario a multianual: están juntos para compararlos, no para sumarlos.</PNota>
-          <PEtiqueta tono="gris" style={styles.nota}>
-            {resumenDeAnillos(ritmos.ritmos)}
-          </PEtiqueta>
           <PEnlace label="VER TUS CUATRO RITMOS" href="/reading/cuatro-ritmos" />
         </>
       ) : ritmos.kind === "listo" ? (
@@ -255,7 +254,7 @@ export function TuMomentoHub({ localDate }: { localDate: string }) {
       ) : (
         <>
           <Text style={styles.tarjetaTitulo}>No pudimos armar tus cuatro ritmos.</Text>
-          <PEnlace label="REINTENTAR" onPress={() => setIntento((n) => n + 1)} />
+          <PEnlace label="REINTENTAR" onPress={() => setIntentoRitmos((n) => n + 1)} />
         </>
       )}
     </View>

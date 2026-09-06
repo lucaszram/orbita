@@ -9,8 +9,9 @@
  * Reproduce `buildTemporalMandalaData` de la línea `release/1.0.0`
  * (`convex/lib/layerAssembly.ts`): mismas claves, mismos rótulos, misma
  * política de avance: `point` cuando la fuente certifica un solo valor
- * (precisión exacta, o una ventana de un único día), `range` cuando publica
- * un margen, `unavailable` sin cálculo. El tránsito avanza por su posición
+ * (precisión exacta), `range` cuando publica un margen, `unavailable` sin
+ * cálculo. El ritmo lunar de main siempre publica una ventana (la velocidad
+ * de la Luna varía dentro del ciclo), así que ese anillo es siempre franja. El tránsito avanza por su posición
  * dentro de la ventana (`(ahora − inicio) / (fin − inicio)`, como
  * `adaptTransitArcToData` de release), no por su cercanía al exacto.
  *
@@ -195,10 +196,11 @@ function anilloLunar(fuente: RitmoLunarFuente | null): Anillo {
   if (!c) {
     return anilloVacio("cumpleluna", cadence, "Necesitamos calcular dos Cumplelunas personales consecutivas para ubicar tu ritmo lunar.", fuente.limitations);
   }
-  // Release dibuja como franja toda precisión distinta de `exact`; la
-  // Cumpleluna de main nunca es `exact`, pero con hora natal exacta publica
-  // una ventana de un único día. Ese único valor se dibuja como punto; una
-  // ventana real, como franja.
+  // Release dibuja como franja toda precisión distinta de `exact`, y la
+  // Cumpleluna de main nunca es `exact`: aun con hora natal exacta, la
+  // ventana del día del ciclo sale de la variación de velocidad de la Luna y
+  // tiene ancho real. El punto queda sólo como resguardo para una ventana
+  // degenerada (arco cero).
   const enRango = c.cycleDayWindowDays.to > c.cycleDayWindowDays.from;
   const state = enRango
     ? `Día entre ${d1(Math.max(0, c.cycleDayWindowDays.from))} y ${d1(Math.max(0, c.cycleDayWindowDays.to))} de ${d1(c.cycleLengthDays)}`
