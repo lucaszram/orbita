@@ -41,7 +41,7 @@ export function HoyRankingBloque({
         : filas.map((fila, index) => {
             const vista = filaDeHoyComoVista(fila);
             return vista ? (
-              <PFila key={fila.clave} fila={vista} conCuerpo ultima={index === filas.length - 1} sinFase={null} />
+              <PFila key={fila.clave} fila={vista} conCuerpo={vista.cuerpo.length > 0} ultima={index === filas.length - 1} sinFase={null} />
             ) : (
               <View key={fila.clave} style={index > 0 && styles.filaSiguiente}>
                 <HoyRankingFilaFija fila={fila} />

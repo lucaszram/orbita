@@ -133,6 +133,9 @@ const TITULO: Record<HoyBloqueKey, string> = {
   cumpleluna: "CUMPLELUNA"
 };
 
+/** Con el panorama, la intro dice lo que «Por qué este orden» explica: el peso de cada contacto. */
+const INTRO_RANKING_PANORAMA = "Los contactos activos de hoy, ordenados por el peso de cada uno sobre tu carta.";
+
 const INTRO: Record<HoyBloqueKey, string> = {
   ranking: "Primero el contacto que la lectura pone al frente, después el resto de lo activo sobre tu carta.",
   luna: "Muestra por qué parte de tu carta está pasando la Luna y qué tema cotidiano activa durante estos días.",
@@ -294,7 +297,7 @@ export function HomeScreen() {
   const contador = etiquetaDeModulos(
     contarModulos({
       principal: principal !== null,
-      ranking: ranking.length > 0,
+      ranking: ranking.length > 0 || filasPanorama.length > 0,
       luna: luna !== null,
       cumpleluna: cumple !== null
     })
@@ -374,6 +377,9 @@ export function HomeScreen() {
 
   function cuerpoDe(key: HoyBloqueKey) {
     if (key === "ranking") {
+      // Con el panorama listo el ranking se dibuja aunque la guía siga en vuelo
+      // o haya fallado: son fuentes distintas y ésta ya tiene el dato.
+      if (filasPanorama.length > 0) return <HoyRankingBloque filas={ranking} panorama={filasPanorama} enlace={enlaceContactos} />;
       const estado = estadoDeLaGuia("ranking");
       if (estado) return estado;
       if (ranking.length === 0 && filasPanorama.length === 0) return <HoyFalta lineas={["La lectura de hoy no trajo tránsitos para ordenar."]} />;
@@ -471,7 +477,7 @@ export function HomeScreen() {
                         indice={numeroDeBloque(index)}
                         titulo={TITULO[key]}
                         cadencia={CADENCIA[key]}
-                        intro={INTRO[key]}
+                        intro={key === "ranking" && filasPanorama.length > 0 ? INTRO_RANKING_PANORAMA : INTRO[key]}
                       >
                         {cuerpoDe(key)}
                       </HoyBloque>
