@@ -35,8 +35,12 @@ import { pathToFileURL } from "node:url";
  * `accesoPostAlta`, `onboardingReadiness`, `umbralTarotWiring` y
  * `parityFoundations`— no mueven el número: sus casos cambiaron de superficie
  * (el ritual del Tarot vive ahora en el Umbral), no de cantidad.
+ *
+ * La primera comparación de Vínculos (CORE-212) suma 36 casos: 23 en
+ * `synastry.test.ts` (contactos, orbes, ejes, dimensiones, tono, precisión) y
+ * 13 en `vinculo.test.ts` (alta por nivel, fecha y hora, conteos): 883 + 36.
  */
-export const DEFAULT_MINIMUM = 883;
+export const DEFAULT_MINIMUM = 919;
 
 /**
  * Lee un contador del resumen final del runner de Node.

@@ -1,5 +1,33 @@
 # Current Task
 
+## Vínculos — la primera persona y su comparación real (CORE-212, 2026-09-06)
+
+**Objetivo:** que Vínculos deje de ser «Próximamente»: alta de la primera
+persona en tres pasos (nombre y tipo, nivel signo / fecha / carta, datos por
+nivel con buscador de lugar), persistencia del perfil con su carta calculada en
+el alta, y la comparación real entre las dos cartas en móvil y escritorio según
+el carril de Vínculos del tablero `02 · WEB — PARIDAD PROPUESTA`.
+
+**Contrato (aditivo):** `relationships.addPerson` (action) y
+`relationships.synastry` (query reactiva, sobre con `status`). Motor puro en
+`convex/lib/synastry.ts`. **Desvío de alcance declarado:** la ficha excluía
+`convex/schema.ts`, pero una query no puede llamar al proveedor, así que la carta
+de la persona se calcula en la action y se persiste: `relationshipProfiles` suma
+campos opcionales con los nombres que ya usa `release/1.0.0`. Los nombres de
+función evitan `savePerson` / `getComparison` de esa línea a propósito.
+
+**Decisiones:** nivel `fecha` acepta hora sólo junto con lugar (una hora sin
+zona no se puede ubicar; no se descarta en silencio); nivel `signo` lee el tono
+por elementos con `signEs` (el `sign` del proveedor viene en inglés); Free ve
+tres contactos y cuántos faltan, los conteos no se recortan; el CTA de Plus va a
+`/paywall`.
+
+**Estado:** rama `orb/core-212-primera-comparacion`, PR #90, revisión
+independiente r1 rechazada por dos bloqueos (tono con signo en inglés; hora
+descartada en nivel fecha), ambos corregidos junto con los laterales; segunda
+ronda pendiente. Backend sincronizado en Convex dev `beaming-lobster-442`.
+Producción bloqueada por la divergencia `main` / `release/1.0.0` (ver Linear).
+
 ## Umbral Tarot — el ritual sin la regla ni el rótulo repetidos (CORE-131, 2026-09-02)
 
 **Objetivo:** ocultar en el Umbral la regla superior y el rótulo
