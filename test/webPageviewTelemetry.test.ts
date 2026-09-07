@@ -35,6 +35,7 @@ import {
   PAGEVIEW_PROPERTIES,
   REFERRER_CLASSES,
   ROUTE_TEMPLATES,
+  canCapture,
   isValidEvent,
   validateEvent,
   type Environment,
@@ -51,6 +52,15 @@ import {
   pageviewWarning,
   retainedProperties
 } from "../src/analytics/routeClassification";
+import {
+  CONSENT_INSTRUMENT,
+  PERSISTED_NAVIGATION_KEYS,
+  PERSISTED_SESSION_NAVIGATION_KEYS,
+  beforeSendWith,
+  clientOptions,
+  consentUnder,
+  currentConsent
+} from "../src/analytics/webClientOptions";
 import { ROOT, importsOf, reachableFrom, resolveModule } from "./moduleGraph";
 
 const leer = (ruta: string) => readFileSync(join(ROOT, ruta), "utf8");
@@ -58,8 +68,24 @@ const leer = (ruta: string) => readFileSync(join(ROOT, ruta), "utf8");
 const cliente = leer("src/analytics/webTelemetry.tsx");
 const clienteNativo = leer("src/analytics/webTelemetry.native.tsx");
 const clasificacion = leer("src/analytics/routeClassification.ts");
+const opcionesFuente = leer("src/analytics/webClientOptions.ts");
+const flujo = leer("src/analytics/pageviewStream.ts");
+const arranque = leer("src/analytics/bootState.ts");
+const puenteArranque = leer("src/analytics/bootSurface.tsx");
+const gate = leer("src/components/orbita/AccountGate.tsx");
 const layout = leer("app/_layout.tsx");
 const legal = leer("src/components/web/orbita-legal.tsx");
+const contrato = leer("docs/analytics/event-contract.md");
+
+/** Un archivo sin comentarios: lo que corre, no lo que explica. */
+const codigo = (fuente: string) =>
+  fuente.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
+/** La configuración REAL que recibe `posthog.init`, no su texto. */
+const opciones = clientOptions({
+  apiHost: "https://ph.orbitaastrologia.xyz",
+  persisted: () => null
+});
 
 /** Una navegación cualquiera, con los reemplazos del caso. */
 const navegacion = (extra: Partial<Parameters<typeof decidePageview>[0]> = {}) =>
@@ -71,6 +97,13 @@ const navegacion = (extra: Partial<Parameters<typeof decidePageview>[0]> = {}) =
     environment: "production" as Environment,
     ...extra
   });
+
+/** Las siete propiedades del contrato, tal como salen de una visita real. */
+const navegacionEmitida = () => {
+  const decision = navegacion();
+  assert.ok(decision.emit);
+  return decision.properties;
+};
 
 // --- 1. El módulo de decisión es puro ----------------------------------------
 
@@ -450,30 +483,84 @@ test("las propiedades del contrato en el filtro son las del contrato", () => {
 // --- 7. El cliente: apagado por defecto, sin captura automática ---------------
 
 test("el cliente se configura con toda la captura automática apagada", () => {
-  const apagadas: Array<[string, string]> = [
-    ["autocapture", "autocapture: false"],
-    ["pageview automático", "capture_pageview: false"],
-    ["pageleave", "capture_pageleave: false"],
-    ["dead clicks", "capture_dead_clicks: false"],
-    ["excepciones", "capture_exceptions: false"],
-    ["web vitals", "capture_performance: false"],
-    ["rageclick", "rageclick: false"],
-    ["heatmaps", "enable_heatmaps: false"],
-    ["session replay", "disable_session_recording: true"],
-    ["encuestas", "disable_surveys: true"],
-    ["scripts externos", "disable_external_dependency_loading: true"],
-    ["feature flags", "advanced_disable_flags: true"]
-  ];
-  for (const [que, opcion] of apagadas) {
-    assert.ok(cliente.includes(opcion), `${que} no está apagado (${opcion})`);
+  // Sobre el OBJETO que recibe `posthog.init`, no sobre el texto del archivo:
+  // una opción mal escrita o movida a otro módulo se nota acá.
+  const apagadas = {
+    autocapture: false,
+    capture_pageview: false,
+    capture_pageleave: false,
+    capture_dead_clicks: false,
+    capture_exceptions: false,
+    capture_performance: false,
+    rageclick: false,
+    enable_heatmaps: false,
+    disable_session_recording: true,
+    disable_surveys: true,
+    disable_external_dependency_loading: true,
+    advanced_disable_flags: true
+  } as const;
+  for (const [opcion, valor] of Object.entries(apagadas)) {
+    assert.equal(
+      (opciones as Record<string, unknown>)[opcion],
+      valor,
+      `${opcion} tendría que valer ${valor}`
+    );
   }
+});
+
+test("el SDK no guarda navegación en el dispositivo", () => {
+  // Los defaults del SDK instalado son `true`: con ellos, CADA captura escribe
+  // el referrer crudo y la URL inicial en el almacenamiento del navegador,
+  // aunque `before_send` los descarte al enviar. Guardarlos ya es tratarlos.
+  assert.equal(opciones.save_campaign_params, false);
+  assert.equal(opciones.save_referrer, false);
+  assert.equal(opciones.store_google, false);
+  assert.equal(opciones.disable_capture_url_hashes, true);
+  assert.equal(opciones.mask_personal_data_properties, true);
+  // Y la persistencia NO se apaga entera: el distinct ID anónimo tiene que
+  // sobrevivir a la recarga (contrato, sección 7).
+  assert.equal(opciones.persistence, "localStorage");
+});
+
+test("lo que ninguna opción apaga se borra en la misma captura", () => {
+  const borradas: string[] = [];
+  const deSesion: string[] = [];
+  const antes = beforeSendWith(() => ({
+    unregister: (clave) => borradas.push(clave),
+    unregister_for_session: (clave) => deSesion.push(clave)
+  }));
+
+  antes({ uuid: "u", event: PAGEVIEW_EVENT, properties: {} } as never);
+
+  assert.deepEqual(borradas, [...PERSISTED_NAVIGATION_KEYS]);
+  assert.deepEqual(deSesion, [...PERSISTED_SESSION_NAVIGATION_KEYS]);
+  // Las dos escrituras que el SDK instalado hace pase lo que pase: el
+  // `SessionPropsManager` (referrer + URL de entrada) y la palabra que la
+  // persona buscó en Google.
+  assert.ok(PERSISTED_NAVIGATION_KEYS.includes("$client_session_props"));
+  assert.ok(PERSISTED_SESSION_NAVIGATION_KEYS.includes("ph_keyword"));
+  assert.ok(PERSISTED_SESSION_NAVIGATION_KEYS.includes("$search_engine"));
+});
+
+test("borrar lo persistido no depende de que el evento salga", () => {
+  // El borrado va ANTES del descarte: un evento que `before_send` tira igual
+  // dejó escrito lo suyo en el disco.
+  const borradas: string[] = [];
+  const antes = beforeSendWith(() => ({
+    unregister: (clave) => borradas.push(clave),
+    unregister_for_session: () => {}
+  }));
+  assert.equal(antes(null as never), null);
+  assert.ok(borradas.length > 0, "un evento descartado no limpió nada");
 });
 
 test("no hay identidad de persona en esta tarjeta", () => {
   // El distinct ID anónimo del SDK alcanza para contar visitantes; atar una
   // persona es otra tarjeta y hacerlo mal no se deshace.
-  for (const prohibido of [".identify(", ".alias(", ".reset(", "createAlias"]) {
-    assert.ok(!cliente.includes(prohibido), `el cliente llama a ${prohibido}`);
+  for (const fuente of [cliente, opcionesFuente, flujo]) {
+    for (const prohibido of [".identify(", ".alias(", ".reset(", "createAlias"]) {
+      assert.ok(!codigo(fuente).includes(prohibido), `la telemetría llama a ${prohibido}`);
+    }
   }
 });
 
@@ -491,6 +578,54 @@ test("el consentimiento decide, y lo decide el contrato", () => {
   assert.ok(cliente.includes('from "@/analytics/eventContract"'));
 });
 
+test("el instrumento de consentimiento está nombrado, no implícito", () => {
+  // Decisión de Lucas, 2026-09-07: para una visita anónima y sanitizada el
+  // instrumento aplicable es la política de privacidad publicada. Lo que se fija
+  // acá es que sea una decisión LEGIBLE y no un `granted` sin dueño.
+  assert.equal(CONSENT_INSTRUMENT, "privacy_policy");
+  assert.equal(consentUnder(CONSENT_INSTRUMENT, "web"), "granted");
+  assert.equal(canCapture(consentUnder(CONSENT_INSTRUMENT, "web")), true);
+});
+
+test("el consentimiento vale sólo en la web y sólo bajo ese instrumento", () => {
+  // Nativo mide por otro canal y esta política no lo cubre.
+  for (const plataforma of ["ios", "android", "", null, undefined]) {
+    assert.equal(consentUnder(CONSENT_INSTRUMENT, plataforma), "unknown", String(plataforma));
+    assert.equal(canCapture(consentUnder(CONSENT_INSTRUMENT, plataforma)), false);
+  }
+  // Un opt-in que todavía no existe no otorga nada: "todavía no contestó" es un no.
+  for (const otro of ["explicit_opt_in", "banner", "legitimate_interest", ""]) {
+    assert.equal(consentUnder(otro, "web"), "unknown", otro);
+  }
+});
+
+test("el consentimiento sigue la plataforma del build, no una constante suelta", () => {
+  const original = process.env.EXPO_OS;
+  try {
+    process.env.EXPO_OS = "web";
+    assert.equal(currentConsent(), "granted");
+    for (const plataforma of ["ios", "android"]) {
+      process.env.EXPO_OS = plataforma;
+      assert.equal(currentConsent(), "unknown", plataforma);
+    }
+    delete process.env.EXPO_OS;
+    assert.equal(currentConsent(), "unknown", "sin plataforma no se captura");
+  } finally {
+    if (original === undefined) delete process.env.EXPO_OS;
+    else process.env.EXPO_OS = original;
+  }
+});
+
+test("el consentimiento se pregunta en UN solo lugar", () => {
+  // Si mañana hay un banner, cambia `currentConsent` y nada más. Eso sólo es
+  // cierto si nadie más decide por su cuenta.
+  const emisores = [...reachableFrom(["app/_layout.tsx"], "web")].filter((modulo) =>
+    /\.(t|j)sx?$/.test(modulo)
+  );
+  const deciden = emisores.filter((modulo) => codigo(leer(modulo)).includes("CONSENT_INSTRUMENT"));
+  assert.deepEqual(deciden, ["src/analytics/webClientOptions.ts"]);
+});
+
 test("el entorno sale de la configuración de despliegue, nunca del hostname", () => {
   assert.match(cliente, /normalizeEnvironment\(extra\?\.environment\) \?\? "development"/);
   assert.ok(!/location\.hostname/.test(cliente), "el cliente mira el hostname");
@@ -499,12 +634,40 @@ test("el entorno sale de la configuración de despliegue, nunca del hostname", (
 });
 
 test("el único evento que puede salir es $pageview", () => {
-  assert.match(cliente, /if \(result\.event !== PAGEVIEW_EVENT\) return null;/);
-  assert.match(cliente, /properties: retainedProperties\(result\.properties\)/);
-  for (const bucket of ["$set: undefined", "$set_once: undefined", "$unset: undefined"]) {
-    assert.ok(cliente.includes(bucket), `${bucket} no se descarta`);
+  // Se EJECUTA el hook de salida real, con lo que el SDK arma de verdad.
+  const antes = beforeSendWith(() => null);
+  for (const otro of ["$web_vitals", "$exception", "$autocapture", "survey shown", "page_view"]) {
+    assert.equal(antes({ uuid: "u", event: otro, properties: {} } as never), null, otro);
   }
-  assert.equal((cliente.match(/\.capture\(/g) ?? []).length, 1);
+
+  const salida = antes({
+    uuid: "u",
+    event: PAGEVIEW_EVENT,
+    properties: {
+      ...navegacionEmitida(),
+      $current_url: "https://orbitaastrologia.xyz/vinculos/8f2c1a9b?utm_source=news#abajo",
+      $referrer: "https://www.google.com/search?q=orbita",
+      utm_source: "news",
+      $raw_user_agent: "Mozilla/5.0",
+      distinct_id: "01a0-7e1c"
+    },
+    $set: { $initial_referrer: "https://www.google.com/" },
+    $set_once: { $initial_current_url: "https://orbitaastrologia.xyz/hoy" }
+  } as never) as { properties: Record<string, unknown>; $set?: unknown; $set_once?: unknown };
+
+  assert.deepEqual(
+    Object.keys(salida.properties).sort(),
+    [...CONTRACT_PROPERTY_NAMES, "distinct_id"].sort()
+  );
+  assert.equal(salida.$set, undefined);
+  assert.equal(salida.$set_once, undefined);
+});
+
+test("la captura ocurre en un solo lugar de todo el módulo", () => {
+  for (const fuente of [cliente, flujo, opcionesFuente, arranque, puenteArranque]) {
+    assert.ok((codigo(fuente).match(/\.capture\(/g) ?? []).length <= 1);
+  }
+  assert.equal((codigo(flujo).match(/port\.capture\(/g) ?? []).length, 1);
 });
 
 test("el cliente no se monta en el render estático", () => {
@@ -522,8 +685,8 @@ test("el SDK entra por el build `slim`, y ese build existe", () => {
 });
 
 test("la identidad anónima persiste sin cookie", () => {
-  assert.match(cliente, /persistence: "localStorage"/);
-  assert.match(cliente, /person_profiles: "identified_only"/);
+  assert.equal(opciones.persistence, "localStorage");
+  assert.equal(opciones.person_profiles, "identified_only");
 });
 
 // --- 8. Un evento por navegación real ----------------------------------------
@@ -536,19 +699,78 @@ test("el efecto depende de la ruta y de nada más", () => {
   assert.match(cliente, /const pathname = usePathname\(\);/);
 });
 
-test("una redirección intermedia no cuenta: la ruta tiene que asentarse", () => {
-  // La ventana se lee de la fuente y no se importa: el módulo del cliente trae
-  // el SDK y `expo-constants`, que no tienen nada que hacer en esta suite.
-  const ventana = Number(cliente.match(/export const ROUTE_SETTLE_MS = (\d+);/)?.[1]);
-  assert.ok(ventana > 0, "la ventana de asentamiento no puede ser cero");
-  assert.ok(ventana <= 500, "una ventana larga retrasaría la visita real");
-  assert.match(cliente, /setTimeout\(/);
-  assert.match(cliente, /return \(\) => clearTimeout\(timer\);/);
+test("no queda ninguna ventana de tiempo: lo que decide es el arranque", () => {
+  // La primera versión esperaba 200 ms y contaba lo que quedara: una redirección
+  // más lenta que la ventana contaba la ruta intermedia y una navegación más
+  // rápida se cancelaba. La condición ahora es un hecho, no un plazo.
+  for (const fuente of [cliente, flujo, arranque, puenteArranque]) {
+    assert.doesNotMatch(codigo(fuente), /setTimeout|setInterval|requestAnimationFrame/);
+    assert.doesNotMatch(codigo(fuente), /ROUTE_SETTLE_MS|SETTLE_MS|_DELAY_MS/);
+  }
+  assert.match(codigo(flujo), /if \(bootPhase\(\) !== "resolved"\) return;/);
 });
 
-test("el pageview se emite una sola vez por navegación", () => {
-  assert.equal((cliente.match(/setTimeout\(/g) ?? []).length, 1);
-  assert.equal((cliente.match(/useEffect\(/g) ?? []).length, 1);
+test("el estado que evita el evento repetido vive en el MÓDULO, no en el componente", () => {
+  // Con el estado en la instancia, un remount o el doble efecto de StrictMode
+  // contaban la misma navegación de nuevo. El comportamiento se ejecuta en
+  // `webPageviewLifecycle.test.ts`; acá se fija dónde vive.
+  assert.doesNotMatch(codigo(cliente), /useRef|useState/);
+  assert.match(codigo(flujo), /^let decided: string \| null \| undefined;$/m);
+  assert.match(codigo(flujo), /^let emitted: EmittedPageview \| null = null;$/m);
+  assert.equal((codigo(cliente).match(/useEffect\(/g) ?? []).length, 1);
+});
+
+test("el gate marca el arranque, y sólo cuando muestra el contenido de su ruta", () => {
+  assert.match(codigo(gate), /const arranque = useBootSurface\(\);/);
+  assert.match(codigo(gate), /const enDestino = \(\) => <AtDestination surface=\{arranque\}>/);
+  // Ni una espera, ni un aviso, ni una redirección quedan marcadas como destino.
+  const marcados = codigo(gate).match(/<AtDestination[\s\S]*?<\/AtDestination>/g) ?? [];
+  assert.ok(marcados.length > 0);
+  for (const bloque of marcados) {
+    for (const prohibido of ["Redirect", "MinimalLoading", "ErrorState", "UnconfirmedSessionScreen"]) {
+      assert.ok(!bloque.includes(prohibido), `el gate marca ${prohibido} como destino`);
+    }
+  }
+});
+
+test("la lógica de destino del gate sigue intacta", () => {
+  // La señal se agrega envolviendo lo que ya se devolvía; las decisiones son las
+  // mismas y las cuatro redirecciones siguen saliendo sin marcar nada.
+  for (const ruta of ["SIGN_IN_ROUTE", "ONBOARDING_ROUTE", "EDIT_BIRTH_DATA_ROUTE", "HOME_ROUTE"]) {
+    assert.ok(
+      codigo(gate).includes(`return <Redirect href={${ruta} as never} />;`),
+      `cambió la redirección a ${ruta}`
+    );
+  }
+  assert.match(codigo(gate), /const permitido = destinationAllows\(destination, surface\);/);
+  assert.equal((codigo(gate).match(/<Redirect/g) ?? []).length, 4);
+});
+
+test("el arranque y el contador no importan el SDK, ni React, ni expo", () => {
+  // Si el contador arrastrara el runtime, "un evento por navegación" volvería a
+  // ser una afirmación sobre el texto de un archivo.
+  for (const modulo of ["src/analytics/pageviewStream.ts", "src/analytics/bootState.ts"]) {
+    for (const spec of importsOf(join(ROOT, modulo))) {
+      assert.doesNotMatch(spec, /posthog|^react|^expo|convex/, `${modulo} importa ${spec}`);
+    }
+  }
+  // El puente con React es lo único que toca React, y no toca nada más.
+  assert.deepEqual(importsOf(join(ROOT, "src/analytics/bootSurface.tsx")), [
+    "react",
+    "@/analytics/bootState"
+  ]);
+});
+
+test("las opciones del SDK lo nombran sólo como tipo", () => {
+  // `import type` lo borra Babel: el módulo se puede importar en Node —que es lo
+  // que permite probar la configuración de verdad— y no mete el SDK en el grafo.
+  assert.match(opcionesFuente, /import type \{ PostHogConfig \} from "posthog-js\/dist\/module\.slim";/);
+  assert.deepEqual(
+    importsOf(join(ROOT, "src/analytics/webClientOptions.ts")).filter((spec) =>
+      spec.startsWith("posthog")
+    ),
+    []
+  );
 });
 
 test("el layout raíz monta la telemetría una vez, fuera de los proveedores", () => {
@@ -654,6 +876,33 @@ test("Privacidad dice que la visita es anónima y sin la dirección completa", (
   assert.match(legal, /No guardamos la dirección completa/);
 });
 
+test("el contrato registra la aclaración de consentimiento con su fecha", () => {
+  const inicio = contrato.indexOf("### Aclaración registrada 2026-09-07");
+  assert.ok(inicio > 0, "el documento no registra la aclaración");
+  // Va DENTRO de privacidad y consentimiento, no en una sección nueva.
+  assert.ok(contrato.indexOf("## 8. Privacidad y consentimiento") < inicio);
+  assert.ok(inicio < contrato.indexOf("## 9."));
+
+  const aclaracion = contrato.slice(inicio, contrato.indexOf("## 9.")).replace(/[ \t]*\n[ \t]*/g, " ");
+  assert.match(aclaracion, /`\$pageview` \*\*anónimo y sanitizado de la web\*\*/);
+  assert.match(aclaracion, /consentimiento aplicable es la \*\*política de privacidad vigente\*\*/);
+  assert.match(aclaracion, /No hay banner/);
+  // Un opt-in futuro cambia un solo lugar, y el documento dice cuál.
+  assert.match(aclaracion, /`currentConsent\(\)`/);
+  assert.match(aclaracion, /src\/analytics\/webClientOptions\.ts/);
+});
+
+test("la aclaración es aclaración: no sube la versión del contrato", () => {
+  const aclaracion = contrato
+    .slice(contrato.indexOf("### Aclaración registrada 2026-09-07"), contrato.indexOf("## 9."))
+    .replace(/[ \t]*\n[ \t]*/g, " ");
+  assert.match(aclaracion, /\*\*aclaración, no un cambio de contrato\*\*/);
+  assert.match(aclaracion, /no sube `CONTRACT_VERSION`/);
+  // Y efectivamente no la subió: el evento sigue viajando con la misma versión.
+  assert.equal(CONTRACT_VERSION, "1.0.0");
+  assert.equal(navegacionEmitida().contract_version, "1.0.0");
+});
+
 // --- 12. Nada de eventos de producto en esta tarjeta -------------------------
 
 test("esta tarjeta emite $pageview y ningún evento de producto", () => {
@@ -665,7 +914,9 @@ test("esta tarjeta emite $pageview y ningún evento de producto", () => {
     "purchase_completed",
     "page_view"
   ]) {
-    assert.ok(!cliente.includes(deOtraTarjeta), `el cliente emite ${deOtraTarjeta}`);
+    for (const fuente of [cliente, flujo, opcionesFuente, arranque, puenteArranque]) {
+      assert.ok(!codigo(fuente).includes(deOtraTarjeta), `la telemetría emite ${deOtraTarjeta}`);
+    }
     assert.ok(!clasificacion.includes(`"${deOtraTarjeta}"`), `la decisión conoce ${deOtraTarjeta}`);
   }
 });
