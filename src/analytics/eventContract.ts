@@ -201,8 +201,8 @@ export type CommonEventProperties = {
 };
 
 export type PageviewEventProperties = CommonEventProperties & {
-  /** Plantilla de ruta ya sanitizada (`/reading/:id`), nunca la URL real. */
-  readonly path: string;
+  /** Una plantilla del catálogo (`/vinculos/:profileId`), nunca la URL real. */
+  readonly path: RoutePath;
   readonly acquisition_source: AcquisitionSource;
 };
 
@@ -307,53 +307,153 @@ export function normalizeAcquisitionSource(referrerClass: unknown): AcquisitionS
 
 // --- Rutas sanitizadas -------------------------------------------------------
 
-/** Un parámetro de plantilla: `:id`, `:slug`, `:topicId`. */
-const PATH_PARAM = /^:[a-z][a-zA-Z0-9]*$/;
-/** Un segmento literal estable: minúsculas, dígitos y guiones. */
-const PATH_LITERAL = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+/**
+ * Catálogo cerrado de rutas: las plantillas que el router del producto expone.
+ *
+ * Es una LISTA, no una forma, y esa es la corrección central de esta revisión.
+ * Validar `path` por forma no alcanza: `/perfil/nombrepersona`,
+ * `/ciudad/lugarnatal` y `/reading/identificadordinamico` son minúsculas con
+ * guiones, así que pasaban como "sanitizadas" mientras llevaban adentro el
+ * nombre o el lugar de nacimiento de alguien. Ninguna regla de texto distingue
+ * un slug legítimo de un nombre propio — son la misma cadena. La única
+ * diferencia verificable es si la ruta EXISTE en el producto.
+ *
+ * Origen confiable: el árbol de rutas del router (`app/**`). El catálogo se
+ * mantiene a mano acá, y `test/analyticsEventContract.test.ts` lo deriva del
+ * árbol real y falla diciendo exactamente qué plantilla sobra o falta. Sí: una
+ * ruta nueva es un cambio de contrato (minor, sección 10 del documento). Ése es
+ * el precio de que `path` no pueda transportar texto de nadie, y el test lo
+ * cobra en un renglón.
+ *
+ * Los grupos del router (`(tabs)`) no existen en la URL pública y tampoco acá.
+ * Un segmento dinámico viaja siempre como plantilla (`:profileId`), nunca con su
+ * valor: el id de un vínculo es el de OTRA persona.
+ */
+export const ROUTE_TEMPLATES = [
+  "/",
+  "/backoffice",
+  "/carta",
+  "/carta-full",
+  "/checkout/success",
+  "/crear-cuenta",
+  "/diario",
+  "/editar-datos",
+  "/empezar",
+  "/home",
+  "/hoy",
+  "/hoy/arco",
+  "/hoy/cumpleluna",
+  "/hoy/luna",
+  "/iniciar-sesion",
+  "/lab",
+  "/login",
+  "/onboarding",
+  "/paywall",
+  "/perfil",
+  "/perfil/ajustes",
+  "/perfil/carta",
+  "/perfil/carta/completa",
+  "/perfil/carta/mapa-elemental",
+  "/perfil/carta/tipo-lunar",
+  "/personalidad",
+  "/preview-alta",
+  "/privacy",
+  "/profile",
+  "/reading/calendario",
+  "/reading/carta",
+  "/reading/carta-completa",
+  "/reading/cuatro-ritmos",
+  "/reading/deep-dive",
+  "/reading/diario",
+  "/reading/estacion-vital",
+  "/reading/long-read",
+  "/reading/luna",
+  "/reading/personalidad",
+  "/reading/plus",
+  "/reading/rueda",
+  "/reading/saved",
+  "/reading/tema-del-ano",
+  "/reading/topic",
+  "/reading/transito",
+  "/reading/transitos",
+  "/reading/valores",
+  "/reading/vinculo-result",
+  "/reading/void",
+  "/recepcion",
+  "/studio",
+  "/support",
+  "/terminos",
+  "/transito",
+  "/transitos",
+  "/transitos/arco/:arcId",
+  "/transitos/capa/:layer",
+  "/transitos/momento",
+  "/umbral",
+  "/vacio",
+  "/valores",
+  "/vinculo",
+  "/vinculos",
+  "/vinculos/:profileId",
+  "/vinculos/:profileId/comparacion",
+  "/vinculos/conectar"
+] as const;
+
+/** Una ruta del catálogo. Es el único valor admisible para `path`. */
+export type RoutePath = (typeof ROUTE_TEMPLATES)[number];
 
 /**
- * ¿Este segmento es un identificador crudo disfrazado de ruta?
+ * `path` sanitizada: una plantilla del catálogo, exactamente.
  *
- * Un id en la ruta es PII de hecho: identifica a una persona o a su contenido, y
- * además hace explotar la cardinalidad de la métrica. La plantilla dice
- * `/reading/:id`; el valor concreto se queda en el dispositivo.
+ * Sin query, sin fragmento, sin barra final, sin URL absoluta y sin segmentos
+ * dinámicos: no porque se busquen esas formas una por una, sino porque nada de
+ * eso está en el catálogo. Lo desconocido se rechaza por defecto.
  */
-function looksLikeRawId(segment: string): boolean {
-  if (/^\d+$/.test(segment)) return true;
-  if (UUID.test(segment)) return true;
-  if (/^[0-9a-f]{12,}$/.test(segment)) return true;
-  // Cadena larga con dígitos: los ids opacos de los proveedores viven acá.
-  if (segment.length >= 16 && /\d/.test(segment)) return true;
-  return false;
+export function isSanitizedPath(value: unknown): value is RoutePath {
+  return isMember(ROUTE_TEMPLATES, value);
 }
 
 /**
- * `path` sanitizada: plantilla de ruta pública, sin query, sin fragmento, sin
- * identificadores dinámicos y sin PII.
+ * Ruta real -> plantilla del catálogo, o `null`.
  *
- * Se valida por FORMA, no contra una lista de rutas: el contrato de medición no
- * puede quedar atado al mapa de navegación, o cada ruta nueva sería un cambio de
- * contrato. Los grupos de expo-router (`(tabs)`) no existen en la URL pública y
- * por lo tanto tampoco acá.
+ * Es la sanitización del borde, hecha una sola vez y acá, para que ninguna
+ * pantalla tenga que reimplementarla: recibe un `pathname` (que por definición
+ * no trae query ni fragmento) y devuelve SIEMPRE un elemento de
+ * `ROUTE_TEMPLATES` o nada. El valor del segmento dinámico no sobrevive a la
+ * llamada — entra `/vinculos/nombre-de-alguien` y sale `/vinculos/:profileId`.
+ *
+ * Una ruta que no está en el catálogo devuelve `null`, y sin `path` no hay
+ * `$pageview`: es preferible perder una visita a publicar un dato de alguien.
  */
-export function isSanitizedPath(value: unknown): boolean {
-  if (typeof value !== "string") return false;
-  if (value === "/") return true;
-  if (!value.startsWith("/") || value.length > 120) return false;
-  if (/[?#]/.test(value)) return false;
-  if (/\s/.test(value)) return false;
-  if (value.includes("//") || value.endsWith("/")) return false;
+export function matchRoutePath(value: unknown): RoutePath | null {
+  if (typeof value !== "string") return null;
+  if (!value.startsWith("/") || value.includes("//")) return null;
+  if (/[?#]/.test(value) || /\s/.test(value)) return null;
 
-  return value
-    .slice(1)
-    .split("/")
-    .every((segment) => {
-      if (PATH_PARAM.test(segment)) return true;
-      if (!PATH_LITERAL.test(segment)) return false;
-      return !looksLikeRawId(segment);
-    });
+  // Una barra final es la misma ruta; el catálogo la escribe sin ella.
+  const path = value.length > 1 && value.endsWith("/") ? value.slice(0, -1) : value;
+  const segments = path === "/" ? [] : path.slice(1).split("/");
+  if (segments.some((segment) => segment.length === 0)) return null;
+
+  const matches = ROUTE_TEMPLATES.filter((template) => {
+    const parts = template === "/" ? [] : template.slice(1).split("/");
+    if (parts.length !== segments.length) return false;
+    return parts.every((part, i) => part.startsWith(":") || part === segments[i]);
+  });
+  if (matches.length === 0) return null;
+
+  // Precedencia del router: ante dos plantillas del mismo largo, gana la que
+  // tiene el segmento literal más a la izquierda (`/vinculos/conectar` no es un
+  // `:profileId` que se llama "conectar").
+  return matches.reduce((mejor, candidata) => {
+    const a = mejor.slice(1).split("/");
+    const b = candidata.slice(1).split("/");
+    for (let i = 0; i < a.length; i++) {
+      const dinamicaA = a[i].startsWith(":");
+      const dinamicaB = b[i].startsWith(":");
+      if (dinamicaA !== dinamicaB) return dinamicaA ? candidata : mejor;
+    }
+    return mejor;
+  });
 }
 
 // --- PII ---------------------------------------------------------------------
@@ -574,8 +674,9 @@ export function validateEvent(input: EventInput): ValidationResult {
       code: "unsanitized_path",
       property: "path",
       message:
-        `path ${String(properties.path)} no es una plantilla sanitizada: ` +
-        "sin query, sin fragmento, sin identificadores dinámicos y sin PII (por ejemplo /reading/:id)."
+        `path ${String(properties.path)} no está en el catálogo de rutas del contrato: ` +
+        "sólo se acepta una plantilla declarada, con sus segmentos dinámicos sin resolver " +
+        "(por ejemplo /vinculos/:profileId)."
     });
   }
 
@@ -633,33 +734,86 @@ export function requiresIdentityReset(event: unknown): boolean {
 }
 
 /**
- * ¿Sirve como identificador para `identify`?
+ * Los dos emisores de identidad interna que este contrato reconoce.
  *
- * Sólo un identificador interno estable y opaco. Nada de email, nombre, fecha o
- * lugar de nacimiento: un identificador viaja a un sistema de analítica y queda
- * ahí, así que tiene que ser un dato que no signifique nada fuera de nuestra
- * base.
+ * `identify` manda un identificador a un sistema de analítica y ahí se queda,
+ * así que la pregunta no es "¿este texto parece PII?" sino "¿quién emitió esto y
+ * con qué forma?". Lo primero no se puede contestar mirando una cadena:
+ * `NombreApellido` y `LugarNatal` son letras y no hay heurística de texto que los
+ * distinga de un slug interno — la v1.0.0 los aceptaba justamente por eso.
+ *
+ * - `account` — la cuenta, tal como la emite el proveedor de identidad (Clerk).
+ *   Es el `clerkUserId` que el producto ya usa como clave estable de persona.
+ * - `installation` — la instalación, un UUID v4 que la app sortea una sola vez y
+ *   guarda local (`docs/handoff-claude-product-events.md`). No identifica a
+ *   nadie fuera de nuestra base y no se deriva de ningún dato del dispositivo.
+ *
+ * Sumar un emisor es un cambio minor y exige declarar su formato acá.
  */
-export function isStableInternalIdentifier(value: unknown): boolean {
-  if (typeof value !== "string") return false;
-  const id = value.trim();
-  if (id.length < 8 || id.length > 64) return false;
-  if (id !== value) return false;
-  if (!/^[A-Za-z0-9_:.-]+$/.test(id)) return false;
-  return !valueLooksLikePii(id);
+export const IDENTITY_SOURCES = ["account", "installation"] as const;
+export type IdentitySource = (typeof IDENTITY_SOURCES)[number];
+
+/**
+ * Un identificador con su origen DECLARADO.
+ *
+ * El origen no se adivina: lo declara quien llama, que es el único que lo sabe.
+ * Esa declaración es la frontera, y es lo que hace verificable al formato: sin
+ * ella, `user_...` y un nombre propio son dos cadenas y nada más.
+ */
+export type InternalIdentifier = {
+  readonly source: IdentitySource;
+  readonly value: string;
+};
+
+/**
+ * El formato exacto de cada emisor. Estrecho a propósito: si un día no encaja,
+ * el contrato se cierra (no hay `identify`) en vez de dejar pasar cualquier cosa.
+ */
+const IDENTIFIER_FORMATS: Readonly<Record<IdentitySource, RegExp>> = {
+  // Clerk emite `user_` + base62 (27 caracteres en la práctica).
+  account: /^user_[A-Za-z0-9]{24,32}$/,
+  // UUID v4 canónico en minúsculas, con su nibble de versión y su variante.
+  installation: /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+};
+
+/**
+ * ¿Esto sirve como identificador para `identify`?
+ *
+ * Dos condiciones, las dos verificables: el origen está en el catálogo cerrado y
+ * el valor tiene exactamente la forma que ese emisor produce. Nada de escanear
+ * el texto buscando PII — un dato personal no se reconoce, se descarta por no
+ * venir de donde tiene que venir.
+ *
+ * Lo que el contrato NO puede verificar, y por eso está escrito: que el valor
+ * declarado como `account` haya salido de verdad del proveedor de identidad. Eso
+ * es una obligación de quien llama, y el documento la nombra como tal.
+ */
+export function isStableInternalIdentifier(value: unknown): value is InternalIdentifier {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as { readonly source?: unknown; readonly value?: unknown };
+  if (!isMember(IDENTITY_SOURCES, candidate.source)) return false;
+  if (typeof candidate.value !== "string") return false;
+  return IDENTIFIER_FORMATS[candidate.source].test(candidate.value);
 }
 
 /**
- * `alias` sólo cuando hay DOS identificadores estables reales y distintos que
- * hay que vincular. En el flujo normal no hay nada que aliasar: el distinct ID
- * anónimo del SDK se mantiene desde la primera visita y `identify` lo vincula.
+ * `alias` sólo para unir DOS emisores distintos sobre la misma persona: la
+ * instalación anónima de ayer y la cuenta de hoy. Es el único vínculo que falta,
+ * porque el distinct ID anónimo del SDK ya viaja desde la primera visita y
+ * `identify` lo ata solo.
+ *
+ * Dos identificadores del MISMO emisor son dos sujetos distintos por definición
+ * —Clerk emite una cuenta por persona, la app un UUID por instalación—, así que
+ * aliasarlos no vincula: fusiona dos perfiles en uno y no hay forma limpia de
+ * deshacerlo. Ese caso se rechaza acá y no depende de que nadie se acuerde.
  */
-export function canAlias(input: { readonly current: unknown; readonly incoming: unknown }): boolean {
-  return (
-    isStableInternalIdentifier(input.current) &&
-    isStableInternalIdentifier(input.incoming) &&
-    input.current !== input.incoming
-  );
+export function canAlias(input: {
+  readonly current: unknown;
+  readonly incoming: unknown;
+}): boolean {
+  const { current, incoming } = input;
+  if (!isStableInternalIdentifier(current) || !isStableInternalIdentifier(incoming)) return false;
+  return current.source !== incoming.source && current.value !== incoming.value;
 }
 
 // --- Consentimiento ----------------------------------------------------------

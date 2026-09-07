@@ -15,8 +15,8 @@
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join, relative } from "node:path";
 
 import {
   ACQUISITION_SOURCES,
@@ -26,11 +26,13 @@ import {
   ENVIRONMENTS,
   EVENT_DEFINITIONS,
   EVENT_NAMES,
+  IDENTITY_SOURCES,
   LEGACY_EVENT_NAMES,
   PAGEVIEW_PROPERTIES,
   PLATFORMS,
   REFERRER_CLASSES,
   RESET_TRIGGERS,
+  ROUTE_TEMPLATES,
   SECTIONS,
   SURFACES,
   canAlias,
@@ -39,6 +41,7 @@ import {
   isStableInternalIdentifier,
   isSupportedContractVersion,
   isValidEvent,
+  matchRoutePath,
   normalizeAcquisitionSource,
   normalizeEnvironment,
   requiredPropertiesFor,
@@ -63,7 +66,7 @@ const comunes = (extra: Record<string, unknown> = {}): Record<string, unknown> =
 /** Un `$pageview` válido, que es el único con propiedades propias. */
 const pageview = (extra: Record<string, unknown> = {}): EventInput => ({
   name: "$pageview",
-  properties: comunes({ path: "/reading/:id", acquisition_source: "organic_search", ...extra })
+  properties: comunes({ path: "/hoy", acquisition_source: "organic_search", ...extra })
 });
 
 const codigos = (input: EventInput): ValidationIssueCode[] =>
@@ -356,21 +359,151 @@ test("la allowlist es cerrada: una propiedad no declarada no entra", () => {
   );
 });
 
-// --- 8. Rutas sanitizadas ---------------------------------------------------
+// --- 8. Rutas: catálogo cerrado, no forma -----------------------------------
 
-test("path no sanitizada se rechaza: query, fragmento e id dinámico crudo", () => {
+/**
+ * Las rutas públicas derivadas del árbol del router, con sus mismas reglas:
+ * los grupos `(tabs)` desaparecen de la URL, `index` es el padre, `[param]` es
+ * `:param`, y los `_layout` / `+not-found` no son rutas.
+ *
+ * Se deriva acá, del árbol real, para que el catálogo del contrato no pueda
+ * quedar viejo en silencio: una ruta nueva sin declarar rompe este test.
+ */
+const rutasDelRouter = (): string[] => {
+  const base = join(ROOT, "app");
+  const archivos: string[] = [];
+  const recorrer = (dir: string): void => {
+    for (const entrada of readdirSync(dir)) {
+      const completo = join(dir, entrada);
+      if (statSync(completo).isDirectory()) recorrer(completo);
+      else archivos.push(completo);
+    }
+  };
+  recorrer(base);
+
+  const rutas = new Set<string>();
+  for (const archivo of archivos) {
+    const partes = relative(base, archivo).replace(/\.tsx?$/, "").split("/");
+    if (partes.some((parte) => parte.startsWith("_") || parte.startsWith("+"))) continue;
+    const segmentos = partes
+      .filter((parte) => !/^\(.*\)$/.test(parte))
+      .map((parte) => parte.replace(/^\[(\.\.\.)?(.+)\]$/, (_m, resto, nombre) => (resto ? "*" : ":") + nombre));
+    if (segmentos[segmentos.length - 1] === "index") segmentos.pop();
+    rutas.add("/" + segmentos.join("/"));
+  }
+  return [...rutas].sort();
+};
+
+/** Los tres casos exactos que la v1.0.0 dejaba pasar validando por forma. */
+const SEGMENTOS_DINAMICOS_DISFRAZADOS = [
+  "/perfil/nombrepersona",
+  "/ciudad/lugarnatal",
+  "/reading/identificadordinamico"
+];
+
+test("el catálogo de rutas es EXACTAMENTE el árbol del router", () => {
+  // El origen confiable del catálogo es `app/**`, y esta igualdad es lo que lo
+  // mantiene confiable: sin ella el catálogo envejece y alguien lo "arregla"
+  // aflojando la validación, que es de dónde salió el agujero.
+  assert.deepEqual([...ROUTE_TEMPLATES].sort(), rutasDelRouter());
+});
+
+test("cada plantilla del catálogo está bien formada y se acepta a sí misma", () => {
+  for (const plantilla of ROUTE_TEMPLATES) {
+    assert.ok(plantilla.startsWith("/"), `${plantilla} no arranca en /`);
+    assert.doesNotMatch(plantilla, /[?#\s]|\/\/|\(|\)/, `${plantilla} trae ruido de URL`);
+    if (plantilla !== "/") assert.ok(!plantilla.endsWith("/"), `${plantilla} termina en /`);
+    for (const segmento of plantilla === "/" ? [] : plantilla.slice(1).split("/")) {
+      assert.match(
+        segmento,
+        /^(:[a-z][a-zA-Z0-9]*|[a-z0-9]+(?:-[a-z0-9]+)*)$/,
+        `${plantilla}: el segmento ${segmento} no es literal ni parámetro`
+      );
+    }
+    assert.equal(isSanitizedPath(plantilla), true, `${plantilla} debería ser válida`);
+    assert.equal(isValidEvent(pageview({ path: plantilla })), true, plantilla);
+  }
+});
+
+test("un segmento dinámico resuelto NO es una ruta sanitizada", () => {
+  // El rechazo de la revisión, tal cual: estas tres pasaban por ser minúsculas
+  // con guiones, y llevaban adentro el nombre o el lugar de nacimiento de
+  // alguien. La forma no las distingue de un slug legítimo; el catálogo sí.
+  for (const path of SEGMENTOS_DINAMICOS_DISFRAZADOS) {
+    assert.equal(isSanitizedPath(path), false, `${path} no debería pasar como sanitizada`);
+    assert.ok(
+      codigos(pageview({ path })).includes("unsanitized_path"),
+      `${path} no dio unsanitized_path`
+    );
+  }
+});
+
+test("PII con forma de slug se rechaza en cualquier ruta, exista o no el prefijo", () => {
+  // `/vinculos` y `/perfil` SÍ existen: lo que no existe es la ruta completa. Un
+  // nombre propio en el segmento dinámico es exactamente el caso que importa,
+  // porque el id de un vínculo es el de otra persona.
+  for (const path of [
+    "/vinculos/juan-perez",
+    "/vinculos/maria-lopez/comparacion",
+    "/perfil/lucas",
+    "/perfil/carta/nombrepersona",
+    "/ciudad/buenos-aires",
+    "/reading/mi-carta-natal",
+    "/hoy/alguien",
+    "/transitos/arco/nombre-de-alguien"
+  ]) {
+    assert.equal(isSanitizedPath(path), false, `${path} no debería pasar como sanitizada`);
+  }
+});
+
+test("un id crudo tampoco entra, en ninguno de sus formatos", () => {
+  for (const path of [
+    "/vinculos/42",
+    "/vinculos/8f2c1a9b-4d5e-4f6a-9b8c-1d2e3f4a5b6c",
+    "/vinculos/a1b2c3d4e5f6a7b8",
+    "/vinculos/user_2abcDEF456ghiJKL",
+    "/transitos/arco/7",
+    "/reading/8f2c1a9b"
+  ]) {
+    assert.equal(isSanitizedPath(path), false, path);
+  }
+});
+
+test("una plantilla inventada no es una plantilla: el parámetro no es un comodín", () => {
+  // Escribir `:algo` no habilita nada por sí solo. Si la plantilla no está
+  // declarada, no existe — si no, alcanzaría con inventar un nombre de
+  // parámetro para colar cualquier prefijo.
+  for (const path of [
+    "/reading/:id",
+    "/vinculo/:vinculoId/resultado",
+    "/perfil/:nombre",
+    "/vinculos/:otroParametro",
+    "/:algo",
+    "/vinculos/:profileId/:otro"
+  ]) {
+    assert.equal(isSanitizedPath(path), false, path);
+  }
+});
+
+test("query, fragmento, barra y URL absoluta se rechazan por no estar en el catálogo", () => {
   const sucias = [
     "/home?utm_source=instagram",
     "/home#seccion",
-    "/reading/42",
-    "/reading/8f2c1a9b-4d5e-4f6a-9b8c-1d2e3f4a5b6c",
-    "/reading/a1b2c3d4e5f6a7b8",
-    "/perfil/user_2abcDEF456ghiJKL",
-    "/perfil/alguien@example.com",
-    "https://orbitaastrologia.xyz/home",
-    "reading/:id",
     "/home/",
+    "//home",
+    "/home//hoy",
+    "/perfil/alguien@example.com",
+    "/perfil/alguien%40example.com",
+    "https://orbitaastrologia.xyz/home",
+    "orbitaastrologia.xyz/home",
+    "home",
+    "/HOME",
+    "/Home",
+    "/perfil/josé",
+    "/perfil/../perfil/juan",
     "/mi ruta",
+    " /home",
+    "/home ",
     ""
   ];
   for (const path of sucias) {
@@ -384,24 +517,97 @@ test("path no sanitizada se rechaza: query, fragmento e id dinámico crudo", () 
   }
 });
 
-test("las plantillas de ruta sí pasan", () => {
-  for (const path of [
-    "/",
-    "/home",
-    "/reading/:id",
-    "/reading/carta-completa",
-    "/checkout/success",
-    "/iniciar-sesion",
-    "/vinculo/:vinculoId/resultado"
-  ]) {
-    assert.equal(isSanitizedPath(path), true, `${path} debería ser válida`);
+test("path sólo acepta strings", () => {
+  for (const valor of [null, undefined, 42, {}, ["/home"], true]) {
+    assert.equal(isSanitizedPath(valor), false, String(valor));
   }
 });
 
-test("path sólo acepta strings", () => {
-  for (const valor of [null, undefined, 42, {}, ["/home"]]) {
-    assert.equal(isSanitizedPath(valor), false, String(valor));
+test("matchRoutePath devuelve SIEMPRE una plantilla del catálogo, o null", () => {
+  // La propiedad que hace segura a la sanitización del borde: nada de lo que
+  // entra puede salir. La salida pertenece al catálogo o no hay salida.
+  const entradas = [
+    "/",
+    "/hoy",
+    "/vinculos/juan-perez",
+    "/vinculos/8f2c1a9b-4d5e-4f6a-9b8c-1d2e3f4a5b6c",
+    "/vinculos/alguien@example.com/comparacion",
+    "/transitos/arco/1991-04-17",
+    "/transitos/capa/Lucas%20Ramos",
+    "/perfil/nombrepersona",
+    "/ciudad/lugarnatal",
+    "/home?utm_source=x",
+    "/home#seccion",
+    "https://orbitaastrologia.xyz/home",
+    "",
+    null,
+    42
+  ];
+  for (const entrada of entradas) {
+    const plantilla = matchRoutePath(entrada);
+    if (plantilla === null) continue;
+    assert.equal(isSanitizedPath(plantilla), true, `${String(entrada)} -> ${plantilla}`);
+    assert.ok(
+      (ROUTE_TEMPLATES as readonly string[]).includes(plantilla),
+      `${String(entrada)} -> ${plantilla} no está en el catálogo`
+    );
   }
+});
+
+test("matchRoutePath no deja sobrevivir el valor del segmento dinámico", () => {
+  // [ruta real, plantilla esperada, el valor que NO puede quedar en la salida]
+  const casos: Array<[string, string, string]> = [
+    ["/vinculos/juan-perez", "/vinculos/:profileId", "juan-perez"],
+    ["/vinculos/maria-lopez/comparacion", "/vinculos/:profileId/comparacion", "maria-lopez"],
+    [
+      "/vinculos/8f2c1a9b-4d5e-4f6a-9b8c-1d2e3f4a5b6c",
+      "/vinculos/:profileId",
+      "8f2c1a9b-4d5e-4f6a-9b8c-1d2e3f4a5b6c"
+    ],
+    ["/transitos/arco/nombre-de-alguien", "/transitos/arco/:arcId", "nombre-de-alguien"],
+    ["/transitos/capa/1991-04-17", "/transitos/capa/:layer", "1991-04-17"]
+  ];
+  for (const [crudo, esperado, valor] of casos) {
+    const plantilla = matchRoutePath(crudo);
+    assert.equal(plantilla, esperado, crudo);
+    assert.ok(!String(plantilla).includes(valor), `${valor} sobrevivió a la llamada`);
+  }
+});
+
+test("matchRoutePath prefiere el literal al parámetro", () => {
+  // `/vinculos/conectar` es una pantalla, no un vínculo que se llama "conectar".
+  assert.equal(matchRoutePath("/vinculos/conectar"), "/vinculos/conectar");
+  assert.equal(matchRoutePath("/vinculos/otra-cosa"), "/vinculos/:profileId");
+  assert.equal(matchRoutePath("/perfil/carta/completa"), "/perfil/carta/completa");
+});
+
+test("matchRoutePath devuelve null para lo que no es una ruta del producto", () => {
+  for (const entrada of [
+    "/perfil/nombrepersona",
+    "/ciudad/lugarnatal",
+    "/reading/identificadordinamico",
+    "/vinculos/juan/perez/extra",
+    "/home?utm_source=x",
+    "/home#seccion",
+    "//home",
+    "/mi ruta",
+    "https://orbitaastrologia.xyz/home",
+    "home",
+    "",
+    null,
+    undefined,
+    42,
+    {},
+    ["/home"]
+  ]) {
+    assert.equal(matchRoutePath(entrada), null, String(entrada));
+  }
+});
+
+test("matchRoutePath tolera la barra final, que es la misma ruta", () => {
+  assert.equal(matchRoutePath("/"), "/");
+  assert.equal(matchRoutePath("/hoy/"), "/hoy");
+  assert.equal(matchRoutePath("/vinculos/juan-perez/"), "/vinculos/:profileId");
 });
 
 // --- 9. Adquisición sin URL -------------------------------------------------
@@ -450,33 +656,170 @@ test("environment no se infiere del hostname ni del proyecto", () => {
   }
 });
 
-// --- 11. Identidad ----------------------------------------------------------
+// --- 11. Identidad: origen declarado, no heurística de texto ----------------
 
-test("identify sólo con un identificador interno estable", () => {
-  assert.equal(isStableInternalIdentifier("user_2abcDEF456ghiJKL"), true);
-  assert.equal(isStableInternalIdentifier("k57d9c8b1a2f3e4d5c6b7a8"), true);
-  for (const pii of [
-    "lucas@example.com",
-    "Lucas Ramos",
-    "1991-04-17",
-    "Buenos Aires, Argentina",
-    "corto",
-    "  user_2abc  ",
-    "",
-    null,
-    42
-  ]) {
-    assert.equal(isStableInternalIdentifier(pii), false, String(pii));
+/** Un id de cuenta con la forma que emite el proveedor de identidad. */
+const CUENTA = { source: "account", value: "user_2abcDEF456ghiJKLmnoPQR789st" } as const;
+const OTRA_CUENTA = { source: "account", value: "user_2zzzYYYxxxWWWvvvUUUtttSSS12" } as const;
+/** Un id de instalación: UUID v4 canónico, sorteado por la app. */
+const INSTALACION = { source: "installation", value: "8f2c1a9b-4d5e-4f6a-9b8c-1d2e3f4a5b6c" } as const;
+const OTRA_INSTALACION = {
+  source: "installation",
+  value: "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
+} as const;
+
+test("la frontera de identidad son dos orígenes declarados y nada más", () => {
+  assert.deepEqual([...IDENTITY_SOURCES], ["account", "installation"]);
+});
+
+test("identify acepta un identificador con origen declarado y formato del emisor", () => {
+  assert.equal(isStableInternalIdentifier(CUENTA), true);
+  assert.equal(isStableInternalIdentifier(INSTALACION), true);
+  // 24–32 caracteres para la cuenta: Clerk emite 27.
+  assert.equal(isStableInternalIdentifier({ source: "account", value: "user_" + "a".repeat(27) }), true);
+  assert.equal(isStableInternalIdentifier({ source: "account", value: "user_" + "a".repeat(24) }), true);
+  assert.equal(isStableInternalIdentifier({ source: "account", value: "user_" + "a".repeat(32) }), true);
+});
+
+test("un nombre y un lugar de nacimiento NO son identificadores estables", () => {
+  // El rechazo de la revisión: la v1.0.0 aceptaba estos dos como cadenas
+  // "opacas" y `canAlias` los habilitaba. No se rechazan por parecer PII —
+  // ninguna regla de texto puede decidir eso— sino por no tener el formato del
+  // emisor que dicen tener, y por no declarar ninguno cuando viajan sueltos.
+  for (const nombre of ["NombreApellido", "LugarNatal"]) {
+    assert.equal(isStableInternalIdentifier(nombre), false, nombre);
+    for (const source of IDENTITY_SOURCES) {
+      assert.equal(isStableInternalIdentifier({ source, value: nombre }), false, `${source}/${nombre}`);
+    }
   }
 });
 
-test("alias sólo con dos identificadores estables, reales y distintos", () => {
-  assert.equal(canAlias({ current: "user_2abcDEF456ghi", incoming: "cnv_9zyxWVU321tsr" }), true);
-  // El flujo normal no aliasa nada: el mismo id, un id inventado o un dato
-  // personal no habilitan la operación.
-  assert.equal(canAlias({ current: "user_2abcDEF456ghi", incoming: "user_2abcDEF456ghi" }), false);
-  assert.equal(canAlias({ current: "user_2abcDEF456ghi", incoming: "lucas@example.com" }), false);
-  assert.equal(canAlias({ current: null, incoming: "user_2abcDEF456ghi" }), false);
+test("una cadena suelta no es un identificador, por más pinta que tenga", () => {
+  // Sin origen declarado no hay nada que verificar. Incluso el valor correcto
+  // de una cuenta real se rechaza si llega sin decir de dónde salió.
+  for (const suelto of [
+    CUENTA.value,
+    INSTALACION.value,
+    "user_2abcDEF456ghiJKL",
+    "k57d9c8b1a2f3e4d5c6b7a8",
+    "NombreApellido",
+    "lucas@example.com",
+    ""
+  ]) {
+    assert.equal(isStableInternalIdentifier(suelto), false, suelto);
+  }
+});
+
+test("PII declarada como identificador se rechaza por el formato, no por el texto", () => {
+  const pii = [
+    "lucas@example.com",
+    "Lucas Ramos",
+    "Lucas Ramos Buenos Aires 1991",
+    "1991-04-17",
+    "Buenos Aires, Argentina",
+    "LugarNatalDeUnaPersonaLarguisimo",
+    "+54 9 11 5555 5555",
+    "corto",
+    "",
+    "   "
+  ];
+  for (const source of IDENTITY_SOURCES) {
+    for (const valor of pii) {
+      assert.equal(isStableInternalIdentifier({ source, value: valor }), false, `${source}/${valor}`);
+    }
+  }
+});
+
+test("el formato de un origen no vale para el otro", () => {
+  assert.equal(isStableInternalIdentifier({ source: "account", value: INSTALACION.value }), false);
+  assert.equal(isStableInternalIdentifier({ source: "installation", value: CUENTA.value }), false);
+});
+
+test("la cuenta exige el prefijo del emisor y su largo", () => {
+  for (const valor of [
+    "2abcDEF456ghiJKLmnoPQR789st",
+    "usuario_2abcDEF456ghiJKLmnoPQR",
+    "user_2abcDEF456ghiJKL",
+    "user_" + "a".repeat(23),
+    "user_" + "a".repeat(33),
+    "user_2abcDEF456ghiJKLmnoPQR-89st",
+    "user_2abcDEF456ghiJKLmnoPQR.89st",
+    " user_2abcDEF456ghiJKLmnoPQR789st",
+    "user_2abcDEF456ghiJKLmnoPQR789st "
+  ]) {
+    assert.equal(isStableInternalIdentifier({ source: "account", value: valor }), false, valor);
+  }
+});
+
+test("la instalación exige un UUID v4 canónico, con versión y variante", () => {
+  for (const valor of [
+    "8f2c1a9b-4d5e-1f6a-9b8c-1d2e3f4a5b6c", // versión 1
+    "8f2c1a9b-4d5e-4f6a-7b8c-1d2e3f4a5b6c", // variante fuera de [89ab]
+    "8F2C1A9B-4D5E-4F6A-9B8C-1D2E3F4A5B6C", // mayúsculas
+    "8f2c1a9b4d5e4f6a9b8c1d2e3f4a5b6c", // sin guiones
+    "8f2c1a9b-4d5e-4f6a-9b8c-1d2e3f4a5b6", // corto
+    "{8f2c1a9b-4d5e-4f6a-9b8c-1d2e3f4a5b6c}",
+    "urn:uuid:8f2c1a9b-4d5e-4f6a-9b8c-1d2e3f4a5b6c"
+  ]) {
+    assert.equal(isStableInternalIdentifier({ source: "installation", value: valor }), false, valor);
+  }
+});
+
+test("un origen que no está en el catálogo no habilita nada", () => {
+  for (const source of ["clerk", "email", "device", "user", "", null, undefined, 42]) {
+    assert.equal(isStableInternalIdentifier({ source, value: CUENTA.value }), false, String(source));
+  }
+});
+
+test("un identificador es un par, no cualquier cosa", () => {
+  for (const valor of [
+    null,
+    undefined,
+    42,
+    "account",
+    [CUENTA],
+    {},
+    { source: "account" },
+    { value: CUENTA.value },
+    { source: "account", value: null },
+    { source: "account", value: 42 },
+    { source: ["account"], value: CUENTA.value }
+  ]) {
+    assert.equal(isStableInternalIdentifier(valor), false, String(valor));
+  }
+});
+
+test("alias sólo cruza orígenes: la instalación anónima con la cuenta", () => {
+  assert.equal(canAlias({ current: INSTALACION, incoming: CUENTA }), true);
+  assert.equal(canAlias({ current: CUENTA, incoming: INSTALACION }), true);
+});
+
+test("alias NUNCA une dos identificadores del mismo origen: eso fusiona personas", () => {
+  // Dos cuentas son dos personas, y dos instalaciones son dos aparatos. Unirlas
+  // no vincula nada: mezcla dos perfiles en uno y no hay forma de deshacerlo.
+  assert.equal(canAlias({ current: CUENTA, incoming: OTRA_CUENTA }), false);
+  assert.equal(canAlias({ current: INSTALACION, incoming: OTRA_INSTALACION }), false);
+  assert.equal(canAlias({ current: CUENTA, incoming: CUENTA }), false);
+});
+
+test("alias no se habilita con PII ni con identificadores inválidos", () => {
+  // El caso exacto del rechazo: con la heurística vieja, dos nombres propios
+  // habilitaban un alias.
+  assert.equal(
+    canAlias({
+      current: { source: "account", value: "NombreApellido" },
+      incoming: { source: "installation", value: "LugarNatal" }
+    }),
+    false
+  );
+  assert.equal(canAlias({ current: "NombreApellido", incoming: "LugarNatal" }), false);
+  assert.equal(canAlias({ current: INSTALACION, incoming: "lucas@example.com" }), false);
+  assert.equal(canAlias({ current: null, incoming: CUENTA }), false);
+  assert.equal(canAlias({ current: CUENTA, incoming: undefined }), false);
+  assert.equal(
+    canAlias({ current: INSTALACION, incoming: { source: "account", value: "user_corto" } }),
+    false
+  );
 });
 
 test("reset es obligatorio en logout, cambio de cuenta, eliminación y retiro", () => {
@@ -598,4 +941,75 @@ test("el documento fija la regla de evolución", () => {
   ]) {
     assert.match(evolucion, regla);
   }
+});
+
+test("el documento declara el catálogo de rutas, su origen y su precio", () => {
+  const rutas = seccion("### `path`:", "### `acquisition_source`");
+  assert.match(rutas, /catálogo cerrado, no por forma/);
+  assert.match(rutas, /`ROUTE_TEMPLATES`/);
+  assert.match(rutas, /`app\/\*\*`/);
+  assert.match(rutas, /`matchRoutePath`/);
+  // El precio de un catálogo se documenta o se paga por sorpresa.
+  assert.match(rutas, /agregar una ruta es un\s+cambio de contrato/i);
+  assert.match(seccion("## 10."), /Agregar una ruta al catálogo de `path` \| \*\*minor\*\*/);
+});
+
+test("los ejemplos de ruta del documento son verdaderos", () => {
+  // Un documento con ejemplos que el código no cumple es peor que no tenerlos:
+  // se leen como permiso.
+  const validas = [
+    "/",
+    "/home",
+    "/hoy",
+    "/reading/carta-completa",
+    "/checkout/success",
+    "/iniciar-sesion",
+    "/vinculos/:profileId",
+    "/transitos/arco/:arcId"
+  ];
+  const rechazadas = [
+    "/home?utm_source=x",
+    "/home#seccion",
+    "/vinculos/42",
+    "/vinculos/8f2c1a9b-4d5e-4f6a-9b8c-1d2e3f4a5b6c",
+    "/perfil/nombrepersona",
+    "/ciudad/lugarnatal",
+    "/reading/identificadordinamico",
+    "https://orbitaastrologia.xyz/home",
+    "/home/"
+  ];
+  for (const path of validas) {
+    assert.equal(isSanitizedPath(path), true, `${path} está en el documento como válida`);
+    assert.ok(DOC.includes(`\`${path}\``), `el documento no muestra ${path}`);
+  }
+  for (const path of rechazadas) {
+    assert.equal(isSanitizedPath(path), false, `${path} está en el documento como rechazada`);
+    assert.ok(DOC.includes(`\`${path}\``), `el documento no muestra ${path}`);
+  }
+});
+
+test("el documento declara los dos orígenes de identidad y sus formatos", () => {
+  const identidad = seccion("## 7.", "## 8.");
+  for (const source of IDENTITY_SOURCES) {
+    assert.ok(identidad.includes(`\`${source}\``), `el documento no declara el origen ${source}`);
+  }
+  // Origen confiable y formato admitido, los dos por escrito.
+  assert.match(identidad, /Clerk/);
+  assert.match(identidad, /`clerkUserId`/);
+  assert.match(identidad, /UUID v4/);
+  assert.match(identidad, /origen declarado/);
+  // Y lo que el contrato NO puede verificar, dicho como obligación de quien llama.
+  assert.match(identidad, /obligación de quien\s+llama/);
+  assert.match(identidad, /NombreApellido/);
+});
+
+test("el documento explica que alias sólo cruza orígenes", () => {
+  const identidad = seccion("## 7.", "## 8.");
+  assert.match(identidad, /alias.*sólo cruza orígenes/i);
+  assert.match(identidad, /mismo.*origen son dos sujetos distintos/i);
+  assert.match(seccion("## 10."), /Agregar un origen a la frontera de identidad \| \*\*minor\*\*/);
+  assert.match(
+    seccion("## 10."),
+    /Sacar una ruta del catálogo o un origen de identidad \| \*\*major\*\*/
+  );
 });

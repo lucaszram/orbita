@@ -28,8 +28,9 @@ transporta contenido natal.
 1. **Lista cerrada.** Los eventos válidos son cinco. Nada más.
 2. **Nada de texto libre.** Toda propiedad tiene un enum o un formato estricto.
    No hay una sola propiedad donde alguien pueda escribir una frase.
-3. **Allowlist, no denylist.** Una propiedad que no está declarada se rechaza.
-   No hace falta prever cada dato peligroso: alcanza con no permitirlo.
+3. **Allowlist, no denylist.** Una propiedad que no está declarada se rechaza, y
+   una ruta que no está en el catálogo también. No hace falta prever cada dato
+   peligroso: alcanza con no permitirlo.
 4. **Sin PII, nunca.** Ni en el nombre de la propiedad, ni en su valor, ni
    escondida adentro de una ruta.
 5. **Verificable.** Todo lo que dice este documento se puede correr: el
@@ -179,28 +180,56 @@ existe".
 
 ## 5. `path` y `acquisition_source`
 
-### `path`: plantilla de ruta, sanitizada antes de salir del dispositivo
+### `path`: una plantilla del catálogo, y nada más
 
 `path` no lleva query, ni fragmento, ni identificadores dinámicos, ni PII. Lleva
-la **plantilla**: `/reading/:id`, no `/reading/8f2c-...`.
+la **plantilla**: `/vinculos/:profileId`, nunca `/vinculos/` seguido del id real,
+que es el de otra persona.
 
 Sanitizar en el borde, antes de que el dato salga del dispositivo, es lo único
 que funciona: una vez que la URL cruda llegó a un sistema de analítica, ya está
 ahí. Un id dentro de una ruta es PII de hecho (identifica a una persona o a su
 contenido) y además hace explotar la cardinalidad de cualquier métrica.
 
-Se valida por **forma**, no contra una lista de rutas: si el contrato de medición
-dependiera del mapa de navegación, cada ruta nueva sería un cambio de contrato.
-Si dudás de una ruta, pasala por `isSanitizedPath` y listo.
+**Se valida contra un catálogo cerrado, no por forma.** La v1.0.0 validaba por
+forma —minúsculas, dígitos y guiones— y con eso `/perfil/nombrepersona`,
+`/ciudad/lugarnatal` y `/reading/identificadordinamico` pasaban como rutas
+sanitizadas llevando adentro el nombre o el lugar de nacimiento de alguien.
+Ninguna regla de texto arregla eso: un nombre propio y un slug legítimo son la
+misma cadena. La única diferencia verificable es si la ruta **existe** en el
+producto.
 
-Válidas: `/`, `/home`, `/reading/:id`, `/reading/carta-completa`, `/checkout/success`.
+- **Origen confiable:** el árbol de rutas del router, `app/**`. El catálogo vive
+  en `ROUTE_TEMPLATES` (`src/analytics/eventContract.ts`) y el test lo deriva del
+  árbol real: si una ruta se agrega, se renombra o se borra sin actualizarlo, la
+  suite falla nombrando la plantilla exacta que sobra o falta.
+- **Formatos admitidos:** una entrada del catálogo, literal. Un segmento estático
+  se escribe tal como aparece en la URL (`/reading/carta-completa`); un segmento
+  dinámico se escribe como parámetro (`:profileId`, `:arcId`, `:layer`) y **nunca
+  resuelto**. Los grupos del router (`(tabs)`) no existen en la URL pública y
+  tampoco acá.
+- **Lo desconocido se rechaza.** Cualquier segmento que no esté en una plantilla
+  declarada hace que el evento no salga.
+
+Válidas: `/`, `/home`, `/hoy`, `/reading/carta-completa`, `/checkout/success`,
+`/iniciar-sesion`, `/vinculos/:profileId`, `/transitos/arco/:arcId`.
 
 Rechazadas: `/home?utm_source=x` (query), `/home#seccion` (fragmento),
-`/reading/42` y `/reading/8f2c1a9b-...` (id crudo), `/perfil/alguien@example.com`
-(PII), `https://orbitaastrologia.xyz/home` (URL absoluta).
+`/vinculos/42` y `/vinculos/8f2c1a9b-4d5e-4f6a-9b8c-1d2e3f4a5b6c` (id crudo),
+`/perfil/nombrepersona` y `/ciudad/lugarnatal` (PII disfrazada de slug),
+`/reading/identificadordinamico` (segmento dinámico desconocido),
+`https://orbitaastrologia.xyz/home` (URL absoluta), `/home/` (barra final).
 
-Los grupos de expo-router (`(tabs)`) no existen en la URL pública, así que
-tampoco existen acá.
+El precio de esto es real y lo pagamos a propósito: **agregar una ruta es un
+cambio de contrato** (minor, sección 10). A cambio, `path` no puede transportar
+el texto de nadie, y el test dice en un renglón qué agregar.
+
+Para sanitizar en el borde está `matchRoutePath`: recibe el `pathname` real y
+devuelve una plantilla del catálogo o `null`. El valor del segmento dinámico no
+sobrevive a la llamada — entra `/vinculos/nombre-de-alguien`, sale
+`/vinculos/:profileId`. Si devuelve `null`, no hay `$pageview`: preferimos perder
+una visita antes que publicar el dato de una persona. Si dudás de una ruta ya
+armada, pasala por `isSanitizedPath`.
 
 ### `acquisition_source`: medir la fuente sin guardar la URL
 
@@ -249,20 +278,59 @@ entra por la regla de evolución de la sección 10.
 1. **Distinct ID anónimo estable del SDK, desde la primera visita.** No se
    regenera, no se pisa, no se reemplaza por uno propio. Es lo que permite que
    una visita anónima de hoy y la cuenta de mañana sean la misma persona.
-2. **`identify` sólo con un identificador interno estable.** Nunca email, nunca
-   nombre, nunca fecha ni lugar de nacimiento, nunca ningún otro dato personal.
-   Un identificador viaja a un sistema de analítica y se queda ahí: tiene que ser
-   opaco, un dato que no signifique nada fuera de nuestra base.
+2. **`identify` sólo con un identificador interno estable**, y "estable" acá es
+   una frontera verificable, no una impresión: el identificador llega con su
+   **origen declarado** y con el **formato exacto** que ese origen produce.
 3. **`reset` es obligatorio** en logout, en cambio de cuenta y en eliminación,
    **antes** de las capturas siguientes. Sin reset, el distinct ID de una persona
    queda pegado a los eventos de la siguiente: dos cuentas fusionadas en un
    perfil, sin forma limpia de deshacerlo.
-4. **`alias` sólo si existe un segundo identificador estable, real y distinto**
-   que haya que vincular. En el flujo normal no hay nada que aliasar: el distinct
-   ID anónimo ya viene del SDK y `identify` lo vincula. `alias` usado de rutina
-   es la forma más rápida de arruinar un proyecto de analítica.
+4. **`alias` sólo entre dos orígenes distintos** sobre la misma persona. Ver
+   abajo.
 
----
+### La frontera de identidad: origen declarado + formato exacto
+
+La v1.0.0 preguntaba lo que no se puede contestar mirando una cadena — "¿esto
+parece un dato personal?" — y por eso aceptaba `NombreApellido` y `LugarNatal`
+como identificadores estables, y `alias` los habilitaba. No hay heurística de
+texto que separe un nombre propio de un identificador interno: son letras y
+números en los dos casos.
+
+La pregunta que **sí** se puede contestar es de dónde vino el valor y con qué
+forma. Por eso un identificador es un par `{ source, value }`:
+
+| `source` | Origen confiable | Formato admitido |
+|---|---|---|
+| `account` | La cuenta, emitida por el proveedor de identidad (Clerk). Es el `clerkUserId` que el producto ya usa como clave estable de persona. | `user_` + 24–32 caracteres `A–Z a–z 0–9` (27 en la práctica) |
+| `installation` | La instalación: un UUID v4 que la app sortea una sola vez y guarda local (`docs/handoff-claude-product-events.md`). No se deriva de ningún dato del dispositivo ni de la persona. | UUID v4 canónico, en minúsculas, con su nibble de versión y su variante |
+
+Un valor sin `source` declarado no es un identificador, aunque tenga la pinta.
+Un `source` fuera de la tabla tampoco. Y un valor que no encaja en el formato de
+su origen se rechaza sin mirar qué dice: `{ source: "account", value:
+"NombreApellido" }` no pasa porque no tiene la forma que Clerk emite, no porque
+el contrato haya adivinado que es un nombre.
+
+**Lo que el contrato no puede verificar, y por lo tanto es obligación de quien
+llama:** que el valor declarado como `account` haya salido de verdad del
+proveedor de identidad, y no lo haya fabricado una pantalla. Ninguna revisión de
+texto detecta una cadena con la forma exacta de un id de Clerk. La garantía es
+estructural: hay dos orígenes, los dos son sistemas que emiten identificadores
+opacos, y el punto donde se leen es el borde — el mismo que ya sanitiza `path`.
+
+Sumar un origen es un cambio **minor** y obliga a declarar su formato en esta
+tabla y en `IDENTITY_SOURCES`.
+
+### `alias`: sólo cruza orígenes
+
+`alias` existe para un solo vínculo: la instalación anónima de ayer y la cuenta
+de hoy son la misma persona. En el flujo normal no hay nada más que aliasar,
+porque el distinct ID anónimo ya viene del SDK y `identify` lo ata solo.
+
+Dos identificadores del **mismo** origen son dos sujetos distintos por
+definición: Clerk emite una cuenta por persona y la app un UUID por instalación.
+Aliasarlos no vincula nada, fusiona dos perfiles en uno, y eso no se deshace. El
+contrato lo rechaza, así que no depende de que alguien se acuerde. `alias` usado
+de rutina sigue siendo la forma más rápida de arruinar un proyecto de analítica.
 
 ## 8. Privacidad y consentimiento
 
@@ -310,9 +378,12 @@ use, en silencio y hacia atrás.
 |---|---|
 | Agregar un evento compatible | **minor** (`1.1.0`) |
 | Agregar una propiedad opcional compatible | **minor** |
+| Agregar una ruta al catálogo de `path` | **minor** |
+| Agregar un origen a la frontera de identidad | **minor** |
 | Una aclaración que no cambia el comportamiento | **patch** (`1.0.1`) |
 | Renombrar un evento o una propiedad | **major** (`2.0.0`) |
 | Eliminar un evento o una propiedad | **major** |
+| Sacar una ruta del catálogo o un origen de identidad | **major** |
 | Volver obligatoria una propiedad que no lo era | **major** |
 
 Toda deprecación es **explícita**: se anuncia, se anota acá con su fecha y
