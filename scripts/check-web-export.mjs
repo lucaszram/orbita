@@ -9,7 +9,7 @@
 // Falla (exit 1) si:
 //   · el export completo pasa de 50 MB;
 //   · alguna imagen emitida pasa de 500 KB;
-//   · el JavaScript de aplicación comprimido pasa de 1,25 MB;
+//   · el JavaScript de aplicación comprimido pasa de 1,35 MB;
 //   · falta alguno de los estáticos públicos (favicon, ícono de marca, imagen
 //     de compartido, robots, sitemap);
 //   · alguna de las seis rutas públicas no emitió su documento, o lo emitió sin
@@ -43,7 +43,11 @@ export const MB = 1024 * 1024;
 export const DEFAULT_LIMITS = {
   totalBytes: 50 * MB,
   imageBytes: 500 * KB,
-  appJsGzipBytes: Math.round(1.25 * MB)
+  // 1,25 MB era el techo anterior. CORE-183 suma la telemetría web (posthog-js
+  // slim, ~49 KB gzip) como costo planificado y decidido por Lucas el
+  // 2026-09-07. El margen que queda existe para atrapar bloat accidental, no
+  // para absorber dependencias nuevas sin decisión.
+  appJsGzipBytes: Math.round(1.35 * MB)
 };
 
 const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".avif", ".bmp", ".ico", ".svg"];
@@ -80,7 +84,7 @@ export function classifyEntry(relativePath) {
  * Decisión pura. No toca el disco: recibe lo ya medido y devuelve el veredicto.
  *
  * `appJs` viene con el tamaño COMPRIMIDO ya calculado, porque el límite de
- * 1,25 MB es sobre lo que viaja por la red, no sobre el archivo en disco.
+ * 1,35 MB es sobre lo que viaja por la red, no sobre el archivo en disco.
  */
 export function evaluateExport(measured, limits = DEFAULT_LIMITS) {
   const { totalBytes, images = [], appJs = [] } = measured;

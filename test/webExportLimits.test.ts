@@ -40,10 +40,15 @@ import {
 
 const ok = { totalBytes: 10 * MB, images: [{ path: "assets/a.jpg", bytes: 200 * KB }], appJs: [{ path: "_expo/static/js/web/entry-abc.js", gzipBytes: MB }] };
 
-test("los límites son los del brief: 50 MB de export, 500 KB por imagen, 1,25 MB de JS comprimido", () => {
+test("los límites son los del brief: 50 MB de export, 500 KB por imagen, 1,35 MB de JS comprimido", () => {
   assert.equal(DEFAULT_LIMITS.totalBytes, 50 * MB);
   assert.equal(DEFAULT_LIMITS.imageBytes, 500 * KB);
-  assert.equal(DEFAULT_LIMITS.appJsGzipBytes, Math.round(1.25 * MB));
+  // La cifra literal es el guard: el techo de JS comprimido era 1,25 MB y
+  // CORE-183 lo subió a 1,35 para pagar la telemetría web (posthog-js slim,
+  // ~49 KB gzip), decidido por Lucas el 2026-09-07. Subirlo de nuevo tiene que
+  // costar tocar este test a propósito, no aflojarse solo cuando el bundle crece.
+  assert.equal(DEFAULT_LIMITS.appJsGzipBytes, Math.round(1.35 * MB));
+  assert.equal(DEFAULT_LIMITS.appJsGzipBytes, 1_415_578);
 });
 
 test("un export dentro de los tres límites pasa", () => {
