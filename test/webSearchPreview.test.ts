@@ -1,24 +1,28 @@
 /**
- * La ficha de Órbita en un buscador: ícono, extracto, robots y sitemap.
+ * La ficha de Órbita en un buscador: una por ruta pública.
  *
- * Existe por dos defectos reales de producción, más un refuerzo. Los tres viven
- * en archivos estáticos que ningún build validaba:
+ * Existe por tres defectos reales de producción, más un refuerzo:
  *
  *   1. `robots.txt` y `sitemap.xml` no existían, y el rewrite de la SPA se
  *      quedaba con esos pedidos: las dos URLs devolvían el `index.html`;
  *   2. el documento llegaba con `#root` vacío, así que el buscador no tenía
  *      contenido del cual sacar el extracto y se quedó con el aviso en inglés
  *      de la plantilla por defecto de Expo;
- *   3. el ícono. OJO con la historia: el `favicon.ico` publicado es VÁLIDO
+ *   3. (CORE-272) TODAS las rutas —`/`, `/empezar`, `/privacy`, `/terminos`,
+ *      `/support`— se servían desde el mismo documento, con el mismo título, la
+ *      misma descripción y una canónica fija al raíz: para Google el sitio
+ *      entero era una sola página, y el sitemap tenía que declarar una sola URL
+ *      para no contradecirla;
+ *   4. el ícono. OJO con la historia: el `favicon.ico` publicado es VÁLIDO
  *      (200, enlazado, con frame de 48×48 además de 16 y 32; auditado en
  *      producción el 2026-08-11). El globo genérico que se vio en Google se
- *      explica por un crawl viejo, no por un favicon roto. Lo que se agrega acá
- *      es una declaración explícita, estable y más grande del mismo emblema,
- *      que cumple la guía de favicons de Google — un refuerzo, no un arreglo.
+ *      explica por un crawl viejo, no por un favicon roto. Lo que se agrega es
+ *      una declaración explícita, estable y más grande del mismo emblema — un
+ *      refuerzo, no un arreglo.
  *
- * Se afirma sobre las FUENTES (`public/`): el export no está disponible en la
- * suite y el error se comete acá. El `dist/` real lo revisa
- * `scripts/check-web-export.mjs`.
+ * Se afirma sobre las FUENTES (`src/web/seo.mjs`, `app/+html.tsx`, `public/`):
+ * el export no está disponible en la suite y el error se comete acá. El `dist/`
+ * real lo revisa `scripts/check-web-export.mjs`.
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -26,22 +30,35 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { ROOT } from "./moduleGraph";
+import {
+  BRAND_ICON_PATH,
+  OG_IMAGE_HEIGHT,
+  OG_IMAGE_PATH,
+  OG_IMAGE_WIDTH,
+  PUBLIC_PATHS,
+  PUBLIC_ROUTES,
+  SITE_DESCRIPTION,
+  SITE_ORIGIN,
+  buildSitemapXml,
+  canonicalUrl,
+  htmlFileForPath,
+  isPublicPath,
+  normalizePath,
+  siteJsonLd
+} from "../src/web/seo.mjs";
 
 const PUBLIC = join(ROOT, "public");
-const html = readFileSync(join(PUBLIC, "index.html"), "utf8");
+const documento = readFileSync(join(ROOT, "app", "+html.tsx"), "utf8");
+const routeHead = readFileSync(join(ROOT, "src", "web", "route-head.tsx"), "utf8");
+const staticDocument = readFileSync(join(ROOT, "src", "web", "static-document.tsx"), "utf8");
 const robots = readFileSync(join(PUBLIC, "robots.txt"), "utf8");
-const sitemap = readFileSync(join(PUBLIC, "sitemap.xml"), "utf8");
-const landing = readFileSync(join(ROOT, "src", "components", "web", "orbita-landing.tsx"), "utf8");
-const appJson = JSON.parse(readFileSync(join(ROOT, "app.json"), "utf8")) as {
-  expo: { web?: { name?: string; description?: string } };
-};
 
-const SITIO = "https://orbitaastrologia.xyz/";
-const ICONO = "/orbita-icon-192.png";
-const OG = "/orbita-og.jpg";
+/** Sin comentarios: los dos archivos cuentan su historia en prosa, y esas
+ *  menciones no son marcado ni código. */
+const sinComentarios = (x: string) =>
+  x.replace(/\{\/\*[\s\S]*?\*\/\}/g, "").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
-/** Colapsa todo espacio en blanco: el mismo texto parte líneas distinto en JSX y en HTML. */
-const norm = (texto: string) => texto.replace(/\s+/g, " ").trim();
+const SITIO = `${SITE_ORIGIN}/`;
 
 // --- medidas reales de los assets (no lo que dice el `<meta>`) ---------------
 
@@ -80,16 +97,16 @@ function jpegSize(path: string) {
 
 test("el documento declara un ícono de marca propio, PNG y cuadrado", () => {
   assert.match(
-    html,
-    new RegExp(`<link rel="icon" type="image/png" sizes="192x192" href="${ICONO}" />`),
+    documento,
+    /rel="icon"[\s\S]{0,120}type="image\/png"[\s\S]{0,120}href=\{BRAND_ICON_PATH\}/,
     "el `.ico` que inyecta Expo va sin `sizes` ni `type`: esta es la declaración que se describe a sí misma"
   );
-  assert.match(html, new RegExp(`<link rel="apple-touch-icon" sizes="192x192" href="${ICONO}" />`));
+  assert.match(documento, /rel="apple-touch-icon"[\s\S]{0,120}href=\{BRAND_ICON_PATH\}/);
 });
 
 test("el ícono existe, es cuadrado y su lado es múltiplo de 48", () => {
-  const path = join(PUBLIC, ICONO.slice(1));
-  assert.ok(existsSync(path), `falta ${ICONO}: la declaración del documento apuntaría a un 404`);
+  const path = join(PUBLIC, BRAND_ICON_PATH.slice(1));
+  assert.ok(existsSync(path), `falta ${BRAND_ICON_PATH}: la declaración del documento apuntaría a un 404`);
   const { width, height } = pngSize(path);
   // La guía de favicons de Google pide cuadrado y de lado múltiplo de 48 px.
   assert.equal(width, height, "un favicon que no es cuadrado queda fuera de la guía");
@@ -100,160 +117,192 @@ test("el ícono existe, es cuadrado y su lado es múltiplo de 48", () => {
 test("el ícono se sirve desde `public/`, con URL estable y sin hash", () => {
   // Un asset del bundle sale con hash y cambia en cada build: el buscador
   // cachea la URL del favicon durante semanas.
-  assert.doesNotMatch(ICONO, /[0-9a-f]{16,}/, "la URL del ícono no puede llevar hash de build");
-  assert.ok(existsSync(join(PUBLIC, ICONO.slice(1))));
+  assert.doesNotMatch(BRAND_ICON_PATH, /[0-9a-f]{16,}/, "la URL del ícono no puede llevar hash de build");
+  assert.ok(existsSync(join(PUBLIC, BRAND_ICON_PATH.slice(1))));
 });
 
 // --- 2. Metadatos de compartido y datos estructurados ------------------------
 
-test("Open Graph y Twitter repiten EXACTAMENTE el título y la descripción de `app.json`", () => {
-  const titulo = appJson.expo.web?.name ?? "";
-  const descripcion = appJson.expo.web?.description ?? "";
-  assert.ok(titulo && descripcion);
-
-  for (const tag of [
-    `<meta property="og:title" content="${titulo}" />`,
-    `<meta name="twitter:title" content="${titulo}" />`
-  ]) {
-    assert.ok(html.includes(tag), `falta o difiere: ${tag}`);
-  }
-  // La descripción va partida en varias líneas en el documento.
-  const metas = norm(html);
-  assert.ok(metas.includes(`property="og:description" content="${descripcion}"`));
-  assert.ok(metas.includes(`name="twitter:description" content="${descripcion}"`));
+test("Open Graph y Twitter repiten EXACTAMENTE el título y la descripción de CADA ruta", () => {
+  // Antes se comparaba contra `app.json`, que era la única fuente para todo el
+  // sitio. Ahora la fuente es la tabla de rutas y hay que repetirla por ruta.
+  assert.match(routeHead, /<meta property="og:title" content=\{route\.title\} \/>/);
+  assert.match(routeHead, /<meta property="og:description" content=\{route\.description\} \/>/);
+  assert.match(routeHead, /<meta name="twitter:title" content=\{route\.title\} \/>/);
+  assert.match(routeHead, /<meta name="twitter:description" content=\{route\.description\} \/>/);
+  assert.match(routeHead, /<title>\{route\.title\}<\/title>/);
+  assert.match(routeHead, /<meta name="description" content=\{route\.description\} \/>/);
 });
 
 test("las URLs de compartido son absolutas y del dominio productivo", () => {
-  assert.match(html, new RegExp(`<meta property="og:url" content="${SITIO}" />`));
-  assert.match(html, new RegExp(`<meta property="og:image" content="https://orbitaastrologia\\.xyz${OG}" />`));
-  assert.match(html, new RegExp(`<meta name="twitter:image" content="https://orbitaastrologia\\.xyz${OG}" />`));
-  assert.match(html, /<meta property="og:type" content="website" \/>/);
-  assert.match(html, /<meta property="og:site_name" content="Órbita" \/>/);
-  assert.match(html, /<meta name="twitter:card" content="summary_large_image" \/>/);
+  assert.match(routeHead, /<meta property="og:url" content=\{canonical\} \/>/);
+  assert.match(documento, /property="og:image" content=\{absoluteUrl\(OG_IMAGE_PATH\)\}/);
+  assert.match(documento, /name="twitter:image" content=\{absoluteUrl\(OG_IMAGE_PATH\)\}/);
+  assert.match(documento, /property="og:type" content="website"/);
+  assert.match(documento, /property="og:site_name" content=\{SITE_NAME\}/);
+  assert.match(documento, /name="twitter:card" content="summary_large_image"/);
+  for (const path of PUBLIC_PATHS) {
+    assert.ok(canonicalUrl(path).startsWith(`${SITE_ORIGIN}/`), `${path} no canoniza al dominio productivo`);
+  }
 });
 
 test("la imagen de compartido existe y mide lo que declara", () => {
-  const path = join(PUBLIC, OG.slice(1));
-  assert.ok(existsSync(path), `falta ${OG}`);
+  const path = join(PUBLIC, OG_IMAGE_PATH.slice(1));
+  assert.ok(existsSync(path), `falta ${OG_IMAGE_PATH}`);
   const { width, height } = jpegSize(path);
-  assert.equal(width, 1200);
-  assert.equal(height, 630);
-  assert.match(html, new RegExp(`<meta property="og:image:width" content="${width}" />`));
-  assert.match(html, new RegExp(`<meta property="og:image:height" content="${height}" />`));
-});
-
-test("el documento se deja indexar", () => {
-  assert.match(html, /<meta name="robots" content="index, follow[^"]*" \/>/);
-  assert.doesNotMatch(html, /content="[^"]*noindex/);
+  assert.equal(width, OG_IMAGE_WIDTH);
+  assert.equal(height, OG_IMAGE_HEIGHT);
+  assert.equal(OG_IMAGE_WIDTH, 1200);
+  assert.equal(OG_IMAGE_HEIGHT, 630);
 });
 
 test("los datos estructurados son JSON válido, del sitio real y sin claims inventados", () => {
-  const bloque = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);
-  assert.ok(bloque, "falta el bloque JSON-LD");
-  const data = JSON.parse(bloque[1]) as { "@context": string; "@graph": Array<Record<string, any>> };
+  const data = siteJsonLd();
   assert.equal(data["@context"], "https://schema.org");
 
-  const tipos = data["@graph"].map((n) => n["@type"]);
+  const tipos = data["@graph"].map((n: Record<string, unknown>) => n["@type"]);
   assert.deepEqual(tipos, ["WebSite", "Organization"]);
 
-  const [site, org] = data["@graph"];
+  const [site, org] = data["@graph"] as Array<Record<string, any>>;
   assert.equal(site.url, SITIO);
   assert.equal(site.name, "Órbita");
-  assert.equal(site.description, appJson.expo.web?.description);
+  assert.equal(site.description, SITE_DESCRIPTION);
   assert.equal(site.publisher["@id"], org["@id"]);
-  assert.equal(org.logo.url, `https://orbitaastrologia.xyz${ICONO}`);
+  assert.equal(org.logo.url, `${SITE_ORIGIN}${BRAND_ICON_PATH}`);
   assert.equal(org.logo.width, 192);
 
   // Guardrail de producto: nada de reseñas, ratings ni precios fabricados.
+  const serializado = JSON.stringify(data);
   for (const prohibido of ["aggregateRating", "review", "offers", "price"]) {
-    assert.doesNotMatch(bloque[1], new RegExp(`"${prohibido}"`, "i"), `${prohibido} sería inventado`);
+    assert.doesNotMatch(serializado, new RegExp(`"${prohibido}"`, "i"), `${prohibido} sería inventado`);
+  }
+  // Y viaja en TODAS las rutas, porque describe al sitio y no a la página.
+  assert.match(documento, /type="application\/ld\+json"[\s\S]{0,200}siteJsonLd\(\)/);
+});
+
+// --- 3. Una ficha propia por ruta pública ------------------------------------
+
+test("las seis rutas públicas son las acordadas y cada una tiene ruta real", () => {
+  assert.deepEqual(PUBLIC_PATHS, ["/", "/empezar", "/iniciar-sesion", "/privacy", "/terminos", "/support"]);
+  for (const path of PUBLIC_PATHS) {
+    if (path === "/") {
+      assert.ok(existsSync(join(ROOT, "app", "index.tsx")));
+      continue;
+    }
+    assert.ok(existsSync(join(ROOT, "app", `${path.slice(1)}.tsx`)), `${path} no tiene ruta real en \`app/\``);
   }
 });
 
-// --- 3. El contenido inicial (lo que lee el buscador sin ejecutar JS) --------
-
-const PRE_JS = (() => {
-  const desde = html.indexOf('<div id="orbita-pre-js">');
-  assert.ok(desde > 0, "falta el contenido inicial de la landing");
-  return html.slice(desde, html.indexOf("</body>"));
-})();
-
-/** Texto visible del bloque inicial, frase por frase (sin el aviso de no-JS). */
-const FRASES = PRE_JS.replace(/<noscript>[\s\S]*?<\/noscript>/g, "")
-  .replace(/<!--[\s\S]*?-->/g, "")
-  .replace(/<[^>]+>/g, "\n")
-  .split("\n")
-  .map(norm)
-  .filter((linea) => /\p{L}/u.test(linea));
-
-test("el contenido inicial vive DENTRO de `#root`, que es lo que React vacía al montar", () => {
-  // `createRoot` (no `hydrateRoot`: `__EXPO_ROUTER_HYDRATE__` sólo lo define el
-  // renderizado estático) limpia el contenedor en su primer commit. Fuera de
-  // `#root` este bloque quedaría para siempre debajo de la app.
-  const root = html.indexOf('<div id="root">');
-  assert.ok(root > 0 && root < html.indexOf('<div id="orbita-pre-js">'));
-  assert.doesNotMatch(html, /__EXPO_ROUTER_HYDRATE__/);
+test("ninguna ruta pública comparte título, descripción ni canónica con otra", () => {
+  // El defecto que abrió esta tarjeta: las cinco rutas heredaban la ficha de la
+  // portada y para Google el sitio era una sola página.
+  for (const campo of ["title", "description"] as const) {
+    const valores = PUBLIC_ROUTES.map((route) => route[campo]);
+    assert.equal(new Set(valores).size, valores.length, `hay ${campo} repetidos entre rutas públicas`);
+  }
+  const canonicas = PUBLIC_PATHS.map(canonicalUrl);
+  assert.equal(new Set(canonicas).size, canonicas.length);
 });
 
-test("el contenido inicial trae la portada real: encabezado, promesa y acciones", () => {
-  assert.match(PRE_JS, /<h1>Una carta para hoy\. Contexto para todos los días\.<\/h1>/);
-  assert.equal((PRE_JS.match(/<h1>/g) ?? []).length, 1, "un solo H1");
-  assert.match(PRE_JS, /<h2>Todo se lee sobre tu carta\.<\/h2>/);
-  assert.match(PRE_JS, /<h2>Tu cielo, todos los días\.<\/h2>/);
-  // Enlaces reales: el buscador (y una persona sin JS todavía cargado) llega a
-  // las rutas públicas antes de que monte la SPA.
-  for (const [href, ruta] of [
-    ["/empezar", "app/empezar.tsx"],
+test("la portada canoniza al raíz con barra final y el resto sin ella", () => {
+  assert.equal(canonicalUrl("/"), SITIO);
+  assert.equal(canonicalUrl("/terminos"), `${SITE_ORIGIN}/terminos`);
+  // Un enlace externo con barra final es la MISMA ruta: no puede salir con otra
+  // canónica ni caer como si fuera privada.
+  assert.equal(canonicalUrl("/terminos/"), `${SITE_ORIGIN}/terminos`);
+  assert.equal(normalizePath("/terminos?x=1#y"), "/terminos");
+  assert.equal(normalizePath(""), "/");
+});
+
+test("cada ruta pública declara su `RouteHead` con su propio path", () => {
+  const declaraciones: Array<[string, string]> = [
+    ["/", "src/routes/v492/index.web.tsx"],
+    ["/empezar", "src/routes/v492/empezar.web.tsx"],
     ["/iniciar-sesion", "app/iniciar-sesion.tsx"],
-    ["/privacy", "app/privacy.tsx"],
-    ["/terminos", "app/terminos.tsx"],
-    ["/support", "app/support.tsx"]
-  ]) {
-    assert.match(PRE_JS, new RegExp(`href="${href}"`), `el contenido inicial no enlaza ${href}`);
-    assert.ok(existsSync(join(ROOT, ruta)), `${href} no tiene ruta real (${ruta})`);
+    ["/privacy", "src/routes/v492/privacy.web.tsx"],
+    ["/terminos", "src/routes/v492/terminos.web.tsx"],
+    ["/support", "src/routes/v492/support.web.tsx"]
+  ];
+  assert.equal(declaraciones.length, PUBLIC_ROUTES.length);
+  for (const [path, file] of declaraciones) {
+    const codigo = readFileSync(join(ROOT, file), "utf8");
+    assert.match(codigo, new RegExp(`<RouteHead path="${path}" />`), `${file} no declara su ficha`);
   }
 });
 
-test("cada frase del contenido inicial es copy REAL de la landing (nada de cloaking)", () => {
-  const landingNorm = norm(landing);
-  assert.ok(FRASES.length >= 20, "el bloque quedó demasiado pobre para servir de extracto");
-  for (const frase of FRASES) {
-    assert.ok(
-      landingNorm.includes(frase),
-      `“${frase}” no está en la landing: el HTML inicial no puede decir algo distinto de lo que se ve`
-    );
-  }
+test("el layout raíz cierra el resto sin que las públicas lo hereden", () => {
+  const layout = readFileSync(join(ROOT, "app", "_layout.tsx"), "utf8");
+  assert.match(layout, /<RouteHead privateOnly \/>/);
+  assert.match(routeHead, /if \(privateOnly && route\) return null;/);
+  // Y en nativo la ficha no existe: no hay documento ni buscador.
+  assert.ok(existsSync(join(ROOT, "src", "web", "route-head.native.tsx")));
 });
 
-test("el contenido inicial no está oculto por ningún truco", () => {
-  const estilos = html.match(/<style id="orbita-prejs-style">([\s\S]*?)<\/style>/);
-  assert.ok(estilos, "falta la hoja de estilos del bloque inicial");
-  for (const truco of [
-    /display\s*:\s*none/i,
-    /visibility\s*:\s*hidden/i,
-    /opacity\s*:\s*0(?![.\d])/i,
-    /font-size\s*:\s*0/i,
-    /text-indent\s*:\s*-/i,
-    /position\s*:\s*absolute/i,
-    /clip(-path)?\s*:/i,
-    /(?:left|top)\s*:\s*-/i,
-    /height\s*:\s*0/i
-  ]) {
-    assert.doesNotMatch(estilos[1], truco, "un bloque escondido es cloaking, no SEO");
-  }
-  assert.doesNotMatch(PRE_JS, /aria-hidden|\shidden(?:=|\s|>)/);
-  // Y todo el estilo cuelga del bloque: cuando React lo borra no queda ninguna
-  // regla suelta que pueda pisar a la app.
-  for (const regla of estilos[1].split("}")) {
-    const selector = regla.split("{")[0].trim();
-    if (!selector) continue;
-    for (const parte of selector.split(",")) {
-      assert.match(parte.trim(), /^#orbita-pre-js\b/, `regla fuera de alcance: ${parte.trim()}`);
+test("los textos de cada ruta siguen la voz y los guardrails de Órbita", () => {
+  for (const route of PUBLIC_ROUTES) {
+    assert.match(route.title, /Órbita/, `${route.path}: el título no nombra a Órbita`);
+    assert.ok(route.title.length <= 70, `${route.path}: el título se corta en los buscadores`);
+    assert.ok(route.description.length >= 80, `${route.path}: la descripción es demasiado corta`);
+    assert.ok(route.description.length <= 320, `${route.path}: la descripción se corta en los buscadores`);
+    // Sin destino, salud, dinero ni decisiones legales prometidas.
+    for (const prohibido of [/predice/i, /predicción/i, /destino/i, /garantiz/i, /\bsalud\b/i, /\bdinero\b/i]) {
+      assert.doesNotMatch(`${route.title} ${route.description}`, prohibido, `${route.path}: claim prohibido`);
     }
   }
 });
 
-// --- 4. robots.txt y sitemap.xml --------------------------------------------
+test("las descripciones legales salen de lo que esas páginas ya dicen", () => {
+  const legal = readFileSync(join(ROOT, "src", "components", "web", "orbita-legal.tsx"), "utf8");
+  const claves: Array<[string, string[]]> = [
+    ["/privacy", ["Qué datos", "proveedores", "eliminar tu cuenta"]],
+    ["/terminos", ["Órbita Plus", "cancel", "cuenta"]],
+    ["/support", ["datos de nacimiento", "eliminar tu cuenta", "cancel"]]
+  ];
+  for (const [path, temas] of claves) {
+    const route = PUBLIC_ROUTES.find((r) => r.path === path)!;
+    for (const tema of temas) {
+      assert.ok(
+        legal.toLowerCase().includes(tema.toLowerCase()),
+        `${path}: la descripción promete "${tema}" y la página no lo trata`
+      );
+      assert.ok(
+        route.description.toLowerCase().includes(tema.toLowerCase()),
+        `${path}: la descripción no menciona "${tema}"`
+      );
+    }
+  }
+});
+
+// --- 4. El HTML público es el componente real (nada de cloaking) -------------
+
+test("la cáscara estática monta los componentes REALES, no una copia del texto", () => {
+  // El documento traía un bloque de HTML plano escrito a mano (`#orbita-pre-js`)
+  // porque la SPA llegaba con `#root` vacío. Con el render estático la portada y
+  // las legales se emiten renderizando los MISMOS componentes que ve una
+  // persona: no hay una segunda copia del copy que pueda desincronizarse.
+  assert.match(staticDocument, /"\/": OrbitaLanding/);
+  assert.match(staticDocument, /"\/privacy": OrbitaPrivacy/);
+  assert.match(staticDocument, /"\/support": OrbitaSupport/);
+  assert.match(staticDocument, /"\/terminos": OrbitaTerms/);
+  assert.match(staticDocument, /from "@\/components\/web\/orbita-landing"/);
+  assert.match(staticDocument, /from "@\/components\/web\/orbita-legal"/);
+  // Y no queda ningún resto del bloque plano.
+  assert.doesNotMatch(sinComentarios(documento), /orbita-pre-js/);
+  assert.doesNotMatch(sinComentarios(staticDocument), /orbita-pre-js/);
+});
+
+test("el render estático no toca `window`, `document` ni `localStorage`", () => {
+  assert.match(staticDocument, /typeof window === "undefined"/);
+  const layout = readFileSync(join(ROOT, "app", "_layout.tsx"), "utf8");
+  assert.match(layout, /if \(isStaticRender\(\)\) return <WebStaticDocument \/>;/);
+  // Y en nativo la cáscara web ni se importa: el bundle nativo no empaqueta la
+  // landing ni las legales (mismo motivo que `src/routes/v492`).
+  const nativa = readFileSync(join(ROOT, "src", "web", "static-document.native.tsx"), "utf8");
+  assert.match(nativa, /return false;/);
+  assert.doesNotMatch(nativa, /orbita-landing|orbita-legal/);
+});
+
+// --- 5. robots.txt y sitemap.xml --------------------------------------------
 
 test("robots.txt es un archivo real, abre el sitio y publica el sitemap", () => {
   assert.match(robots, /^User-agent: \*$/m);
@@ -269,18 +318,53 @@ test("robots.txt sólo cierra rutas que existen y no son públicas", () => {
   for (const ruta of cerradas) {
     const base = join(ROOT, "app", ruta.replace(/^\/|\/$/g, ""));
     assert.ok(existsSync(`${base}.tsx`) || existsSync(base), `robots cierra ${ruta}, que no existe`);
+    assert.equal(isPublicPath(ruta), false, `${ruta} está cerrada en robots y abierta en la tabla pública`);
   }
 });
 
-test("el sitemap no contradice la canónica de la SPA", () => {
-  const locs = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
-  assert.ok(locs.length > 0, "un sitemap vacío no sirve de nada");
-  // Todas las rutas se sirven desde el mismo documento y ese documento declara
-  // una sola canónica: listar otra URL sería pedirle a Google que crawlee algo
-  // que él mismo va a descartar.
-  const canonica = html.match(/<link rel="canonical" href="([^"]+)"/)?.[1];
-  assert.equal(canonica, SITIO);
-  for (const loc of locs) assert.equal(loc, canonica);
-  assert.match(sitemap, /^<\?xml version="1\.0" encoding="UTF-8"\?>/);
-  assert.match(sitemap, /<urlset xmlns="http:\/\/www\.sitemaps\.org\/schemas\/sitemap\/0\.9">/);
+test("el sitemap se GENERA y ya no vive como archivo estático", () => {
+  // Escrito a mano quedaba desactualizado y contradecía a las canónicas: por eso
+  // sólo podía declarar una URL. Ahora lo escribe `scripts/generate-sitemap.mjs`
+  // durante el export, desde la misma tabla que las canónicas.
+  assert.equal(existsSync(join(PUBLIC, "sitemap.xml")), false);
+  assert.ok(existsSync(join(ROOT, "scripts", "generate-sitemap.mjs")));
+  const metro = readFileSync(join(ROOT, "metro.config.js"), "utf8");
+  assert.match(metro, /scripts\/generate-sitemap\.mjs/, "el export tiene que dispararlo solo");
+  assert.match(metro, /--only-on-export/, "y sólo cuando la corrida es un `expo export`");
+});
+
+test("el sitemap enumera las seis rutas públicas con la MISMA URL que su canónica", () => {
+  const xml = buildSitemapXml("2026-09-07T12:00:00.000Z");
+  const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
+  assert.deepEqual(locs, PUBLIC_PATHS.map(canonicalUrl));
+  assert.match(xml, /^<\?xml version="1\.0" encoding="UTF-8"\?>/);
+  assert.match(xml, /<urlset xmlns="http:\/\/www\.sitemaps\.org\/schemas\/sitemap\/0\.9">/);
+  // `lastmod` ISO en cada entrada; `changefreq` y `priority` los ignora Google.
+  assert.equal((xml.match(/<lastmod>2026-09-07T12:00:00\.000Z<\/lastmod>/g) ?? []).length, locs.length);
+  assert.doesNotMatch(xml, /changefreq|priority/);
+});
+
+test("cada ruta pública emite su propio archivo HTML en el export", () => {
+  assert.deepEqual(PUBLIC_PATHS.map(htmlFileForPath), [
+    "index.html",
+    "empezar.html",
+    "iniciar-sesion.html",
+    "privacy.html",
+    "terminos.html",
+    "support.html"
+  ]);
+});
+
+test("`cleanUrls` sirve esos archivos y el catch-all sigue existiendo", () => {
+  const vercel = JSON.parse(readFileSync(join(ROOT, "vercel.json"), "utf8")) as {
+    cleanUrls?: boolean;
+    rewrites?: Array<{ source: string; destination: string }>;
+    routes?: unknown;
+  };
+  // Sin `cleanUrls`, `/terminos` no matchea ningún archivo y cae en el rewrite
+  // catch-all: volvería a servirse el documento de la portada.
+  assert.equal(vercel.cleanUrls, true);
+  assert.deepEqual(vercel.rewrites, [{ source: "/(.*)", destination: "/index.html" }]);
+  // `routes` desactiva `cleanUrls` y los rewrites: no se migra.
+  assert.equal(vercel.routes, undefined);
 });

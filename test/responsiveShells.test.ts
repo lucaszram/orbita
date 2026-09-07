@@ -37,7 +37,10 @@ function archivos(dir: string): string[] {
   return out;
 }
 
-const RUTAS = archivos("app");
+// `app/+html.tsx` NO es una ruta: es el documento raíz del export estático, y
+// Expo Router lo levanta por su propio contexto (`expo-router/_ctx-html`), no
+// por el grafo de rutas. No renderiza producto y no llega a ningún shell.
+const RUTAS = archivos("app").filter((rel) => !/(^|\/)\+html\.tsx$/.test(rel));
 const CARTA_FULL_ENTRY = "app/carta-full.tsx";
 const CARTA_FULL_NATIVE = "src/routes/v492/carta-full.tsx";
 const CARTA_FULL_WEB = "src/routes/v492/carta-full.web.tsx";

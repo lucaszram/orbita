@@ -2,6 +2,7 @@ import { Redirect } from "expo-router";
 import { OnboardingGate } from "@/onboarding/OnboardingGate";
 import { WebLoading, WebNotice } from "@/components/web/require-session";
 import { backendConfig } from "@/services/backendProviders";
+import { RouteHead } from "@/web/route-head";
 
 /**
  * Alta en la web: el MISMO onboarding que el nativo (`OnboardingFlow`, quince
@@ -19,18 +20,31 @@ export default function EmpezarRoute() {
     return <Redirect href="/onboarding" />;
   }
 
+  // La ficha va ARRIBA del gate: el título, la descripción y la canónica de
+  // `/empezar` no dependen de si hay sesión, backend o carga en curso
+  // (CORE-272).
+  const head = <RouteHead path="/empezar" />;
+
   if (!backendConfig.isConfigured) {
     // Sin Convex+Clerk no hay dónde guardar la cuenta ni la carta: se dice, en
     // vez de dejar completar quince pasos y descartarlos en silencio.
     return (
-      <WebNotice
-        title="Órbita no está disponible"
-        body="No pudimos conectar con el servidor, así que todavía no podemos crear tu carta. Volvé a intentar en un momento."
-      />
+      <>
+        {head}
+        <WebNotice
+          title="Órbita no está disponible"
+          body="No pudimos conectar con el servidor, así que todavía no podemos crear tu carta. Volvé a intentar en un momento."
+        />
+      </>
     );
   }
 
   // El gate es COMPARTIDO con el onboarding nativo: si cada plataforma
   // tuviera el suyo, volverían a divergir.
-  return <OnboardingGate fallback={<WebLoading />} />;
+  return (
+    <>
+      {head}
+      <OnboardingGate fallback={<WebLoading />} />
+    </>
+  );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { Redirect } from "expo-router";
 import { OrbitaLanding } from "@/components/web/orbita-landing";
@@ -18,6 +18,7 @@ import { useLiveApp } from "@/hooks/useLiveApp";
 import { useSignInHydrate } from "@/onboarding/useAccount";
 import { backendConfig } from "@/services/backendProviders";
 import { BOOT_ACCENT, BOOT_BACKGROUND, BOOT_TEXT, BOOT_TEXT_MUTED } from "@/theme/boot";
+import { RouteHead } from "@/web/route-head";
 
 const IS_WEB = process.env.EXPO_OS === "web";
 const BACKEND_CONFIGURED = backendConfig.hasConvex && backendConfig.hasClerk;
@@ -158,10 +159,27 @@ export default function IndexRoute() {
    */
   const surface = bootGateSurface({ pendingDeletion: pendingDeletionBlocking, isWeb: IS_WEB });
 
+  /**
+   * La ficha de la portada acompaña a TODAS las ramas: `/` es la misma URL
+   * termine en landing, en spinner o en una redirección, y su título, su
+   * descripción y su canónica al raíz no dependen de la sesión ni del estado
+   * del arranque (CORE-272). En nativo `RouteHead` no renderiza nada.
+   *
+   * Es una función que devuelve un fragmento, no un componente: envolver el
+   * árbol en un componente declarado durante el render lo desmontaría y lo
+   * volvería a montar en cada pasada, y con él el estado del gate.
+   */
+  const conFicha = (contenido: ReactNode) => (
+    <>
+      <RouteHead path="/" />
+      {contenido}
+    </>
+  );
+
   if (surface === "pending-deletion") {
     // Defensa en profundidad: con el boundary montado esto no debería
     // alcanzarse, y si se alcanzara igual no se dibuja landing ni producto.
-    return (
+    return conFicha(
       <View style={styles.loading}>
         <ActivityIndicator color={BOOT_ACCENT} />
       </View>
@@ -173,7 +191,7 @@ export default function IndexRoute() {
     // resolver compartido — no una comprobación propia de esta ruta. Antes se
     // renderizaba sin mirar la sesión y, como `/(tabs)` resuelve también a `/`
     // en web, después del login volvías a la página pública ya logueado.
-    return (
+    return conFicha(
       <AccountGate surface="landing" loading={<WebLoading />}>
         <OrbitaLanding />
       </AccountGate>
@@ -182,22 +200,22 @@ export default function IndexRoute() {
 
   switch (decision) {
     case "home":
-      return <Redirect href="/(tabs)" />;
+      return conFicha(<Redirect href="/(tabs)" />);
     case "resume-onboarding":
       // Cuenta activa sin datos de nacimiento: continuar el alta desde los
       // datos (el paso de cuenta se saltea solo; no se crea una segunda).
-      return <Redirect href={{ pathname: "/onboarding", params: { resume: "datos" } }} />;
+      return conFicha(<Redirect href={{ pathname: "/onboarding", params: { resume: "datos" } }} />);
     case "entry":
       // Entrada estable: Empezar / Ya tengo cuenta (paso 0 del onboarding).
-      return <Redirect href="/onboarding" />;
+      return conFicha(<Redirect href="/onboarding" />);
     case "sign-in":
       // Esta instalación es de una cuenta y Clerk confirmó que no hay sesión
       // (logout a medio terminar o sesión perdida en un upgrade): volver a
       // entrar. Nada local se toca — el perfil, las guardadas y el diario
       // siguen en disco esperando a su dueño.
-      return <Redirect href="/iniciar-sesion" />;
+      return conFicha(<Redirect href="/iniciar-sesion" />);
     case "recover-error":
-      return (
+      return conFicha(
         <RecoveryError
           onRetry={() => {
             setRecovery("idle");
@@ -207,7 +225,7 @@ export default function IndexRoute() {
       );
     case "auth-timeout":
       // No destructivo: sin confirmación de Clerk no se toca NADA local.
-      return (
+      return conFicha(
         <AuthTimeout
           onRetry={() => {
             setClerkTimedOut(false);
@@ -218,7 +236,7 @@ export default function IndexRoute() {
     case "loading":
     case "recover":
     default:
-      return (
+      return conFicha(
         <View style={styles.loading}>
           <ActivityIndicator color={BOOT_ACCENT} />
         </View>
