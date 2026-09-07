@@ -75,7 +75,7 @@ test("el mail queda como vía de ayuda, no como mecanismo de baja", () => {
 // --- Privacidad -------------------------------------------------------------
 
 test("Privacidad nombra a los proveedores reales que tocan datos", () => {
-  for (const proveedor of ["Clerk", "Google", "Convex", "Stripe", "RevenueCat", "Apple"]) {
+  for (const proveedor of ["Clerk", "Google", "Convex", "Stripe", "RevenueCat", "Apple", "PostHog"]) {
     assert.match(privacidad, new RegExp(`>${proveedor}<`), `Privacidad no nombra a ${proveedor}`);
   }
 });
@@ -86,7 +86,17 @@ test("Privacidad ubica a cada proveedor en su función", () => {
   assert.match(privacidad, /Stripe<\/Text> — pagos en la web/);
   assert.match(privacidad, /RevenueCat<\/Text> — gestión del estado de compras/);
   assert.match(privacidad, /Apple<\/Text> — distribución de la app y procesamiento/);
+  // CORE-183: la web registra visitas anónimas y eso se enumera acá, con su
+  // proveedor y con lo que NO recibe. Una analítica sin declarar es una promesa
+  // rota antes del primer deploy productivo.
+  assert.match(privacidad, /PostHog<\/Text> — analítica de uso de la web/);
   assert.doesNotMatch(privacidad, /si en el futuro activás una suscripción/);
+});
+
+test("Privacidad dice qué registra la analítica, y qué no", () => {
+  assert.match(privacidad, /Visitas a las pantallas de la web, de forma anónima/);
+  assert.match(privacidad, /No guardamos la dirección completa/);
+  assert.match(privacidad, /sin tu nombre, tu email ni tus datos de nacimiento/);
 });
 
 test("Privacidad dice que la eliminación se hace desde el perfil", () => {

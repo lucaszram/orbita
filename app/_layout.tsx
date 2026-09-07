@@ -18,6 +18,7 @@ import { SessionResilienceProvider } from "@/hooks/useSessionResilience";
 import { BackendProviders, backendConfig } from "@/services/backendProviders";
 import { InstallPing } from "@/components/InstallPing";
 import { RevenueCatProvider } from "@/services/revenuecat/RevenueCatProvider";
+import { WebPageviewTelemetry } from "@/analytics/webTelemetry";
 import { RouteHead } from "@/web/route-head";
 import { WebStaticDocument, isStaticRender } from "@/web/static-document";
 import {
@@ -45,6 +46,12 @@ export default function RootLayout() {
           las agrupa a TODAS, sin enumerarlas. En las seis rutas públicas se
           aparta (`privateOnly`) y la ficha la pone cada pantalla. */}
       <RouteHead privateOnly />
+      {/* Una visita por navegación real, sanitizada y anónima (CORE-183). Va
+          acá arriba y no adentro de los proveedores: medir una ruta no depende
+          de que Clerk o Convex estén configurados, y una pantalla sola no puede
+          inventar su propia definición de "visita". En nativo no renderiza
+          nada; en el render estático tampoco hay cliente que montar. */}
+      <WebPageviewTelemetry />
       <BackendProviders>
         {backendConfig.hasConvex ? <InstallPing /> : null}
         {/* Eliminación de cuenta pendiente: se resuelve ANTES que nada.

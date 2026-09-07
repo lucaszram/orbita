@@ -3,9 +3,9 @@
 // entretenimiento + autoconocimiento, sin claims de destino/salud/dinero/legal.
 // NOTA: la política de privacidad nombra a los proveedores reales que hoy tocan
 // datos (Clerk + Google para autenticación, Convex para backend, Stripe para el
-// pago web, RevenueCat para el estado de compras y Apple para distribución/IAP).
-// Revisar con criterio legal
-// antes del release público y actualizar si se agregan analytics/crash reporting.
+// pago web, RevenueCat para el estado de compras, Apple para distribución/IAP y
+// PostHog para la analítica de uso de la web, CORE-183). Revisar con criterio
+// legal antes del release público y actualizar si se agrega crash reporting.
 import { Inter_400Regular, Inter_500Medium, Inter_700Bold } from "@expo-google-fonts/inter";
 import { Newsreader_500Medium } from "@expo-google-fonts/newsreader";
 import { useFonts } from "expo-font";
@@ -17,7 +17,7 @@ import { WebNav } from "@/components/web/web-nav";
 import { SUPPORT_EMAIL, SUPPORT_MAILTO } from "@/domain/support";
 
 const LEGAL_NAME = "Lucas Ramos";
-const UPDATED = "18 de agosto de 2026";
+const UPDATED = "7 de septiembre de 2026";
 
 const colors = {
   black: "#07080A",
@@ -198,6 +198,11 @@ export function OrbitaPrivacy() {
           Información de compra o suscripción: producto, tienda, estado, fechas e identificadores
           necesarios para activar, renovar, restaurar o gestionar Órbita Plus.
         </Bullet>
+        <Bullet>
+          Visitas a las pantallas de la web, de forma anónima: qué ruta se abrió y si llegaste desde
+          un buscador, una red social u otro sitio. No guardamos la dirección completa de la página,
+          ni lo que escribiste para llegar, ni ningún dato tuyo dentro de esa visita.
+        </Bullet>
       </Section>
 
       <Section heading="Para qué los usamos">
@@ -239,6 +244,11 @@ export function OrbitaPrivacy() {
         <Bullet>
           <Text style={styles.provider}>Apple</Text> — distribución de la app y procesamiento de las
           compras y suscripciones que hacés dentro de la app en iOS.
+        </Bullet>
+        <Bullet>
+          <Text style={styles.provider}>PostHog</Text> — analítica de uso de la web: recibe que se
+          visitó una pantalla, sin tu nombre, tu email ni tus datos de nacimiento, y sin la
+          dirección completa de la página.
         </Bullet>
         <P>
           Cada uno trata los datos según sus propias políticas y puede procesarlos fuera de tu país.
