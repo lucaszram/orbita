@@ -355,7 +355,7 @@ test("cada ruta pública emite su propio archivo HTML en el export", () => {
   ]);
 });
 
-test("`cleanUrls` sirve esos archivos y el catch-all sigue existiendo", () => {
+test("`cleanUrls` sirve esos archivos y el catch-all cae en un destino SIN extensión", () => {
   const vercel = JSON.parse(readFileSync(join(ROOT, "vercel.json"), "utf8")) as {
     cleanUrls?: boolean;
     rewrites?: Array<{ source: string; destination: string }>;
@@ -364,7 +364,34 @@ test("`cleanUrls` sirve esos archivos y el catch-all sigue existiendo", () => {
   // Sin `cleanUrls`, `/terminos` no matchea ningún archivo y cae en el rewrite
   // catch-all: volvería a servirse el documento de la portada.
   assert.equal(vercel.cleanUrls, true);
-  assert.deepEqual(vercel.rewrites, [{ source: "/(.*)", destination: "/index.html" }]);
+
+  // El catch-all es lo único que sostiene a las rutas dinámicas, que no tienen
+  // HTML propio: sin él, `/vinculos/abc123` no llega nunca al router del cliente.
+  const rewrites = vercel.rewrites ?? [];
+  const catchAll = rewrites.find((rewrite) => rewrite.source === "/(.*)");
+  assert.ok(catchAll, "falta el rewrite catch-all: toda ruta sin documento propio sería un 404 del servidor");
+
+  // Y con `cleanUrls` ningún destino puede llevar extensión: Vercel deja de
+  // servir los `.html` por su nombre de archivo, así que el rewrite no resuelve.
+  // Medido con curl el 2026-09-07 sobre el preview del PR 117 (commit fa061ee),
+  // que tenía `"destination": "/index.html"`: /transitos/arco/ejemplo-123,
+  // /vinculos/abc123, /vinculos/abc123/comparacion y /reading/xyz devolvieron
+  // http=404, mientras /terminos, /transitos y /checkout/success —que sí emiten
+  // su documento— devolvían 200. La combinación es la que rompe, no el catch-all.
+  for (const { source, destination } of rewrites) {
+    const archivo = destination.split(/[?#]/)[0].split("/").pop() ?? "";
+    assert.doesNotMatch(
+      archivo,
+      /\.[A-Za-z0-9]+$/,
+      `el rewrite de \`${source}\` apunta a \`${destination}\`: con \`cleanUrls\` un destino con extensión es 404`
+    );
+  }
+
+  // El destino es la URL limpia del documento de la portada, que es adonde caían
+  // estas rutas antes de la tarjeta.
+  assert.equal(catchAll.destination, "/index");
+  assert.equal(`${catchAll.destination.slice(1)}.html`, htmlFileForPath("/"));
+
   // `routes` desactiva `cleanUrls` y los rewrites: no se migra.
   assert.equal(vercel.routes, undefined);
 });
