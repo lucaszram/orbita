@@ -11,8 +11,14 @@
 //   · alguna imagen emitida pasa de 500 KB;
 //   · el JavaScript de aplicación comprimido pasa de 1,25 MB;
 //   · falta alguno de los estáticos públicos (favicon, ícono de marca, imagen
-//     de compartido, robots, sitemap) o el `index.html` emitido perdió los
-//     metadatos de la ficha de búsqueda.
+//     de compartido, robots, sitemap);
+//   · alguna de las seis rutas públicas no emitió su documento, o lo emitió sin
+//     su ficha propia (título, descripción, canónica, `og:url`, datos
+//     estructurados) o con la canónica de otra;
+//   · alguna ruta privada salió sin `noindex`;
+//   · el sitemap no enumera exactamente las mismas URLs que las canónicas;
+//   · quedó un marcador de plantilla sin sustituir;
+//   · la portada emitida no trae el texto REAL de la landing.
 //
 // Las decisiones son puras (`evaluateExport`, `evaluatePublicSeo`) y están
 // testeadas en `test/webExportLimits.test.ts`. Este archivo sólo agrega I/O y
@@ -22,6 +28,14 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { gzipSync } from "node:zlib";
+
+import {
+  PUBLIC_ROUTES,
+  ROBOTS_PRIVATE,
+  ROBOTS_PUBLIC,
+  canonicalUrl,
+  htmlFileForPath
+} from "../src/web/seo.mjs";
 
 export const KB = 1024;
 export const MB = 1024 * 1024;
@@ -118,10 +132,11 @@ export function evaluateExport(measured, limits = DEFAULT_LIMITS) {
 
 /**
  * Estáticos que la web pública necesita servir desde su propia URL, sin hash.
- * Los cinco últimos salen de `public/`; `favicon.ico` lo genera Expo desde
- * `expo.web.favicon`. Si Expo dejara de copiar `public/` —o si alguien borrara
- * uno de esos archivos— hoy nada avisaría: el export saldría en verde y el
- * sitio publicado se quedaría sin robots, sin sitemap o sin el ícono declarado.
+ * `favicon.ico` lo genera Expo desde `expo.web.favicon`; el ícono, la imagen de
+ * compartido y `robots.txt` salen de `public/`; `index.html` y `sitemap.xml` los
+ * produce el export (el documento lo renderiza `app/+html.tsx`, el mapa lo
+ * escribe `scripts/generate-sitemap.mjs`). Si alguno faltara, el sitio publicado
+ * se quedaría sin robots, sin mapa o sin el ícono declarado y nada avisaría.
  */
 export const REQUIRED_PUBLIC_FILES = [
   "favicon.ico",
@@ -133,28 +148,53 @@ export const REQUIRED_PUBLIC_FILES = [
 ];
 
 /**
- * Marcas que el `index.html` EMITIDO tiene que conservar. La suite ya revisa la
- * plantilla de `public/`; acá se revisa lo que realmente se publica, que es lo
- * único que ve Google. Cada entrada es `[qué es, cómo se reconoce]`.
+ * Marcas del SITIO que todo documento emitido conserva, venga de la ruta que
+ * venga. Cada entrada es `[qué es, cómo se reconoce]`.
  */
-const REQUIRED_HTML_MARKS = [
-  ["la canónica productiva", /<link rel="canonical" href="https:\/\/orbitaastrologia\.xyz\/"/],
+const REQUIRED_SITE_MARKS = [
   ["el ícono de marca de 192 px", /<link rel="icon" type="image\/png" sizes="192x192"/],
-  ["el contenido inicial de la landing", /<div id="orbita-pre-js">/],
   ["los datos estructurados", /<script type="application\/ld\+json">/],
-  ["la meta description que inyecta Expo", /<meta name="description" content="[^"]+"/]
+  ["el arranque sin hidratación", /__EXPO_ROUTER_HYDRATE__=false/]
 ];
 
-/** Marcadores sin sustituir: el documento saldría con el literal a la vista. */
-const HTML_PLACEHOLDERS = ["%LANG_ISO_CODE%", "%WEB_TITLE%"];
+/**
+ * Marcadores que no pueden llegar publicados. Los dos primeros son los de la
+ * plantilla SPA que esta web ya no usa (volverían si alguien recreara
+ * `public/index.html`); los otros dos son el resultado de renderizar un valor
+ * que no existe.
+ */
+const HTML_PLACEHOLDERS = ["%LANG_ISO_CODE%", "%WEB_TITLE%", "content=\"undefined\"", "[object Object]"];
+
+/** Contenido del primer `<title>` del documento (el que gana en el navegador). */
+export function readTitle(html) {
+  return html.match(/<title[^>]*>([\s\S]*?)<\/title>/)?.[1] ?? null;
+}
+
+/** `content` de un `<meta>` identificado por `name` o `property`. */
+export function readMeta(html, key, name) {
+  return html.match(new RegExp(`<meta[^>]*\\b${key}="${name}"[^>]*\\bcontent="([^"]*)"`, "i"))?.[1] ?? null;
+}
+
+/** `href` del `<link rel="canonical">`. */
+export function readCanonical(html) {
+  return html.match(/<link[^>]*\brel="canonical"[^>]*\bhref="([^"]*)"/i)?.[1] ?? null;
+}
+
+/** URLs `<loc>` del sitemap, en orden. */
+export function readSitemapLocs(xml) {
+  return [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
+}
 
 /**
- * Decisión pura sobre la ficha de búsqueda del export. No toca el disco:
- * recibe las rutas emitidas y el `index.html` ya leído (`null` si no existe).
+ * Decisión pura sobre la ficha de búsqueda del export. No toca el disco.
  *
- * @param {{ paths?: string[], indexHtml?: string | null }} [input]
+ * @param {{
+ *   paths?: string[],
+ *   documents?: Record<string, string>,
+ *   sitemap?: string | null
+ * }} [input] `documents` va indexado por la ruta del HTML dentro de `dist/`.
  */
-export function evaluatePublicSeo({ paths = [], indexHtml = null } = {}) {
+export function evaluatePublicSeo({ paths = [], documents = {}, sitemap = null } = {}) {
   const failures = [];
   const emitted = new Set(paths);
 
@@ -167,27 +207,188 @@ export function evaluatePublicSeo({ paths = [], indexHtml = null } = {}) {
     });
   }
 
-  if (indexHtml === null) {
-    // Sin documento no hay nada que revisar, y la falta ya la reporta el bloque
-    // de arriba: no se duplica el fallo.
-    return { ok: failures.length === 0, failures };
+  // --- una ficha propia por ruta pública ------------------------------------
+  const sinDocumento = [];
+  const sinFicha = [];
+  const canonicalsVistas = new Map();
+
+  for (const route of PUBLIC_ROUTES) {
+    const file = htmlFileForPath(route.path);
+    const html = documents[file];
+    if (typeof html !== "string") {
+      sinDocumento.push(`${route.path} — falta ${file}`);
+      continue;
+    }
+
+    const canonical = canonicalUrl(route.path);
+    const declarada = readCanonical(html);
+    const problemas = [];
+    if (readTitle(html) !== route.title) problemas.push("título propio");
+    if (readMeta(html, "name", "description") !== route.description) problemas.push("meta description");
+    if (declarada !== canonical) problemas.push(`canónica ${canonical}`);
+    if (readMeta(html, "property", "og:url") !== canonical) problemas.push("og:url coherente");
+    if (readMeta(html, "property", "og:title") !== route.title) problemas.push("og:title");
+    if (readMeta(html, "property", "og:description") !== route.description) problemas.push("og:description");
+    if (readMeta(html, "name", "robots") !== ROBOTS_PUBLIC) problemas.push("robots indexable");
+    for (const [label, pattern] of REQUIRED_SITE_MARKS) {
+      if (!pattern.test(html)) problemas.push(label);
+    }
+    if (problemas.length > 0) sinFicha.push(`${file} — falta ${problemas.join(", ")}`);
+
+    // Contra la canónica DECLARADA, no contra la esperada: el defecto que abrió
+    // la tarjeta era justamente que todas declaraban la misma (la del raíz).
+    if (declarada) {
+      const dueño = canonicalsVistas.get(declarada);
+      if (dueño) sinFicha.push(`${file} — comparte la canónica ${declarada} con ${dueño}`);
+      else canonicalsVistas.set(declarada, file);
+    }
   }
 
-  const missingMarks = REQUIRED_HTML_MARKS.filter(([, pattern]) => !pattern.test(indexHtml));
-  if (missingMarks.length > 0) {
+  if (sinDocumento.length > 0) {
     failures.push({
-      check: "indexHtml",
-      message: `el \`index.html\` emitido perdió ${missingMarks.length} metadato(s) de la ficha de búsqueda`,
-      offenders: missingMarks.map(([label]) => label)
+      check: "publicRoutes",
+      message: `${sinDocumento.length} ruta(s) pública(s) no emitieron su documento`,
+      offenders: sinDocumento
+    });
+  }
+  if (sinFicha.length > 0) {
+    failures.push({
+      check: "publicRoutes",
+      message: `${sinFicha.length} documento(s) público(s) salieron sin su ficha propia`,
+      offenders: sinFicha
     });
   }
 
-  const leftovers = HTML_PLACEHOLDERS.filter((placeholder) => indexHtml.includes(placeholder));
+  // --- todo lo demás va cerrado ---------------------------------------------
+  const publicFiles = new Set(PUBLIC_ROUTES.map((route) => htmlFileForPath(route.path)));
+  const abiertas = Object.entries(documents)
+    .filter(([file]) => !publicFiles.has(file))
+    .filter(([, html]) => readMeta(html, "name", "robots") !== ROBOTS_PRIVATE)
+    .map(([file]) => file);
+  if (abiertas.length > 0) {
+    failures.push({
+      check: "privateRoutes",
+      message: `${abiertas.length} documento(s) privado(s) salieron sin \`${ROBOTS_PRIVATE}\``,
+      offenders: abiertas.slice(0, 10)
+    });
+  }
+
+  // --- marcadores sin sustituir ---------------------------------------------
+  const leftovers = [];
+  for (const [file, html] of Object.entries(documents)) {
+    for (const placeholder of HTML_PLACEHOLDERS) {
+      if (html.includes(placeholder)) leftovers.push(`${file} — ${placeholder}`);
+    }
+  }
   if (leftovers.length > 0) {
     failures.push({
-      check: "indexHtml",
-      message: "el `index.html` emitido conserva marcadores de la plantilla sin sustituir",
-      offenders: leftovers
+      check: "placeholders",
+      message: "hay documentos emitidos con marcadores sin sustituir",
+      offenders: leftovers.slice(0, 10)
+    });
+  }
+
+  // --- el sitemap dice lo mismo que las canónicas ---------------------------
+  if (sitemap !== null) {
+    const locs = readSitemapLocs(sitemap);
+    const esperadas = PUBLIC_ROUTES.map((route) => canonicalUrl(route.path));
+    const iguales = locs.length === esperadas.length && locs.every((loc, i) => loc === esperadas[i]);
+    if (!iguales) {
+      failures.push({
+        check: "sitemap",
+        message: `el sitemap enumera ${locs.length} URL(s) y las canónicas públicas son ${esperadas.length}`,
+        offenders: [`sitemap: ${locs.join(", ") || "(vacío)"}`, `canónicas: ${esperadas.join(", ")}`]
+      });
+    }
+  }
+
+  return { ok: failures.length === 0, failures };
+}
+
+/**
+ * Piso de texto visible de la portada emitida. La landing real ronda los 4.000
+ * caracteres; con menos de esto lo que salió no es la portada sino un spinner,
+ * un gate o un documento vacío — que es exactamente el modo de falla del render
+ * estático y el que ningún build reportaba.
+ */
+export const LANDING_MIN_TEXT = 1500;
+
+/** Texto visible de un fragmento de HTML, con el espacio colapsado. */
+function visibleText(html) {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/g, " ")
+    .replace(/<style[\s\S]*?<\/style>/g, " ")
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Encabezados del documento, como `[nivel, texto]`. */
+export function readHeadings(html) {
+  return [...html.matchAll(/<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/g)].map((m) => [
+    Number(m[1]),
+    visibleText(m[2])
+  ]);
+}
+
+/**
+ * La portada emitida dice lo MISMO que la landing que ve una persona.
+ *
+ * Antes de CORE-272 el documento traía un bloque de HTML plano escrito a mano
+ * (`#orbita-pre-js`) porque la SPA llegaba con `#root` vacío, y había una
+ * regresión que comparaba frase por frase ese bloque contra el componente real
+ * para que no pudiera decir otra cosa. Con el render estático ese bloque ya no
+ * existe: `dist/index.html` ES `OrbitaLanding` renderizado. El guard se mudó
+ * acá, al HTML EMITIDO, y sigue preguntando lo mismo —¿el texto que lee un
+ * buscador está en el componente que ve una persona?— más lo que antes no podía
+ * fallar y ahora sí: que la portada haya renderizado algo.
+ *
+ * @param {{ indexHtml?: string | null, landingSource?: string | null }} [input]
+ */
+export function evaluateLandingHtml({ indexHtml = null, landingSource = null } = {}) {
+  const failures = [];
+
+  if (landingSource === null) {
+    failures.push({
+      check: "landing",
+      message: "no pude leer `src/components/web/orbita-landing.tsx`: sin el componente real no hay con qué comparar la portada emitida",
+      offenders: []
+    });
+    return { ok: false, failures };
+  }
+
+  // Sin documento no hay nada que revisar, y la falta ya la reporta
+  // `evaluatePublicSeo`: no se duplica el fallo.
+  if (indexHtml === null) return { ok: failures.length === 0, failures };
+
+  const body = indexHtml.slice(indexHtml.indexOf("<body"), indexHtml.indexOf("</body>"));
+  const texto = visibleText(body);
+  if (texto.length < LANDING_MIN_TEXT) {
+    failures.push({
+      check: "landing",
+      message: `la portada emitida tiene ${texto.length} caracteres de texto visible y el piso es ${LANDING_MIN_TEXT}: no renderizó la landing`,
+      offenders: [texto.slice(0, 160) || "(documento sin texto)"]
+    });
+  }
+
+  const headings = readHeadings(body);
+  const h1 = headings.filter(([level]) => level === 1);
+  if (h1.length !== 1) {
+    failures.push({
+      check: "landing",
+      message: `la portada emitida tiene ${h1.length} encabezado(s) de nivel 1 y tiene que tener exactamente uno`,
+      offenders: h1.map(([, text]) => text)
+    });
+  }
+
+  const fuente = landingSource.replace(/\s+/g, " ");
+  const inventados = headings.filter(([, text]) => text && !fuente.includes(text));
+  if (inventados.length > 0) {
+    failures.push({
+      check: "landing",
+      message: `${inventados.length} encabezado(s) de la portada emitida no están en \`orbita-landing.tsx\`: el HTML no puede decir algo distinto de lo que se ve`,
+      offenders: inventados.map(([level, text]) => `h${level} — ${text}`)
     });
   }
 
@@ -225,6 +426,26 @@ export function measureExport(root) {
   return { totalBytes, fileCount: files.length, images, appJs, paths: files.map((file) => file.path) };
 }
 
+/** Lee un archivo del export, o `null` si no está. */
+function readOptional(path) {
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return null;
+  }
+}
+
+/** Todos los HTML emitidos, indexados por su ruta dentro de `dist/`. */
+function readDocuments(root, paths) {
+  const documents = {};
+  for (const path of paths) {
+    if (!path.endsWith(".html")) continue;
+    const html = readOptional(join(root, path));
+    if (html !== null) documents[path] = html;
+  }
+  return documents;
+}
+
 function main(argv) {
   const root = argv[2] ?? "dist";
 
@@ -237,14 +458,18 @@ function main(argv) {
 
   const measured = measureExport(root);
   const limits = evaluateExport(measured);
-  let indexHtml = null;
-  try {
-    indexHtml = readFileSync(join(root, "index.html"), "utf8");
-  } catch {
-    // Sin `index.html` no hay documento: lo reporta `evaluatePublicSeo`.
-  }
-  const seo = evaluatePublicSeo({ paths: measured.paths, indexHtml });
-  const failures = [...limits.failures, ...seo.failures];
+  const documents = readDocuments(root, measured.paths);
+  const documentCount = Object.keys(documents).length;
+  const seo = evaluatePublicSeo({
+    paths: measured.paths,
+    documents,
+    sitemap: readOptional(join(root, "sitemap.xml"))
+  });
+  const landing = evaluateLandingHtml({
+    indexHtml: documents["index.html"] ?? null,
+    landingSource: readOptional(join(import.meta.dirname, "..", "src", "components", "web", "orbita-landing.tsx"))
+  });
+  const failures = [...limits.failures, ...seo.failures, ...landing.failures];
   const appJsGzip = measured.appJs.reduce((sum, file) => sum + file.gzipBytes, 0);
   const biggestImage = measured.images.slice().sort((a, b) => b.bytes - a.bytes)[0];
 
@@ -257,8 +482,9 @@ function main(argv) {
     `  JS de app (gzip)     ${formatBytes(appJsGzip)}  / ${formatBytes(DEFAULT_LIMITS.appJsGzipBytes)}   ${measured.appJs.length} archivo(s)`
   );
   console.log(
-    `  ficha de búsqueda    ${seo.ok ? "completa" : "INCOMPLETA"}   ${REQUIRED_PUBLIC_FILES.length} estáticos + metadatos del \`index.html\``
+    `  ficha de búsqueda    ${seo.ok ? "completa" : "INCOMPLETA"}   ${REQUIRED_PUBLIC_FILES.length} estáticos + ${documentCount} documento(s), ${PUBLIC_ROUTES.length} de ellos públicos`
   );
+  console.log(`  portada emitida      ${landing.ok ? "con el texto real de la landing" : "SIN el texto real de la landing"}`);
 
   if (failures.length === 0) {
     console.log("✓ el export entra en todos los límites y publica la ficha completa.");

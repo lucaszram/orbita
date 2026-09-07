@@ -18,6 +18,8 @@ import { SessionResilienceProvider } from "@/hooks/useSessionResilience";
 import { BackendProviders, backendConfig } from "@/services/backendProviders";
 import { InstallPing } from "@/components/InstallPing";
 import { RevenueCatProvider } from "@/services/revenuecat/RevenueCatProvider";
+import { RouteHead } from "@/web/route-head";
+import { WebStaticDocument, isStaticRender } from "@/web/static-document";
 import {
   BOOT_BACKGROUND,
   BOOT_SCREEN_OPTIONS,
@@ -25,6 +27,13 @@ import {
 } from "@/theme/boot";
 
 export default function RootLayout() {
+  // Export estático (CORE-272): en Node no hay `window`, y el árbol real no
+  // sobrevive ese render —`PendingDeletionBoundary` tapa todo mientras espera
+  // un disco que no contesta, y `BackendProviders` montaría Clerk y Convex—.
+  // Se emite la cáscara pública, que es la que tiene que leer un buscador. En
+  // el navegador y en nativo esto es siempre `false`.
+  if (isStaticRender()) return <WebStaticDocument />;
+
   return (
     // El fondo del arranque se declara en el nodo MÁS ALTO del árbol de React,
     // no sólo en el `Stack`: entre que el splash se retira y el primer gate
@@ -32,6 +41,10 @@ export default function RootLayout() {
     // y todos ellos se dibujan sobre esto. Un solo color, desde el primer
     // frame (QA23-006).
     <SafeAreaProvider style={styles.root}>
+      {/* Rutas con sesión e internas: `noindex, nofollow` desde el layout que
+          las agrupa a TODAS, sin enumerarlas. En las seis rutas públicas se
+          aparta (`privateOnly`) y la ficha la pone cada pantalla. */}
+      <RouteHead privateOnly />
       <BackendProviders>
         {backendConfig.hasConvex ? <InstallPing /> : null}
         {/* Eliminación de cuenta pendiente: se resuelve ANTES que nada.

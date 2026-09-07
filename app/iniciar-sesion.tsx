@@ -8,6 +8,7 @@ import { AccountGate } from "@/components/orbita/AccountGate";
 import { WebLayoutProvider } from "@/components/web/web-layout-provider";
 import { useAppState } from "@/hooks/useAppState";
 import { useOrbitaFonts } from "@/hooks/useOrbitaFonts";
+import { RouteHead } from "@/web/route-head";
 import { CTA } from "@/onboarding/components/CTA";
 import { Screen } from "@/onboarding/components/Screen";
 import { Body, Title } from "@/onboarding/components/Type";
@@ -35,6 +36,10 @@ export default function IniciarSesionRoute() {
     // escritorio la columna nunca se acota — el botón de Google llegaba a medir
     // 1392px de ancho a 1440.
     <WebLayoutProvider>
+      {/* Ficha propia de esta ruta, arriba del gate: el título, la descripción
+          y la canónica de `/iniciar-sesion` no dependen de la sesión
+          (CORE-272). En nativo no renderiza nada. */}
+      <RouteHead path="/iniciar-sesion" />
       <AccountGate surface="auth">
         <SignInSurface />
       </AccountGate>

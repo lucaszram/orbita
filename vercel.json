@@ -3,10 +3,11 @@
   "installCommand": "pnpm install",
   "buildCommand": "npx expo export --platform web",
   "outputDirectory": "dist",
+  "cleanUrls": true,
   "git": {
     "deploymentEnabled": {
       "main": false
     }
   },
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [{ "source": "/(.*)", "destination": "/index" }]
 }

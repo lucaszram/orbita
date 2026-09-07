@@ -1,4 +1,5 @@
 import { Redirect } from "expo-router";
+import { RouteHead } from "@/web/route-head";
 import { OrbitaPrivacy } from "@/components/web/orbita-legal";
 
 export default function PrivacyRoute() {
@@ -6,5 +7,12 @@ export default function PrivacyRoute() {
     return <Redirect href="/" />;
   }
 
-  return <OrbitaPrivacy />;
+  return (
+    <>
+      {/* Ficha propia de esta ruta: título, descripción y canónica a
+          `/privacy`. Antes las compartía con la portada (CORE-272). */}
+      <RouteHead path="/privacy" />
+      <OrbitaPrivacy />
+    </>
+  );
 }
