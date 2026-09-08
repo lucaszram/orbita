@@ -1,14 +1,17 @@
 /**
- * El contrato de eventos de Órbita (v1.0.0) — `src/analytics/eventContract.ts`.
+ * El contrato de eventos de Órbita (v1.1.0) — `src/analytics/eventContract.ts`.
  *
  * Un diccionario de eventos que no se puede correr es una intención, no un
  * contrato: la manera de que un evento inválido no llegue nunca a producción es
  * que su rechazo esté escrito acá. Estos tests son la parte ejecutable de
  * `docs/analytics/event-contract.md`, y prueban las dos mitades:
  *
- *   · lo que el contrato ACEPTA — un evento válido de cada uno de los cinco;
+ *   · lo que el contrato ACEPTA — un evento válido de cada uno de los ocho;
  *   · lo que RECHAZA — nombre fuera del diccionario, propiedad común ausente,
  *     enum inválido, PII, ruta sin sanitizar y versión incompatible.
+ *
+ * La v1.1.0 suma el alta: los tres eventos nuevos, los once pasos atados a
+ * `src/onboarding/steps.ts`, y el rechazo de un payload marcado `1.0.0`.
  *
  * Todo es puro: no hay red, no hay entorno y no hay SDK. El módulo bajo prueba
  * tampoco los tiene, y eso también se verifica.
@@ -28,6 +31,8 @@ import {
   EVENT_NAMES,
   IDENTITY_SOURCES,
   LEGACY_EVENT_NAMES,
+  ONBOARDING_STEPS,
+  ONBOARDING_STEP_PROPERTIES,
   PAGEVIEW_PROPERTIES,
   PLATFORMS,
   REFERRER_CLASSES,
@@ -51,6 +56,9 @@ import {
   type EventName,
   type ValidationIssueCode
 } from "../src/analytics/eventContract";
+// La fuente de los once pasos del alta, importada de verdad: el enum del
+// contrato se ata al archivo real y no a una copia que envejece sola.
+import * as PASOS_DEL_ALTA from "../src/onboarding/steps";
 import { ROOT } from "./moduleGraph";
 
 /** Propiedades comunes de un evento sano, con los reemplazos del caso. */
@@ -72,7 +80,34 @@ const pageview = (extra: Record<string, unknown> = {}): EventInput => ({
 const codigos = (input: EventInput): ValidationIssueCode[] =>
   validateEvent(input).issues.map((issue) => issue.code);
 
-/** Un evento válido de cada uno de los cinco, con su superficie coherente. */
+/** Un `onboarding_step_viewed` válido: adentro del alta, con su paso. */
+const pasoVisto = (extra: Record<string, unknown> = {}): EventInput => ({
+  name: "onboarding_step_viewed",
+  properties: comunes({
+    surface: "onboarding",
+    section: "sin_seccion",
+    onboarding_step: "auth",
+    ...extra
+  })
+});
+
+/** Los cinco de v1.0.0, que esta versión no toca. */
+const EVENTOS_V1 = [
+  "$pageview",
+  "onboarding_completed",
+  "paywall_viewed",
+  "checkout_started",
+  "purchase_completed"
+] as const;
+
+/** Los tres que agrega v1.1.0, los tres adentro del alta. */
+const EVENTOS_DEL_ALTA = [
+  "onboarding_step_viewed",
+  "signup_submitted",
+  "signup_completed"
+] as const;
+
+/** Un evento válido de cada uno de los ocho, con su superficie coherente. */
 const VALIDOS: Readonly<Record<EventName, EventInput>> = {
   $pageview: pageview(),
   onboarding_completed: {
@@ -90,15 +125,35 @@ const VALIDOS: Readonly<Record<EventName, EventInput>> = {
   purchase_completed: {
     name: "purchase_completed",
     properties: comunes({ surface: "checkout", section: "sin_seccion", environment: "preview" })
+  },
+  onboarding_step_viewed: pasoVisto({ onboarding_step: "birthdate" }),
+  signup_submitted: {
+    name: "signup_submitted",
+    properties: comunes({ surface: "onboarding", section: "sin_seccion", platform: "android" })
+  },
+  signup_completed: {
+    name: "signup_completed",
+    properties: comunes({ surface: "onboarding", section: "sin_seccion" })
   }
 };
 
 // --- 1. La lista cerrada ----------------------------------------------------
 
-test("el diccionario v1 es EXACTAMENTE esos cinco eventos", () => {
+test("el diccionario v1.1.0 es EXACTAMENTE esos ocho eventos", () => {
+  // Los cinco de v1.0.0 en su orden, y los tres del alta. Ni uno más: la lista
+  // cerrada es lo que hace que un nombre inventado no sea un evento.
   assert.deepEqual(
     [...EVENT_NAMES],
-    ["$pageview", "onboarding_completed", "paywall_viewed", "checkout_started", "purchase_completed"]
+    [
+      "$pageview",
+      "onboarding_completed",
+      "paywall_viewed",
+      "checkout_started",
+      "purchase_completed",
+      "onboarding_step_viewed",
+      "signup_submitted",
+      "signup_completed"
+    ]
   );
   // La lista y las definiciones no pueden separarse: un evento documentado sin
   // definición (o al revés) es un agujero por donde entra cualquier cosa.
@@ -119,19 +174,22 @@ test("cada evento fija disparador, no-disparador y propiedades obligatorias", ()
     for (const campo of [def.purpose, def.trigger, def.notTrigger]) {
       assert.ok(campo.length > 20, `${name}: ${campo} no explica nada`);
     }
-    // Las cinco comunes están en todos; sólo $pageview suma las suyas.
+    // Las cinco comunes están en todos, también en los tres del alta; sólo
+    // $pageview y onboarding_step_viewed suman las suyas.
     for (const comun of COMMON_PROPERTIES) {
       assert.ok(def.requiredProperties.includes(comun), `${name} no exige ${comun}`);
     }
     const esperadas =
       name === "$pageview"
         ? [...COMMON_PROPERTIES, ...PAGEVIEW_PROPERTIES]
-        : [...COMMON_PROPERTIES];
+        : name === "onboarding_step_viewed"
+          ? [...COMMON_PROPERTIES, ...ONBOARDING_STEP_PROPERTIES]
+          : [...COMMON_PROPERTIES];
     assert.deepEqual([...def.requiredProperties], esperadas);
   }
 });
 
-test("el universo de propiedades del contrato son siete, y ninguna es contenido natal", () => {
+test("el universo de propiedades del contrato son ocho, y ninguna es contenido natal", () => {
   const todas = new Set(EVENT_NAMES.flatMap((name) => [...requiredPropertiesFor(name)]));
   assert.deepEqual(
     [...todas].sort(),
@@ -139,6 +197,7 @@ test("el universo de propiedades del contrato son siete, y ninguna es contenido 
       "acquisition_source",
       "contract_version",
       "environment",
+      "onboarding_step",
       "path",
       "platform",
       "section",
@@ -154,7 +213,7 @@ test("el universo de propiedades del contrato son siete, y ninguna es contenido 
 
 // --- 2. Lo que el contrato acepta -------------------------------------------
 
-test("un evento válido de cada uno de los cinco pasa", () => {
+test("un evento válido de cada uno de los ocho pasa", () => {
   for (const name of EVENT_NAMES) {
     const resultado = validateEvent(VALIDOS[name]);
     assert.deepEqual(resultado.issues, [], `${name} debería ser válido`);
@@ -288,7 +347,7 @@ test("surface y section no pueden contradecirse", () => {
 // --- 6. Versión del contrato ------------------------------------------------
 
 test("una versión de contrato incompatible se rechaza", () => {
-  for (const version of ["2.0.0", "1.1.0", "0.9.0", "1.0", "v1.0.0", "", 1, null]) {
+  for (const version of ["2.0.0", "1.2.0", "1.1.1", "1.0.0", "0.9.0", "1.1", "v1.1.0", "", 1, null]) {
     const resultado = validateEvent(pageview({ contract_version: version }));
     assert.equal(resultado.valid, false, `${String(version)} no debería pasar`);
     assert.ok(
@@ -299,12 +358,16 @@ test("una versión de contrato incompatible se rechaza", () => {
 });
 
 test("el validador acepta exactamente la versión que implementa", () => {
-  assert.equal(CONTRACT_VERSION, "1.0.0");
-  assert.equal(isSupportedContractVersion("1.0.0"), true);
+  assert.equal(CONTRACT_VERSION, "1.1.0");
+  assert.equal(isSupportedContractVersion("1.1.0"), true);
   // Una minor futura puede traer eventos que este código no conoce: aceptarla
   // sería afirmar algo que no se puede verificar.
-  assert.equal(isSupportedContractVersion("1.1.0"), false);
-  assert.equal(isSupportedContractVersion("1.0.1"), false);
+  assert.equal(isSupportedContractVersion("1.2.0"), false);
+  assert.equal(isSupportedContractVersion("1.1.1"), false);
+  // Y la versión anterior tampoco: el emisor y el contrato viajan en el mismo
+  // bundle, así que un 1.0.0 entrante es un despliegue incoherente, no un
+  // cliente viejo. El caso completo está en la sección 15.
+  assert.equal(isSupportedContractVersion("1.0.0"), false);
 });
 
 // --- 7. PII y allowlist -----------------------------------------------------
@@ -881,7 +944,7 @@ test("el documento declara la misma versión que el código", () => {
   assert.match(DOC, new RegExp(`# Contrato de eventos de Órbita — v${CONTRACT_VERSION}`));
 });
 
-test("el documento describe EXACTAMENTE los cinco eventos del diccionario", () => {
+test("el documento describe EXACTAMENTE los ocho eventos del diccionario", () => {
   const documentados = [...DOC.matchAll(/^### `([^`]+)`$/gm)].map((m) => m[1]);
   assert.deepEqual(documentados, [...EVENT_NAMES]);
 });
@@ -901,8 +964,10 @@ test("cada literal cerrado del código aparece en el documento", () => {
     ...SURFACES,
     ...SECTIONS,
     ...ACQUISITION_SOURCES,
+    ...ONBOARDING_STEPS,
     ...COMMON_PROPERTIES,
-    ...PAGEVIEW_PROPERTIES
+    ...PAGEVIEW_PROPERTIES,
+    ...ONBOARDING_STEP_PROPERTIES
   ];
   for (const literal of literales) {
     assert.ok(DOC.includes(`\`${literal}\``), `el documento no enumera ${literal}`);
@@ -916,6 +981,13 @@ test("el documento deja escrito el mapa de métricas para CORE-190", () => {
   assert.match(metricas, /Conversión.*paywall_viewed.*checkout_started.*purchase_completed/);
   assert.match(metricas, /Retención.*\$pageview/);
   assert.match(metricas, /Adquisición.*acquisition_source/);
+  // v1.1.0: el alta, y el embudo entero encadenado con los cinco viejos.
+  assert.match(metricas, /Alta paso a paso[^|]*\| `onboarding_step_viewed`/);
+  assert.match(metricas, /Registro.*`signup_submitted` → `signup_completed`/);
+  assert.match(
+    metricas,
+    /onboarding_step_viewed.*signup_submitted.*signup_completed.*onboarding_completed.*paywall_viewed.*checkout_started.*purchase_completed/
+  );
 });
 
 test("el documento hereda la separación de proyectos de CORE-182 sin invertirla", () => {
@@ -1012,4 +1084,243 @@ test("el documento explica que alias sólo cruza orígenes", () => {
     seccion("## 10."),
     /Sacar una ruta del catálogo o un origen de identidad \| \*\*major\*\*/
   );
+});
+
+// --- 15. El alta paso a paso: lo que agrega v1.1.0 --------------------------
+
+test("el enum de pasos es EXACTAMENTE los once del alta, en su orden", () => {
+  assert.deepEqual(
+    [...ONBOARDING_STEPS],
+    [
+      "auth",
+      "promise",
+      "identity",
+      "guidance",
+      "birthdate",
+      "birthplace",
+      "birthtime",
+      "summary",
+      "triad",
+      "before_after",
+      "paywall"
+    ]
+  );
+});
+
+test("los once pasos son los de src/onboarding/steps.ts, en orden y con su nombre", () => {
+  // Atado al archivo real del flujo, no a una copia: una copia queda vieja en
+  // silencio, y un paso que se reordena sin que nadie se entere es exactamente
+  // el dato mal leído que el enum por nombre evita.
+  const indices = PASOS_DEL_ALTA as unknown as Record<string, number>;
+  assert.equal(ONBOARDING_STEPS.length, PASOS_DEL_ALTA.ONBOARDING_TOTAL);
+  ONBOARDING_STEPS.forEach((paso, i) => {
+    assert.equal(indices[`STEP_${paso.toUpperCase()}`], i, `${paso} no es el paso ${i} del flujo`);
+  });
+  // Y al revés: ningún paso del flujo se queda afuera del contrato.
+  assert.deepEqual(
+    Object.keys(indices)
+      .filter((clave) => clave.startsWith("STEP_"))
+      .sort(),
+    ONBOARDING_STEPS.map((paso) => `STEP_${paso.toUpperCase()}`).sort()
+  );
+});
+
+test("los tres eventos del alta, emitidos como corresponde, pasan", () => {
+  for (const name of EVENTOS_DEL_ALTA) {
+    assert.deepEqual(validateEvent(VALIDOS[name]).issues, [], `${name} debería ser válido`);
+    assert.equal(isValidEvent(VALIDOS[name]), true, name);
+  }
+});
+
+test("los cinco de v1.0.0 siguen siendo válidos con la versión nueva", () => {
+  // Una minor no puede invalidar lo que ya se emitía: lo único que cambia en
+  // ellos es el número que viaja en `contract_version`.
+  for (const name of EVENTOS_V1) {
+    assert.deepEqual(validateEvent(VALIDOS[name]).issues, [], name);
+    assert.equal(VALIDOS[name].properties.contract_version, "1.1.0");
+  }
+});
+
+test("los once pasos se aceptan como valor de onboarding_step", () => {
+  for (const onboarding_step of ONBOARDING_STEPS) {
+    assert.equal(isValidEvent(pasoVisto({ onboarding_step })), true, onboarding_step);
+  }
+});
+
+test("onboarding_step_viewed sin onboarding_step se rechaza", () => {
+  // Sin el paso, el evento dice "alguien vio algo del alta" y no se puede leer.
+  const resultado = validateEvent({
+    name: "onboarding_step_viewed",
+    properties: comunes({ surface: "onboarding", section: "sin_seccion" })
+  });
+  assert.equal(resultado.valid, false);
+  assert.ok(
+    resultado.issues.some((i) => i.code === "missing_property" && i.property === "onboarding_step")
+  );
+});
+
+test("un paso fuera del enum se rechaza: ni el índice, ni texto libre", () => {
+  // El índice es el caso que importa: hoy `4` es birthdate y mañana, si el
+  // flujo se reordena, es otra pantalla — y la serie vieja quedaría mal leída.
+  for (const valor of [
+    0,
+    4,
+    "0",
+    "4",
+    "paso 4",
+    "AUTH",
+    "auth ",
+    "fecha de nacimiento",
+    "birth_date",
+    "onboarding",
+    "",
+    null,
+    undefined,
+    true,
+    ["auth"]
+  ]) {
+    const resultado = validateEvent(pasoVisto({ onboarding_step: valor }));
+    assert.equal(resultado.valid, false, String(valor));
+    assert.ok(
+      resultado.issues.some((i) => i.code === "invalid_enum" && i.property === "onboarding_step"),
+      `${String(valor)} no dio invalid_enum`
+    );
+  }
+});
+
+test("onboarding_step es EXCLUSIVA de onboarding_step_viewed", () => {
+  // En cualquier otro evento no está declarada, y la allowlist la rechaza: el
+  // mismo hecho contado dos veces desde dos lugares no es un dato, es ruido.
+  for (const name of EVENT_NAMES) {
+    if (name === "onboarding_step_viewed") continue;
+    const resultado = validateEvent({
+      name,
+      properties: { ...VALIDOS[name].properties, onboarding_step: "auth" }
+    });
+    assert.equal(resultado.valid, false, name);
+    assert.ok(
+      resultado.issues.some(
+        (i) => i.code === "property_not_allowed" && i.property === "onboarding_step"
+      ),
+      `${name} aceptó onboarding_step`
+    );
+  }
+});
+
+test("PII en los tres eventos del alta se rechaza, esté en el nombre o en el valor", () => {
+  // El alta es justo donde la persona escribe su email, su nombre y sus datos
+  // natales. Ninguno de los tres eventos los lleva: el paso se identifica por
+  // su nombre, no por lo que se cargó en él.
+  const casos: Array<[string, unknown]> = [
+    ["email", "lucas@example.com"],
+    ["name", "Lucas Ramos"],
+    ["birth_date", "1991-04-17"],
+    ["birth_place", "Buenos Aires"],
+    ["birth_time", "04:20"],
+    ["ciudad", "Buenos Aires"],
+    ["detalle", "alguien@example.com"],
+    ["detalle", "nació el 1991-04-17"]
+  ];
+  for (const name of EVENTOS_DEL_ALTA) {
+    for (const [property, valor] of casos) {
+      const resultado = validateEvent({
+        name,
+        properties: { ...VALIDOS[name].properties, [property]: valor }
+      });
+      assert.equal(resultado.valid, false, `${name}/${property}`);
+      assert.ok(
+        resultado.issues.some((i) => i.code === "pii_property" && i.property === property),
+        `${name}/${property} no dio pii_property`
+      );
+    }
+  }
+});
+
+test("los tres eventos del alta sólo salen del alta, y ahí no hay sección", () => {
+  for (const name of EVENTOS_DEL_ALTA) {
+    const base = VALIDOS[name].properties;
+    for (const surface of SURFACES) {
+      if (surface === "onboarding") continue;
+      const resultado = validateEvent({ name, properties: { ...base, surface } });
+      assert.equal(resultado.valid, false, `${name} desde ${surface}`);
+      assert.ok(
+        resultado.issues.some((i) => i.code === "unexpected_surface" && i.property === "surface"),
+        `${name} desde ${surface} no dio unexpected_surface`
+      );
+    }
+    // La superficie del alta vive fuera de la navegación canónica, así que
+    // cualquiera de las cinco secciones reales es una contradicción medida.
+    for (const section of CANONICAL_SECTIONS) {
+      const resultado = validateEvent({ name, properties: { ...base, section } });
+      assert.equal(resultado.valid, false, `${name} en ${section}`);
+      assert.ok(
+        resultado.issues.some((i) => i.code === "surface_section_mismatch"),
+        `${name} en ${section} no dio surface_section_mismatch`
+      );
+    }
+  }
+});
+
+test("los tres del alta declaran su superficie; los cinco de v1.0.0 no", () => {
+  // La asimetría es a propósito: fijarles la superficie a los cinco viejos
+  // sería volver obligatorio algo que no lo era, y eso es un major.
+  for (const name of EVENTOS_DEL_ALTA) {
+    assert.equal(EVENT_DEFINITIONS[name].surface, "onboarding", name);
+  }
+  for (const name of EVENTOS_V1) {
+    assert.equal(EVENT_DEFINITIONS[name].surface, undefined, name);
+  }
+});
+
+test("un evento marcado 1.0.0 se rechaza, sea cual sea el evento", () => {
+  // El emisor y el contrato viajan en el mismo bundle: una versión vieja en el
+  // payload es un despliegue incoherente, no un cliente al que haya que
+  // tenerle paciencia. Aceptarlo mezclaría dos diccionarios en la misma serie.
+  for (const name of EVENT_NAMES) {
+    const resultado = validateEvent({
+      name,
+      properties: { ...VALIDOS[name].properties, contract_version: "1.0.0" }
+    });
+    assert.equal(resultado.valid, false, name);
+    assert.ok(
+      resultado.issues.some(
+        (i) => i.code === "unsupported_contract_version" && i.property === "contract_version"
+      ),
+      `${name} aceptó un payload v1.0.0`
+    );
+  }
+});
+
+test("el documento describe los tres eventos del alta con su no-disparador", () => {
+  const alta = seccion("### `onboarding_step_viewed`", "### Por qué");
+  for (const evento of EVENTOS_DEL_ALTA) {
+    assert.ok(alta.includes(`\`${evento}\``), `el documento no describe ${evento}`);
+  }
+  // El no-disparador es la mitad que evita que un evento se estire solo.
+  assert.match(alta, /No dispara:\*\* un re-render; volver atrás a un paso ya contado/);
+  assert.match(alta, /No dispara:\*\* abrir la pantalla; escribir sin enviar/);
+  assert.match(alta, /No dispara:\*\* un alta que falla/);
+  // Y la superficie declarada, con la razón de que los viejos no la declaren.
+  assert.match(alta, /sólo salen con `surface: onboarding`/);
+  assert.match(alta, /volver obligatorio algo que no lo era/);
+});
+
+test("el documento declara los once pasos, y por qué el nombre y no el índice", () => {
+  const pasos = seccion("### `onboarding_step`:", "## 6.");
+  for (const paso of ONBOARDING_STEPS) {
+    assert.ok(pasos.includes(`\`${paso}\``), `el documento no enumera el paso ${paso}`);
+  }
+  assert.match(pasos, /`src\/onboarding\/steps\.ts`/);
+  assert.match(pasos, /Nunca el índice numérico, y nunca texto libre/);
+  assert.match(pasos, /el dato viejo quedaría mal leído/);
+  assert.match(pasos, /\*\*exclusiva\*\* de `onboarding_step_viewed`/);
+});
+
+test("el documento explica qué pasa con un evento marcado 1.0.0", () => {
+  const evolucion = seccion("## 10.");
+  assert.match(evolucion, /El validador acepta \*\*exactamente\*\* `1\.1\.0`/);
+  assert.match(evolucion, /llega marcado `1\.0\.0` \*\*se rechaza\*\*/);
+  assert.match(evolucion, /viajan en el mismo bundle/);
+  // La minor queda fechada, como toda decisión de este documento.
+  assert.match(evolucion, /### v1\.1\.0 — 2026-09-08/);
 });
