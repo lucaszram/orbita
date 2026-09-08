@@ -23,8 +23,8 @@
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { join, relative } from "node:path";
 
 import {
   ACQUISITION_SOURCES,
@@ -61,7 +61,7 @@ import {
   consentUnder,
   currentConsent
 } from "../src/analytics/webClientOptions";
-import { ROOT, importsOf, reachableFrom, resolveModule } from "./moduleGraph";
+import { ROOT, importsOf, pathTo, reachableFrom, resolveModule } from "./moduleGraph";
 
 const leer = (ruta: string) => readFileSync(join(ROOT, ruta), "utf8");
 
@@ -72,10 +72,33 @@ const opcionesFuente = leer("src/analytics/webClientOptions.ts");
 const flujo = leer("src/analytics/pageviewStream.ts");
 const arranque = leer("src/analytics/bootState.ts");
 const puenteArranque = leer("src/analytics/bootSurface.tsx");
+const puenteArranqueNativo = leer("src/analytics/bootSurface.native.tsx");
 const gate = leer("src/components/orbita/AccountGate.tsx");
 const layout = leer("app/_layout.tsx");
 const legal = leer("src/components/web/orbita-legal.tsx");
 const contrato = leer("docs/analytics/event-contract.md");
+
+/**
+ * Las entradas REALES del bundle: Expo Router mete en el grafo todos los
+ * archivos de `app/`, no sólo el layout raíz.
+ *
+ * Mirar únicamente `app/_layout.tsx` alcanza para el SDK —la telemetría se
+ * monta ahí— y NO alcanza para el gate: `AccountGate` no se llega desde el
+ * layout, entra por las rutas. Esa diferencia es la que dejó pasar el arranque
+ * web al bundle nativo.
+ */
+function rutasDeApp(): string[] {
+  const out: string[] = [];
+  const walk = (dir: string) => {
+    for (const nombre of readdirSync(dir)) {
+      const full = join(dir, nombre);
+      if (statSync(full).isDirectory()) walk(full);
+      else if (/\.(t|j)sx?$/.test(nombre)) out.push(relative(ROOT, full));
+    }
+  };
+  walk(join(ROOT, "app"));
+  return out.sort();
+}
 
 /** Un archivo sin comentarios: lo que corre, no lo que explica. */
 const codigo = (fuente: string) =>
@@ -817,6 +840,89 @@ test("el bundle nativo no llega al SDK de la web", () => {
 test("la web sí resuelve el cliente real", () => {
   const web = resolveModule(join(ROOT, "app/_layout.tsx"), "@/analytics/webTelemetry", "web");
   assert.equal(web, join(ROOT, "src/analytics/webTelemetry.tsx"));
+});
+
+test("el puente del arranque también tiene variante nativa, y Metro la elige", () => {
+  // `AccountGate` es COMPARTIDO y no enumera plataformas: importa
+  // `@/analytics/bootSurface` y ya. Quién contesta ese import es lo único que
+  // separa una app nativa que no mide de una web que sí.
+  const desdeElGate = join(ROOT, "src/components/orbita/AccountGate.tsx");
+  assert.equal(
+    resolveModule(desdeElGate, "@/analytics/bootSurface", "native"),
+    join(ROOT, "src/analytics/bootSurface.native.tsx")
+  );
+  assert.equal(
+    resolveModule(desdeElGate, "@/analytics/bootSurface", "web"),
+    join(ROOT, "src/analytics/bootSurface.tsx")
+  );
+});
+
+test("las dos variantes del puente exportan lo mismo", async () => {
+  // Sobre los módulos REALES, no sobre su texto: quien las importa no sabe en
+  // qué plataforma está, así que una variante que exportara de menos rompería la
+  // app recién al montar el gate.
+  const web = await import("../src/analytics/bootSurface");
+  const nativo = await import("../src/analytics/bootSurface.native");
+  assert.deepEqual(Object.keys(nativo).sort(), Object.keys(web).sort());
+  for (const nombre of ["AtDestination", "useBootSurface"] as const) {
+    assert.equal(typeof web[nombre], "function", `la web no exporta ${nombre}`);
+    assert.equal(typeof nativo[nombre], "function", `nativo no exporta ${nombre}`);
+  }
+});
+
+test("la variante nativa del puente no puede tocar el arranque", () => {
+  // No es que no llame a `bootState`: no lo ALCANZA. El único import que
+  // sobrevive al bundle es React (`import type` lo borra Babel), y desde ahí no
+  // hay camino al store.
+  assert.deepEqual(importsOf(join(ROOT, "src/analytics/bootSurface.native.tsx")), ["react"]);
+  assert.equal(
+    pathTo("src/analytics/bootSurface.native.tsx", (rel) => rel.includes("analytics/bootState"), "native"),
+    null
+  );
+  // Lo que ningún grafo contesta: que `AtDestination` no declare efectos. Sin
+  // efecto no hay nada que correr al montar ni al desmontar.
+  assert.doesNotMatch(codigo(puenteArranqueNativo), /useEffect|useLayoutEffect/);
+  assert.match(codigo(puenteArranqueNativo), /return <>\{children\}<\/>;/);
+});
+
+test("el arranque de la web no llega al bundle nativo", () => {
+  // El bloqueo de la ronda anterior: sin variante nativa, el gate compartido
+  // arrastraba `bootState` a iOS/Android y los gates nativos lo mutaban para
+  // nadie. Se mira el grafo entero de rutas, no el layout: desde el layout no se
+  // llega al gate y por eso la comprobación anterior no lo vio.
+  const nativo = reachableFrom(rutasDeApp(), "native");
+  assert.ok(
+    nativo.has("src/components/orbita/AccountGate.tsx"),
+    "el gate no está en el grafo nativo: esta prueba dejó de probar algo"
+  );
+  assert.ok(
+    nativo.has("src/analytics/bootSurface.native.tsx"),
+    "la variante inerte no es la que se empaqueta"
+  );
+  for (const modulo of [
+    "src/analytics/bootState.ts",
+    "src/analytics/bootSurface.tsx",
+    "src/analytics/pageviewStream.ts",
+    "src/analytics/webTelemetry.tsx",
+    "src/analytics/routeClassification.ts",
+    "src/analytics/webClientOptions.ts"
+  ]) {
+    assert.ok(!nativo.has(modulo), `${modulo} llega al bundle nativo`);
+  }
+});
+
+test("la web sigue midiendo: el mismo grafo, del otro lado", () => {
+  // Sin esto, sacar la telemetría entera dejaría el test de arriba en verde.
+  const web = reachableFrom(rutasDeApp(), "web");
+  for (const modulo of [
+    "src/analytics/bootState.ts",
+    "src/analytics/bootSurface.tsx",
+    "src/analytics/pageviewStream.ts",
+    "src/analytics/webTelemetry.tsx"
+  ]) {
+    assert.ok(web.has(modulo), `${modulo} desapareció del bundle de la web`);
+  }
+  assert.ok(!web.has("src/analytics/bootSurface.native.tsx"), "la web resuelve la variante inerte");
 });
 
 // --- 10. El entorno del build -------------------------------------------------
