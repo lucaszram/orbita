@@ -1,6 +1,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import { Redirect } from "expo-router";
+import { AtDestination, useBootSurface } from "@/analytics/bootSurface";
 import {
   destinationAllows,
   mountedOnboardingRetainsCompletion,
@@ -80,6 +81,16 @@ export function AccountGate({
 }) {
   const { destination, retry, confidence } = useAccountDestination();
   const bootstrap = useAccountBootstrap();
+  /**
+   * Señal de arranque para la telemetría (CORE-183). NO decide nada acá.
+   *
+   * Mientras este gate esté esperando, avisando o redirigiendo, el arranque no
+   * está resuelto y la web no cuenta ninguna visita: `/iniciar-sesion` de
+   * alguien que ya tiene sesión no es una pantalla que se vio. `AtDestination`
+   * envuelve —y sólo envuelve— los `return` que muestran el contenido de la
+   * ruta; la lógica de destino de abajo es exactamente la de antes.
+   */
+  const arranque = useBootSurface();
   // ¿Esta superficie llegó a renderizarse alguna vez? Escritura idempotente en
   // render: no dispara re-render y sobrevive al parpadeo de `loading`.
   const montado = useRef(false);
@@ -107,6 +118,15 @@ export function AccountGate({
     void bootstrap.run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [destination, bootstrap.state, retieneCierreOnboarding]);
+
+  /**
+   * El contenido de la ruta, marcado como destino alcanzado (CORE-183).
+   *
+   * Es el mismo `<>{children}</>` de siempre con la señal de arranque encima:
+   * sólo se monta en las ramas que MUESTRAN la ruta, nunca en una espera, un
+   * aviso ni una redirección.
+   */
+  const enDestino = () => <AtDestination surface={arranque}>{children}</AtDestination>;
 
   const mostrarError = (onRetry: () => void) =>
     error ? (
@@ -141,17 +161,17 @@ export function AccountGate({
    * —identidad, fecha, lugar y hora— con la cuenta recién creada.
    */
   const sesionSinConfirmar = destination === "degraded" || confidence === "transient-unavailable";
-  if (sesionSinConfirmar && sticky && montado.current) return <>{children}</>;
+  if (sesionSinConfirmar && sticky && montado.current) return enDestino();
 
   if (destination === "degraded") {
     // Identidad local segura: se abre con los últimos datos de ESTA cuenta y el
     // aviso arriba. Salvo que la ruta exista para cobrar (`requires`).
     if (permitido && surfaceOpensUnderConfidence(requires, confidence)) {
       return (
-        <>
+        <AtDestination surface={arranque}>
           <DegradedSessionBanner onRetry={retry} />
           {children}
-        </>
+        </AtDestination>
       );
     }
     return <UnconfirmedSessionScreen onRetry={retry} variant="confirmed-session" />;
@@ -184,7 +204,7 @@ export function AccountGate({
 
   // Debe evaluarse ANTES de `bootstrap`: ése es el destino real inmediatamente
   // posterior a guardar los datos de un alta nueva.
-  if (retieneCierreOnboarding) return <>{children}</>;
+  if (retieneCierreOnboarding) return enDestino();
 
   if (destination === "retry") return mostrarError(retry);
   if (destination === "bootstrap") {
@@ -200,10 +220,10 @@ export function AccountGate({
   }
   if (destination === "loading") {
     // Ver `sticky`: el alta ya montada se sostiene, no se desmonta y se remonta.
-    if (sticky && montado.current) return <>{children}</>;
+    if (sticky && montado.current) return enDestino();
     return mostrarCarga();
   }
-  if (permitido) return <>{children}</>;
+  if (permitido) return enDestino();
 
   // El destino resuelto es otro: se navega ahí.
   switch (destination) {

@@ -347,6 +347,30 @@ Sobre el contenido natal: es el dato más sensible que maneja Órbita y **no es 
 propiedad de ningún evento**. No se mide qué dice la carta de nadie. Se mide que
 una pantalla se vio.
 
+### Aclaración registrada 2026-09-07
+
+Este contrato exige "el consentimiento **aplicable**" y no nombra un
+instrumento: cuál rige depende de qué se mide y bajo qué régimen, y esa es una
+decisión de producto, no del contrato.
+
+Para el `$pageview` **anónimo y sanitizado de la web**, el consentimiento
+aplicable es la **política de privacidad vigente**, que enumera a PostHog como
+proveedor de analítica y dice qué se registra y qué no. No hay banner, y la falta
+de banner no es un olvido: lo que se mide es que una ruta del catálogo se vio,
+sin URL completa, sin query, sin fragmento, sin referrer y sin ninguna propiedad
+que identifique a una persona.
+
+El día que Órbita adopte un opt-in explícito o un opt-out por región, lo único que
+cambia es de dónde sale el estado de consentimiento —`currentConsent()`, en
+`src/analytics/webClientOptions.ts`—, y el resto del contrato queda igual: la
+puerta ya existe (`canCapture`) y sin `granted` no se inicializa el SDK, no se
+guarda un identificador y no sale un solo evento.
+
+Esto es una **aclaración, no un cambio de contrato**: no agrega, saca ni
+redefine eventos ni propiedades, no altera ninguna regla de la sección 8 y **no
+sube `CONTRACT_VERSION`**. Queda fechada acá para que la próxima persona lea la
+decisión y no la vuelva a tomar de cero.
+
 ---
 
 ## 9. Separación de proyectos (heredada de CORE-182)
