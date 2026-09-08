@@ -1,16 +1,17 @@
 /**
  * El puente entre las pantallas del producto y la captura web (CORE-188).
  *
- * Son siete funciones sin argumentos (una lleva el paso del alta) y ninguna
- * decide nada: avisan un HECHO —"la persona confirmó crear su cuenta", "la
- * oferta quedó visible"— y lo demás pasa en `productEvents.ts`, que es puro y
- * está probado sin navegador. Una pantalla no arma propiedades, no elige
- * superficie, no sabe qué versión del contrato viaja y no puede contar dos veces
- * el mismo hecho.
+ * Son nueve funciones y ninguna decide nada: avisan un HECHO —"la persona
+ * confirmó crear su cuenta", "el paso está pintado", "el backend contestó
+ * esto"— y lo demás pasa en `productEvents.ts`, que es puro y está probado sin
+ * navegador. Una pantalla no arma propiedades, no elige superficie, no sabe qué
+ * versión del contrato viaja, no decide si una suscripción en prueba es una
+ * compra y no puede contar dos veces el mismo hecho.
  *
  * ## Por qué existe este archivo, y no un import directo
  *
- * `OnboardingFlow.tsx` y `useAccount.ts` son COMPARTIDOS: no tienen variante
+ * `OnboardingFlow.tsx`, `useAccount.ts`, `useAccountBootstrap.tsx`,
+ * `PerfilScreen.tsx` y `accountDeletion.ts` son COMPARTIDOS: no tienen variante
  * `.web`, y el mismo archivo se empaqueta para iOS y para Android. En CORE-183
  * la revisión independiente rechazó exactamente este defecto —un componente
  * compartido (`AccountGate`) terminó ejecutando código de telemetría web en el
@@ -26,14 +27,19 @@
  *
  * La captura entra por `ensureClient()` de `webTelemetry.tsx`: el mismo
  * singleton que emite `$pageview`, con la misma configuración, el mismo
- * `before_send` y el mismo distinct ID anónimo. Sin consentimiento, sin clave o
- * sin `window` ese cliente es `null` y acá no se emite nada — la puerta del
- * consentimiento sigue estando en un solo lugar.
+ * `before_send` y el mismo distinct ID. Sin consentimiento, sin clave o sin
+ * `window` ese cliente es `null` y acá no se emite ni se identifica nada — la
+ * puerta del consentimiento sigue estando en un solo lugar.
  */
 import {
   emitProductEvent,
-  type ProductEventPort
+  identifyPerson,
+  resetIdentityFor,
+  type IdentityPort,
+  type ProductEventPort,
+  type PurchaseSignal
 } from "@/analytics/productEvents";
+import type { ResetTrigger } from "@/analytics/eventContract";
 import { ensureClient, resolveEnvironment } from "@/analytics/webTelemetry";
 
 /**
@@ -44,7 +50,9 @@ import { ensureClient, resolveEnvironment } from "@/analytics/webTelemetry";
  * segunda apertura puede ser una recarga, que estrena el estado de módulo. Lo
  * que se guarda es la clave del hecho y nada más —sin id de la sesión de pago,
  * sin URL y sin nada de la query, que el contrato prohíbe guardar (sección 8)—,
- * en `sessionStorage`, que muere con la pestaña.
+ * en `sessionStorage`, que muere con la pestaña. Y ni siquiera dura eso: un
+ * reset de identidad la borra, porque la marca es de una persona y no de un
+ * documento.
  */
 const FACT_KEY_PREFIX = "orbita_hecho_";
 
@@ -82,14 +90,66 @@ const browserPort: ProductEventPort = {
 };
 
 /**
+ * Todo lo que la identidad necesita del navegador, en un solo lugar.
+ *
+ * `identify` va con el identificador SOLO: el segundo y el tercer argumento del
+ * SDK —`$set` y `$set_once`— son justamente donde viajarían las propiedades de
+ * persona, y acá no se pasan. `before_send` las anula igual, así que ni por esta
+ * puerta ni por la otra puede salir una propiedad de persona.
+ *
+ * Los tres borrados fallan en silencio a propósito: pasan en caminos
+ * destructivos —logout, cambio de cuenta, eliminación— donde una excepción
+ * abortaría algo mucho más importante que la telemetría. Lo que no se puede
+ * perder es el orden: el reset ocurre antes de que la persona siguiente capture.
+ */
+const identityPort: IdentityPort = {
+  identify: (distinctId) => {
+    try {
+      ensureClient()?.identify(distinctId);
+    } catch {
+      // Sin identidad, la captura sigue siendo anónima. Nunca al revés.
+    }
+  },
+  reset: () => {
+    try {
+      ensureClient()?.reset();
+    } catch {
+      // Ver arriba: no hay reintento y no se propaga.
+    }
+  },
+  forget: () => {
+    try {
+      const storage = tabStorage();
+      if (!storage) return;
+      const claves: string[] = [];
+      for (let i = 0; i < storage.length; i++) {
+        const clave = storage.key(i);
+        if (clave?.startsWith(FACT_KEY_PREFIX)) claves.push(clave);
+      }
+      for (const clave of claves) storage.removeItem(clave);
+    } catch {
+      // Ver arriba.
+    }
+  },
+  warn: (message) => console.warn(message)
+};
+
+/**
  * El paso del alta que se está mostrando (`onboarding_step_viewed`).
  *
- * Recibe el ÍNDICE del flujo, que es lo único que la pantalla sabe, y el nombre
- * del contrato lo resuelve el módulo puro: así ninguna pantalla puede inventar
- * una etiqueta ni mandar el número, que es lo que el contrato prohíbe.
+ * Recibe lo que la pantalla SABE —el índice del flujo, si el paso está pintado,
+ * si es la inspección visual, si hay sesión— y no una conclusión. El nombre del
+ * paso y las tres guardas las resuelve el módulo puro: así ninguna pantalla
+ * puede inventar una etiqueta, mandar el número, o contar un paso que todavía no
+ * se ve.
  */
-export function trackOnboardingStepViewed(step: number): void {
-  emitProductEvent({ name: "onboarding_step_viewed", step }, browserPort);
+export function trackOnboardingStepViewed(input: {
+  readonly step: number;
+  readonly visible: boolean;
+  readonly inspecting: boolean;
+  readonly sessionActive: boolean;
+}): void {
+  emitProductEvent({ name: "onboarding_step_viewed", ...input }, browserPort);
 }
 
 /** La persona confirmó crear su cuenta (`signup_submitted`). */
@@ -112,12 +172,50 @@ export function trackPaywallViewed(): void {
   emitProductEvent({ name: "paywall_viewed" }, browserPort);
 }
 
-/** La persona confirmó avanzar al cobro (`checkout_started`). */
-export function trackCheckoutStarted(): void {
-  emitProductEvent({ name: "checkout_started" }, browserPort);
+/**
+ * La persona confirmó avanzar al cobro (`checkout_started`).
+ *
+ * `attempt` es qué intento de pago es éste. Un remontaje repite el número y no
+ * cuenta; un reintento que la persona confirma después de un error lo incrementa
+ * y sí cuenta, porque crea otra sesión de pago real.
+ */
+export function trackCheckoutStarted(attempt: number): void {
+  emitProductEvent({ name: "checkout_started", attempt }, browserPort);
 }
 
-/** El cobro volvió confirmado y el acceso quedó otorgado (`purchase_completed`). */
-export function trackPurchaseCompleted(): void {
-  emitProductEvent({ name: "purchase_completed" }, browserPort);
+/**
+ * Lo que el retorno del checkout sabe del cobro (`purchase_completed`).
+ *
+ * La pantalla NO decide si hubo cargo: pasa las dos autoridades —lo que confirmó
+ * el retorno y el estado real de la suscripción— y el módulo puro separa el
+ * cobro de la prueba gratuita, que es lo que el contrato exige.
+ */
+export function trackPurchaseCompleted(signal: PurchaseSignal): void {
+  emitProductEvent({ name: "purchase_completed", ...signal }, browserPort);
+}
+
+/**
+ * Ata la captura a la cuenta, con el identificador que el contrato declara.
+ *
+ * El origen se DECLARA acá y en un solo lugar: `account` es la cuenta tal como
+ * la emite el proveedor de identidad, y el contrato la reconoce como uno de sus
+ * dos emisores de identidad interna con su formato exacto
+ * (`isStableInternalIdentifier`). Un valor con otra forma no identifica a nadie:
+ * el contrato se cierra en vez de dejar pasar cualquier cosa.
+ *
+ * Sin propiedades de persona, sin `alias` y sin PII: lo único que viaja es el
+ * identificador.
+ */
+export function identifyAccount(clerkUserId: string): void {
+  identifyPerson({ source: "account", value: clerkUserId }, identityPort);
+}
+
+/**
+ * Corta el vínculo con la persona, antes de cualquier captura siguiente.
+ *
+ * El motivo es uno de los cuatro del contrato (`RESET_TRIGGERS`) y el tipo lo
+ * exige: no hay una segunda lista de motivos en el producto.
+ */
+export function resetAnalyticsIdentity(trigger: ResetTrigger): void {
+  resetIdentityFor(trigger, identityPort);
 }

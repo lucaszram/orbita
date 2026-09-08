@@ -18,9 +18,16 @@
  * guarda navegación en el dispositivo: el referrer, la URL inicial y los
  * parámetros de campaña que el SDK persiste por defecto quedan apagados y, lo
  * que ninguna opción cubre, se borra en la misma captura
- * (`webClientOptions.ts`). Sin `identify`, sin `alias` y sin `reset`: la
- * identidad de persona es de otra tarjeta y acá queda el distinct ID anónimo
- * que el SDK sortea solo (contrato, sección 7).
+ * (`webClientOptions.ts`).
+ *
+ * La identidad de persona SÍ está, desde CORE-188, y vive en
+ * `productEvents.ts`/`productTelemetry.ts`: `identify` con el identificador
+ * interno que el contrato declara y `reset` en los hechos que el contrato nombra
+ * (logout, cambio de cuenta, eliminación, retiro de consentimiento). Sin `alias`
+ * —el contrato lo reserva para unir dos emisores distintos, y el flujo normal no
+ * tiene ese caso— y sin propiedades de persona. Hasta que alguien inicia sesión,
+ * lo que viaja sigue siendo el distinct ID anónimo que el SDK sortea solo
+ * (contrato, sección 7), y `identify` lo ata a la cuenta cuando aparece.
  *
  * ## Por qué el SDK entra por `dist/module.slim`
  *

@@ -8,6 +8,7 @@ import { useConfirm } from "@/components/orbita/ConfirmHost";
 import { FullBleedHero } from "@/components/orbita/ImmersiveHero";
 import { CartaCard } from "@/components/home/CartaCard";
 import { useQuery } from "convex/react";
+import { resetAnalyticsIdentity } from "@/analytics/productTelemetry";
 import { resolveBirthInfo } from "@/domain/birthInfo";
 import { requestAccountDeletion } from "@/domain/accountDeletion";
 // El inventario de lo que se borra es lo único que cambia por plataforma: la
@@ -273,6 +274,13 @@ function AccountSignedIn({
       // 2. Cerrar Clerk. Un fallo acá también mantiene la sesión y muestra
       //    reintento: no fingimos que salió bien.
       await auth.signOut();
+      // 2b. Cortar el vínculo de la analítica, con la sesión ya cerrada y ANTES
+      //     de cualquier captura siguiente. Sin esto, quien entre después en
+      //     esta misma pestaña sigue emitiendo con el identificador del que se
+      //     fue: dos cuentas fusionadas en un perfil, sin forma limpia de
+      //     deshacerlo. Reinicia además la deduplicación de hechos, así que un
+      //     segundo alta en esta pestaña vuelve a contarse — es de otra persona.
+      resetAnalyticsIdentity("logout");
     } catch {
       setLogoutError(true);
       setLoggingOut(false);
@@ -335,7 +343,10 @@ function AccountSignedIn({
           // marcador válido no se le entrega el control a nadie.
           if (!userId) throw new Error("userId requerido para el marcador de eliminación");
           await storePendingAccountDeletion(userId, "deletion_requested");
-        }
+        },
+        // El puente de la telemetría web: inerte en nativo. Corre con el
+        // marcador ya escrito y antes de entregar el control al boundary.
+        resetAnalyticsIdentity: () => resetAnalyticsIdentity("account_deletion")
       }
     );
     if (result.status === "error") setDeleteError(result.step);

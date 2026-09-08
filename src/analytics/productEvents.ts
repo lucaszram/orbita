@@ -6,15 +6,22 @@
  * que "dónde se cae la gente" era una pregunta sin respuesta posible. Este
  * módulo es el borde que convierte los hechos del producto —un paso del alta
  * que se ve, una cuenta que se crea, una oferta que se muestra, un cobro que
- * vuelve confirmado— en los siete eventos que el contrato v1.1.0 declara.
+ * vuelve confirmado— en los siete eventos que el contrato v1.1.0 declara, y
+ * además sostiene la IDENTIDAD de persona: `identify` con un identificador
+ * interno y `reset` en los hechos que el contrato nombra.
  *
  * Es PURO, igual que `routeClassification.ts` y por la misma razón: sin React,
  * sin expo, sin react-native y sin el SDK. Entra un hecho, sale un evento del
  * contrato o una razón para no emitirlo. Así la decisión entera —qué se emite,
- * con qué propiedades, cuántas veces— se prueba sin navegador, sin red y sin
- * montar la app, y así el módulo no se convierte en una segunda capa de captura.
- * Lo que ata esto al navegador entra por `ProductEventPort`, que
- * `productTelemetry.ts` completa.
+ * con qué propiedades, cuántas veces, bajo qué identidad— se prueba sin
+ * navegador, sin red y sin montar la app, y así el módulo no se convierte en una
+ * segunda capa de captura. Lo que ata esto al navegador entra por
+ * `ProductEventPort` e `IdentityPort`, que `productTelemetry.ts` completa.
+ *
+ * Quien avisa un hecho NO decide: la pantalla dice lo que sabe —el paso, si está
+ * pintado, qué contestó el backend— y toda la regla vive acá. Es lo que hace que
+ * "el paso se cuenta cuando es visible" o "una prueba gratuita no es una compra"
+ * se puedan probar EJECUTANDO, y no leyendo un `if` adentro de un componente.
  *
  * El contrato (`eventContract.ts`) NO se toca desde acá: se lee. `validateEvent`
  * es la última palabra, también sobre este archivo: lo que no valida no sale.
@@ -22,6 +29,8 @@
 import {
   CONTRACT_VERSION,
   EVENT_NAMES,
+  isStableInternalIdentifier,
+  requiresIdentityReset,
   validateEvent,
   type CommonEventProperties,
   type Environment,
@@ -133,6 +142,134 @@ export function onboardingStepName(index: unknown): OnboardingStep | null {
   return ONBOARDING_STEP_BY_INDEX[index] ?? null;
 }
 
+// --- La compra: qué separa un cobro de una prueba gratuita -------------------
+
+/**
+ * El único estado de suscripción que significa CARGO.
+ *
+ * `convex/schema.ts` declara siete (`inactive`, `trialing`, `active`,
+ * `past_due`, `billing_issue`, `canceled`, `expired`) y el entitlement trata
+ * `trialing` como acceso concedido, que es correcto para ABRIR el producto y
+ * falso para contar una conversión: durante la prueba de siete días no hubo
+ * ningún cobro. `past_due` y `billing_issue` tampoco entran: dicen que un cobro
+ * está fallando, no que acaba de confirmarse.
+ */
+const CHARGED_SUBSCRIPTION_STATUS = "active";
+
+/** El estado de la suscripción mientras corre la prueba gratuita. */
+const TRIAL_SUBSCRIPTION_STATUS = "trialing";
+
+/**
+ * Lo que la pantalla de retorno del checkout sabe, tal como lo sabe.
+ *
+ * Son dos autoridades distintas y hacen falta las dos:
+ *
+ *   · `checkoutStatus` viene de `payments.getCheckoutStatus`, que verifica la
+ *     sesión de pago, el propietario y el customer, y sólo dice `active` después
+ *     del entitlement autoritativo del webhook. Es lo que prueba que ESTA compra
+ *     volvió confirmada — pero colapsa `trialing` en `active`, porque su unión
+ *     de retorno sólo tiene tres literales.
+ *   · `subscriptionStatus` viene de `subscriptions.getCurrent`, que CONSERVA
+ *     `trialing` como estado propio. Es la única señal del front que distingue
+ *     un cargo de una prueba sin cargo.
+ *
+ * `subscriptionOwner` y `sessionOwner` están porque la query reactiva conserva
+ * su último valor mientras la nueva resuelve: en un cambio A → B, el estado de A
+ * queda publicado bajo la sesión de B durante uno o varios renders. Sin
+ * comparar dueños, la compra de A se contaría bajo B.
+ */
+export type PurchaseSignal = {
+  /** Lo que confirmó el retorno del checkout (`pending | active | failed`). */
+  readonly checkoutStatus: string | null | undefined;
+  /** El estado real de la suscripción, con `trialing` sin colapsar. */
+  readonly subscriptionStatus: string | null | undefined;
+  /** Cuenta para la que el backend calculó la suscripción. */
+  readonly subscriptionOwner: string | null | undefined;
+  /** Cuenta de la sesión viva. */
+  readonly sessionOwner: string | null | undefined;
+  /**
+   * Fin del período vigente, en ms. Discrimina UNA compra de la siguiente sin
+   * guardar nada de lo que el contrato prohíbe (sección 8): no es el id de la
+   * sesión de pago, no es la URL y no es la query. Es el momento hasta el que el
+   * backend concedió el acceso de ESTE cobro.
+   */
+  readonly periodEnd: number | null | undefined;
+};
+
+/**
+ * La clave del hecho "esta compra", no "una compra".
+ *
+ * Sin el período, la marca de pestaña guardaba `purchase_completed` a secas y
+ * una compra posterior legítima —la persona canceló, volvió a comprar en la
+ * misma pestaña— quedaba tapada por la anterior. Con él, dos cobros distintos
+ * son dos claves distintas y el segundo se cuenta.
+ *
+ * Sin período disponible se cae a la clave genérica: es peor discriminante, pero
+ * no inventa uno. El caso ya no puede pasar en silencio porque
+ * `decidePurchaseFact` sólo llega acá con la suscripción resuelta.
+ */
+export function purchaseFact(periodEnd: unknown): string {
+  return typeof periodEnd === "number" && Number.isFinite(periodEnd)
+    ? `purchase_completed:${periodEnd}`
+    : "purchase_completed";
+}
+
+/** Por qué un retorno de checkout no es una compra que contar. */
+export type PurchaseSkipReason =
+  /** El backend todavía no confirmó (o dijo que no): `pending` o `failed`. */
+  | "checkout_unconfirmed"
+  /** La suscripción no resolvió todavía: sin ella no se sabe si hubo cargo. */
+  | "subscription_unknown"
+  /** El estado publicado es de otra cuenta (query cacheada durante A → B). */
+  | "owner_mismatch"
+  /** Prueba gratuita de siete días: acceso concedido y CERO cobrado. */
+  | "free_trial"
+  /** Ni cargo ni prueba: cancelada, vencida, con el cobro fallando. */
+  | "not_charged";
+
+export type PurchaseVerdict =
+  | { readonly charged: true; readonly fact: string }
+  | { readonly charged: false; readonly reason: PurchaseSkipReason };
+
+/**
+ * ¿Este retorno de checkout es un cobro confirmado?
+ *
+ * El contrato descarta expresamente "un cobro pendiente, EN PRUEBA GRATUITA SIN
+ * CARGO, fallido o reembolsado". La oferta web de hoy es una sola —mensual con
+ * siete días gratis (`MONTHLY_TRIAL_DAYS`)—, así que en el retorno el estado
+ * real es `trialing` y esto devuelve `free_trial`: no se emite. Emitir ahí
+ * contaría cada prueba como conversión y volvería inservible justo la métrica
+ * para la que existe el evento.
+ *
+ * La función no depende de que la oferta tenga prueba: si mañana existe un plan
+ * sin días gratis, el mismo código emite sin tocar una línea.
+ */
+export function decidePurchaseFact(signal: PurchaseSignal): PurchaseVerdict {
+  if (signal.checkoutStatus !== CHARGED_SUBSCRIPTION_STATUS) {
+    return { charged: false, reason: "checkout_unconfirmed" };
+  }
+  if (typeof signal.subscriptionStatus !== "string" || signal.subscriptionStatus === "") {
+    return { charged: false, reason: "subscription_unknown" };
+  }
+  // Falla CERRADO: sin dueño vigente, sin dueño del dato o con dueños distintos,
+  // no se cuenta. El costo de equivocarse acá es perder una conversión; en la
+  // otra dirección es atribuirle a alguien la compra de otra persona.
+  if (
+    typeof signal.subscriptionOwner !== "string" ||
+    typeof signal.sessionOwner !== "string" ||
+    signal.subscriptionOwner !== signal.sessionOwner
+  ) {
+    return { charged: false, reason: "owner_mismatch" };
+  }
+  if (signal.subscriptionStatus === TRIAL_SUBSCRIPTION_STATUS) {
+    return { charged: false, reason: "free_trial" };
+  }
+  if (signal.subscriptionStatus !== CHARGED_SUBSCRIPTION_STATUS) {
+    return { charged: false, reason: "not_charged" };
+  }
+  return { charged: true, fact: purchaseFact(signal.periodEnd) };
+}
+
 // --- El hecho que entra -------------------------------------------------------
 
 /**
@@ -142,10 +279,55 @@ export function onboardingStepName(index: unknown): OnboardingStep | null {
  * del alta es OBLIGATORIO justo en el único evento que lo admite, y no se puede
  * pegar a ningún otro ni siquiera por error de tipeo. La allowlist del contrato
  * lo rechazaría igual (`property_not_allowed`), pero acá ni se puede escribir.
+ *
+ * Tres hechos llevan más de lo que viaja en el evento, y ninguno de esos campos
+ * extra sale del dispositivo: son lo que la pantalla SABE, para que la decisión
+ * no viva adentro de un componente.
  */
 export type ProductEventInput =
-  | { readonly name: "onboarding_step_viewed"; readonly step: number }
-  | { readonly name: Exclude<ProductEventName, "onboarding_step_viewed"> };
+  | {
+      readonly name: "onboarding_step_viewed";
+      readonly step: number;
+      /**
+       * El paso está PINTADO, no sólo montado.
+       *
+       * El disparador del contrato es "el paso queda montado y VISIBLE". El alta
+       * devuelve una vista vacía mientras las fuentes no cargaron: ahí el
+       * componente ya está montado, el estado `step` ya vale, y no hay nada en
+       * pantalla. Contar ahí mide el montaje, no la vista.
+       */
+      readonly visible: boolean;
+      /**
+       * Inspección visual (`debugStep`, `/preview-alta`): monta los once pasos a
+       * la vez y en ocho tamaños. No es nadie recorriendo el alta.
+       */
+      readonly inspecting: boolean;
+      /**
+       * Con sesión activa, el paso de acceso no es la primera pantalla del alta
+       * sino la espera de "Entrando a tu cuenta…" mientras el flujo decide la
+       * salida: un paso que el flujo saltea solo, que el contrato descarta.
+       */
+      readonly sessionActive: boolean;
+    }
+  | {
+      readonly name: "checkout_started";
+      /**
+       * Qué intento de pago es éste.
+       *
+       * El contrato descarta "un reintento AUTOMÁTICO del mismo intento ya
+       * contado" —un remontaje, el doble efecto de StrictMode— y no un segundo
+       * intento que la persona confirma después de un error. Cada uno crea una
+       * sesión de pago REAL en Stripe, así que son dos intenciones y no una.
+       */
+      readonly attempt: number;
+    }
+  | ({ readonly name: "purchase_completed" } & PurchaseSignal)
+  | {
+      readonly name: Exclude<
+        ProductEventName,
+        "onboarding_step_viewed" | "checkout_started" | "purchase_completed"
+      >;
+    };
 
 /** Las propiedades que puede llevar un evento de producto. Nada más existe. */
 export type ProductEventProperties = CommonEventProperties | OnboardingStepViewedEventProperties;
@@ -155,7 +337,34 @@ export type ProductEventSkipReason =
   /** El flujo mostró un paso que el contrato no nombra: sin nombre no hay evento. */
   | "unknown_step"
   /** El evento armado no pasó `validateEvent`. Nunca debería ocurrir. */
-  | "invalid_event";
+  | "invalid_event"
+  /** El paso está montado y todavía no pintado. */
+  | "not_visible"
+  /** Inspección visual del alta, no un recorrido. */
+  | "inspection"
+  /** Un paso que el flujo saltea solo. */
+  | "skipped_step"
+  | PurchaseSkipReason;
+
+/**
+ * Razones que son parte del funcionamiento NORMAL y no se avisan.
+ *
+ * Un aviso existe para que alguien mire: "las fuentes todavía no cargaron" o
+ * "esto fue una prueba gratuita" son la conducta correcta, y escribirlos en cada
+ * render convertiría la consola en ruido —y el ruido esconde el aviso que sí
+ * importa—. Sólo quedan fuera de esta lista los dos que sí son defectos: un paso
+ * que el contrato no nombra y un evento que no valida.
+ */
+const SILENT_SKIP_REASONS: ReadonlySet<ProductEventSkipReason> = new Set<ProductEventSkipReason>([
+  "not_visible",
+  "inspection",
+  "skipped_step",
+  "checkout_unconfirmed",
+  "subscription_unknown",
+  "owner_mismatch",
+  "free_trial",
+  "not_charged"
+]);
 
 export type ProductEventDecision =
   | {
@@ -181,8 +390,9 @@ export type ProductEventDecision =
  * ¿Este hecho produce un evento, y con qué propiedades?
  *
  * Toda la regla vive acá: la superficie sale del mapa de arriba, el paso del
- * alta se traduce a su nombre, las cinco propiedades comunes se estampan con la
- * versión vigente del contrato y el evento se valida antes de devolverlo.
+ * alta se traduce a su nombre, la compra se separa de la prueba gratuita, las
+ * cinco propiedades comunes se estampan con la versión vigente del contrato y el
+ * evento se valida antes de devolverlo.
  */
 export function decideProductEvent(
   input: ProductEventInput & { readonly environment: Environment }
@@ -201,6 +411,12 @@ export function decideProductEvent(
   let fact: string = name;
 
   if (input.name === "onboarding_step_viewed") {
+    // El orden es el del contrato: primero si el paso se VIO, después cuál fue.
+    if (!input.visible) return { emit: false, name, reason: "not_visible", issues: [] };
+    if (input.inspecting) return { emit: false, name, reason: "inspection", issues: [] };
+    if (input.step === STEP_AUTH && input.sessionActive) {
+      return { emit: false, name, reason: "skipped_step", issues: [] };
+    }
     const step = onboardingStepName(input.step);
     // El índice no viaja NUNCA: si el contrato no lo nombra, no hay evento. Un
     // paso nuevo del flujo entra al enum por la puerta del contrato (minor), no
@@ -210,6 +426,18 @@ export function decideProductEvent(
     // El hecho es "se vio ESTE paso", no "se vio un paso": volver atrás a uno ya
     // contado no emite, y avanzar al siguiente sí.
     fact = `${name}:${step}`;
+  }
+
+  if (input.name === "checkout_started") {
+    // El hecho es ESTE intento: un remontaje repite el número y no cuenta, y un
+    // reintento confirmado por la persona lo incrementa y sí cuenta.
+    fact = `${name}:${input.attempt}`;
+  }
+
+  if (input.name === "purchase_completed") {
+    const veredicto = decidePurchaseFact(input);
+    if (!veredicto.charged) return { emit: false, name, reason: veredicto.reason, issues: [] };
+    fact = veredicto.fact;
   }
 
   const veredicto = validateEvent({ name, properties });
@@ -226,14 +454,16 @@ export function decideProductEvent(
 }
 
 /**
- * El aviso que se escribe cuando un hecho no se emite.
+ * El aviso que se escribe cuando un hecho no se emite POR UN DEFECTO.
  *
  * Lleva el nombre del evento, la razón y los códigos del validador, y nada más:
- * ni el índice del paso, ni el valor de ninguna propiedad. Un log es un lugar
- * donde los datos se quedan, así que la regla de la allowlist rige también acá.
+ * ni el índice del paso, ni el estado de la suscripción, ni el valor de ninguna
+ * propiedad. Un log es un lugar donde los datos se quedan, así que la regla de la
+ * allowlist rige también acá.
  */
 export function productEventWarning(decision: ProductEventDecision): string | null {
   if (decision.emit) return null;
+  if (SILENT_SKIP_REASONS.has(decision.reason)) return null;
   const codigos = decision.issues.length > 0 ? ` (${decision.issues.join(", ")})` : "";
   return `[orbita] ${decision.name} no emitido: ${decision.reason}${codigos}`;
 }
@@ -265,25 +495,31 @@ export type ProductEventPort = {
  *
  * Es uno solo, y el contrato lo nombra: "volver a abrir la pantalla de compra
  * exitosa" no es una compra nueva. Recargar `/checkout/success` vuelve a
- * consultar el estado, vuelve a recibir `active` y —sin esto— contaría una
- * segunda conversión sobre el mismo cobro, que es el número más caro de
+ * consultar el estado, vuelve a recibir la confirmación y —sin esto— contaría
+ * una segunda conversión sobre el mismo cobro, que es el número más caro de
  * ensuciar. Los otros seis se cuentan dentro de la carga: el alta y la paywall
  * viven adentro de una sola sesión de navegación, y ahí alcanza con el estado de
  * módulo.
  *
- * Lo que se anota es esta clave y nada más: sin id de sesión de pago, sin URL y
- * sin nada de la query, que el contrato prohíbe guardar (sección 8).
+ * Lo que se anota es la clave del hecho y nada más —`purchase_completed` con el
+ * fin del período—: sin id de sesión de pago, sin URL y sin nada de la query,
+ * que el contrato prohíbe guardar (sección 8).
  */
 const CROSS_LOAD_FACTS: ReadonlySet<string> = new Set<ProductEventName>(["purchase_completed"]);
 
 /**
- * Los hechos ya contados en esta carga.
+ * Los hechos ya contados por ESTA persona en esta pestaña.
  *
  * Vive en el MÓDULO y no en un componente, que es la corrección que CORE-183
  * pagó cara: con el estado en la instancia, un remount —un cambio de layout, el
- * doble efecto de StrictMode en desarrollo, un árbol que React descarta y vuelve
- * a montar— contaba el mismo hecho de nuevo. El estado de módulo vive lo que
- * vive el documento, que es exactamente lo que dura una sesión de navegación.
+ * doble efecto de StrictMode, un árbol que React descarta y vuelve a montar—
+ * contaba el mismo hecho de nuevo.
+ *
+ * Pero el estado de módulo dura lo que dura el DOCUMENTO, y una persona no. En
+ * la misma pestaña se puede crear una cuenta, cerrar sesión y crear otra: con la
+ * deduplicación atada al documento, el segundo alta no emitía nada. Por eso lo
+ * que la reinicia no es una recarga sino `resetIdentityFor`, con los mismos
+ * cuatro motivos que el contrato declara para el reset de identidad.
  */
 const contados = new Set<string>();
 
@@ -321,8 +557,130 @@ export function factCounted(fact: string): boolean {
 
 /**
  * Vuelve al estado de una carga nueva. Existe para las pruebas: en el navegador
- * esto se reinicia recargando la página.
+ * esto se reinicia recargando la página o reseteando la identidad.
  */
 export function resetProductEvents(): void {
   contados.clear();
+  identificada = null;
+}
+
+// --- La identidad de persona --------------------------------------------------
+
+/**
+ * Todo lo que la identidad necesita del navegador y del SDK.
+ *
+ * Está separado de `ProductEventPort` porque son dos capacidades distintas: hay
+ * lugares del producto —el logout, la eliminación de cuenta— que tienen que
+ * poder cortar el vínculo sin poder emitir ni un evento.
+ */
+export type IdentityPort = {
+  /** `identify` del SDK, con el identificador y NADA más. */
+  readonly identify: (distinctId: string) => void;
+  /** `reset` del SDK: sortea un distinct ID anónimo nuevo. */
+  readonly reset: () => void;
+  /** Borra las marcas de hechos que sobreviven a la carga (la de la compra). */
+  readonly forget: () => void;
+  /** Dónde se avisa que una identidad no se pudo usar. */
+  readonly warn: (message: string) => void;
+};
+
+export type IdentityDecision =
+  | { readonly identify: true; readonly distinctId: string }
+  | { readonly identify: false; readonly reason: "not_internal_identifier" };
+
+/**
+ * ¿Esto se puede mandar a `identify`?
+ *
+ * La respuesta la da el CONTRATO (`isStableInternalIdentifier`) y no una
+ * heurística de acá: el origen tiene que estar en el catálogo cerrado y el valor
+ * tiene que tener exactamente la forma que ese emisor produce. Un email, un
+ * nombre, un id de un proveedor que el contrato no declara o un valor con la
+ * forma equivocada no pasan, y sin identificador válido NO hay `identify` —el
+ * contrato se cierra en vez de dejar pasar cualquier cosa.
+ */
+export function decideIdentify(identifier: unknown): IdentityDecision {
+  if (!isStableInternalIdentifier(identifier)) {
+    return { identify: false, reason: "not_internal_identifier" };
+  }
+  return { identify: true, distinctId: identifier.value };
+}
+
+/**
+ * La persona identificada en esta carga, o `null` si no hay ninguna.
+ *
+ * No es una caché de conveniencia: es lo que permite ver un cambio de persona
+ * desde el borde de la analítica. El SDK, ya identificado como A, IGNORA un
+ * `identify` con el id de B —escribe un aviso y no cambia nada—, así que sin
+ * este dato un cambio de cuenta que no pasara por su camino nombrado dejaría los
+ * eventos de B pegados al perfil de A.
+ */
+let identificada: string | null = null;
+
+/** Quién está identificada ahora. Se lee para verificar, no para decidir. */
+export function identifiedPerson(): string | null {
+  return identificada;
+}
+
+/**
+ * Ata la captura a una persona, con su identificador interno y nada más.
+ *
+ * Sin propiedades de persona: `identify` va con el identificador SOLO, sin
+ * `$set` ni `$set_once`. Ahí es donde el SDK mandaría las propiedades iniciales
+ * (`$initial_referrer`, `$initial_current_url`), que el contrato prohíbe; el
+ * filtro de salida las descarta igual, y acá directamente no se pueden escribir
+ * porque el puerto no las recibe.
+ *
+ * Idempotente: volver a identificar a la MISMA persona no hace nada. Identificar
+ * a OTRA resetea antes —es un cambio de cuenta, uno de los cuatro motivos que el
+ * contrato declara— para que sus eventos no hereden el perfil de la anterior.
+ *
+ * `alias` no se usa. El contrato lo reserva para unir dos emisores distintos
+ * sobre la misma persona (la instalación anónima de ayer, la cuenta de hoy), y
+ * en el flujo normal ese vínculo no hace falta: el distinct ID anónimo del SDK
+ * viaja desde la primera visita y `identify` lo ata solo.
+ */
+export function identifyPerson(identifier: unknown, port: IdentityPort): boolean {
+  const decision = decideIdentify(identifier);
+  if (!decision.identify) {
+    port.warn(`[orbita] identify no emitido: ${decision.reason}`);
+    return false;
+  }
+  if (identificada === decision.distinctId) return false;
+  if (identificada !== null) resetIdentityFor("account_switch", port);
+  identificada = decision.distinctId;
+  port.identify(decision.distinctId);
+  return true;
+}
+
+/**
+ * Corta el vínculo con la persona, ANTES de cualquier captura siguiente.
+ *
+ * Los motivos son los del contrato (`requiresIdentityReset`): `logout`,
+ * `account_switch`, `account_deletion` y `consent_withdrawn`. No hay una segunda
+ * lista acá; un motivo inventado no resetea y se avisa, porque un reset que
+ * corre por cualquier cosa es un reset que nadie puede razonar.
+ *
+ * Reinicia TRES cosas, y las tres por el mismo motivo: lo que quedaría pegado a
+ * la persona siguiente.
+ *
+ *   1. el distinct ID del SDK —sin esto dos cuentas quedan fusionadas en un
+ *      perfil y no hay forma limpia de deshacerlo—;
+ *   2. la persona identificada acá, para que el próximo `identify` sí corra;
+ *   3. la deduplicación de hechos, la del módulo y la de la pestaña — el segundo
+ *      alta de la misma pestaña es un hecho nuevo de otra persona, no una
+ *      repetición del primero.
+ *
+ * El reset del SDK va PRIMERO: es el que protege a la persona. Si fallara, lo
+ * que se pierde es contar de nuevo, no la privacidad de nadie.
+ */
+export function resetIdentityFor(trigger: unknown, port: IdentityPort): boolean {
+  if (!requiresIdentityReset(trigger)) {
+    port.warn("[orbita] reset no aplicado: motivo fuera del contrato");
+    return false;
+  }
+  port.reset();
+  identificada = null;
+  contados.clear();
+  port.forget();
+  return true;
 }

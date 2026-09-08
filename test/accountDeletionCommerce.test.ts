@@ -43,7 +43,8 @@ describe("el marcador de compra se borra con la cuenta", () => {
     // La pantalla llega hasta el marcador y entrega el control.
     const result = await runAccountDeletion({
       ownerUserId: "user_a",
-      markDeletionRequested: async () => undefined
+      markDeletionRequested: async () => undefined,
+      resetAnalyticsIdentity: () => undefined
     });
     assert.deepEqual(result, {
       status: "handoff",

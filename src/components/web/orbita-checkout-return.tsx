@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useAction } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { trackPurchaseCompleted } from "@/analytics/productTelemetry";
@@ -13,7 +13,7 @@ import {
   type WebOffer
 } from "@/domain/paywall";
 import { useLiveApp } from "@/hooks/useLiveApp";
-import { proposedApi } from "@/services/appRefs";
+import { appApi, proposedApi } from "@/services/appRefs";
 
 const colors = {
   black: "#07080A",
@@ -43,9 +43,24 @@ function CheckoutReturnInner() {
   const raw = Array.isArray(params.session_id) ? params.session_id[0] : params.session_id;
   const sessionId = readCheckoutSessionId(raw);
 
-  const { isLive } = useLiveApp();
+  const { isLive, auth } = useLiveApp();
   const getWebOffer = useAction(proposedApi.getWebOffer);
   const getCheckoutStatus = useAction(proposedApi.getCheckoutStatus);
+  /**
+   * El estado REAL de la suscripción, que es lo único que separa un cobro de una
+   * prueba gratuita.
+   *
+   * `getCheckoutStatus` no puede contestarlo: su unión de retorno tiene tres
+   * literales (`pending | active | failed`) y el entitlement trata la prueba como
+   * acceso concedido, así que `trialing` le vuelve `active`. Esta query conserva
+   * el estado tal cual está en la base —`convex/schema.ts` declara `trialing`
+   * aparte— y viaja con su dueño, que es lo que permite descartar el valor
+   * cacheado de la cuenta anterior durante un cambio A → B.
+   *
+   * Es reactiva y no cuesta una llamada extra por render: es la misma query que
+   * el resto del producto ya consulta para saber el plan.
+   */
+  const subscription = useQuery(appApi.subscriptions.getCurrent, isLive ? {} : "skip");
 
   const [commerceEnabled, setCommerceEnabled] = useState<boolean | null>(null);
   const [status, setStatus] = useState<CheckoutStatus | null>(null);
@@ -112,21 +127,39 @@ function CheckoutReturnInner() {
    * El cobro volvió confirmado y el acceso quedó otorgado
    * (`purchase_completed`, contrato v1.0.0).
    *
-   * `active` no lo dice la URL sino el backend, y sólo después de verificar que
-   * la sesión, el propietario y el customer son de esta cuenta y que el webhook
-   * confirmó el entitlement. Por eso el disparador es exactamente ese estado:
-   * un cobro pendiente (`pending`), uno fallido (`failed`) y el techo de espera
-   * sin respuesta no emiten nada, que es lo que el contrato pide.
+   * Esta pantalla NO decide: pasa las dos autoridades tal como las recibe y la
+   * regla vive en `productEvents.ts`, donde se prueba ejecutándola.
+   *
+   *   · `status` es lo que confirmó el retorno del checkout. No lo dice la URL
+   *     sino el backend, y sólo después de verificar que la sesión, el
+   *     propietario y el customer son de esta cuenta y que el webhook confirmó el
+   *     entitlement. Un cobro pendiente, uno fallido y el techo de espera sin
+   *     respuesta no llegan nunca a `active`.
+   *   · la suscripción es la que distingue el CARGO de la PRUEBA GRATUITA. El
+   *     contrato descarta expresamente "en prueba gratuita sin cargo", y la
+   *     oferta web de hoy es una sola: mensual con siete días gratis
+   *     (`MONTHLY_TRIAL_DAYS`). Con `status === "active"` a secas, cada prueba se
+   *     contaba como conversión y el número dejaba de medir lo que nombra.
+   *
+   * El dueño viaja con las dos: la query conserva su último valor mientras la
+   * nueva resuelve, y sin comparar dueños la compra de una cuenta se contaba bajo
+   * la sesión de la siguiente.
    *
    * Volver a abrir esta pantalla tampoco cuenta: dentro de la misma carga lo
    * impide el estado de módulo, y a una recarga —que lo estrena— la corta la
-   * memoria de pestaña de `productTelemetry.ts`. Es el único hecho de esta
+   * memoria de pestaña de `productTelemetry.ts`, con una clave que distingue ESTA
+   * compra de la siguiente por el fin de su período. Es el único hecho de esta
    * tarjeta cuyo no-disparador cruza una carga de página.
    */
   useEffect(() => {
-    if (status !== "active") return;
-    trackPurchaseCompleted();
-  }, [status]);
+    trackPurchaseCompleted({
+      checkoutStatus: status,
+      subscriptionStatus: subscription?.status ?? null,
+      subscriptionOwner: subscription?.clerkUserId ?? null,
+      sessionOwner: auth?.userId ?? null,
+      periodEnd: subscription?.currentPeriodEnd ?? null
+    });
+  }, [status, subscription, auth?.userId]);
 
   if (!sessionId) {
     return (

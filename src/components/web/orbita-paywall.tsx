@@ -77,10 +77,13 @@ function CheckoutLauncher() {
     // paywall en estado de carga. `paywall_viewed` se emite donde hay oferta de
     // verdad, que es la paywall del alta.
     //
-    // La deduplicación vive a nivel de módulo, así que un remontaje no vuelve a
-    // contar aunque cree otra sesión de Stripe, y el reintento explícito —que
-    // incrementa `attempt`— tampoco: es el mismo intento de pago, ya contado.
-    trackCheckoutStarted();
+    // La deduplicación vive a nivel de módulo y distingue el INTENTO: un
+    // remontaje repite el mismo `attempt` y no vuelve a contar, y el reintento
+    // que la persona confirma después de un error lo incrementa y sí cuenta —
+    // crea otra sesión de pago real, así que es otra intención de pagar y no un
+    // reintento automático del mismo intento, que es lo único que el contrato
+    // descarta.
+    trackCheckoutStarted(attempt);
     let alive = true;
     setState("abriendo");
     createCheckout({ plan: "monthly" })

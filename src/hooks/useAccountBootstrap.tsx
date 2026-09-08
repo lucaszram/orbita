@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
+import { identifyAccount, resetAnalyticsIdentity } from "@/analytics/productTelemetry";
 import { runAccountBootstrap, type BootstrapOutcome } from "@/domain/accountBootstrap";
 import { useAppState } from "@/hooks/useAppState";
 import { useSignInHydrate } from "@/onboarding/useAccount";
@@ -58,7 +59,12 @@ export function AccountBootstrapProvider({ children }: { children: ReactNode }) 
       resetApp,
       restoreAccountData,
       createProfile,
-      adoptLocalProfile
+      adoptLocalProfile,
+      // El puente de la telemetría web: en nativo estas dos son inertes y no
+      // arrastran ni el SDK ni el contrato al bundle del teléfono
+      // (`productTelemetry.native.ts`).
+      resetAnalyticsIdentity,
+      identifyAccount
     })
       .then((outcome) => {
         setState(outcome.status === "error" ? "error" : "idle");

@@ -82,6 +82,19 @@ function PaywallWithStripe(props: Props) {
   // Cada toque crea una sesión de pago REAL: el guard es sincrónico, como en
   // el lanzador `/paywall` (un estado de React llega tarde para el doble tap).
   const checkoutLock = useRef(false);
+  /**
+   * Qué intento de pago es éste.
+   *
+   * El guard de arriba impide el doble tap, pero se libera cuando el checkout
+   * falla y la persona puede confirmar de nuevo: eso crea otra sesión de Stripe y
+   * es otra intención declarada de pagar. Numerarlo es lo que permite contar el
+   * segundo sin contar dos veces el primero — el contrato descarta el reintento
+   * AUTOMÁTICO del mismo intento, no el que alguien vuelve a confirmar.
+   *
+   * Vive en un ref y no en un estado: no dibuja nada, y un re-render por esto
+   * sería un render de más en la pantalla que decide la compra.
+   */
+  const checkoutAttempt = useRef(0);
 
   useEffect(() => {
     let alive = true;
@@ -131,7 +144,8 @@ function PaywallWithStripe(props: Props) {
     // emite acá, antes de crear la sesión: un instante después el navegador se
     // va a Stripe con `location.replace`, y un evento emitido contra esa
     // navegación es un evento que puede no salir nunca.
-    trackCheckoutStarted();
+    checkoutAttempt.current += 1;
+    trackCheckoutStarted(checkoutAttempt.current);
     setOpening(true);
     setNotice(null);
     createCheckout({ plan: "monthly" })

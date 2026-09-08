@@ -405,10 +405,19 @@ export const CONTRACT_PROPERTY_NAMES: readonly string[] = [
  * Están enumeradas una por una porque son la ÚNICA excepción a "sólo las
  * propiedades del contrato". Ninguna lleva URL, referrer, campaña ni huella del
  * dispositivo: eso se cae en `retainedProperties`.
+ *
+ * Ninguna identifica a una persona fuera de nuestra base: `distinct_id` y
+ * `$anon_distinct_id` son el identificador que el contrato declara o el UUID que
+ * el SDK sorteó, y los demás son de transporte.
  */
 export const TRANSPORT_PROPERTY_NAMES: readonly string[] = [
   "token",
   "distinct_id",
+  // El distinct ID ANÓNIMO anterior. Viaja sólo en `$identify` y es lo que ata
+  // la visita de antes del login con la cuenta: sin él, `identify` estrena un
+  // perfil y el recorrido previo al alta queda huérfano. Es un UUID que el SDK
+  // sorteó, no un dato del dispositivo ni de la persona.
+  "$anon_distinct_id",
   "$session_id",
   "$window_id",
   "$lib",

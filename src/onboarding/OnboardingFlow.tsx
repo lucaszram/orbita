@@ -292,6 +292,21 @@ export function OnboardingFlow({
   }, [step, identity, birthDate, placeQuery, birthPlace, birthTime, timeUnknown, email, clientDraftId, userId, inspeccion]);
 
   /**
+   * ¿Hay algo PINTADO en pantalla?
+   *
+   * Es la señal de "listo para mostrar" de este flujo, y es exactamente la
+   * condición del render de más abajo: mientras las fuentes no cargaron, la
+   * pantalla devuelve una vista vacía. Sin ella, el paso ya estaba montado y con
+   * su `step` resuelto, y no había nada que ver.
+   *
+   * Está declarada acá, junto al efecto que la necesita y con el mismo nombre
+   * que usa el render, para que las dos lecturas no puedan separarse: si mañana
+   * la espera suma otra fuente (un dato remoto, una imagen), se agrega en un
+   * solo lugar y el conteo la respeta sin acordarse de nada.
+   */
+  const pasoVisible = fontsLoaded;
+
+  /**
    * Un evento por paso del alta (`onboarding_step_viewed`, contrato v1.1.0).
    *
    * Va acá y no en cada pantalla: `step` es el ÚNICO estado que sabe qué paso se
@@ -299,26 +314,33 @@ export function OnboardingFlow({
    * un efecto por pantalla, once pantallas serían once definiciones distintas de
    * "se vio un paso" y cada pantalla nueva tendría que acordarse de medir.
    *
-   * El efecto depende del paso y no del render: React lo vuelve a correr cuando
-   * el paso cambia. Lo que sale es el NOMBRE del paso —lo resuelve el módulo
-   * puro, contra el enum del contrato—, nunca el índice y nunca nada de lo que
-   * la persona cargó en él. Volver atrás a un paso ya contado no emite: la
-   * deduplicación vive a nivel de módulo (`productEvents.ts`), así que sobrevive
-   * a un remount y al doble efecto de StrictMode.
+   * El efecto no decide: pasa lo que esta pantalla sabe —qué paso, si está
+   * pintado, si es una inspección, si hay sesión— y la regla vive en el módulo
+   * puro, donde se puede probar ejecutándola. Depende de esos cuatro y de nada
+   * más, así que React lo vuelve a correr cuando alguno cambia —incluida la
+   * carga de las fuentes— y no en cada render.
    *
-   * Dos casos NO cuentan, y los dos están en el contrato:
-   *   · la inspección visual (`debugStep`, `/preview-alta`) monta los once pasos
-   *     a la vez y en ocho tamaños, y no es nadie recorriendo el alta;
-   *   · el acceso con la sesión ya activa, que no es la primera pantalla del
-   *     alta sino la espera de "Entrando a tu cuenta…" mientras
-   *     `resolveAuthStepExit` decide la salida — un paso que el flujo saltea
-   *     solo. El alta que SÍ empieza acá se cuenta antes de que haya sesión.
+   * Lo que sale es el NOMBRE del paso —contra el enum del contrato—, nunca el
+   * índice y nunca nada de lo que la persona cargó en él. Volver atrás a un paso
+   * ya contado no emite: la deduplicación vive a nivel de módulo
+   * (`productEvents.ts`), así que sobrevive a un remount y al doble efecto de
+   * StrictMode.
+   *
+   * Tres casos NO cuentan, y los tres están en el contrato: el paso montado y
+   * todavía no visible, la inspección visual (`debugStep`, `/preview-alta`, que
+   * monta los once pasos a la vez y en ocho tamaños) y el acceso con la sesión ya
+   * activa —que no es la primera pantalla del alta sino la espera de "Entrando a
+   * tu cuenta…" mientras `resolveAuthStepExit` decide la salida, un paso que el
+   * flujo saltea solo—.
    */
   useEffect(() => {
-    if (inspeccion) return;
-    if (step === STEP_AUTH && sesionActiva) return;
-    trackOnboardingStepViewed(step);
-  }, [step, sesionActiva, inspeccion]);
+    trackOnboardingStepViewed({
+      step,
+      visible: pasoVisible,
+      inspecting: inspeccion,
+      sessionActive: sesionActiva
+    });
+  }, [step, pasoVisible, inspeccion, sesionActiva]);
 
   const canComputeTriad = Boolean(computeTriad && birthPlace && clientDraftId);
 
@@ -546,7 +568,9 @@ export function OnboardingFlow({
     }
   };
 
-  if (!fontsLoaded) return <View style={styles.fill} />;
+  // La MISMA condición que gobierna el conteo del paso: acá se dibuja la vista
+  // vacía, y arriba `onboarding_step_viewed` espera a que deje de dibujarse.
+  if (!pasoVisible) return <View style={styles.fill} />;
 
   let screen: ReactNode;
   switch (step) {

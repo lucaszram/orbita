@@ -63,6 +63,9 @@ function trackedSteps(overrides: Partial<AccountDeletionSteps> = {}) {
     markDeletionRequested: async () => {
       calls.push("marker");
     },
+    resetAnalyticsIdentity: () => {
+      calls.push("resetIdentidad");
+    },
     ...overrides
   };
   return { calls, steps };
@@ -116,15 +119,20 @@ describe("runAccountDeletion — sólo persiste la intención y entrega el contr
       status: "handoff",
       marker: { userId: "user_1", phase: "deletion_requested" }
     });
-    assert.deepEqual(calls, ["marker"]);
+    assert.deepEqual(calls, ["marker", "resetIdentidad"]);
   });
 
   it("REPRO: NINGÚN paso destructivo se le puede pasar a la pantalla", () => {
-    // El tipo es la garantía: `AccountDeletionSteps` sólo declara el dueño y la
-    // marca. Convex, Clerk, el checkpoint, la limpieza y la navegación viven en
-    // el boundary, con el producto desmontado.
+    // El tipo es la garantía: `AccountDeletionSteps` sólo declara el dueño, la
+    // marca y el corte del vínculo de la analítica —que no borra nada—. Convex,
+    // Clerk, el checkpoint, la limpieza y la navegación viven en el boundary,
+    // con el producto desmontado.
     const { steps } = trackedSteps();
-    assert.deepEqual(Object.keys(steps).sort(), ["markDeletionRequested", "ownerUserId"]);
+    assert.deepEqual(Object.keys(steps).sort(), [
+      "markDeletionRequested",
+      "ownerUserId",
+      "resetAnalyticsIdentity"
+    ]);
     const dominio = readFileSync(join(ROOT, "src/domain/accountDeletion.ts"), "utf8");
     const inicio = dominio.indexOf("export type AccountDeletionSteps");
     const cuerpo = dominio.slice(inicio, dominio.indexOf("};", inicio));
@@ -158,7 +166,7 @@ describe("runAccountDeletion — sólo persiste la intención y entrega el contr
     const { calls, steps } = trackedSteps();
     const result = await requestAccountDeletion({ confirmWarning: accept, confirmDestructive: accept }, steps);
     assert.equal(result.status, "handoff");
-    assert.deepEqual(calls, ["marker"]);
+    assert.deepEqual(calls, ["marker", "resetIdentidad"]);
   });
 });
 
@@ -184,7 +192,7 @@ describe("runAccountDeletion — un error deja todo como estaba", () => {
     });
     assert.deepEqual(await runAccountDeletion(steps), { status: "error", step: "marker" });
     assert.equal((await runAccountDeletion(steps)).status, "handoff");
-    assert.deepEqual(calls, ["marker"]);
+    assert.deepEqual(calls, ["marker", "resetIdentidad"]);
   });
 });
 
@@ -197,7 +205,8 @@ describe("handoff → boundary: la secuencia completa, una fase por vez", () => 
     const { steps } = trackedSteps({
       markDeletionRequested: async () => {
         s.store.set("marker", JSON.stringify({ userId: "user_1", phase: "deletion_requested" }));
-      }
+      },
+      resetAnalyticsIdentity: () => undefined
     });
     const result = await runAccountDeletion(steps);
     assert.equal(result.status, "handoff");
@@ -1428,7 +1437,8 @@ describe("regresión 1 (review): Clerk falla → reinicio con Clerk signed-in �
       ownerUserId: "user_1",
       markDeletionRequested: async () => {
         s.store.set("marker", JSON.stringify({ userId: "user_1", phase: "deletion_requested" }));
-      }
+      },
+      resetAnalyticsIdentity: () => undefined
     });
     assert.deepEqual(result, {
       status: "handoff",
@@ -1592,7 +1602,8 @@ describe("regresión original: Convex OK → Clerk OK → AsyncStorage falla →
       ownerUserId: "user_1",
       markDeletionRequested: async () => {
         s.store.set("marker", JSON.stringify({ userId: "user_1", phase: "backend_deleted" }));
-      }
+      },
+      resetAnalyticsIdentity: () => undefined
     });
     assert.equal(result.status, "handoff");
 
