@@ -36,16 +36,17 @@ export const current = query({
   }
 });
 
+/**
+ * El aviso de alta a core-control NO se agenda acá.
+ *
+ * Vive dentro de `getOrCreateUser`, que es el único punto donde la fila de la
+ * cuenta se inserta. Esta mutation no es el único camino que crea cuentas, así
+ * que condicionar el aviso a "esta llamada la creó" perdía las altas que nacían
+ * por `requireUser` o por `onboarding.saveDraft`.
+ */
 export const getOrCreateCurrentUser = mutation({
   handler: async (ctx) => {
-    const identity = await requireIdentity(ctx);
-    const existing = await findUserByTokenIdentifier(ctx, identity.tokenIdentifier);
-    const user = await getOrCreateUser(ctx);
-    if (!existing && user) {
-      const sendSignupRef = makeFunctionReference<"action">("coreControl:sendSignup");
-      await ctx.scheduler.runAfter(0, sendSignupRef, { userId: user._id });
-    }
-    return user;
+    return await getOrCreateUser(ctx);
   }
 });
 
