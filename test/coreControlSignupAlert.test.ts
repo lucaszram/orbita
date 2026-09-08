@@ -272,7 +272,31 @@ describe("del alta sólo viajan producto, email y el identificador del evento", 
     );
   });
 
-  it("el email no queda escrito en ninguna tabla nueva de Órbita", async () => {
+  /**
+   * El dominio del email de prueba, que sirve de aguja: aparece igual en el
+   * email que llega de Clerk (`Ana@Orbita.Test`) y en el normalizado que viaja.
+   */
+  const AGUJA_EMAIL = "orbita.test";
+
+  /**
+   * Todas las tablas de la base menos la de cuentas.
+   *
+   * `users` es la ÚNICA excepción, y es explícita: la fila de la cuenta es el
+   * registro de la persona y `signupPayload` lee el email de ahí en cada
+   * intento. Cualquier otra tabla que lo tenga es una copia nueva, que es
+   * exactamente lo que la tarjeta promete no crear.
+   *
+   * Se recorre lo que la base conoce y no una lista escrita a mano: una lista
+   * deja pasar la tabla que nadie se acordó de agregarle.
+   */
+  const tablasSalvoCuentas = (memoria: MemoryDb) => memoria.tables().filter((tabla) => tabla !== "users");
+
+  const guardanElEmail = (memoria: MemoryDb) =>
+    tablasSalvoCuentas(memoria).filter((tabla) =>
+      JSON.stringify(memoria.rows(tabla)).toLowerCase().includes(AGUJA_EMAIL)
+    );
+
+  it("el email vive en la fila de la cuenta, y en ninguna otra tabla de la base", async () => {
     const { memoria, userId, agendados } = await cuentaCreada();
     await conEntorno(CONFIGURADO, () =>
       conFetch(
@@ -283,19 +307,35 @@ describe("del alta sólo viajan producto, email y el identificador del evento", 
       )
     );
 
-    // La única fila que puede tener el email es la cuenta misma: es su registro,
-    // no una copia nueva creada por el aviso.
-    for (const tabla of ["productEvents", "productActors", "productDigests", "onboardingDrafts"]) {
-      const crudo = JSON.stringify(memoria.rows(tabla));
-      assert.ok(!crudo.toLowerCase().includes("orbita.test"), `${tabla} no guarda el email`);
-    }
+    // La mitad afirmativa: el email SÍ está, y está en la fila de la cuenta. De
+    // ahí lo lee el aviso; si un día dejara de estar, el aviso no podría salir y
+    // este test es el que tiene que enterarse.
+    assert.equal(memoria.row(userId)?.email, IDENTIDAD.email, "la cuenta es donde vive el email");
+
+    // La mitad negativa: en ninguna otra parte de la base.
+    assert.deepEqual(guardanElEmail(memoria), [], "el aviso no deja copias del email");
+
+    // Y el barrido tiene que estar mirando algo: la tabla que el alta escribe
+    // además de la cuenta. Sin esto, una base que no conociera ninguna tabla
+    // daría verde por no haber mirado nada.
+    assert.ok(
+      tablasSalvoCuentas(memoria).includes("productEvents"),
+      `el barrido cubre lo que el alta escribe: ${tablasSalvoCuentas(memoria).join(", ")}`
+    );
+
     // Y tampoco viaja en los argumentos del trabajo agendado, que Convex sí persiste.
     for (const agendado of agendados) {
-      assert.ok(!JSON.stringify(agendado.args).toLowerCase().includes("orbita.test"));
+      assert.ok(!JSON.stringify(agendado.args).toLowerCase().includes(AGUJA_EMAIL));
       for (const clave of Object.keys(agendado.args)) {
         assert.ok(["userId", "attempt"].includes(clave), `el trabajo agendado no debería llevar \`${clave}\``);
       }
     }
+
+    // Que el barrido muerde se prueba acá mismo: una tabla que la base ni
+    // conocía, con el email adentro, aparece sola. Ésa es la diferencia con la
+    // lista escrita a mano, que no la habría mirado nunca.
+    memoria.seed("journalEntries", { texto: `escribile a ${IDENTIDAD.email}` });
+    assert.deepEqual(guardanElEmail(memoria), ["journalEntries"], "una tabla nueva con el email hace fallar el barrido");
   });
 
   it("la entrega no loguea: ni el email ni el fallo salen por consola", async () => {
