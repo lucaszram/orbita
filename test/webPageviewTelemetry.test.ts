@@ -36,6 +36,7 @@ import {
   REFERRER_CLASSES,
   ROUTE_TEMPLATES,
   canCapture,
+  isSupportedContractVersion,
   isValidEvent,
   validateEvent,
   type Environment,
@@ -998,15 +999,22 @@ test("el contrato registra la aclaración de consentimiento con su fecha", () =>
   assert.match(aclaracion, /src\/analytics\/webClientOptions\.ts/);
 });
 
-test("la aclaración es aclaración: no sube la versión del contrato", () => {
+test("la aclaración es aclaración: no sube la versión, y el evento sale con la vigente", () => {
   const aclaracion = contrato
     .slice(contrato.indexOf("### Aclaración registrada 2026-09-07"), contrato.indexOf("## 9."))
     .replace(/[ \t]*\n[ \t]*/g, " ");
   assert.match(aclaracion, /\*\*aclaración, no un cambio de contrato\*\*/);
   assert.match(aclaracion, /no sube `CONTRACT_VERSION`/);
-  // Y efectivamente no la subió: el evento sigue viajando con la misma versión.
-  assert.equal(CONTRACT_VERSION, "1.0.0");
-  assert.equal(navegacionEmitida().contract_version, "1.0.0");
+  // Y efectivamente no la subió: la versión que viaja es la que el contrato
+  // declara hoy, no una que fije este test. Contra `CONTRACT_VERSION` y no
+  // contra un literal a propósito: el número sube con cada minor —a v1.1.0 la
+  // subió el alta, no esta aclaración— y lo que se cuida acá es que el emisor
+  // estampe EXACTAMENTE la vigente, no cuál es.
+  const emitida = navegacionEmitida().contract_version;
+  assert.equal(emitida, CONTRACT_VERSION);
+  // Emisor y validador viajan en el mismo bundle: lo que sale tiene que pasar
+  // la misma puerta que lo que entra.
+  assert.equal(isSupportedContractVersion(emitida), true);
 });
 
 // --- 12. Nada de eventos de producto en esta tarjeta -------------------------

@@ -1,4 +1,4 @@
-# Contrato de eventos de Órbita — v1.0.0
+# Contrato de eventos de Órbita — v1.1.0
 
 Este documento define qué es un evento válido de Órbita. Es el diccionario
 canónico: si algo no está acá, no es un evento del producto y no se emite. Si
@@ -10,7 +10,14 @@ privacidad, así que cualquier número que sacáramos era imposible de defender:
 había forma de distinguir un dato bien medido de uno inventado por una pantalla
 distraída. Este contrato existe para que esa pregunta tenga una sola respuesta.
 
-- **Versión:** `1.0.0` (viaja en cada evento como `contract_version`).
+La v1.1.0 amplía el diccionario con el alta. Hasta acá `onboarding_completed`
+sólo decía que alguien había llegado al final y declaraba "avanzar un paso" como
+no-disparador, así que entre la primera pantalla del alta y la activación no
+había ningún dato: no se podía saber en qué paso se cae la gente ni cuántas
+cuentas se crean. Son tres eventos nuevos y una propiedad nueva; ninguno de los
+cinco de v1.0.0 cambia de nombre, de semántica ni de obligatoriedad.
+
+- **Versión:** `1.1.0` (viaja en cada evento como `contract_version`).
 - **Versión ejecutable:** `src/analytics/eventContract.ts` — mismos nombres,
   mismos literales, con funciones puras de validación.
 - **Tests:** `test/analyticsEventContract.test.ts`.
@@ -25,7 +32,7 @@ transporta contenido natal.
 
 ## 1. Principios
 
-1. **Lista cerrada.** Los eventos válidos son cinco. Nada más.
+1. **Lista cerrada.** Los eventos válidos son ocho. Nada más.
 2. **Nada de texto libre.** Toda propiedad tiene un enum o un formato estricto.
    No hay una sola propiedad donde alguien pueda escribir una frase.
 3. **Allowlist, no denylist.** Una propiedad que no está declarada se rechaza, y
@@ -48,7 +55,7 @@ Estas cinco viajan en **todos** los eventos. No hay evento sin ellas.
 | `platform` | `web` \| `ios` \| `android` | La superficie que emite |
 | `surface` | `landing` \| `onboarding` \| `app` \| `paywall` \| `checkout` | La superficie que emite |
 | `section` | `hoy` \| `transitos` \| `vinculos` \| `umbral` \| `carta` \| `sin_seccion` | La navegación |
-| `contract_version` | `1.0.0` | Este contrato |
+| `contract_version` | `1.1.0` | Este contrato |
 
 ### `environment` sale del scope, nunca del hostname ni del proyecto
 
@@ -93,7 +100,7 @@ contradicción medida es un número que después nadie sabe leer.
 
 ---
 
-## 3. Los cinco eventos
+## 3. Los ocho eventos
 
 Para cada uno: qué contesta, qué lo dispara, qué **no** lo dispara y qué
 propiedades exige. El no-disparador no es decorativo: sin él, un evento se
@@ -148,13 +155,55 @@ que tengamos que reimplementar nada.
   compra exitosa.
 - **Propiedades:** las cinco comunes.
 
-### Por qué ninguno lleva propiedades propias además de esas
+Los tres que siguen son los que agrega v1.1.0, y cubren el tramo que faltaba: el
+alta, paso a paso, y el momento en que la cuenta se crea.
 
-En v1.0.0 no hay propiedades opcionales. `purchase_completed` no lleva monto ni
-plan, y no es un olvido: agregar una propiedad compatible es un cambio **minor**
-y se puede hacer cuando haya una decisión que dependa de ese dato. Sacar una
-propiedad que ya se prometió es un cambio **major**. Empezar mínimo es la única
-de las dos puertas que se puede abrir barato.
+### `onboarding_step_viewed`
+
+- **Contesta:** alta paso a paso — qué paso se vio, y dónde se cae la gente
+  antes de activarse.
+- **Dispara:** el paso del alta queda montado y visible.
+- **No dispara:** un re-render; volver atrás a un paso ya contado en esa misma
+  sesión de alta; un paso que el flujo saltea solo.
+- **Propiedades:** las cinco comunes + `onboarding_step`.
+
+### `signup_submitted`
+
+- **Contesta:** registro, paso 1 — la persona confirma crear su cuenta.
+- **Dispara:** la persona confirma el alta con sus credenciales.
+- **No dispara:** abrir la pantalla; escribir sin enviar; iniciar sesión en una
+  cuenta que ya existía.
+- **Propiedades:** las cinco comunes.
+
+### `signup_completed`
+
+- **Contesta:** registro, paso 2 — la cuenta quedó creada y con sesión.
+- **Dispara:** la cuenta queda creada y la sesión iniciada.
+- **No dispara:** un alta que falla; un inicio de sesión en una cuenta que ya
+  existía.
+- **Propiedades:** las cinco comunes.
+
+Los tres pasan adentro del alta, así que los tres **declaran su superficie** y el
+validador la exige: sólo salen con `surface: onboarding`, y por la regla de
+coherencia de la sección 2 esa superficie ya obliga a `section: sin_seccion`. Un
+`signup_completed` emitido desde `checkout` no sería un dato raro, sería un dato
+falso. Los cinco de v1.0.0 **no** declaran superficie y siguen sin declararla:
+fijársela ahora sería volver obligatorio algo que no lo era, y eso es un
+**major** (sección 10). Esta versión agrega, no aprieta.
+
+### Por qué casi ninguno lleva propiedades propias
+
+No hay propiedades opcionales, ni en v1.0.0 ni en v1.1.0: lo que un evento
+declara, lo exige. `purchase_completed` no lleva monto ni plan, y no es un
+olvido: agregar una propiedad compatible es un cambio **minor** y se puede hacer
+cuando haya una decisión que dependa de ese dato. Sacar una propiedad que ya se
+prometió es un cambio **major**. Empezar mínimo es la única de las dos puertas
+que se puede abrir barato.
+
+Las dos excepciones son los eventos que no se pueden leer sin su propiedad:
+`$pageview` sin `path` no dice qué se vio, y `onboarding_step_viewed` sin
+`onboarding_step` tampoco dice cuál. Las dos propiedades son exclusivas de su
+evento (sección 5).
 
 ---
 
@@ -178,7 +227,7 @@ existe".
 
 ---
 
-## 5. `path` y `acquisition_source`
+## 5. `path`, `acquisition_source` y `onboarding_step`
 
 ### `path`: una plantilla del catálogo, y nada más
 
@@ -256,6 +305,44 @@ cuela como `direct` y la métrica de adquisición miente en silencio. Y si algui
 le pasa por error la URL cruda en vez de la clase, el resultado es `unknown`: la
 URL no sobrevive a la llamada.
 
+### `onboarding_step`: el nombre del paso, nunca el índice
+
+Once valores, uno por paso del alta y en el orden aprobado. La fuente es
+`src/onboarding/steps.ts` —hay una pantalla por paso— y el test ata el enum a ese
+archivo: si el flujo agrega, saca o reordena un paso, la suite lo dice por su
+nombre.
+
+| # | `onboarding_step` | El paso |
+|---|---|---|
+| 01 | `auth` | Crear cuenta o ingresar |
+| 02 | `promise` | Promesa inmersiva |
+| 03 | `identity` | Identidad y propuesta personal |
+| 04 | `guidance` | Orientación sobre la guía diaria |
+| 05 | `birthdate` | Fecha de nacimiento |
+| 06 | `birthplace` | Lugar de nacimiento |
+| 07 | `birthtime` | Hora de nacimiento |
+| 08 | `summary` | El resumen editable de los datos |
+| 09 | `triad` | El cálculo de la carta |
+| 10 | `before_after` | Antes y después de Órbita |
+| 11 | `paywall` | La paywall del alta |
+
+**Nunca el índice numérico, y nunca texto libre.** El índice es la posición en el
+flujo, y la posición cambia: si mañana se reordena el alta, el `4` de hoy y el
+`4` de mañana serían dos pantallas distintas dentro de la misma serie, sin que
+nada falle y sin que nadie se entere — el dato viejo quedaría mal leído para
+siempre. El nombre sobrevive al reordenamiento. El texto libre queda descartado
+por el principio 2, y porque una etiqueta escrita a mano es exactamente el lugar
+donde después aparece el dato de una persona.
+
+El valor nombra la **pantalla**, no lo que se cargó en ella: `birthdate` dice que
+el paso de la fecha se vio, y no dice ninguna fecha. El contenido natal no es
+propiedad de ningún evento (sección 8).
+
+`onboarding_step` es **exclusiva** de `onboarding_step_viewed`. En cualquier otro
+evento no está declarada, y la allowlist la rechaza (`property_not_allowed`): un
+paso del alta viajando pegado a `purchase_completed` sería el mismo hecho contado
+dos veces y desde dos lugares distintos.
+
 ---
 
 ## 6. Mapa de métricas (para CORE-190)
@@ -263,13 +350,36 @@ URL no sobrevive a la llamada.
 | Métrica | Cómo se calcula con este contrato |
 |---|---|
 | **Activación** | `onboarding_completed` |
+| **Alta paso a paso** | `onboarding_step_viewed`, agrupado por `onboarding_step`: en qué paso se cae la gente antes de activarse |
+| **Registro** | La secuencia `signup_submitted` → `signup_completed`: cuántas personas confirman crear la cuenta, y cuántas cuentas quedan creadas |
 | **Conversión** | La secuencia `paywall_viewed` → `checkout_started` → `purchase_completed` |
 | **Retención** | Identidad estable sobre `$pageview` |
 | **Adquisición** | Visitantes únicos por `acquisition_source` |
 
-Los cinco eventos existen por estas cuatro preguntas, y no hay una quinta
-pregunta esperando un sexto evento. Si te aparece una, no la metas de prepo:
-entra por la regla de evolución de la sección 10.
+### El embudo del alta, entero
+
+Los tres eventos nuevos no son una métrica aparte: se encadenan con los cinco
+viejos y completan el único embudo que Órbita tiene de punta a punta.
+
+1. `onboarding_step_viewed` con `onboarding_step: auth` — cuánta gente llega a la
+   primera pantalla del alta.
+2. `signup_submitted` — cuántas de ésas confirman crear la cuenta.
+3. `signup_completed` — cuántas cuentas quedan creadas de verdad. La diferencia
+   con el paso anterior es el alta que falla, que antes no se veía.
+4. `onboarding_step_viewed` en `birthdate`, `birthplace`, `birthtime` y
+   `summary` — dónde se abandona la carga de los datos natales.
+5. `onboarding_completed` — activación: la carta quedó disponible.
+6. `paywall_viewed` → `checkout_started` → `purchase_completed` — la conversión,
+   sin cambios.
+
+Leído de corrido: `onboarding_step_viewed:auth` → `signup_submitted` →
+`signup_completed` → los pasos de datos natales → `onboarding_completed` →
+`paywall_viewed` → `checkout_started` → `purchase_completed`. Cada flecha es una
+caída que antes se veía como un solo número al final.
+
+Los ocho eventos existen por estas seis preguntas, y no hay una séptima pregunta
+esperando un noveno evento. Si te aparece una, no la metas de prepo: entra por la
+regla de evolución de la sección 10.
 
 ---
 
@@ -415,9 +525,35 @@ conserva una ventana de consulta. Nada se apaga de un día para el otro y nada
 desaparece sin dejar dicho dónde quedó su data. Antes de tocar un nombre,
 fijate en qué fila de esta tabla cae el cambio que tenés en la mano.
 
-El validador acepta **exactamente** `1.0.0`. Una minor futura puede traer eventos
+El validador acepta **exactamente** `1.1.0`. Una minor futura puede traer eventos
 que este código no conoce: aceptarla sería afirmar algo que no se puede
 verificar. El contrato se lee junto con el código que lo implementa.
+
+Un evento que llega marcado `1.0.0` **se rechaza**, con el mismo código
+(`unsupported_contract_version`) que uno del futuro. No es un emisor viejo al que
+haya que tenerle paciencia: el emisor y el contrato viajan en el mismo bundle,
+así que un payload con la versión anterior significa que hay código de una
+versión validando contra otra — un despliegue incoherente. Aceptarlo por
+compatibilidad mezclaría dos diccionarios en la misma serie justo cuando el de
+abajo no tiene los tres eventos del alta, y el embudo se leería como si nadie
+hubiera pasado por ellos. El día que el emisor deje de viajar con el contrato
+—un SDK publicado aparte, una app nativa que no se actualiza sola— esta decisión
+se revisa acá, con su fecha y su razón.
+
+### v1.1.0 — 2026-09-08
+
+**Qué agrega:** `onboarding_step_viewed`, `signup_submitted`, `signup_completed`
+y la propiedad `onboarding_step`, exclusiva del primero.
+
+**Qué no toca:** ningún nombre, ninguna semántica y ninguna obligatoriedad de los
+cinco eventos de v1.0.0; las cinco propiedades comunes siguen siendo obligatorias
+en todos, incluidos los tres nuevos; identidad y consentimiento quedan como
+estaban, con la aclaración del 2026-09-07 vigente.
+
+Por eso es una **minor** y no un major: cae dos veces en la primera fila de la
+tabla de acá arriba —un evento compatible, y una propiedad de un evento nuevo— y
+en ninguna de las filas de major. Emitir estos eventos es trabajo de otra
+tarjeta: este contrato los define, no los captura.
 
 ---
 

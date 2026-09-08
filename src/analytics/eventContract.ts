@@ -1,5 +1,5 @@
 /**
- * Diccionario de eventos de Órbita — contrato v1.0.0.
+ * Diccionario de eventos de Órbita — contrato v1.1.0.
  *
  * Es la ÚNICA fuente de eventos válidos. Antes de esto no había contrato de
  * medición: cualquiera podía inventar un nombre, una propiedad o un valor, y no
@@ -17,8 +17,14 @@
  * este archivo es la versión ejecutable del mismo contrato.
  */
 
-/** Versión del contrato. Viaja en cada evento como `contract_version`. */
-export const CONTRACT_VERSION = "1.0.0";
+/**
+ * Versión del contrato. Viaja en cada evento como `contract_version`.
+ *
+ * v1.1.0 suma los tres eventos del alta —`onboarding_step_viewed`,
+ * `signup_submitted` y `signup_completed`— y la propiedad `onboarding_step`. Es
+ * una MINOR: agrega, y no renombra, no redefine ni afloja nada de v1.0.0.
+ */
+export const CONTRACT_VERSION = "1.1.0";
 
 // --- Literales cerrados ------------------------------------------------------
 
@@ -86,18 +92,57 @@ export const ACQUISITION_SOURCES = [
 ] as const;
 export type AcquisitionSource = (typeof ACQUISITION_SOURCES)[number];
 
+/**
+ * Los once pasos del alta, en el orden aprobado. La fuente es
+ * `src/onboarding/steps.ts`, que tiene una pantalla por paso, y el test ata este
+ * enum a ese archivo: si el flujo agrega, saca o reordena un paso, la suite lo
+ * dice por su nombre.
+ *
+ * El valor es el NOMBRE del paso, nunca su índice. El índice es la posición en
+ * el flujo y la posición cambia: si mañana se reordena el alta, el `4` de hoy y
+ * el `4` de mañana serían dos pantallas distintas en la misma serie, sin que
+ * nada falle y sin que nadie se entere. El nombre sobrevive al reordenamiento.
+ *
+ * `birthdate`, `birthplace` y `birthtime` nombran la PANTALLA, no lo que la
+ * persona cargó en ella: el contrato mide que un paso se vio, y el contenido
+ * natal no es propiedad de ningún evento.
+ */
+export const ONBOARDING_STEPS = [
+  "auth",
+  "promise",
+  "identity",
+  "guidance",
+  "birthdate",
+  "birthplace",
+  "birthtime",
+  "summary",
+  "triad",
+  "before_after",
+  "paywall"
+] as const;
+export type OnboardingStep = (typeof ONBOARDING_STEPS)[number];
+
 // --- La lista cerrada de eventos --------------------------------------------
 
 /**
- * Los cinco eventos del contrato v1.0.0. Nada fuera de esta lista es un evento
+ * Los ocho eventos del contrato v1.1.0. Nada fuera de esta lista es un evento
  * válido de Órbita.
+ *
+ * Los cinco primeros son los de v1.0.0, intactos y en su orden. Los tres
+ * últimos son los que agrega v1.1.0 para que el alta se pueda leer paso a paso:
+ * hasta acá `onboarding_completed` sólo decía que alguien había llegado al
+ * final, y declaraba "avanzar un paso" como no-disparador, así que entre la
+ * primera pantalla del alta y la activación no había ningún dato.
  */
 export const EVENT_NAMES = [
   "$pageview",
   "onboarding_completed",
   "paywall_viewed",
   "checkout_started",
-  "purchase_completed"
+  "purchase_completed",
+  "onboarding_step_viewed",
+  "signup_submitted",
+  "signup_completed"
 ] as const;
 export type EventName = (typeof EVENT_NAMES)[number];
 
@@ -127,7 +172,16 @@ export type CommonProperty = (typeof COMMON_PROPERTIES)[number];
 export const PAGEVIEW_PROPERTIES = ["path", "acquisition_source"] as const;
 export type PageviewProperty = (typeof PAGEVIEW_PROPERTIES)[number];
 
-export type EventProperty = CommonProperty | PageviewProperty;
+/**
+ * Propiedades que sólo exige `onboarding_step_viewed`, con el mismo patrón que
+ * las de `$pageview`: son EXCLUSIVAS de su evento. En cualquier otro,
+ * `onboarding_step` no está declarada y la allowlist la rechaza. Si viajara
+ * suelta, el mismo hecho quedaría contado dos veces y desde dos lugares.
+ */
+export const ONBOARDING_STEP_PROPERTIES = ["onboarding_step"] as const;
+export type OnboardingStepProperty = (typeof ONBOARDING_STEP_PROPERTIES)[number];
+
+export type EventProperty = CommonProperty | PageviewProperty | OnboardingStepProperty;
 
 export type EventDefinition = {
   readonly name: EventName;
@@ -137,7 +191,20 @@ export type EventDefinition = {
   readonly trigger: string;
   /** El caso vecino que NO lo dispara. Sin esto, el evento se estira solo. */
   readonly notTrigger: string;
-  /** Propiedades obligatorias. En v1.0.0 no hay propiedades opcionales. */
+  /**
+   * La única superficie desde la que este evento puede salir, cuando tiene una.
+   *
+   * Los tres eventos del alta la declaran: los tres pasan adentro del alta, y
+   * `signup_completed` emitido desde `checkout` no sería un dato raro sino un
+   * dato falso. Por la regla de coherencia de abajo, esa superficie ya obliga a
+   * `section: sin_seccion`, así que la sección no hace falta declararla aparte.
+   *
+   * Los cinco de v1.0.0 NO la declaran, y no es un olvido: fijársela ahora
+   * sería volver obligatorio algo que no lo era, y eso es un major (sección 10
+   * del documento). Esta versión agrega, no aprieta.
+   */
+  readonly surface?: Surface;
+  /** Propiedades obligatorias. El contrato no tiene propiedades opcionales. */
   readonly requiredProperties: readonly EventProperty[];
 };
 
@@ -182,6 +249,32 @@ export const EVENT_DEFINITIONS: Readonly<Record<EventName, EventDefinition>> = {
     notTrigger:
       "Un cobro pendiente, en prueba gratuita sin cargo, fallido o reembolsado; una renovación automática posterior; o volver a abrir la pantalla de compra exitosa.",
     requiredProperties: [...COMMON_PROPERTIES]
+  },
+  onboarding_step_viewed: {
+    name: "onboarding_step_viewed",
+    purpose: "Alta paso a paso: qué paso del alta se vio, y dónde se cae la gente antes de activarse.",
+    trigger: "El paso del alta queda montado y visible.",
+    notTrigger:
+      "Un re-render, volver atrás a un paso ya contado en esa misma sesión de alta, o un paso que el flujo saltea solo.",
+    surface: "onboarding",
+    requiredProperties: [...COMMON_PROPERTIES, ...ONBOARDING_STEP_PROPERTIES]
+  },
+  signup_submitted: {
+    name: "signup_submitted",
+    purpose: "Registro, paso 1: la persona confirma crear su cuenta.",
+    trigger: "La persona confirma el alta con sus credenciales.",
+    notTrigger:
+      "Abrir la pantalla, escribir sin enviar, o iniciar sesión en una cuenta que ya existía.",
+    surface: "onboarding",
+    requiredProperties: [...COMMON_PROPERTIES]
+  },
+  signup_completed: {
+    name: "signup_completed",
+    purpose: "Registro, paso 2: la cuenta quedó creada y con sesión.",
+    trigger: "La cuenta queda creada y la sesión iniciada.",
+    notTrigger: "Un alta que falla, o un inicio de sesión en una cuenta que ya existía.",
+    surface: "onboarding",
+    requiredProperties: [...COMMON_PROPERTIES]
   }
 };
 
@@ -206,10 +299,19 @@ export type PageviewEventProperties = CommonEventProperties & {
   readonly acquisition_source: AcquisitionSource;
 };
 
+export type OnboardingStepViewedEventProperties = CommonEventProperties & {
+  /** El nombre del paso (`birthdate`), nunca su índice ni lo que se cargó en él. */
+  readonly onboarding_step: OnboardingStep;
+};
+
 export type OrbitaEvent =
   | { readonly name: "$pageview"; readonly properties: PageviewEventProperties }
   | {
-      readonly name: Exclude<EventName, "$pageview">;
+      readonly name: "onboarding_step_viewed";
+      readonly properties: OnboardingStepViewedEventProperties;
+    }
+  | {
+      readonly name: Exclude<EventName, "$pageview" | "onboarding_step_viewed">;
       readonly properties: CommonEventProperties;
     };
 
@@ -249,10 +351,18 @@ export function normalizeEnvironment(value: unknown): Environment | null {
 /**
  * ¿Este payload dice pertenecer al contrato que este módulo implementa?
  *
- * Se acepta la versión exacta y nada más. Una minor futura (`1.1.0`) puede traer
- * eventos o propiedades que este archivo no conoce: aceptarla sería afirmar algo
- * que no se puede verificar. Un emisor viejo tampoco pasa: el contrato se lee
- * junto con el código que lo implementa.
+ * Se acepta la versión exacta (`1.1.0`) y nada más. Una minor futura (`1.2.0`)
+ * puede traer eventos o propiedades que este archivo no conoce: aceptarla sería
+ * afirmar algo que no se puede verificar.
+ *
+ * Un `1.0.0` entrante tampoco pasa, y ése es el caso que hay que explicar. No es
+ * un emisor viejo al que haya que tenerle paciencia: el emisor y el contrato
+ * viajan en el mismo bundle, así que un payload marcado con la versión anterior
+ * significa que hay código de una versión validando contra otra — un despliegue
+ * incoherente. Aceptarlo mezclaría dos diccionarios en la misma serie justo
+ * cuando el de abajo no tiene los tres eventos del alta, y el embudo se leería
+ * como si nadie hubiera pasado por ellos. El día que el emisor deje de viajar
+ * con el contrato, esto se revisa en el documento y con su fecha.
  */
 export function isSupportedContractVersion(value: unknown): boolean {
   return value === CONTRACT_VERSION;
@@ -554,7 +664,8 @@ export type ValidationIssueCode =
   | "property_not_allowed"
   | "pii_property"
   | "unsanitized_path"
-  | "surface_section_mismatch";
+  | "surface_section_mismatch"
+  | "unexpected_surface";
 
 export type ValidationIssue = {
   readonly code: ValidationIssueCode;
@@ -572,11 +683,12 @@ const ENUM_VALUES: Readonly<Record<string, readonly string[]>> = {
   platform: PLATFORMS,
   surface: SURFACES,
   section: SECTIONS,
-  acquisition_source: ACQUISITION_SOURCES
+  acquisition_source: ACQUISITION_SOURCES,
+  onboarding_step: ONBOARDING_STEPS
 };
 
 /**
- * ¿Este evento pertenece al contrato v1.0.0?
+ * ¿Este evento pertenece al contrato v1.1.0?
  *
  * Devuelve TODOS los problemas encontrados, no el primero: quien emite mal
  * suele emitir mal varias cosas a la vez, y un rechazo que se explica entero se
@@ -668,7 +780,21 @@ export function validateEvent(input: EventInput): ValidationResult {
     }
   }
 
-  // 5. `path` sanitizada.
+  // 5. El evento que declara su superficie no sale de otra. Los tres eventos
+  //    del alta pasan adentro del alta; la regla anterior ya obliga ahí a
+  //    `sin_seccion`, así que la sección no se declara por separado. Se mira
+  //    sólo si la superficie es un valor del enum: si no lo es, el problema ya
+  //    quedó dicho arriba y repetirlo taparía el único error real.
+  const superficieDeclarada = EVENT_DEFINITIONS[input.name].surface;
+  if (superficieDeclarada !== undefined && isSurface(surface) && surface !== superficieDeclarada) {
+    issues.push({
+      code: "unexpected_surface",
+      property: "surface",
+      message: `${input.name} sólo se emite desde surface ${superficieDeclarada}.`
+    });
+  }
+
+  // 6. `path` sanitizada.
   if (allowed.has("path") && "path" in properties && !isSanitizedPath(properties.path)) {
     issues.push({
       code: "unsanitized_path",
@@ -680,7 +806,7 @@ export function validateEvent(input: EventInput): ValidationResult {
     });
   }
 
-  // 6. Allowlist y PII. Toda propiedad que no esté declarada se rechaza: es lo
+  // 7. Allowlist y PII. Toda propiedad que no esté declarada se rechaza: es lo
   //    que hace que "sin texto libre" sea estructural y no una promesa.
   for (const [property, value] of Object.entries(properties)) {
     const forbidden = isMember(FORBIDDEN_PROPERTY_NAMES, property);
