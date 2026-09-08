@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAction } from "convex/react";
 import { useRouter } from "expo-router";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { trackCheckoutStarted } from "@/analytics/productTelemetry";
 import { RequireSession, WebNotice } from "@/components/web/require-session";
 import { WebLayoutProvider } from "@/components/web/web-layout-provider";
 import { checkoutStartErrorKind } from "@/domain/paywall";
@@ -67,6 +68,24 @@ function CheckoutLauncher() {
   useEffect(() => {
     if (startedFor.current === attempt) return;
     startedFor.current = attempt;
+    // Intención declarada de pagar (`checkout_started`, contrato v1.0.0). Esta
+    // ruta no vende nada: la confirmación ya ocurrió en la superficie que trae
+    // hasta acá —un CTA que dice activar Plus— y lo único que pasa acá es que el
+    // cobro se abre. Por eso el hecho es el intento, y no hay ningún momento en
+    // esta pantalla que sea "la oferta visible": lo que se muestra mientras
+    // tanto es que el pago se está abriendo, y el contrato descarta contar una
+    // paywall en estado de carga. `paywall_viewed` se emite donde hay oferta de
+    // verdad, que es la paywall del alta.
+    //
+    // El número del intento lo asigna el módulo de telemetría, no esta
+    // instancia: acá el hecho se avisa EXACTAMENTE donde se crea la sesión de
+    // pago —la línea de abajo—, así que hay un intento por sesión y ninguno por
+    // render. El guard de arriba es el que impide contar dos veces la misma
+    // sesión (re-render, doble efecto de StrictMode), y es el mismo que impide
+    // crearla dos veces. Un remontaje real crea OTRA sesión de pago, así que
+    // cuenta: es otra intención de pagar y no el reintento automático del mismo
+    // intento, que es lo único que el contrato descarta.
+    trackCheckoutStarted();
     let alive = true;
     setState("abriendo");
     createCheckout({ plan: "monthly" })

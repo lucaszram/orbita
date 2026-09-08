@@ -35,6 +35,10 @@ function makeDeps(
     },
     createProfile: async () => registrar("createProfile"),
     adoptLocalProfile: async () => registrar("adopt"),
+    // La identidad de la analítica es parte de la transacción: se registra igual
+    // que el resto para poder afirmar sobre el ORDEN (CORE-188).
+    resetAnalyticsIdentity: () => registrar("resetIdentidad"),
+    identifyAccount: () => registrar("identify"),
     ...over
   };
   return { deps, calls, conteo };
@@ -69,9 +73,15 @@ test("cuenta A local con cuenta B activa → archiva, limpia y RECIÉN restaura"
   assert.deepEqual(await runAccountBootstrap(deps), { status: "ready" });
   assert.deepEqual(
     calls,
-    ["hydrate", "archive", "reset", "restore", "createProfile"],
+    ["hydrate", "resetIdentidad", "archive", "reset", "identify", "restore", "createProfile"],
     "limpiar antes de restaurar: si no, se mezclan las dos cuentas"
   );
+  // La identidad de la analítica sigue el MISMO orden que los datos: se corta el
+  // vínculo con A antes de tocar nada, y recién con lo ajeno aislado se
+  // identifica a B. Al revés, los eventos de B viajarían con el id de A y los
+  // dos perfiles quedarían fusionados sin forma limpia de deshacerlo (CORE-188).
+  assert.ok(calls.indexOf("resetIdentidad") < calls.indexOf("archive"));
+  assert.ok(calls.indexOf("identify") > calls.indexOf("reset"));
 });
 
 test("el aislamiento corre TAMBIÉN cuando la cuenta activa no tiene birthData", async () => {
@@ -80,7 +90,28 @@ test("el aislamiento corre TAMBIÉN cuando la cuenta activa no tiene birthData",
   const { deps, calls } = makeDeps({ profileOwner: "user_A", hasLocalProfile: true });
   const outcome = await runAccountBootstrap(deps);
   assert.deepEqual(outcome, { status: "incomplete" });
-  assert.deepEqual(calls.slice(0, 3), ["hydrate", "archive", "reset"]);
+  assert.deepEqual(calls.slice(0, 5), [
+    "hydrate",
+    "resetIdentidad",
+    "archive",
+    "reset",
+    "identify"
+  ]);
+});
+
+test("sin cambio de cuenta no se resetea la identidad, pero sí se identifica", async () => {
+  // El reset corre por un HECHO del contrato, no por precaución: un arranque
+  // normal —la misma cuenta de siempre— no puede tirar el distinct ID.
+  const { deps, calls } = makeDeps({ profileOwner: "user_B", hasLocalProfile: true });
+  await runAccountBootstrap(deps);
+  assert.ok(!calls.includes("resetIdentidad"), "un arranque normal reseteó la identidad");
+  assert.ok(calls.includes("identify"), "la captura quedó anónima con la sesión resuelta");
+});
+
+test("sin identidad confirmada no se identifica a nadie", async () => {
+  const { deps, calls } = makeDeps({ remoteClerkUserId: null });
+  assert.deepEqual(await runAccountBootstrap(deps), { status: "error" });
+  assert.deepEqual(calls, ["hydrate"], "se identificó sin saber de quién es la sesión");
 });
 
 test("un perfil sin dueño (guest) con sesión activa también se aísla", async () => {

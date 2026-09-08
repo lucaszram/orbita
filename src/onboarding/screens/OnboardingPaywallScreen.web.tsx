@@ -3,6 +3,7 @@ import { useAction } from "convex/react";
 import { useRouter } from "expo-router";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 
+import { trackCheckoutStarted, trackPaywallViewed } from "@/analytics/productTelemetry";
 import { Text } from "@/components/ui/text";
 import { useEntitlement } from "@/hooks/useLiveApp";
 import {
@@ -100,10 +101,44 @@ function PaywallWithStripe(props: Props) {
 
   const phase = offerPhase({ offer, failed });
   const plan = offer ? monthlyPlan(offer.plans) : null;
+  const isPro = entitlement?.isPro === true;
+
+  /**
+   * La impresión de la oferta REAL (`paywall_viewed`, contrato v1.0.0).
+   *
+   * Es la MISMA condición que dibuja la tarjeta de plan más abajo —oferta
+   * cargada, plan mensual vigente y sin Plus activo—, y no una parecida: el
+   * contrato dispara cuando "la paywall queda visible con su oferta real ya
+   * cargada" y descarta expresamente montarla en carga o en error. Con Plus ya
+   * activo no hay oferta en pantalla sino el aviso de que no hay nada que
+   * comprar, así que tampoco es una impresión.
+   *
+   * El efecto depende de ese hecho y no del render, y la deduplicación vive a
+   * nivel de módulo: un re-render de la misma impresión no vuelve a contar, ni
+   * siquiera después de un remount o del doble efecto de StrictMode.
+   */
+  const ofertaVisible = !isPro && phase === "disponible" && plan !== null;
+  useEffect(() => {
+    if (!ofertaVisible) return;
+    trackPaywallViewed();
+  }, [ofertaVisible]);
 
   const onBuy = () => {
     if (checkoutLock.current || phase !== "disponible") return;
     checkoutLock.current = true;
+    // Intención declarada de pagar (`checkout_started`). El toque ES la
+    // confirmación —el contrato descarta "elegir un plan sin confirmar"— y se
+    // emite acá, antes de crear la sesión: un instante después el navegador se
+    // va a Stripe con `location.replace`, y un evento emitido contra esa
+    // navegación es un evento que puede no salir nunca.
+    //
+    // El número del intento lo asigna el módulo de telemetría y no esta
+    // instancia. Con el contador en un ref, salir de la paywall y volver por
+    // navegación interna lo devolvía a cero: la persona confirmaba de nuevo, se
+    // creaba otra sesión de pago REAL, y el número repetido ya estaba contado,
+    // así que el segundo cobro no se emitía. Un remontaje SIN confirmación no
+    // llega hasta acá —no hay toque— y sigue contando uno solo.
+    trackCheckoutStarted();
     setOpening(true);
     setNotice(null);
     createCheckout({ plan: "monthly" })
@@ -130,7 +165,7 @@ function PaywallWithStripe(props: Props) {
         phase: opening ? "abriendo" : phase,
         priceLabel: plan ? `${formatPlanPrice(plan)} ${planIntervalLabel(plan)}` : null,
         trialLabel: plan ? planTrialLabel(plan) : null,
-        isPro: entitlement?.isPro === true,
+        isPro,
         entitlementResolved,
         notice,
         onBuy,

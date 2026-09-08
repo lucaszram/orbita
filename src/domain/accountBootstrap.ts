@@ -25,6 +25,23 @@ export type BootstrapDeps = {
   archiveAccountData: (userId: string | null) => Promise<void>;
   resetApp: () => Promise<void>;
   restoreAccountData: (userId: string) => Promise<{ profileRestored: boolean }>;
+  /**
+   * Corta el vínculo de la analítica con la persona anterior.
+   *
+   * Está inyectada como el resto: así el orden —resetear ANTES de identificar a
+   * nadie— se prueba ejecutando esta transacción y no leyendo un componente. El
+   * motivo es uno de los cuatro que declara el contrato de eventos
+   * (`RESET_TRIGGERS`); acá el que aplica es el cambio de cuenta.
+   */
+  resetAnalyticsIdentity: (trigger: "account_switch") => void;
+  /**
+   * Ata la analítica a la cuenta confirmada por el backend.
+   *
+   * Se llama con el `clerkUserId` y no con un dato de pantalla: es el mismo
+   * valor que este bootstrap usa para decidir de quién son los datos locales, así
+   * que la identidad medida y la identidad de los datos no pueden divergir.
+   */
+  identifyAccount: (clerkUserId: string) => void;
   createProfile: (
     input: ReturnType<typeof onboardingInputFromBirthData>,
     ownerUserId?: string | null
@@ -49,6 +66,12 @@ export type BootstrapOutcome =
  * también cuando la cuenta activa no tiene `birthData` — si no, alguien que
  * entra con otra cuenta y arranca el onboarding se llevaba el diario y las
  * guardadas del dueño anterior.
+ *
+ * Es también el único lugar del producto que sabe, en la misma vuelta, que hubo
+ * un cambio de cuenta y quién es la cuenta que entra. Por eso la identidad de la
+ * analítica se resuelve acá y en ningún otro lado: resetear y identificar en dos
+ * lugares distintos sería dos órdenes posibles, y el orden es justamente lo que
+ * decide si los eventos de una persona terminan en el perfil de otra.
  */
 export async function runAccountBootstrap(deps: BootstrapDeps): Promise<BootstrapOutcome> {
   let result: Awaited<ReturnType<BootstrapDeps["hydrate"]>>;
@@ -75,6 +98,12 @@ export async function runAccountBootstrap(deps: BootstrapDeps): Promise<Bootstra
     incomingUserId: clerkUserId
   });
   if (switchingAccount) {
+    // ANTES de tocar nada, y antes de cualquier captura de la cuenta que entra:
+    // sin esto, los eventos de quien entra viajan con el identificador de quien
+    // salió y los dos perfiles quedan fusionados sin forma limpia de deshacerlo.
+    // Va primero por la misma razón que el archivado va antes del borrado: es lo
+    // que no se puede reparar después.
+    deps.resetAnalyticsIdentity("account_switch");
     try {
       await deps.archiveAccountData(deps.profileOwner);
       await deps.resetApp();
@@ -83,6 +112,11 @@ export async function runAccountBootstrap(deps: BootstrapDeps): Promise<Bootstra
       return { status: "error" };
     }
   }
+
+  // Recién ahora, con lo ajeno aislado: la captura queda atada a ESTA cuenta.
+  // Lo anterior de esta pestaña —la visita anónima, el alta— se le atribuye a
+  // ella, que es justamente lo que hace legible el embudo de punta a punta.
+  deps.identifyAccount(clerkUserId);
   const hasLocalProfile = switchingAccount ? false : deps.hasLocalProfile;
 
   // Si esta cuenta ya usó el dispositivo, volver su diario y sus guardadas

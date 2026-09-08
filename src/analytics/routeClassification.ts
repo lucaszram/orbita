@@ -19,8 +19,10 @@ import {
   COMMON_PROPERTIES,
   CONTRACT_VERSION,
   PAGEVIEW_PROPERTIES,
+  isEventName,
   matchRoutePath,
   normalizeAcquisitionSource,
+  requiredPropertiesFor,
   validateEvent,
   type AcquisitionSource,
   type Environment,
@@ -382,7 +384,14 @@ export function pageviewWarning(decision: PageviewDecision): string | null {
 
 // --- Lo que sale del dispositivo ----------------------------------------------
 
-/** Las siete propiedades del contrato para `$pageview`. */
+/**
+ * Las siete propiedades del contrato para `$pageview`.
+ *
+ * El filtro de abajo ya no las lee de acá: desde CORE-188 la allowlist se
+ * resuelve POR EVENTO contra el diccionario, porque `onboarding_step` es de
+ * `onboarding_step_viewed` y de ningún otro. Esta constante queda como la
+ * referencia legible de la visita, que es lo que las pruebas comparan.
+ */
 export const CONTRACT_PROPERTY_NAMES: readonly string[] = [
   ...COMMON_PROPERTIES,
   ...PAGEVIEW_PROPERTIES
@@ -396,10 +405,19 @@ export const CONTRACT_PROPERTY_NAMES: readonly string[] = [
  * Están enumeradas una por una porque son la ÚNICA excepción a "sólo las
  * propiedades del contrato". Ninguna lleva URL, referrer, campaña ni huella del
  * dispositivo: eso se cae en `retainedProperties`.
+ *
+ * Ninguna identifica a una persona fuera de nuestra base: `distinct_id` y
+ * `$anon_distinct_id` son el identificador que el contrato declara o el UUID que
+ * el SDK sorteó, y los demás son de transporte.
  */
 export const TRANSPORT_PROPERTY_NAMES: readonly string[] = [
   "token",
   "distinct_id",
+  // El distinct ID ANÓNIMO anterior. Viaja sólo en `$identify` y es lo que ata
+  // la visita de antes del login con la cuenta: sin él, `identify` estrena un
+  // perfil y el recorrido previo al alta queda huérfano. Es un UUID que el SDK
+  // sorteó, no un dato del dispositivo ni de la persona.
+  "$anon_distinct_id",
   "$session_id",
   "$window_id",
   "$lib",
@@ -411,7 +429,7 @@ export const TRANSPORT_PROPERTY_NAMES: readonly string[] = [
 ];
 
 /**
- * Filtro de salida: allowlist cerrada sobre lo que el SDK ya armó.
+ * Filtro de salida: allowlist cerrada sobre lo que el SDK ya armó, POR EVENTO.
  *
  * El SDK agrega solo, en cada captura, `$current_url`, `$host`, `$pathname`,
  * `$referrer`, `$referring_domain`, los parámetros de campaña de la URL, el
@@ -423,11 +441,24 @@ export const TRANSPORT_PROPERTY_NAMES: readonly string[] = [
  * SDK agrega mañana una propiedad automática nueva, no sale. Una denylist habría
  * que actualizarla, y nadie se entera de que hace falta hasta que el dato ya
  * está publicado.
+ *
+ * Lo que permite cada evento sale del DICCIONARIO (`requiredPropertiesFor`) y no
+ * de una lista escrita acá, y eso es lo que hace que `onboarding_step` viaje
+ * sólo en `onboarding_step_viewed` y que `path` y `acquisition_source` viajen
+ * sólo en `$pageview`. Una propiedad declarada para otro evento se cae igual que
+ * una inventada: el contrato dice que las dos son exclusivas de su evento, y una
+ * allowlist compartida las habría dejado pasar en los ocho.
+ *
+ * Un nombre que el diccionario no conoce no tiene propiedades declaradas, así
+ * que no conserva ninguna. `before_send` ya lo descartó entero antes de llegar
+ * acá; esto es el cinturón sobre el tirante.
  */
 export function retainedProperties(
-  properties: Readonly<Record<string, unknown>>
+  properties: Readonly<Record<string, unknown>>,
+  event: string
 ): Record<string, unknown> {
-  const permitidas = new Set([...CONTRACT_PROPERTY_NAMES, ...TRANSPORT_PROPERTY_NAMES]);
+  const declaradas = isEventName(event) ? requiredPropertiesFor(event) : [];
+  const permitidas = new Set<string>([...declaradas, ...TRANSPORT_PROPERTY_NAMES]);
   const salida: Record<string, unknown> = {};
   for (const [nombre, valor] of Object.entries(properties)) {
     if (permitidas.has(nombre)) salida[nombre] = valor;

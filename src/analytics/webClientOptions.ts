@@ -12,8 +12,8 @@
  */
 import type { PostHogConfig } from "posthog-js/dist/module.slim";
 
-import type { ConsentState } from "@/analytics/eventContract";
-import { PAGEVIEW_EVENT, retainedProperties } from "@/analytics/routeClassification";
+import { isEventName, type ConsentState } from "@/analytics/eventContract";
+import { retainedProperties } from "@/analytics/routeClassification";
 
 /**
  * El instrumento de consentimiento que rige HOY en la web.
@@ -123,6 +123,24 @@ export function purgePersistedNavigation(client: NavigationPersistence | null): 
 type BeforeSend = Extract<NonNullable<PostHogConfig["before_send"]>, (...args: never[]) => unknown>;
 
 /**
+ * El único evento que el SDK emite y que no está en el diccionario, pero sale.
+ *
+ * `identify()` no manda una orden aparte: captura un evento llamado `$identify`
+ * con el identificador nuevo y el distinct ID anónimo anterior, y esa captura
+ * pasa por `before_send` como cualquier otra. Con la comprobación contra el
+ * diccionario a secas, `$identify` se descartaba y la identidad que CORE-188
+ * necesita no llegaba nunca — `identify` habría sido una línea de código sin
+ * efecto, que es peor que no tenerla.
+ *
+ * No es una grieta en el filtro: es el ÚNICO nombre permitido fuera del
+ * diccionario, está escrito acá, y lo que lleva sigue reducido a la allowlist de
+ * transporte y sin `$set` ni `$set_once`. `$create_alias` no está —el contrato
+ * reserva `alias` para un caso que el flujo normal no tiene— ni `$groupidentify`,
+ * ni `$set`, ni ninguno de los que el SDK emite por su cuenta.
+ */
+export const IDENTITY_EVENT = "$identify";
+
+/**
  * Opciones del SDK: nada se captura solo, y nada de navegación se guarda.
  *
  * Hay dos familias de opciones acá y conviene no confundirlas. Las primeras
@@ -176,8 +194,10 @@ export function clientOptions(input: {
     // sección 7), pero no hace falta una cookie para eso: en `localStorage` el
     // identificador no viaja en cada request al dominio.
     persistence: "localStorage" as const,
-    // Sin `identify` no hay persona: los eventos quedan anónimos y el proyecto
-    // no crea un perfil por visitante.
+    // Un perfil de persona SÓLO para quien se identificó. Una visita anónima no
+    // crea perfil, y desde CORE-188 la cuenta que inicia sesión sí: es el mismo
+    // valor, y ahora es el que hace la diferencia. Con `always` habría un perfil
+    // por visitante, que es exactamente lo que el contrato no quiere.
     person_profiles: "identified_only" as const,
     // Cinturón sobre el tirante: aunque `before_send` ya borra la URL, el SDK
     // tampoco arma los parámetros de campaña con su valor real.
@@ -190,22 +210,35 @@ export function clientOptions(input: {
  * El último punto antes de la red.
  *
  * Hace tres cosas que la configuración sola no puede: descarta cualquier evento
- * que no sea `$pageview`, reduce las propiedades a la allowlist del contrato y
- * borra del dispositivo lo que el SDK acaba de persistir sobre la navegación.
- * `$set` y `$set_once` se descartan enteros porque ahí es donde viajarían las
- * propiedades iniciales de persona (`$initial_referrer`, `$initial_current_url`).
+ * que el contrato no declare —salvo `IDENTITY_EVENT`, la única excepción y está
+ * nombrada—, reduce las propiedades a la allowlist de ESE evento y borra del
+ * dispositivo lo que el SDK acaba de persistir sobre la navegación. `$set` y
+ * `$set_once` se descartan enteros porque ahí es donde viajarían las propiedades
+ * iniciales de persona (`$initial_referrer`, `$initial_current_url`) — y también
+ * las que `identify()` aceptaría por parámetro, así que la promesa de "identify
+ * sólo con el identificador" no depende de que nadie se acuerde en el llamado.
+ *
+ * La comprobación es contra el DICCIONARIO y no contra un nombre suelto. Hasta
+ * CORE-188 acá decía `result.event !== PAGEVIEW_EVENT`, porque la web emitía un
+ * solo evento; con esa línea, cada evento nuevo del contrato habría que
+ * habilitarlo a mano y el que se olvidara se perdería en silencio. Ahora pasa lo
+ * que el contrato declara —los ocho— y se descarta todo lo demás, que es lo
+ * mismo que hacía antes para lo que importaba: `page_view` (legado, sección 4
+ * del documento), `$web_vitals`, `$exception`, `survey shown` y cualquier
+ * captura que el SDK inicie por su cuenta, sin depender de que la opción que la
+ * apaga siga existiendo.
  */
 export function beforeSendWith(persisted: () => NavigationPersistence | null): BeforeSend {
   return (result) => {
     purgePersistedNavigation(persisted());
     if (!result) return null;
-    // El contrato tiene cinco eventos y esta tarjeta emite uno. Cualquier otra
-    // cosa que el SDK quiera mandar —web vitals, excepciones, encuestas— se
-    // queda acá, sin depender de que la opción que la apaga siga existiendo.
-    if (result.event !== PAGEVIEW_EVENT) return null;
+    // La red que impide que se cuele lo que nadie declaró. Un nombre fuera del
+    // diccionario —el legado `page_view` incluido— no sale. La única excepción,
+    // enumerada arriba, es el evento con el que el SDK ata la identidad.
+    if (!isEventName(result.event) && result.event !== IDENTITY_EVENT) return null;
     return {
       ...result,
-      properties: retainedProperties(result.properties),
+      properties: retainedProperties(result.properties, result.event),
       $set: undefined,
       $set_once: undefined,
       $unset: undefined

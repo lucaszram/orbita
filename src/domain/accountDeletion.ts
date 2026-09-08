@@ -172,6 +172,23 @@ export type AccountDeletionSteps = {
   ownerUserId: string;
   /** Persiste `deletion_requested`. Throw = no se sigue, nada se borró. */
   markDeletionRequested: () => Promise<void>;
+  /**
+   * Corta el vínculo de la analítica con esta persona (`account_deletion`).
+   *
+   * Es un paso inyectado como los demás, y no un import: así el ORDEN —después
+   * del marcador, antes de entregar el control— se prueba ejecutando este flujo.
+   *
+   * Va acá y no en el boundary por dos razones. Es el único punto del borrado
+   * que corre en las dos plataformas y en los dos finales: la purga local del
+   * boundary no existe en la web (`web-unsupported`), así que un reset ahí no
+   * correría nunca donde esta tarjeta mide. Y es el instante desde el cual nada
+   * de lo que pase puede volver a atribuirse a alguien que pidió desaparecer —
+   * que es exactamente lo que el contrato quiere decir con "antes de la captura
+   * siguiente".
+   *
+   * No propaga: un reset que falle no puede abortar una eliminación de cuenta.
+   */
+  resetAnalyticsIdentity: () => void;
 };
 
 export type AccountDeletionResult =
@@ -201,6 +218,17 @@ export async function runAccountDeletion(steps: AccountDeletionSteps): Promise<A
   } catch {
     // Sin marcador no hay red de seguridad para lo que sigue. Nada se borró.
     return { status: "error", step: "marker" };
+  }
+  // La eliminación está pedida y escrita: desde acá, ningún evento puede seguir
+  // viajando con el identificador de esta persona. Si el marcador NO se pudo
+  // escribir, la sesión sigue como estaba y esto no corre: no hay eliminación
+  // que acompañar.
+  try {
+    steps.resetAnalyticsIdentity();
+  } catch {
+    // La telemetría no puede abortar un borrado de cuenta: el marcador ya está
+    // en disco y el boundary tiene que poder retomarlo. Se pierde el corte del
+    // vínculo, no la eliminación.
   }
   return { status: "handoff", marker: { userId: owner, phase: "deletion_requested" } };
 }
