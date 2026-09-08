@@ -4,6 +4,7 @@ import * as WebBrowser from "expo-web-browser";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useAction, useConvex, useMutation, useQuery } from "convex/react";
 
+import { trackSignupCompleted, trackSignupSubmitted } from "@/analytics/productTelemetry";
 import {
   persistSignupDraft,
   SIGNUP_DRAFT_NOT_READY,
@@ -148,7 +149,17 @@ function useSSOOauth(
         // de completion no puede llegar a correr con el id de un alta nueva
         // para una cuenta que ya existía.
         if (outcome === "existing_account") hooks?.onExistingAccount?.();
+        // Registro por proveedor externo (contrato v1.1.0). Recién acá se sabe
+        // si esto fue un alta o un ingreso: hasta que Clerk vuelve, la persona
+        // apretó un botón que sirve para las dos cosas. Por eso `submitted` no
+        // puede salir en el toque, y por eso un ingreso a una cuenta que ya
+        // existía no emite ninguno de los dos.
+        if (outcome === "new_account") trackSignupSubmitted();
         await setActive({ session: createdSessionId });
+        // `completed` es la cuenta creada CON sesión: si activarla falla, queda
+        // el `submitted` de arriba y ningún completado, que es exactamente lo
+        // que el contrato pide para un alta que no llega.
+        if (outcome === "new_account") trackSignupCompleted();
         return outcome;
       } catch (e) {
         setError(clerkErrorMessage(e));
@@ -253,12 +264,24 @@ function useAccountFlowInner(): AccountFlow {
         setError(null);
         try {
           if (flowRef.current === "signUp") {
+            // La persona confirma el alta con su código (`signup_submitted`).
+            // Se emite ANTES del intento porque lo que mide es la CONFIRMACIÓN,
+            // no su resultado: un alta que falla emite éste y no
+            // `signup_completed`, y esa diferencia es justo lo que el embudo no
+            // podía ver. `flowRef` es lo que separa el alta del ingreso: en la
+            // rama `signIn` —el email ya tenía cuenta— no se emite nada.
+            trackSignupSubmitted();
             // Un código MALO lanza (→ catch). Si no lanza pero el alta no está
             // `complete`, el email quedó verificado y faltan requisitos: se
             // dice QUÉ falta, nunca "el código no coincide".
             const outcome = interpretSignUpAttempt(await signUp.attemptEmailAddressVerification({ code }));
             if (outcome.kind === "complete" && setActiveSignUp) {
               await setActiveSignUp({ session: outcome.sessionId });
+              // La cuenta quedó creada y la sesión iniciada
+              // (`signup_completed`). Un reintento con otro código no vuelve a
+              // contar ninguno de los dos: el hecho es uno y la deduplicación
+              // vive a nivel de módulo.
+              trackSignupCompleted();
               return true;
             }
             setError(outcome.kind === "missing" ? outcome.message : "No pudimos crear tu cuenta. Probá de nuevo.");

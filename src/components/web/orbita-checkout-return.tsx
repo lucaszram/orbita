@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAction } from "convex/react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { trackPurchaseCompleted } from "@/analytics/productTelemetry";
 import { RequireSession, WebNotice } from "@/components/web/require-session";
 import {
   CHECKOUT_POLL_INTERVAL_MS,
@@ -106,6 +107,26 @@ function CheckoutReturnInner() {
       if (timer) clearTimeout(timer);
     };
   }, [commerceEnabled, isLive, sessionId, getCheckoutStatus]);
+
+  /**
+   * El cobro volvió confirmado y el acceso quedó otorgado
+   * (`purchase_completed`, contrato v1.0.0).
+   *
+   * `active` no lo dice la URL sino el backend, y sólo después de verificar que
+   * la sesión, el propietario y el customer son de esta cuenta y que el webhook
+   * confirmó el entitlement. Por eso el disparador es exactamente ese estado:
+   * un cobro pendiente (`pending`), uno fallido (`failed`) y el techo de espera
+   * sin respuesta no emiten nada, que es lo que el contrato pide.
+   *
+   * Volver a abrir esta pantalla tampoco cuenta: dentro de la misma carga lo
+   * impide el estado de módulo, y a una recarga —que lo estrena— la corta la
+   * memoria de pestaña de `productTelemetry.ts`. Es el único hecho de esta
+   * tarjeta cuyo no-disparador cruza una carga de página.
+   */
+  useEffect(() => {
+    if (status !== "active") return;
+    trackPurchaseCompleted();
+  }, [status]);
 
   if (!sessionId) {
     return (

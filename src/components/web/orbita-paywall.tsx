@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAction } from "convex/react";
 import { useRouter } from "expo-router";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { trackCheckoutStarted } from "@/analytics/productTelemetry";
 import { RequireSession, WebNotice } from "@/components/web/require-session";
 import { WebLayoutProvider } from "@/components/web/web-layout-provider";
 import { checkoutStartErrorKind } from "@/domain/paywall";
@@ -67,6 +68,19 @@ function CheckoutLauncher() {
   useEffect(() => {
     if (startedFor.current === attempt) return;
     startedFor.current = attempt;
+    // Intención declarada de pagar (`checkout_started`, contrato v1.0.0). Esta
+    // ruta no vende nada: la confirmación ya ocurrió en la superficie que trae
+    // hasta acá —un CTA que dice activar Plus— y lo único que pasa acá es que el
+    // cobro se abre. Por eso el hecho es el intento, y no hay ningún momento en
+    // esta pantalla que sea "la oferta visible": lo que se muestra mientras
+    // tanto es que el pago se está abriendo, y el contrato descarta contar una
+    // paywall en estado de carga. `paywall_viewed` se emite donde hay oferta de
+    // verdad, que es la paywall del alta.
+    //
+    // La deduplicación vive a nivel de módulo, así que un remontaje no vuelve a
+    // contar aunque cree otra sesión de Stripe, y el reintento explícito —que
+    // incrementa `attempt`— tampoco: es el mismo intento de pago, ya contado.
+    trackCheckoutStarted();
     let alive = true;
     setState("abriendo");
     createCheckout({ plan: "monthly" })

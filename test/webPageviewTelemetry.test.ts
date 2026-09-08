@@ -32,6 +32,7 @@ import {
   COMMON_PROPERTIES,
   CONTRACT_VERSION,
   ENVIRONMENTS,
+  EVENT_NAMES,
   PAGEVIEW_PROPERTIES,
   REFERRER_CLASSES,
   ROUTE_TEMPLATES,
@@ -456,7 +457,10 @@ test("el filtro de salida borra la URL, el referrer y la campaña que agrega el 
     $timezone: "America/Argentina/Buenos_Aires",
     $ip: "1.2.3.4"
   };
-  const salida = retainedProperties({ ...automaticas, path: "/vinculos/:profileId" });
+  const salida = retainedProperties(
+    { ...automaticas, path: "/vinculos/:profileId" },
+    PAGEVIEW_EVENT
+  );
   for (const prohibida of Object.keys(automaticas)) {
     assert.ok(!(prohibida in salida), `${prohibida} salió del dispositivo`);
   }
@@ -484,12 +488,15 @@ test("el filtro conserva el contrato y el transporte mínimo del SDK", () => {
     path: "/hoy",
     acquisition_source: "direct"
   };
-  assert.deepEqual(retainedProperties(entrada), entrada);
+  assert.deepEqual(retainedProperties(entrada, PAGEVIEW_EVENT), entrada);
 });
 
 test("la allowlist de salida es cerrada: lo desconocido no pasa", () => {
-  assert.deepEqual(retainedProperties({ propiedad_nueva_del_sdk: "lo que sea" }), {});
-  assert.deepEqual(retainedProperties({}), {});
+  assert.deepEqual(retainedProperties({ propiedad_nueva_del_sdk: "lo que sea" }, PAGEVIEW_EVENT), {});
+  assert.deepEqual(retainedProperties({}, PAGEVIEW_EVENT), {});
+  // Un nombre que el diccionario no declara no tiene propiedades declaradas:
+  // no conserva ni las del contrato. `before_send` ya lo descartó entero.
+  assert.deepEqual(retainedProperties({ path: "/hoy" }, "page_view"), {});
 });
 
 test("las propiedades del contrato en el filtro son las del contrato", () => {
@@ -657,11 +664,22 @@ test("el entorno sale de la configuración de despliegue, nunca del hostname", (
   assert.equal((cliente.match(/window\.location\.host/g) ?? []).length, 1);
 });
 
-test("el único evento que puede salir es $pageview", () => {
-  // Se EJECUTA el hook de salida real, con lo que el SDK arma de verdad.
+test("sólo sale lo que el diccionario del contrato declara", () => {
+  // Se EJECUTA el hook de salida real, con lo que el SDK arma de verdad. La
+  // comprobación es contra el diccionario y no contra un nombre: hasta CORE-188
+  // acá pasaba únicamente `$pageview`, y con esa línea cada evento nuevo del
+  // contrato habría que habilitarlo a mano. Lo que NO cambió es el piso: lo que
+  // el contrato no declara —el legado `page_view` incluido— sigue sin salir.
   const antes = beforeSendWith(() => null);
   for (const otro of ["$web_vitals", "$exception", "$autocapture", "survey shown", "page_view"]) {
     assert.equal(antes({ uuid: "u", event: otro, properties: {} } as never), null, otro);
+  }
+  for (const declarado of EVENT_NAMES) {
+    assert.notEqual(
+      antes({ uuid: "u", event: declarado, properties: {} } as never),
+      null,
+      `${declarado} está en el contrato y no pasa`
+    );
   }
 
   const salida = antes({
@@ -1017,9 +1035,14 @@ test("la aclaración es aclaración: no sube la versión, y el evento sale con l
   assert.equal(isSupportedContractVersion(emitida), true);
 });
 
-// --- 12. Nada de eventos de producto en esta tarjeta -------------------------
+// --- 12. El núcleo de la visita no nombra ningún evento de producto ---------
 
-test("esta tarjeta emite $pageview y ningún evento de producto", () => {
+test("el núcleo de la visita no escribe a mano ningún evento de producto", () => {
+  // Los eventos de producto los emite CORE-188, desde `productEvents.ts` y las
+  // pantallas del recorrido. Lo que se fija acá es que el núcleo de la visita no
+  // los nombre: `before_send` decide contra el DICCIONARIO (`isEventName`), no
+  // contra una lista escrita en este módulo, y por eso pasa lo que el contrato
+  // declara sin que nadie tenga que acordarse de agregarlo.
   assert.equal(PAGEVIEW_EVENT, "$pageview");
   for (const deOtraTarjeta of [
     "onboarding_completed",

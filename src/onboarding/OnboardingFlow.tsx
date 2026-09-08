@@ -3,6 +3,10 @@ import { Platform, StyleSheet, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
+import {
+  trackOnboardingCompleted,
+  trackOnboardingStepViewed
+} from "@/analytics/productTelemetry";
 import { resolveProfileOwnerAtCreation } from "@/domain/sessionStart";
 import { getZodiacSign, signLabels } from "@/domain/zodiac";
 import type { Topic } from "@/domain/types";
@@ -287,6 +291,35 @@ export function OnboardingFlow({
     });
   }, [step, identity, birthDate, placeQuery, birthPlace, birthTime, timeUnknown, email, clientDraftId, userId, inspeccion]);
 
+  /**
+   * Un evento por paso del alta (`onboarding_step_viewed`, contrato v1.1.0).
+   *
+   * Va acá y no en cada pantalla: `step` es el ÚNICO estado que sabe qué paso se
+   * está mostrando, así que un solo efecto sobre él cuenta el alta entera. Con
+   * un efecto por pantalla, once pantallas serían once definiciones distintas de
+   * "se vio un paso" y cada pantalla nueva tendría que acordarse de medir.
+   *
+   * El efecto depende del paso y no del render: React lo vuelve a correr cuando
+   * el paso cambia. Lo que sale es el NOMBRE del paso —lo resuelve el módulo
+   * puro, contra el enum del contrato—, nunca el índice y nunca nada de lo que
+   * la persona cargó en él. Volver atrás a un paso ya contado no emite: la
+   * deduplicación vive a nivel de módulo (`productEvents.ts`), así que sobrevive
+   * a un remount y al doble efecto de StrictMode.
+   *
+   * Dos casos NO cuentan, y los dos están en el contrato:
+   *   · la inspección visual (`debugStep`, `/preview-alta`) monta los once pasos
+   *     a la vez y en ocho tamaños, y no es nadie recorriendo el alta;
+   *   · el acceso con la sesión ya activa, que no es la primera pantalla del
+   *     alta sino la espera de "Entrando a tu cuenta…" mientras
+   *     `resolveAuthStepExit` decide la salida — un paso que el flujo saltea
+   *     solo. El alta que SÍ empieza acá se cuenta antes de que haya sesión.
+   */
+  useEffect(() => {
+    if (inspeccion) return;
+    if (step === STEP_AUTH && sesionActiva) return;
+    trackOnboardingStepViewed(step);
+  }, [step, sesionActiva, inspeccion]);
+
   const canComputeTriad = Boolean(computeTriad && birthPlace && clientDraftId);
 
   const next = () => setStep((s) => Math.min(TOTAL - 1, s + 1));
@@ -498,6 +531,12 @@ export function OnboardingFlow({
         owner.ownerUserId,
         owner.adoptWhenReady
       );
+      // Activación: el alta terminó y la carta quedó disponible
+      // (`onboarding_completed`). Va DESPUÉS de que `createProfile` resolvió,
+      // que es el hecho — si la creación falla, esto no se emite y el flujo
+      // muestra el reintento. "Seguir gratis" también llega acá y también
+      // cuenta: activarse es tener producto, no haber pagado.
+      trackOnboardingCompleted();
       clearDraft();
       await markFirstRun({ recepcionVista: true }).catch(() => undefined);
       router.replace(CARTA_TAB_ROUTE as never);

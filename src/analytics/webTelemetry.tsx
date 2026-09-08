@@ -4,20 +4,23 @@
  * Hoy la web productiva no registra ninguna visita: el bundle salía sin SDK y
  * PostHog no recibe un solo evento del dominio desde el 2026-08-09. Sin visitas
  * no hay retención, no hay adquisición y no hay forma de leer si un cambio del
- * producto sirvió. Este módulo es la única cosa que captura en la web, y captura
- * un solo evento: `$pageview`, con las siete propiedades del contrato v1.0.0.
+ * producto sirvió. Este módulo emite un solo evento —`$pageview`, con las siete
+ * propiedades del contrato— y además monta el cliente que comparte el resto de
+ * la web: los siete eventos de producto de CORE-188 capturan por el mismo
+ * `ensureClient()`, desde `productTelemetry.ts`, y no inicializan nada propio.
  *
  * ## Qué NO hace, a propósito
  *
  * Sin autocapture, sin session replay, sin heatmaps, sin encuestas, sin
  * `$pageleave`, sin web vitals y sin captura de excepciones: todo eso se apaga
  * en la configuración y, si algo se colara igual, `before_send` lo descarta
- * porque sólo deja pasar `$pageview`. Tampoco guarda navegación en el
- * dispositivo: el referrer, la URL inicial y los parámetros de campaña que el
- * SDK persiste por defecto quedan apagados y, lo que ninguna opción cubre, se
- * borra en la misma captura (`webClientOptions.ts`). Sin `identify`, sin `alias`
- * y sin `reset`: la identidad de persona es de otra tarjeta y acá queda el
- * distinct ID anónimo que el SDK sortea solo (contrato, sección 7).
+ * porque sólo deja pasar lo que el diccionario del contrato declara. Tampoco
+ * guarda navegación en el dispositivo: el referrer, la URL inicial y los
+ * parámetros de campaña que el SDK persiste por defecto quedan apagados y, lo
+ * que ninguna opción cubre, se borra en la misma captura
+ * (`webClientOptions.ts`). Sin `identify`, sin `alias` y sin `reset`: la
+ * identidad de persona es de otra tarjeta y acá queda el distinct ID anónimo
+ * que el SDK sortea solo (contrato, sección 7).
  *
  * ## Por qué el SDK entra por `dist/module.slim`
  *
@@ -69,8 +72,12 @@ import { clientOptions, currentConsent } from "@/analytics/webClientOptions";
  * bundle es un valor cualquiera hasta que el contrato lo acepta. Sin build de
  * Vercel —local, CI— el valor es `development`. Nunca se mira el hostname ni la
  * clave del proyecto: el proyecto se elige por el entorno, no al revés.
+ *
+ * Se exporta para que los eventos de producto (CORE-188) resuelvan el entorno
+ * por ESTE camino y no por uno propio: dos lecturas distintas serían dos
+ * respuestas posibles para la misma pregunta.
  */
-function resolveEnvironment(): Environment {
+export function resolveEnvironment(): Environment {
   const extra = Constants.expoConfig?.extra as { environment?: unknown } | undefined;
   return normalizeEnvironment(extra?.environment) ?? "development";
 }
@@ -85,7 +92,14 @@ function resolveEnvironment(): Environment {
  */
 let client: PostHog | null | undefined;
 
-function ensureClient(): PostHog | null {
+/**
+ * El cliente compartido por TODO lo que la web captura.
+ *
+ * Los eventos de producto (CORE-188) entran por acá y no por un `init` propio:
+ * dos clientes serían dos distinct IDs anónimos, dos configuraciones y dos
+ * `before_send` — y la persona que recorre el alta quedaría partida en dos.
+ */
+export function ensureClient(): PostHog | null {
   if (client !== undefined) return client;
   client = createClient();
   return client;

@@ -12,8 +12,8 @@
  */
 import type { PostHogConfig } from "posthog-js/dist/module.slim";
 
-import type { ConsentState } from "@/analytics/eventContract";
-import { PAGEVIEW_EVENT, retainedProperties } from "@/analytics/routeClassification";
+import { isEventName, type ConsentState } from "@/analytics/eventContract";
+import { retainedProperties } from "@/analytics/routeClassification";
 
 /**
  * El instrumento de consentimiento que rige HOY en la web.
@@ -190,22 +190,32 @@ export function clientOptions(input: {
  * El último punto antes de la red.
  *
  * Hace tres cosas que la configuración sola no puede: descarta cualquier evento
- * que no sea `$pageview`, reduce las propiedades a la allowlist del contrato y
- * borra del dispositivo lo que el SDK acaba de persistir sobre la navegación.
- * `$set` y `$set_once` se descartan enteros porque ahí es donde viajarían las
- * propiedades iniciales de persona (`$initial_referrer`, `$initial_current_url`).
+ * que el contrato no declare, reduce las propiedades a la allowlist de ESE
+ * evento y borra del dispositivo lo que el SDK acaba de persistir sobre la
+ * navegación. `$set` y `$set_once` se descartan enteros porque ahí es donde
+ * viajarían las propiedades iniciales de persona (`$initial_referrer`,
+ * `$initial_current_url`).
+ *
+ * La comprobación es contra el DICCIONARIO y no contra un nombre suelto. Hasta
+ * CORE-188 acá decía `result.event !== PAGEVIEW_EVENT`, porque la web emitía un
+ * solo evento; con esa línea, cada evento nuevo del contrato habría que
+ * habilitarlo a mano y el que se olvidara se perdería en silencio. Ahora pasa lo
+ * que el contrato declara —los ocho— y se descarta todo lo demás, que es lo
+ * mismo que hacía antes para lo que importaba: `page_view` (legado, sección 4
+ * del documento), `$web_vitals`, `$exception`, `survey shown` y cualquier
+ * captura que el SDK inicie por su cuenta, sin depender de que la opción que la
+ * apaga siga existiendo.
  */
 export function beforeSendWith(persisted: () => NavigationPersistence | null): BeforeSend {
   return (result) => {
     purgePersistedNavigation(persisted());
     if (!result) return null;
-    // El contrato tiene cinco eventos y esta tarjeta emite uno. Cualquier otra
-    // cosa que el SDK quiera mandar —web vitals, excepciones, encuestas— se
-    // queda acá, sin depender de que la opción que la apaga siga existiendo.
-    if (result.event !== PAGEVIEW_EVENT) return null;
+    // La red que impide que se cuele lo que nadie declaró. Un nombre fuera del
+    // diccionario —el legado `page_view` incluido— no sale.
+    if (!isEventName(result.event)) return null;
     return {
       ...result,
-      properties: retainedProperties(result.properties),
+      properties: retainedProperties(result.properties, result.event),
       $set: undefined,
       $set_once: undefined,
       $unset: undefined
