@@ -524,6 +524,46 @@ const CROSS_LOAD_FACTS: ReadonlySet<string> = new Set<ProductEventName>(["purcha
 const contados = new Set<string>();
 
 /**
+ * Cuántas sesiones de pago arrancó esta persona en este documento.
+ *
+ * Vive en el MÓDULO por el mismo motivo que `contados`, y el defecto que cierra
+ * es concreto: con el número en la instancia del componente, un remontaje —salir
+ * de la paywall y volver por navegación interna, un árbol que React descarta— lo
+ * devolvía a cero. La clave `checkout_started:1` ya estaba contada, así que el
+ * cobro siguiente, que es una sesión de pago REAL en Stripe, no se emitía. Acá
+ * el número no puede retroceder.
+ *
+ * Se reinicia con la IDENTIDAD y no con la recarga: los intentos son de una
+ * persona, igual que los hechos contados.
+ */
+let intentosDeCobro = 0;
+
+/**
+ * El número del intento de cobro que ARRANCA ahora.
+ *
+ * No lo elige la pantalla, y es deliberado: una pantalla recién montada no puede
+ * saber cuántos intentos hubo antes de que React la montara, y ése era
+ * exactamente el agujero. Se llama pegado a la creación de la sesión de pago, de
+ * modo que hay un número nuevo por sesión nueva y ninguno por render: un
+ * remontaje SIN confirmación no llega hasta acá, y el doble efecto de StrictMode
+ * tampoco, porque los dos los frena el mismo guard sincrónico que ya impide
+ * crear dos sesiones de pago.
+ *
+ * Que sea un contador y no un identificador de la sesión de pago es lo que lo
+ * mantiene dentro del contrato: no es el id de Stripe, no es la URL y no es nada
+ * de la query (sección 8).
+ */
+export function nextCheckoutAttempt(): number {
+  intentosDeCobro += 1;
+  return intentosDeCobro;
+}
+
+/** Cuántos intentos de cobro lleva esta persona. Se lee para verificar. */
+export function checkoutAttempts(): number {
+  return intentosDeCobro;
+}
+
+/**
  * Emite el evento de este hecho, una sola vez.
  *
  * El orden importa: se anota ANTES de capturar, así una captura que falle no
@@ -561,6 +601,7 @@ export function factCounted(fact: string): boolean {
  */
 export function resetProductEvents(): void {
   contados.clear();
+  intentosDeCobro = 0;
   identificada = null;
 }
 
@@ -576,6 +617,18 @@ export function resetProductEvents(): void {
 export type IdentityPort = {
   /** `identify` del SDK, con el identificador y NADA más. */
   readonly identify: (distinctId: string) => void;
+  /**
+   * Quién está identificada según lo que el SDK dejó GUARDADO, o `null`.
+   *
+   * Es la fuente de verdad de la comparación de identidad, y por eso es un
+   * puerto y no una variable de este módulo. El SDK persiste la identidad en el
+   * navegador y esa identidad sobrevive a la recarga; cualquier estado de acá
+   * muere con el documento. Con la comparación hecha sobre memoria, el camino
+   * "la cuenta A se identifica, la persona recarga, entra la cuenta B" no veía a
+   * nadie identificado, no reseteaba, y el SDK —todavía identificado como A—
+   * ignoraba el `identify` de B: los eventos de B terminaban en el perfil de A.
+   */
+  readonly identified: () => string | null;
   /** `reset` del SDK: sortea un distinct ID anónimo nuevo. */
   readonly reset: () => void;
   /** Borra las marcas de hechos que sobreviven a la carga (la de la compra). */
@@ -606,17 +659,22 @@ export function decideIdentify(identifier: unknown): IdentityDecision {
 }
 
 /**
- * La persona identificada en esta carga, o `null` si no hay ninguna.
+ * CACHÉ en memoria de la última persona que este módulo identificó.
  *
- * No es una caché de conveniencia: es lo que permite ver un cambio de persona
- * desde el borde de la analítica. El SDK, ya identificado como A, IGNORA un
- * `identify` con el id de B —escribe un aviso y no cambia nada—, así que sin
- * este dato un cambio de cuenta que no pasara por su camino nombrado dejaría los
- * eventos de B pegados al perfil de A.
+ * No es la fuente de verdad: esa es `port.identified()`, que lee la identidad
+ * que el SDK dejó escrita en el navegador y que es la única que sobrevive a una
+ * recarga. Esta variable contesta en el único caso en que el SDK no puede: sin
+ * cliente —sin consentimiento, sin clave, fuera del navegador— no hay nada
+ * persistido que leer, y sin ella un cambio de cuenta en ese estado tampoco
+ * reiniciaría la deduplicación de hechos.
  */
 let identificada: string | null = null;
 
-/** Quién está identificada ahora. Se lee para verificar, no para decidir. */
+/**
+ * A quién identificó este módulo en esta carga. Se lee para verificar, no para
+ * decidir: quién está identificada DE VERDAD lo contesta `port.identified()`,
+ * y después de una recarga estas dos respuestas son distintas a propósito.
+ */
 export function identifiedPerson(): string | null {
   return identificada;
 }
@@ -634,6 +692,12 @@ export function identifiedPerson(): string | null {
  * a OTRA resetea antes —es un cambio de cuenta, uno de los cuatro motivos que el
  * contrato declara— para que sus eventos no hereden el perfil de la anterior.
  *
+ * "La misma" y "otra" se deciden contra la identidad PERSISTIDA por el SDK, no
+ * contra lo que este módulo recuerde. Alcanza la diferencia de identidad: no
+ * hace falta que exista un perfil local anterior, ni que el cambio pase por el
+ * camino que lo detecta, ni que las dos identificaciones ocurran en la misma
+ * carga de la página. Una recarga en el medio es justamente el caso que rompía.
+ *
  * `alias` no se usa. El contrato lo reserva para unir dos emisores distintos
  * sobre la misma persona (la instalación anónima de ayer, la cuenta de hoy), y
  * en el flujo normal ese vínculo no hace falta: el distinct ID anónimo del SDK
@@ -645,8 +709,15 @@ export function identifyPerson(identifier: unknown, port: IdentityPort): boolean
     port.warn(`[orbita] identify no emitido: ${decision.reason}`);
     return false;
   }
-  if (identificada === decision.distinctId) return false;
-  if (identificada !== null) resetIdentityFor("account_switch", port);
+  // Lo persistido manda; la caché sólo contesta cuando no hay SDK a quien
+  // preguntar. Nunca al revés: la memoria arranca vacía en cada carga y creerle
+  // a ella es lo que dejaba pasar un cambio de cuenta después de recargar.
+  const actual = port.identified() ?? identificada;
+  if (actual === decision.distinctId) {
+    identificada = actual;
+    return false;
+  }
+  if (actual !== null) resetIdentityFor("account_switch", port);
   identificada = decision.distinctId;
   port.identify(decision.distinctId);
   return true;
@@ -660,15 +731,18 @@ export function identifyPerson(identifier: unknown, port: IdentityPort): boolean
  * lista acá; un motivo inventado no resetea y se avisa, porque un reset que
  * corre por cualquier cosa es un reset que nadie puede razonar.
  *
- * Reinicia TRES cosas, y las tres por el mismo motivo: lo que quedaría pegado a
- * la persona siguiente.
+ * Reinicia CUATRO cosas, y las cuatro por el mismo motivo: lo que quedaría
+ * pegado a la persona siguiente.
  *
  *   1. el distinct ID del SDK —sin esto dos cuentas quedan fusionadas en un
  *      perfil y no hay forma limpia de deshacerlo—;
- *   2. la persona identificada acá, para que el próximo `identify` sí corra;
+ *   2. la caché de la persona identificada acá, para que el próximo `identify`
+ *      sí corra;
  *   3. la deduplicación de hechos, la del módulo y la de la pestaña — el segundo
  *      alta de la misma pestaña es un hecho nuevo de otra persona, no una
- *      repetición del primero.
+ *      repetición del primero;
+ *   4. el contador de intentos de cobro, por lo mismo: el primer intento de la
+ *      persona que entra es su primer intento, no el que siga al de la anterior.
  *
  * El reset del SDK va PRIMERO: es el que protege a la persona. Si fallara, lo
  * que se pierde es contar de nuevo, no la privacidad de nadie.
@@ -681,6 +755,7 @@ export function resetIdentityFor(trigger: unknown, port: IdentityPort): boolean 
   port.reset();
   identificada = null;
   contados.clear();
+  intentosDeCobro = 0;
   port.forget();
   return true;
 }

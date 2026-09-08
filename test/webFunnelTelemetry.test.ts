@@ -56,6 +56,7 @@ import {
   ONBOARDING_STEP_BY_INDEX,
   PLACEMENT_BY_PRODUCT_EVENT,
   PRODUCT_EVENT_NAMES,
+  checkoutAttempts,
   decideIdentify,
   decidePurchaseFact,
   decideProductEvent,
@@ -63,6 +64,7 @@ import {
   factCounted,
   identifiedPerson,
   identifyPerson,
+  nextCheckoutAttempt,
   onboardingStepName,
   productEventWarning,
   purchaseFact,
@@ -122,8 +124,27 @@ function rutasDeApp(): string[] {
  * de verdad: `remember` escribe en ella y `forget` la vacía, como el
  * `sessionStorage` que representa.
  */
+/**
+ * El almacenamiento del SDK, que SOBREVIVE a la recarga.
+ *
+ * `posthog-js` guarda la identidad en `localStorage` (`webClientOptions.ts`), así
+ * que un documento nuevo la encuentra escrita. Modelarla acá afuera —y no como
+ * una variable del registro— es lo que permite EJECUTAR una recarga: el estado
+ * del módulo arranca de cero y esto se conserva, que es exactamente lo que pasa
+ * en el navegador.
+ */
+type AlmacenamientoDelSdk = { identidad: string | null };
+
+/** Un SDK recién instalado: distinct ID anónimo y nadie identificado. */
+const sdkAnonimo = (): AlmacenamientoDelSdk => ({ identidad: null });
+
 type Registro = {
-  readonly eventos: Array<{ name: ProductEventName; properties: ProductEventProperties }>;
+  readonly eventos: Array<{
+    name: ProductEventName;
+    properties: ProductEventProperties;
+    /** Con qué identidad habría viajado: la cuenta, o `null` si es anónima. */
+    identidad: string | null;
+  }>;
   readonly avisos: string[];
   readonly anotados: string[];
   readonly identificados: string[];
@@ -132,9 +153,14 @@ type Registro = {
   readonly memoria: Set<string>;
   readonly puerto: ProductEventPort;
   readonly identidad: IdentityPort;
+  /** Lo que el SDK dejó guardado en el navegador. */
+  readonly sdk: AlmacenamientoDelSdk;
 };
 
-function registro(recordado: Iterable<string> = []): Registro {
+function registro(
+  recordado: Iterable<string> = [],
+  sdk: AlmacenamientoDelSdk = sdkAnonimo()
+): Registro {
   const eventos: Registro["eventos"] = [];
   const avisos: string[] = [];
   const anotados: string[] = [];
@@ -150,9 +176,10 @@ function registro(recordado: Iterable<string> = []): Registro {
     reinicios,
     linea,
     memoria,
+    sdk,
     puerto: {
       capture: (name, properties) => {
-        eventos.push({ name, properties });
+        eventos.push({ name, properties, identidad: sdk.identidad });
         linea.push(`captura:${name}`);
       },
       environment: () => "preview",
@@ -165,10 +192,15 @@ function registro(recordado: Iterable<string> = []): Registro {
     },
     identidad: {
       identify: (distinctId) => {
+        // El SDK real ESCRIBE la identidad en el navegador; el doble también, o
+        // no se podría distinguir una recarga de una carga nueva.
+        sdk.identidad = distinctId;
         identificados.push(distinctId);
         linea.push(`identify:${distinctId}`);
       },
+      identified: () => sdk.identidad,
       reset: () => {
+        sdk.identidad = null;
         reinicios.push(reinicios.length + 1);
         linea.push("reset");
       },
@@ -181,10 +213,15 @@ function registro(recordado: Iterable<string> = []): Registro {
   };
 }
 
-/** Una carga de página nueva: el estado de módulo arranca limpio. */
-function cargaNueva(memoria?: Iterable<string>): Registro {
+/**
+ * Una carga de página nueva: el estado de módulo arranca limpio.
+ *
+ * Pasarle el MISMO `sdk` de una carga anterior es una recarga de verdad: el
+ * documento se estrena y el almacenamiento del navegador sigue donde estaba.
+ */
+function cargaNueva(memoria?: Iterable<string>, sdk?: AlmacenamientoDelSdk): Registro {
   resetProductEvents();
-  return registro(memoria);
+  return registro(memoria, sdk);
 }
 
 /**
@@ -686,12 +723,14 @@ test("la impresión de la oferta se mide donde hay oferta, y el intento donde se
   // El intento sale del toque confirmado, después del guard que ya evitaba dos
   // sesiones de pago por un doble tap.
   const guard = cuerpo.indexOf("if (checkoutLock.current || phase !== \"disponible\") return;");
-  const intento = cuerpo.indexOf("trackCheckoutStarted(checkoutAttempt.current)");
+  const intento = cuerpo.indexOf("trackCheckoutStarted();");
   assert.ok(guard > 0 && intento > guard);
   assert.ok(intento < cuerpo.indexOf("createCheckout({ plan:"));
-  // El número lo lleva un ref y se incrementa en el toque confirmado: un
-  // reintento después de un error es OTRO intento, y crea otra sesión de pago.
-  assert.match(cuerpo, /checkoutAttempt\.current \+= 1;\n\s*trackCheckoutStarted\(checkoutAttempt\.current\);/);
+  // Y el número NO lo lleva la instancia: con el contador en un ref, salir de la
+  // paywall y volver por navegación interna lo devolvía a cero, el número
+  // repetido ya estaba contado, y el cobro siguiente —una sesión de pago REAL—
+  // no se emitía.
+  assert.doesNotMatch(cuerpo, /checkoutAttempt/, "el contador volvió a la instancia");
 });
 
 test("el lanzador de pago mide el intento y no una impresión que no existe", () => {
@@ -699,9 +738,14 @@ test("el lanzador de pago mide el intento y no una impresión que no existe", ()
   // impresión ahí sería contar una paywall en estado de carga, que el contrato
   // descarta expresamente.
   const cuerpo = codigo(lanzador);
-  assert.equal((cuerpo.match(/trackCheckoutStarted\(attempt\)/g) ?? []).length, 1);
+  assert.equal((cuerpo.match(/trackCheckoutStarted\(\);/g) ?? []).length, 1);
   assert.ok(!cuerpo.includes("trackPaywallViewed"), "el lanzador cuenta una impresión inexistente");
-  assert.match(cuerpo, /startedFor\.current = attempt;\n\s*trackCheckoutStarted\(attempt\);/);
+  // Después del guard que marca el intento —el que frena el re-render y el doble
+  // efecto de StrictMode— y antes de crear la sesión de pago.
+  const marca = cuerpo.indexOf("startedFor.current = attempt;");
+  const intento = cuerpo.indexOf("trackCheckoutStarted();");
+  assert.ok(marca > 0 && intento > marca, "el intento se avisa sin pasar por el guard");
+  assert.ok(intento < cuerpo.indexOf("createCheckout({"), "se avisa después de crear la sesión");
 });
 
 test("la pantalla de retorno pasa las DOS autoridades, y no decide ninguna", () => {
@@ -937,6 +981,89 @@ test("identificar a OTRA persona resetea sola; identificar a la misma no hace na
   assert.equal(identifiedPerson(), CUENTA_B);
 });
 
+test("cuenta A, RECARGA, cuenta B: resetea igual y B no hereda la identidad de A", () => {
+  // El camino que rompía, ejecutado entero: A se identifica y NO llega a crear
+  // ni a adoptar un perfil, la persona recarga, entra B. El estado del módulo
+  // arranca vacío —"acá no hay nadie identificado"— pero el SDK sigue
+  // identificado como A en el almacenamiento del navegador, y un `identify` con
+  // el id de B sobre un cliente ya identificado no cambia nada: los eventos de B
+  // se irían al perfil de A. Por eso la comparación lee lo PERSISTIDO.
+  const sdk = sdkAnonimo();
+  const primera = cargaNueva(undefined, sdk);
+  identifyPerson(identidadDe(CUENTA_A), primera.identidad);
+  emitProductEvent({ name: "signup_completed" }, primera.puerto);
+  assert.equal(sdk.identidad, CUENTA_A);
+
+  // La recarga: documento nuevo, almacenamiento del SDK conservado.
+  const segunda = cargaNueva(undefined, sdk);
+  assert.equal(identifiedPerson(), null, "el estado de módulo sobrevivió: no es una recarga");
+  assert.equal(sdk.identidad, CUENTA_A, "el SDK olvidó la identidad: la prueba no mediría nada");
+
+  identifyPerson(identidadDe(CUENTA_B), segunda.identidad);
+  emitProductEvent({ name: "signup_completed" }, segunda.puerto);
+
+  // Hubo reset ENTRE las dos identidades, y antes de la captura de B.
+  assert.deepEqual(segunda.linea, [
+    "reset",
+    "olvida",
+    `identify:${CUENTA_B}`,
+    "captura:signup_completed"
+  ]);
+  assert.equal(sdk.identidad, CUENTA_B);
+  // Y ni un evento de B salió con la identidad de A.
+  assert.deepEqual(segunda.eventos.map((e) => e.identidad), [CUENTA_B]);
+  assert.deepEqual(primera.eventos.map((e) => e.identidad), [CUENTA_A]);
+});
+
+test("la diferencia de identidad ALCANZA: no hace falta un perfil anterior", () => {
+  // El reset del cambio de cuenta que corre en `runAccountBootstrap` sólo se
+  // ordena cuando hay un perfil local de otra persona. Éste no depende de eso:
+  // acá no hubo perfil, no hubo bootstrap y no hubo camino nombrado — sólo dos
+  // identidades distintas, que es lo único que hace falta.
+  const sdk: AlmacenamientoDelSdk = { identidad: CUENTA_A };
+  const carga = cargaNueva(undefined, sdk);
+  assert.equal(identifyPerson(identidadDe(CUENTA_B), carga.identidad), true);
+  assert.deepEqual(carga.reinicios, [1]);
+  assert.deepEqual(carga.linea, ["reset", "olvida", `identify:${CUENTA_B}`]);
+});
+
+test("después de la recarga, la MISMA persona no resetea ni se vuelve a identificar", () => {
+  // El otro lado del mismo agujero: si la comparación no leyera lo persistido,
+  // cada recarga de la misma persona resetearía. Y el reset borra la
+  // deduplicación, así que sus hechos volverían a contarse en cada recarga.
+  const sdk: AlmacenamientoDelSdk = { identidad: CUENTA_A };
+  const carga = cargaNueva(undefined, sdk);
+  assert.equal(identifyPerson(identidadDe(CUENTA_A), carga.identidad), false);
+  assert.deepEqual(carga.linea, [], "resetear o identificar de nuevo a la misma persona");
+  assert.equal(identifiedPerson(), CUENTA_A, "la caché en memoria no quedó al día con el SDK");
+});
+
+test("la identidad se lee del SDK; la variable de memoria es sólo la caché", () => {
+  // La fuente es el puerto, y el puente la resuelve con las dos preguntas del
+  // cliente instalado: `_isIdentified()` dice si el estado GUARDADO es
+  // "identificada" —sin eso, el anónimo que el SDK sortea en la primera visita
+  // se leería como una persona— y `get_distinct_id()` dice quién.
+  assert.match(codigo(decision), /readonly identified: \(\) => string \| null;/);
+  assert.match(codigo(decision), /const actual = port\.identified\(\) \?\? identificada;/);
+  assert.match(codigo(puente), /client\._isIdentified\(\) \? client\.get_distinct_id\(\) : null/);
+  // Y el SDK guarda esa identidad donde sobrevive a la recarga.
+  assert.match(leer("src/analytics/webClientOptions.ts"), /persistence: "localStorage"/);
+
+  // Sin cliente no hay nada persistido que leer —sin consentimiento, sin clave,
+  // fuera del navegador— y ahí la caché es lo único que queda: identificar dos
+  // veces a la misma persona sigue sin hacer nada, y un cambio de cuenta sigue
+  // reiniciando la deduplicación de hechos.
+  const carga = cargaNueva();
+  const ciego: IdentityPort = { ...carga.identidad, identified: () => null };
+  assert.equal(identifyPerson(identidadDe(CUENTA_A), ciego), true);
+  assert.equal(identifyPerson(identidadDe(CUENTA_A), ciego), false, "identificó dos veces");
+  emitProductEvent({ name: "signup_completed" }, carga.puerto);
+  assert.equal(identifyPerson(identidadDe(CUENTA_B), ciego), true);
+  emitProductEvent({ name: "signup_completed" }, carga.puerto);
+  assert.equal(carga.eventos.length, 2, "el cambio de cuenta no reinició la deduplicación");
+  assert.deepEqual(carga.reinicios, [1]);
+});
+
 test("sin alias: el flujo normal no usa el único emisor que el contrato reserva", () => {
   for (const fuente of [
     decision,
@@ -1068,6 +1195,152 @@ test("un segundo checkout confirmado por la persona SÍ se cuenta", () => {
   assert.equal(carga.eventos.length, 1, "un remontaje contó un intento que no existió");
   emitProductEvent({ name: "checkout_started", attempt: 2 }, carga.puerto);
   assert.equal(carga.eventos.length, 2, "el reintento confirmado no se contó");
+});
+
+// --- 5 bis. El intento de cobro cuenta SESIONES DE PAGO, no montajes --------
+
+/**
+ * La paywall del alta, con la MISMA estructura de guardas que la pantalla.
+ *
+ * Se reproduce lo que decide y nada más: el lock SINCRÓNICO por instancia
+ * (`checkoutLock`), que el único disparador es el toque confirmado, y que el
+ * número del intento sale del módulo. `montar…()` estrena la instancia —refs
+ * nuevos— que es lo que hace React al descartar y rehacer el árbol, y era
+ * exactamente donde el contador volvía a cero.
+ *
+ * `sesiones` es compartido a propósito: cada entrada es una sesión de pago REAL
+ * creada en Stripe, y la promesa que se prueba abajo es que hay un evento por
+ * cada una, ni uno más ni uno menos.
+ */
+function montarPaywallDelAlta(puerto: ProductEventPort, sesiones: number[]) {
+  let lock = false;
+  return {
+    /** El toque confirmado (`onBuy`). */
+    confirmar: () => {
+      if (lock) return;
+      lock = true;
+      emitProductEvent({ name: "checkout_started", attempt: nextCheckoutAttempt() }, puerto);
+      sesiones.push(sesiones.length + 1);
+    },
+    /** El checkout falló: el lock se libera y se puede confirmar de nuevo. */
+    fallar: () => {
+      lock = false;
+    }
+  };
+}
+
+/**
+ * El lanzador `/paywall`, con su estructura: montarse ES abrir el pago.
+ *
+ * `montar()` es el efecto, con el ref por instancia que frena el re-render y el
+ * doble efecto de StrictMode; `reintentar()` es el botón, que incrementa el
+ * estado del que depende el efecto.
+ */
+function montarLanzador(puerto: ProductEventPort, sesiones: number[]) {
+  let startedFor: number | null = null;
+  let attempt = 0;
+  const efecto = () => {
+    if (startedFor === attempt) return;
+    startedFor = attempt;
+    emitProductEvent({ name: "checkout_started", attempt: nextCheckoutAttempt() }, puerto);
+    sesiones.push(sesiones.length + 1);
+  };
+  return {
+    montar: efecto,
+    reintentar: () => {
+      attempt += 1;
+      efecto();
+    }
+  };
+}
+
+test("confirmar, fallar, REMONTAR y confirmar de nuevo cuenta los dos cobros", () => {
+  // El defecto que cierra: un intento falla, la persona sale y vuelve por
+  // navegación interna —el componente se remonta y el contador de la instancia
+  // reinicia—, confirma de nuevo y se crea otra sesión de pago REAL. Con el
+  // número en la instancia, la clave ya estaba contada y ese cobro no se emitía.
+  const carga = cargaNueva();
+  const sesiones: number[] = [];
+
+  const primera = montarPaywallDelAlta(carga.puerto, sesiones);
+  primera.confirmar();
+  primera.confirmar(); // doble tap: el lock sincrónico lo frena
+  primera.fallar();
+
+  const segunda = montarPaywallDelAlta(carga.puerto, sesiones); // el remontaje
+  segunda.confirmar();
+
+  assert.equal(sesiones.length, 2, "el remontaje no llegó a crear la segunda sesión de pago");
+  assert.deepEqual(carga.eventos.map((e) => e.name), ["checkout_started", "checkout_started"]);
+  assert.equal(carga.eventos.length, sesiones.length, "un cobro real quedó sin contar");
+});
+
+test("confirmar y REMONTAR sin confirmar cuenta uno solo", () => {
+  // El otro lado de la misma tensión: sin toque nuevo no hay sesión de pago
+  // nueva, y por lo tanto no hay intento que contar. Es la misma promesa que ya
+  // rige para el paso del alta.
+  const carga = cargaNueva();
+  const sesiones: number[] = [];
+
+  montarPaywallDelAlta(carga.puerto, sesiones).confirmar();
+  montarPaywallDelAlta(carga.puerto, sesiones); // remontaje inmediato, sin tocar
+  montarPaywallDelAlta(carga.puerto, sesiones); // y otro
+
+  assert.equal(sesiones.length, 1);
+  assert.equal(carga.eventos.length, 1, "un montaje sin confirmación contó un intento");
+});
+
+test("el lanzador cuenta un intento por sesión de pago, y ninguno por render", () => {
+  const carga = cargaNueva();
+  const sesiones: number[] = [];
+
+  const montado = montarLanzador(carga.puerto, sesiones);
+  montado.montar();
+  montado.montar(); // doble efecto de StrictMode: el ref lo frena
+  montado.montar(); // re-render
+  assert.equal(sesiones.length, 1);
+  assert.equal(carga.eventos.length, 1, "el doble efecto de StrictMode contó dos intentos");
+
+  montado.reintentar(); // el botón: otra sesión de pago
+  // Y un remontaje del lanzador crea otra sesión de verdad —montarse ES abrir el
+  // pago—, así que también cuenta. La promesa no es "un evento por montaje" ni
+  // "uno por documento": es uno por SESIÓN DE PAGO.
+  montarLanzador(carga.puerto, sesiones).montar();
+  assert.equal(sesiones.length, 3);
+  assert.equal(carga.eventos.length, sesiones.length);
+});
+
+test("el número del intento vive en el MÓDULO, no en la instancia del componente", () => {
+  assert.match(codigo(decision), /^let intentosDeCobro = 0;$/m);
+  assert.match(codigo(puente), /attempt: nextCheckoutAttempt\(\)/);
+  for (const pantalla of [paywallDelAlta, lanzador]) {
+    const cuerpo = codigo(pantalla);
+    assert.match(cuerpo, /trackCheckoutStarted\(\);/);
+    // La pantalla no puede elegir el número: no lo recibe.
+    assert.doesNotMatch(cuerpo, /trackCheckoutStarted\([^)]/, "la pantalla elige el número");
+    // Y se avisa pegado a la creación de la sesión de pago, no en un render.
+    assert.ok(cuerpo.indexOf("trackCheckoutStarted();") < cuerpo.indexOf("createCheckout({"));
+  }
+});
+
+test("el contador de intentos es de la PERSONA: el reset lo devuelve a cero", () => {
+  // Si no se reiniciara, el primer cobro de quien entra arrastraría el número de
+  // quien salió. Y si se reiniciara sin limpiar los hechos contados, el primer
+  // intento de la persona nueva chocaría con el de la anterior y no se emitiría:
+  // las dos cosas se reinician juntas, en el mismo reset.
+  const carga = cargaNueva();
+  identifyPerson(identidadDe(CUENTA_A), carga.identidad);
+  emitProductEvent({ name: "checkout_started", attempt: nextCheckoutAttempt() }, carga.puerto);
+  emitProductEvent({ name: "checkout_started", attempt: nextCheckoutAttempt() }, carga.puerto);
+  assert.equal(checkoutAttempts(), 2);
+
+  resetIdentityFor("logout", carga.identidad);
+  assert.equal(checkoutAttempts(), 0, "los intentos de quien salió siguen contando");
+
+  identifyPerson(identidadDe(CUENTA_B), carga.identidad);
+  emitProductEvent({ name: "checkout_started", attempt: nextCheckoutAttempt() }, carga.puerto);
+  assert.equal(carga.eventos.length, 3, "el primer cobro de la persona siguiente no se contó");
+  assert.deepEqual(carga.eventos.map((e) => e.identidad), [CUENTA_A, CUENTA_A, CUENTA_B]);
 });
 
 test("el paso montado y todavía NO pintado no se cuenta; el mismo paso pintado sí", () => {

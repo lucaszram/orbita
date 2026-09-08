@@ -77,13 +77,15 @@ function CheckoutLauncher() {
     // paywall en estado de carga. `paywall_viewed` se emite donde hay oferta de
     // verdad, que es la paywall del alta.
     //
-    // La deduplicación vive a nivel de módulo y distingue el INTENTO: un
-    // remontaje repite el mismo `attempt` y no vuelve a contar, y el reintento
-    // que la persona confirma después de un error lo incrementa y sí cuenta —
-    // crea otra sesión de pago real, así que es otra intención de pagar y no un
-    // reintento automático del mismo intento, que es lo único que el contrato
-    // descarta.
-    trackCheckoutStarted(attempt);
+    // El número del intento lo asigna el módulo de telemetría, no esta
+    // instancia: acá el hecho se avisa EXACTAMENTE donde se crea la sesión de
+    // pago —la línea de abajo—, así que hay un intento por sesión y ninguno por
+    // render. El guard de arriba es el que impide contar dos veces la misma
+    // sesión (re-render, doble efecto de StrictMode), y es el mismo que impide
+    // crearla dos veces. Un remontaje real crea OTRA sesión de pago, así que
+    // cuenta: es otra intención de pagar y no el reintento automático del mismo
+    // intento, que es lo único que el contrato descarta.
+    trackCheckoutStarted();
     let alive = true;
     setState("abriendo");
     createCheckout({ plan: "monthly" })

@@ -34,6 +34,7 @@
 import {
   emitProductEvent,
   identifyPerson,
+  nextCheckoutAttempt,
   resetIdentityFor,
   type IdentityPort,
   type ProductEventPort,
@@ -110,6 +111,25 @@ const identityPort: IdentityPort = {
       // Sin identidad, la captura sigue siendo anónima. Nunca al revés.
     }
   },
+  identified: () => {
+    try {
+      const client = ensureClient();
+      if (!client) return null;
+      // Las dos preguntas del cliente instalado, y hacen falta las dos:
+      // `_isIdentified()` dice si el estado GUARDADO es "identificada" —sin eso,
+      // `get_distinct_id()` devolvería el anónimo que el SDK sortea en la
+      // primera visita y una visita sin cuenta se leería como una persona—, y
+      // `get_distinct_id()` dice quién es. Las dos salen del mismo lugar que el
+      // SDK persiste (`persistence: "localStorage"`, `webClientOptions.ts`), así
+      // que contestan lo mismo después de una recarga. Una variable de módulo,
+      // no: arranca vacía en cada carga, y ésa era la mezcla de personas.
+      return client._isIdentified() ? client.get_distinct_id() : null;
+    } catch {
+      // Sin respuesta del SDK, la decisión cae a su caché en memoria: es peor
+      // fuente, pero es la única que queda y no inventa una identidad.
+      return null;
+    }
+  },
   reset: () => {
     try {
       ensureClient()?.reset();
@@ -175,12 +195,19 @@ export function trackPaywallViewed(): void {
 /**
  * La persona confirmó avanzar al cobro (`checkout_started`).
  *
- * `attempt` es qué intento de pago es éste. Un remontaje repite el número y no
- * cuenta; un reintento que la persona confirma después de un error lo incrementa
- * y sí cuenta, porque crea otra sesión de pago real.
+ * El número del intento NO lo trae la pantalla: lo asigna `nextCheckoutAttempt`,
+ * que lo guarda a nivel de módulo, junto a la deduplicación de hechos. Una
+ * pantalla que lo llevara en su instancia lo perdería al remontarse —salir y
+ * volver por navegación interna— y el cobro siguiente repetiría un número ya
+ * contado: una sesión de pago REAL que no se emite.
+ *
+ * Se llama pegado a la creación de la sesión de pago, y ahí está la promesa: un
+ * intento nuevo es una sesión nueva, no un render. Un remontaje sin confirmación
+ * y el doble efecto de StrictMode no llegan hasta acá, porque los frena el mismo
+ * guard sincrónico que impide crear dos sesiones de pago.
  */
-export function trackCheckoutStarted(attempt: number): void {
-  emitProductEvent({ name: "checkout_started", attempt }, browserPort);
+export function trackCheckoutStarted(): void {
+  emitProductEvent({ name: "checkout_started", attempt: nextCheckoutAttempt() }, browserPort);
 }
 
 /**

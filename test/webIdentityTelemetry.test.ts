@@ -27,6 +27,12 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { CONTRACT_VERSION, isStableInternalIdentifier } from "../src/analytics/eventContract";
+import {
+  identifiedPerson,
+  identifyPerson,
+  resetProductEvents,
+  type IdentityPort
+} from "../src/analytics/productEvents";
 import { TRANSPORT_PROPERTY_NAMES } from "../src/analytics/routeClassification";
 import { clientOptions, IDENTITY_EVENT } from "../src/analytics/webClientOptions";
 import { ROOT } from "./moduleGraph";
@@ -37,6 +43,12 @@ const API_HOST = "https://ph.orbitaastrologia.xyz";
 
 /** La cuenta, con la forma EXACTA que el contrato exige para el emisor `account`. */
 const CUENTA = "user_2rLmQxTz8vB4kN6pW1cH9dYs";
+
+/** La SEGUNDA cuenta: la que entra después de la recarga. */
+const CUENTA_B = "user_9aZq3XyT7wR2mE5nK8vJ4bLd";
+
+/** La clave del proyecto de prueba. Es la que decide dónde persiste el SDK. */
+const CLAVE = "phc_orbita_test";
 
 // --- El navegador falso -------------------------------------------------------
 
@@ -183,11 +195,17 @@ type PostHogMinimo = {
   identify: (distinctId: string) => void;
   reset: () => void;
   get_distinct_id: () => string;
+  /** El estado de identificación que el SDK PERSISTE, no uno de este proceso. */
+  _isIdentified: () => boolean;
   unregister: (property: string) => void;
   unregister_for_session: (property: string) => void;
 };
 
+/** El singleton del SDK, para poder estrenar otra instancia sobre él. */
+let posthog: PostHogMinimo;
 let cliente: PostHogMinimo;
+/** El cliente de la carga SIGUIENTE, con el mismo almacenamiento. */
+let recargado: PostHogMinimo;
 /** Lo que ENTRÓ y lo que SALIÓ de `before_send`, en orden. */
 const paso: Array<{ entrada: { event: string }; salida: Salida }> = [];
 
@@ -207,21 +225,59 @@ before(async () => {
   const modulo = (await import(
     pathToFileURL(join(ROOT, "node_modules/posthog-js/dist/module.slim.js")).href
   )) as { default: PostHogMinimo };
-  const posthog = modulo.default;
-
-  // La configuración de producción, entera. Lo único que se envuelve es
-  // `before_send`, para poder VER lo que pasa por él sin cambiar lo que decide.
-  const opciones = clientOptions({ apiHost: API_HOST, persisted: () => posthog });
-  const real = opciones.before_send;
-  cliente = posthog.init("phc_orbita_test", {
-    ...opciones,
-    before_send: (entrada: { event: string }) => {
-      const salida = (real as (r: unknown) => Salida)(entrada);
-      paso.push({ entrada, salida });
-      return salida;
-    }
-  });
+  posthog = modulo.default;
+  cliente = arrancarCliente();
 });
+
+/**
+ * Un cliente con la configuración de producción ENTERA.
+ *
+ * Lo único que se envuelve es `before_send`, para poder VER lo que pasa por él
+ * sin cambiar lo que decide. Con `nombre`, el SDK crea otra instancia; como la
+ * clave del proyecto es la misma, las dos leen y escriben el MISMO
+ * almacenamiento del navegador — que es lo que hace de esto una recarga y no
+ * dos pestañas.
+ */
+function arrancarCliente(nombre?: string): PostHogMinimo {
+  let creado: PostHogMinimo;
+  const opciones = clientOptions({ apiHost: API_HOST, persisted: () => creado });
+  const real = opciones.before_send;
+  creado = posthog.init(
+    CLAVE,
+    {
+      ...opciones,
+      before_send: (entrada: { event: string }) => {
+        const salida = (real as (r: unknown) => Salida)(entrada);
+        paso.push({ entrada, salida });
+        return salida;
+      }
+    },
+    nombre
+  );
+  return creado;
+}
+
+/** Los avisos y los borrados de marcas, para que el puerto no los trague. */
+const avisos: string[] = [];
+const olvidos: string[] = [];
+
+/**
+ * El puerto de identidad, con el MISMO cableado que `productTelemetry.ts`.
+ *
+ * `identified` es lo único que esta ronda agrega, y es lo que se está probando:
+ * la identidad sale de lo que el SDK dejó guardado —`_isIdentified()` dice si el
+ * estado persistido es "identificada" y `get_distinct_id()` dice quién—, no de
+ * una variable que muere con el documento.
+ */
+function puenteDeIdentidad(client: PostHogMinimo): IdentityPort {
+  return {
+    identify: (distinctId) => client.identify(distinctId),
+    identified: () => (client._isIdentified() ? client.get_distinct_id() : null),
+    reset: () => client.reset(),
+    forget: () => olvidos.push("olvida"),
+    warn: (message) => avisos.push(message)
+  };
+}
 
 const primero = (event: string) => paso.find((p) => p.entrada.event === event);
 
@@ -317,4 +373,65 @@ test("el almacenamiento no guarda la cuenta después del reset", () => {
     .map(([clave, valor]) => `${clave}=${valor}`)
     .join("\n");
   assert.ok(!guardado.includes(CUENTA), `la cuenta quedó guardada:\n${guardado}`);
+});
+
+// --- La recarga: la identidad la guarda el SDK, no una variable -------------
+
+test("la identidad que el SDK persiste SOBREVIVE a la recarga, y se puede leer", () => {
+  // La cuenta A entra y no llega a crear ni a adoptar un perfil: sólo se
+  // identifica. Esto es todo lo que hace falta para dejar la identidad escrita.
+  resetProductEvents();
+  assert.equal(identifyPerson({ source: "account", value: CUENTA }, puenteDeIdentidad(cliente)), true);
+  assert.equal(cliente.get_distinct_id(), CUENTA);
+  assert.equal(cliente._isIdentified(), true);
+
+  // La recarga: instancia NUEVA del SDK sobre el mismo almacenamiento. Todo lo
+  // que sabe lo lee de ahí, así que esto es lo que ve el borde en un documento
+  // nuevo — y es exactamente lo que una variable de módulo no puede contestar.
+  recargado = arrancarCliente("recarga");
+  assert.equal(recargado.get_distinct_id(), CUENTA, "el SDK no conservó el identificador");
+  assert.equal(recargado._isIdentified(), true, "el SDK no conservó el estado de identificación");
+  assert.equal(
+    puenteDeIdentidad(recargado).identified(),
+    CUENTA,
+    "el puente no lee la identidad persistida"
+  );
+});
+
+test("cuenta A, RECARGA, cuenta B: hay reset en el medio y B no hereda a A", () => {
+  // El camino entero, con el SDK de verdad. El estado del módulo arranca de
+  // cero, como en un documento nuevo: la memoria no sabe que A existió.
+  resetProductEvents();
+  assert.equal(identifiedPerson(), null, "el estado de módulo sobrevivió: no es una recarga");
+
+  const antes = paso.length;
+  assert.equal(
+    identifyPerson({ source: "account", value: CUENTA_B }, puenteDeIdentidad(recargado)),
+    true
+  );
+
+  // Hubo reset ENTRE las dos: el SDK ya no está atado a A. Sin él, el cliente
+  // —identificado como A— ignora un `identify` con el id de B y todo lo que B
+  // haga después queda pegado al perfil de A.
+  assert.equal(recargado.get_distinct_id(), CUENTA_B, "el identify de B no cambió nada");
+  assert.deepEqual(olvidos, ["olvida"], "el reset no borró las marcas de la persona anterior");
+
+  const identificacion = paso.slice(antes).find((p) => p.entrada.event === IDENTITY_EVENT);
+  assert.ok(identificacion?.salida, "el `$identify` de B no salió");
+  assert.equal(identificacion.salida.properties.distinct_id, CUENTA_B);
+  // El anónimo que B arrastra es el que el reset sorteó, NO la cuenta A: si
+  // fuera A, los dos perfiles quedarían fusionados sin forma limpia de deshacerlo.
+  assert.notEqual(identificacion.salida.properties.$anon_distinct_id, CUENTA);
+
+  // Y ningún evento de B sale con la identidad de A.
+  recargado.capture("signup_completed", { ...COMUNES });
+  const evento = paso.filter((p) => p.entrada.event === "signup_completed").pop();
+  assert.ok(evento?.salida);
+  assert.equal(evento.salida.properties.distinct_id, CUENTA_B);
+  assert.notEqual(evento.salida.properties.distinct_id, CUENTA);
+  // Y la identidad vieja tampoco quedó escrita en el dispositivo.
+  const guardado = Object.entries(local)
+    .map(([clave, valor]) => `${clave}=${valor}`)
+    .join("\n");
+  assert.ok(!guardado.includes(CUENTA), `la cuenta anterior quedó guardada:\n${guardado}`);
 });

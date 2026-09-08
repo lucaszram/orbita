@@ -47,9 +47,7 @@ export function trackOnboardingCompleted(): void {}
 export function trackPaywallViewed(): void {}
 
 /** La persona confirmó avanzar al cobro. En nativo, nada. */
-export function trackCheckoutStarted(attempt: number): void {
-  void attempt;
-}
+export function trackCheckoutStarted(): void {}
 
 /** Lo que el retorno del checkout sabe del cobro. En nativo, nada. */
 export function trackPurchaseCompleted(signal: PurchaseSignal): void {
