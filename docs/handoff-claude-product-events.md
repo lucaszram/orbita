@@ -98,5 +98,5 @@ en backend para builds instalados, pero el cliente nuevo debe usar `telemetry.tr
 5. Abrir al día siguiente → recurrente y numerador D1.
 6. Dos dispositivos de la misma cuenta → una persona si ambos eventos están
    autenticados.
-7. Sin Telegram configurado → eventos persisten, digest queda en error reintentable
-   y la app funciona normalmente.
+7. Los eventos persisten y la app funciona igual sin ninguna integración de
+   salida: desde CORE-319 el envío no vive más en Órbita.

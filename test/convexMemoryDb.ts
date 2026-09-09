@@ -23,6 +23,13 @@ export type MemoryDb = {
   seed: (table: string, fields: Record<string, any>) => string;
   /** Todas las filas de una tabla, en orden de inserción. */
   rows: (table: string) => MemoryDoc[];
+  /**
+   * Los nombres de todas las tablas que la base conoce: las que recibieron una
+   * escritura y las que alguna consulta tocó. Sirve para barrer la base entera
+   * en vez de una lista de tablas escrita a mano, que se queda vieja el día que
+   * aparece una tabla nueva y nadie se acuerda de agregarla.
+   */
+  tables: () => string[];
   /** Una fila por id, ya clonada. */
   row: (id: string) => MemoryDoc | null;
 };
@@ -122,6 +129,7 @@ export function createMemoryDb(): MemoryDb {
     db,
     seed: insertar,
     rows: (table: string) => tabla(table).map(clonar),
+    tables: () => [...tables.keys()],
     row: (id: string) => {
       const entry = porId.get(id);
       return entry ? clonar(entry.doc) : null;

@@ -1,4 +1,4 @@
-import type { UserIdentity } from "convex/server";
+import { makeFunctionReference, type UserIdentity } from "convex/server";
 import { assertIdentityNotDeletionFenced } from "./accountDeletion";
 import { userFieldsFromIdentity } from "./orbita";
 import { recordBackendProductEvent } from "./productAnalytics";
@@ -9,7 +9,23 @@ export type ConvexCtx = {
     getUserIdentity(): Promise<UserIdentity | null>;
   };
   db: any;
+  /**
+   * Sólo lo traen las mutations. Es opcional a propósito: este mismo tipo lo
+   * comparten los helpers de lectura (`findCurrentUser`, `requireExistingUser`),
+   * que corren en queries y no pueden agendar nada.
+   */
+  scheduler?: {
+    runAfter(delayMs: number, functionReference: any, args: any): Promise<unknown>;
+  };
 };
+
+/**
+ * Referencia por nombre, no por `internal.*`: el codegen lo corre Codex y el
+ * gate de bindings prohíbe editar `convex/_generated/**` a mano. Es el mismo
+ * recurso que ya usan `users.ts` y `payments/revenuecatRest`.
+ */
+export const SEND_SIGNUP_REF_NAME = "coreControl:sendSignup";
+const sendSignupRef = makeFunctionReference<"action">(SEND_SIGNUP_REF_NAME);
 
 export function omitUndefined<T extends Record<string, unknown>>(value: T): Partial<T> {
   return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined)) as Partial<T>;
@@ -94,6 +110,21 @@ export async function getOrCreateUser(ctx: ConvexCtx) {
     dedupeKey: String(userId),
     occurredAt: now
   });
+
+  /**
+   * El aviso de alta a core-control se agenda ACÁ, pegado al único `insert` que
+   * crea una cuenta.
+   *
+   * Colgarlo de `users.getOrCreateCurrentUser` dejaba altas sin aviso: veintitrés
+   * mutations llegan a este helper por `requireUser`, y `onboarding.saveDraft`
+   * lo llama directo. Si cualquiera de ellas insertaba la fila primero, el
+   * `ensureUser` posterior ya encontraba la cuenta creada y no avisaba nunca.
+   *
+   * Sólo viaja el `userId`. El email se lee recién dentro de la action, así que
+   * no queda escrito en los argumentos del trabajo agendado, que Convex sí
+   * persiste.
+   */
+  await ctx.scheduler?.runAfter(0, sendSignupRef, { userId });
 
   return await ctx.db.get(userId);
 }

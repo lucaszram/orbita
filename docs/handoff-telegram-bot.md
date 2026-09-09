@@ -1,4 +1,14 @@
-# Bot de Telegram — resumen diario de producto
+# Bot de Telegram — resumen diario de producto (HISTÓRICO)
+
+> **Superado por CORE-319 (2026-09-08).** Órbita ya no manda nada a Telegram:
+> no tiene token, chat id ni cliente, y `convex/notify.ts` se borró. Los avisos
+> y los resúmenes del portafolio se arman y se publican en `core-control`; lo
+> único que Órbita emite es el aviso de cuenta nueva, documentado en
+> `docs/analytics.md`.
+>
+> Este documento se conserva porque explica las DEFINICIONES de las métricas y
+> el modelo de eventos, que siguen vigentes. Su parte operativa —el cron, el
+> envío y la configuración de credenciales— ya no describe el árbol.
 
 ## Resultado esperado
 
@@ -46,26 +56,25 @@ anterior:
 - `telemetry.track`: mutation pública únicamente para eventos originados en UI.
 - `account_created`, `onboarding_completed` y `daily_card_revealed`: se escriben en
   las mutations autoritativas correspondientes; el frontend no los duplica.
-- `productDigests`: claim por fecha para evitar dos envíos.
-- `crons.ts`: agenda el action a las 12:00 UTC (09:00 Argentina).
-- `notify.sendTelegram`: devuelve si Telegram aceptó o no el mensaje; una falla no
-  afecta la operación del usuario.
+- `productDigests`: claim por fecha para evitar dos envíos. **Huérfano desde
+  CORE-319**: la tabla y las mutations que la escriben (`claimDigest`,
+  `computeDigest`, `finishDigest`) siguen en el árbol pero ya no las llama nadie.
+- `crons.ts`: agendaba el action a las 12:00 UTC (09:00 Argentina). **Ya no
+  agenda nada**: el trabajo programado vive en `core-control`.
+- `notify.sendTelegram`: **borrado**. Era el único cliente de Telegram de Órbita.
 
 ## Configuración de Telegram
 
-Variables privadas de Convex, tanto en dev como en producción:
+Ninguna, y es a propósito: Órbita no se configura más con `TELEGRAM_BOT_TOKEN`
+ni `TELEGRAM_CHAT_ID`. Esas credenciales viven en `core-control` y sólo ahí.
 
-```text
-TELEGRAM_BOT_TOKEN
-TELEGRAM_CHAT_ID
-```
-
-El token se obtiene con `@BotFather`. El chat id puede ser personal o de un grupo.
-Nunca se guardan estos valores en Git.
+Órbita usa una credencial individual de ingreso a `core-control`
+(`CORE_CONTROL_SIGNUP_URL` y `CORE_CONTROL_SIGNUP_SECRET`, secretos del backend
+de Convex). Ver `docs/analytics.md`.
 
 ## Privacidad
 
-No se registra ni se manda a Telegram: email, nombre, fecha/hora/lugar natal,
+Los eventos de producto no registran ni mandan: email, nombre, fecha/hora/lugar natal,
 coordenadas, preguntas o respuestas del Vacío, notas del Diario, payloads, prompts,
 outputs personalizados, tokens o texto libre.
 

@@ -19,7 +19,7 @@ dispara Vercel). Los motores backend están **deployados** en el Convex dev
 - **Tabs**: `Inicio · Umbral · Tránsitos · Perfil` (la Carta vive en el Perfil; Vínculo parkeado "Próximamente").
 - **Tránsitos** cableado al cielo real; **Vínculo/Calendario** "Próximamente" (sin data falsa).
 - **Paywall** visible pero siempre pasable (testeo interno).
-- **Bot de Telegram** (altas/instalaciones) — `docs/handoff-telegram-bot.md`.
+- **Avisos de alta** — salen por `core-control`, no por Órbita (`docs/analytics.md`).
 - Rueda inmersiva `/carta-full`; barrido de bugs; estados loading/empty.
 
 **Figma:** inicio post-onboarding armado en el file canónico `BEB5v6SbgJn2Nipm8Qa0wE` → frame "Home / Post-onboarding" (node 432:2).
@@ -33,7 +33,7 @@ npx convex env set AI_GATEWAY_API_KEY <tu key del gateway>
 npx convex env set ORBITA_LLM_MODEL <modelo, ej. openai/gpt-4o-mini>
 npx convex env set ALLOW_DEV_STUB true          # para el "desbloquear 5" del Umbral
 # confirmar que ASTROLOGY_API_USER_ID / KEY están (carta + tránsitos + luna)
-# opcional bot: TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID (ver docs/handoff-telegram-bot.md)
+# aviso de alta a core-control: CORE_CONTROL_SIGNUP_URL / CORE_CONTROL_SIGNUP_SECRET
 ```
 Sin estos, los 4 motores caen al fallback determinístico (andan, pero no son el análisis LLM).
 
