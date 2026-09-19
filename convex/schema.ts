@@ -411,6 +411,21 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_user_analysis", ["userId", "analysisId"])
+    // El ALCANCE que lee una pantalla: la persona, el día civil y la zona.
+    // Las lecturas de capas nunca quieren la historia completa de la cuenta,
+    // quieren tres franjas: las filas sin fecha (natal, momento y las filas
+    // legacy anteriores a que existiera `localDate`), las del día pedido sin
+    // zona declarada, y las del día pedido en esa zona. Con `by_user` había que
+    // materializar TODOS los análisis de la persona para después descartar en
+    // memoria los de otras fechas, así que el costo de leer hoy crecía con cada
+    // día que la cuenta hubiera guardado alguna vez (CORE-431).
+    //
+    // La zona va en el índice y no en un `filter` porque un viaje deja dos
+    // zonas para el mismo día: sin ella, el rango del día las trae a las dos.
+    // Convex indexa un campo opcional ausente como `undefined`, así que
+    // `eq("localDate", undefined)` es la franja de las filas sin fecha y no un
+    // barrido: ese es el contrato del que depende esta lectura.
+    .index("by_user_local_date_timezone", ["userId", "localDate", "timezone"])
     .index("by_cache_key", ["cacheKey"]),
 
   // Posiciones natales canónicas de `planets/tropical`. Se guardan sólo las
