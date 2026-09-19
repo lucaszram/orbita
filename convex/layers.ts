@@ -7,6 +7,7 @@ import {
 } from "convex/server";
 import { v, type Infer } from "convex/values";
 import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { getAnalysisDefinition, getSourceRefs, type AnalysisId } from "./content/astrologySources";
 import { runAstrologyApiPlanetsTropical } from "./lib/astrologyApi";
@@ -2942,6 +2943,121 @@ function natalResults(args: {
   };
 }
 
+/**
+ * Los tres análisis que componen el paquete natal.
+ *
+ * Es la misma lista que arma `natalResults`. Vive acá porque `getNatalBase`
+ * la usa para LEER: sin ella habría que traerse la tabla entera de la persona
+ * para quedarse con tres filas. `test/layersReadScope.test.ts` comprueba que
+ * el paquete publicado no tenga otro análisis que éstos, así que agregar uno
+ * sin tocar esta lista rompe la prueba en vez de devolver un natal incompleto.
+ */
+const NATAL_BUNDLE_ANALYSIS_IDS = ["ORB-LUN-001", "ORB-NAT-001", "ORB-REL-001"] as const;
+
+/**
+ * El orden en el que las lecturas eligen entre varias filas candidatas.
+ *
+ * `latestMatching` se queda con la PRIMERA fila que coincide, así que este
+ * orden es parte del contrato: gana la más recientemente escrita. Los dos
+ * desempates no son decorativos. Antes las filas llegaban en el orden del
+ * índice `by_user` —que termina SIEMPRE en `_creationTime` y, cuando también
+ * empata, en el `_id` del documento— y se ordenaban con un `sort` estable, así
+ * que dos filas con el mismo `updatedAt` se resolvían por ese orden. Ahora
+ * llegan de tres rangos distintos y la estabilidad del `sort` ya no significa
+ * nada: sin desempate completo gana el rango que quedó primero en la
+ * concatenación, que no es un criterio de selección sino el orden en el que
+ * `scopedAnalysisSnapshots` juntó las franjas. Por eso el orden del índice se
+ * escribe entero acá y la selección no cambia.
+ *
+ * El `_id` se compara con `<`, que es la comparación binaria del lenguaje:
+ * total, determinista y la misma en cualquier runtime. `localeCompare` no
+ * serviría acá, porque su resultado depende de la configuración regional del
+ * proceso y la selección dejaría de ser reproducible.
+ */
+function bySelectionOrder(
+  left: { updatedAt: number; _creationTime: number; _id: string },
+  right: { updatedAt: number; _creationTime: number; _id: string },
+) {
+  if (left.updatedAt !== right.updatedAt) return right.updatedAt - left.updatedAt;
+  if (left._creationTime !== right._creationTime) return left._creationTime - right._creationTime;
+  return left._id < right._id ? -1 : left._id > right._id ? 1 : 0;
+}
+
+/**
+ * Las filas de `analysisSnapshotsV492` que puede usar un día concreto.
+ *
+ * El alcance es EXACTAMENTE el que antes se calculaba en memoria sobre toda la
+ * tabla de la persona:
+ *
+ *   sin fecha  ∪  (fecha pedida ∧ sin zona)  ∪  (fecha pedida ∧ zona pedida)
+ *
+ * · sin fecha: el natal, el momento y las filas legacy anteriores a que
+ *   `localDate` existiera. Se aceptan con cualquier zona —incluso con una zona
+ *   declarada— porque así las aceptaba el filtro anterior;
+ * · fecha pedida sin zona: filas viejas del día que nunca declararon zona;
+ * · fecha pedida con la zona pedida: el día de hoy donde está la persona.
+ *
+ * Los tres rangos son disjuntos (`undefined` no es ninguna zona ni ninguna
+ * fecha), así que la unión no duplica ninguna fila. Y ninguno de los tres
+ * crece cuando la cuenta acumula OTRAS fechas u otras zonas: ése es el punto
+ * de la tarjeta (CORE-431).
+ */
+async function scopedAnalysisSnapshots(
+  ctx: QueryCtx,
+  userId: Id<"users">,
+  scope: { localDate: string; timezone: string },
+) {
+  const [undated, dayWithoutTimezone, dayInTimezone] = await Promise.all([
+    ctx.db
+      .query("analysisSnapshotsV492")
+      .withIndex("by_user_local_date_timezone", (queryBuilder) =>
+        queryBuilder.eq("userId", userId).eq("localDate", undefined),
+      )
+      .collect(),
+    ctx.db
+      .query("analysisSnapshotsV492")
+      .withIndex("by_user_local_date_timezone", (queryBuilder) =>
+        queryBuilder.eq("userId", userId).eq("localDate", scope.localDate).eq("timezone", undefined),
+      )
+      .collect(),
+    ctx.db
+      .query("analysisSnapshotsV492")
+      .withIndex("by_user_local_date_timezone", (queryBuilder) =>
+        queryBuilder
+          .eq("userId", userId)
+          .eq("localDate", scope.localDate)
+          .eq("timezone", scope.timezone),
+      )
+      .collect(),
+  ]);
+  return [...undated, ...dayWithoutTimezone, ...dayInTimezone].sort(bySelectionOrder);
+}
+
+/**
+ * Las filas que puede usar el paquete natal, sin mirar ninguna fecha.
+ *
+ * El natal no tiene alcance diario: `natalResults` sólo consulta los tres
+ * análisis de `NATAL_BUNDLE_ANALYSIS_IDS`, con un hash derivado de los datos de
+ * nacimiento. Por eso acá el índice selectivo NO es el del día sino
+ * `by_user_analysis`: trae esas tres familias completas —incluida una fila
+ * legacy que hubiera quedado con fecha, que el código anterior también veía— y
+ * ninguna del resto. El tamaño de esta lectura lo mueven las ediciones natales,
+ * nunca los días acumulados.
+ */
+async function natalAnalysisSnapshots(ctx: QueryCtx, userId: Id<"users">) {
+  const families = await Promise.all(
+    NATAL_BUNDLE_ANALYSIS_IDS.map((analysisId) =>
+      ctx.db
+        .query("analysisSnapshotsV492")
+        .withIndex("by_user_analysis", (queryBuilder) =>
+          queryBuilder.eq("userId", userId).eq("analysisId", analysisId),
+        )
+        .collect(),
+    ),
+  );
+  return families.flat().sort(bySelectionOrder);
+}
+
 async function currentStateForQuery(
   ctx: QueryCtx,
   args: { localDate: string; timezone: string },
@@ -2957,10 +3073,7 @@ async function currentStateForQuery(
       queryBuilder.eq("cacheKey", natalEphemerisCacheKey(String(user._id), birthData)),
     )
     .first();
-  const rows = await ctx.db
-    .query("analysisSnapshotsV492")
-    .withIndex("by_user", (queryBuilder) => queryBuilder.eq("userId", user._id))
-    .collect();
+  const rows = await scopedAnalysisSnapshots(ctx, user._id, args);
   return {
     userId: user._id,
     birthData,
@@ -2975,14 +3088,7 @@ async function currentStateForQuery(
           calculatedAt: natalEphemerisRow.calculatedAt,
         }
       : null,
-    snapshots: rows
-      .filter(
-        (row) =>
-          row.localDate === undefined ||
-          (row.localDate === args.localDate && (row.timezone === undefined || row.timezone === args.timezone)),
-      )
-      .sort((left, right) => right.updatedAt - left.updatedAt)
-      .map(publicResult),
+    snapshots: rows.map(publicResult),
   };
 }
 
@@ -3002,10 +3108,7 @@ export const getNatalBase = query({
         queryBuilder.eq("cacheKey", natalEphemerisCacheKey(String(user._id), birthData)),
       )
       .first();
-    const rows = await ctx.db
-      .query("analysisSnapshotsV492")
-      .withIndex("by_user", (queryBuilder) => queryBuilder.eq("userId", user._id))
-      .collect();
+    const rows = await natalAnalysisSnapshots(ctx, user._id);
     return natalResults({
       birthData,
       legacyChartSnapshot: snapshotChart(chartDocument?.payload),
@@ -3019,7 +3122,7 @@ export const getNatalBase = query({
             calculatedAt: natalEphemerisRow.calculatedAt,
           }
         : null,
-      cached: rows.sort((left, right) => right.updatedAt - left.updatedAt).map(publicResult),
+      cached: rows.map(publicResult),
       observedAt: now,
     }).bundle;
   },
@@ -3449,18 +3552,7 @@ export const getRefreshState = internalQuery({
         ),
       )
       .first();
-    const snapshotRows = await ctx.db
-      .query("analysisSnapshotsV492")
-      .withIndex("by_user", (queryBuilder) => queryBuilder.eq("userId", user._id))
-      .collect();
-    const snapshots = snapshotRows
-      .filter(
-        (row) =>
-          row.localDate === undefined ||
-          (row.localDate === args.localDate && (row.timezone === undefined || row.timezone === args.timezone)),
-      )
-      .sort((left, right) => right.updatedAt - left.updatedAt)
-      .map(publicResult);
+    const snapshots = (await scopedAnalysisSnapshots(ctx, user._id, args)).map(publicResult);
     const skyRows = await ctx.db
       .query("globalSkySnapshotsV492")
       .withIndex("by_date_timezone", (queryBuilder) => queryBuilder.eq("localDate", args.localDate))

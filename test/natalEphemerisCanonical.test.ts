@@ -347,8 +347,12 @@ function natalQueryContext(args: {
     db: {
       query(table: string) {
         const chain = {
+          // El constructor de rango encadena igualdades (`q.eq(a).eq(b)`), así
+          // que `eq` se devuelve a sí mismo: un índice compuesto no puede
+          // romper el doble.
           withIndex(_name: string, callback: (value: { eq: () => unknown }) => unknown) {
-            callback({ eq: () => chain });
+            const rango = { eq: () => rango };
+            callback(rango);
             return chain;
           },
           order() {
