@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
+import { PLUS_BENEFITS } from "../src/domain/planBenefits";
 import { importsOf, resolveModule, ROOT } from "./moduleGraph";
 
 /**
@@ -298,23 +299,25 @@ describe("QA22-006 · el Perfil monta UN solo bloque de plan, en su lugar", () =
 describe("QA22-007 · el paywall nombra los capítulos entre lo que abre Plus", () => {
   const BENEFICIOS = tramo(PAYWALL, "Qué abre Plus", "</View>");
 
-  it("`Qué abre Plus` lista exactamente cuatro beneficios", () => {
-    assert.equal(cuantas(BENEFICIOS, /<Benefit\b/g), 4);
+  it("`Qué abre Plus` pinta la lista del dominio, sin renglones propios", () => {
+    // CORE-1044: la lista vive en `src/domain/planBenefits.ts`. La pantalla la
+    // recorre con un solo `<Benefit>` y no redacta beneficios a mano.
+    assert.equal(cuantas(BENEFICIOS, /<Benefit\b/g), 1);
     assert.equal(
       cuantas(PAYWALL, /<Benefit\b/g),
-      4,
+      1,
       "no hay beneficios sueltos fuera de la tarjeta"
     );
+    assert.match(BENEFICIOS, /PLUS_BENEFITS\.map\(/);
+    assert.equal(/<Benefit\s+text="/.test(PAYWALL), false, "ningún beneficio con literal propio");
+    assert.equal(PLUS_BENEFITS.length, 7);
   });
 
-  it("el capítulo nuevo entra con su literal exacto y una sola vez", () => {
+  it("los capítulos entran con su literal exacto y una sola vez", () => {
     // Se vendían siete capítulos y la lista no los nombraba: quien miraba el
     // paywall no podía saber que la compra los abría.
-    assert.equal(cuantas(PAYWALL, /7 capítulos personalizados de Tu carta, explicada/g), 1);
-    assert.match(
-      PAYWALL,
-      /<Benefit\s+text="7 capítulos personalizados de Tu carta, explicada"\s*\/>/
-    );
+    const capitulos = PLUS_BENEFITS.filter((texto) => /capítulos/.test(texto));
+    assert.deepEqual(capitulos, ["Los 7 capítulos de «Tu carta, explicada»."]);
   });
 
   it("los otros tres beneficios siguen intactos", () => {
@@ -323,11 +326,7 @@ describe("QA22-007 · el paywall nombra los capítulos entre lo que abre Plus", 
       "Los aspectos entre los puntos de tu carta.",
       "Cinco preguntas por día en El Umbral, en vez de tres."
     ]) {
-      assert.match(
-        PAYWALL,
-        new RegExp(`<Benefit\\s+text="${escapar(texto)}"`),
-        `falta el beneficio "${texto}"`
-      );
+      assert.ok(PLUS_BENEFITS.includes(texto), `falta el beneficio "${texto}"`);
     }
   });
 });

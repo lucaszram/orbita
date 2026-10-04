@@ -29,6 +29,7 @@ import {
   type NativeStoreTrial,
   type OwnedValue
 } from "@/domain/nativeCommerce";
+import { PLUS_BENEFITS } from "@/domain/planBenefits";
 import { purchaseGuardBlocks } from "@/domain/purchaseGuard";
 import { appApi } from "@/services/appRefs";
 import { clearPurchaseGuard, readPurchaseGuard, storePurchaseGuard } from "@/services/purchaseGuard";
@@ -623,10 +624,9 @@ export function PlusPaywallScreen() {
 
         <View style={styles.benefitsCard}>
           <Text style={styles.sectionTitle}>Qué abre Plus</Text>
-          <Benefit text="Las doce casas de tu carta natal." />
-          <Benefit text="Los aspectos entre los puntos de tu carta." />
-          <Benefit text="Cinco preguntas por día en El Umbral, en vez de tres." />
-          <Benefit text="7 capítulos personalizados de Tu carta, explicada" />
+          {PLUS_BENEFITS.map((texto) => (
+            <Benefit key={texto} text={texto} />
+          ))}
         </View>
 
         {/* Espera joven: se nombra y no se ofrece nada. Todavía no hay nada que

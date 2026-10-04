@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import { trackCheckoutStarted, trackPaywallViewed } from "@/analytics/productTelemetry";
 import { Text } from "@/components/ui/text";
+import { PLUS_BENEFITS, PLUS_HEADLINE, PLUS_STEPS } from "@/domain/planBenefits";
 import { useEntitlement } from "@/hooks/useLiveApp";
 import {
   checkoutStartErrorKind,
@@ -216,7 +217,7 @@ function PaywallContent({
 
         <Eyebrow style={styles.eyebrow}>TU CARTA, TODOS LOS DÍAS</Eyebrow>
         <Text style={styles.hero}>Tu cielo,{"\n"}todos los días.</Text>
-        <Body style={styles.sub}>Tu carta completa, tus tránsitos y tu guía diaria.</Body>
+        <Body style={styles.sub}>{PLUS_HEADLINE}</Body>
 
         {isPro ? (
           <View style={styles.statusCard} accessibilityLiveRegion="polite">
@@ -254,18 +255,16 @@ function PaywallContent({
 
         <View style={styles.benefitsCard}>
           <Text style={styles.sectionTitle}>Qué incluye</Text>
-          <Benefit text="Tu carta natal completa." />
-          <Benefit text="Los tránsitos leídos en tu carta." />
-          <Benefit text="Tu día con contexto, todos los días." />
-          <Benefit text="Preguntas más profundas en El Umbral." />
-          <Benefit text="Vínculos, calendario y fase lunar." />
+          {PLUS_BENEFITS.map((texto) => (
+            <Benefit key={texto} text={texto} />
+          ))}
         </View>
 
         <View style={styles.stepsCard}>
           <Text style={styles.sectionTitle}>Cómo te acompaña</Text>
-          <Paso n="01" title="Tu carta completa" body="Tu carta natal con Sol, Luna, ascendente y casas." />
-          <Paso n="02" title="Tu día con contexto" body="Una lectura diaria pensada desde tu carta." />
-          <Paso n="03" title="Preguntas más profundas" body="Explorá amor, trabajo y vínculos con más detalle." />
+          {PLUS_STEPS.map((paso) => (
+            <Paso key={paso.n} n={paso.n} title={paso.title} body={paso.body} />
+          ))}
         </View>
 
         {entryFailed ? (

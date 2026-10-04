@@ -12,6 +12,7 @@ import {
   type OwnedValue
 } from "@/domain/nativeCommerce";
 import { manageSubscription, plusActivation, type WebOffer } from "@/domain/paywall";
+import { FREE_PLAN_SUMMARY, PLUS_SUMMARY } from "@/domain/planBenefits";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { appApi, proposedApi } from "@/services/appRefs";
 import { orbita } from "@/theme/orbita";
@@ -143,8 +144,7 @@ export function ManageSubscriptionBlock() {
         <Eyebrow>TU PLAN</Eyebrow>
         <Body bone>Estás en Órbita Free.</Body>
         <Note>
-          Plus abre tu carta natal completa —la rueda, tus casas, tus aspectos y los siete
-          capítulos— y el Tarot de todos los días.
+          {FREE_PLAN_SUMMARY} {PLUS_SUMMARY}
         </Note>
         <View style={{ height: orbita.spacing.md }} />
         <Pill label="ACTIVAR ÓRBITA PLUS" onPress={() => router.push("/paywall")} />
