@@ -590,12 +590,12 @@ export function PlusPaywallScreen() {
 
         <Eyebrow style={styles.eyebrow}>TU CARTA, SIN CORTES</Eyebrow>
         <Text style={styles.hero}>Tu cielo,{"\n"}con más profundidad.</Text>
-        <Body style={styles.sub}>Abrí las capas de tu carta que dependen de Órbita Plus.</Body>
+        <Body style={styles.sub}>Abrí tus tránsitos, tu momento y tu carta completa con Órbita Plus.</Body>
 
         {activation === "confirmed" ? (
           <View style={styles.statusCard} accessibilityLiveRegion="polite">
             <Text style={styles.statusTitle}>Órbita Plus está activo.</Text>
-            <Body style={styles.statusBody}>Tus casas, tus aspectos y tu cupo Plus ya están disponibles.</Body>
+            <Body style={styles.statusBody}>Tránsitos, Tu momento, tu carta completa y tu cupo Plus ya están disponibles.</Body>
             {/* La salida de la tienda depende de si RevenueCat está ACTIVO, no
                 de quién gane el rango: con Stripe ganando por fecha, esto
                 escondía el Customer Center de una compra de Apple viva. */}

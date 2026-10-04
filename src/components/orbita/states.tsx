@@ -118,9 +118,9 @@ export function LockedState({ onUnlock }: { onUnlock?: () => void }) {
           <Text style={styles.plusChipText}>PLUS</Text>
         </View>
       </View>
-      <Text style={styles.lockedTitle}>El análisis{"\n"}completo de hoy.</Text>
+      <Text style={styles.lockedTitle}>Disponible{"\n"}con Órbita Plus.</Text>
       <Text style={styles.lockedBody}>
-        Ves el resumen. La lectura completa, tus cuatro áreas y el calendario son parte de Órbita Plus.
+        Esta sección es parte de Órbita Plus.
       </Text>
       <View style={{ marginTop: orbita.spacing.xl }}>
         <Pill label="DESBLOQUEAR CON PLUS" onPress={onUnlock} />
