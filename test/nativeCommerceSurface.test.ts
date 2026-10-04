@@ -12,6 +12,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, it } from "node:test";
 
+import { FREE_PLAN_SUMMARY, PLUS_BENEFITS } from "../src/domain/planBenefits";
 import { importsOf, reachableFrom, resolveEntryForPlatform, ROOT } from "./moduleGraph";
 
 const STORE_SDK = /^react-native-purchases(-ui)?(\/|$)/;
@@ -578,10 +579,16 @@ describe("paywall — salidas, honestidad y doble cobro", () => {
 
   it("los beneficios anunciados son los que el producto abre de verdad", () => {
     // `convex/layers.ts` cierra casas y aspectos; `convex/void.ts` sube el cupo
-    // de 3 a 5. Nada más está detrás de Plus en esta versión.
-    assert.match(PAYWALL_SCREEN, /doce casas/);
-    assert.match(PAYWALL_SCREEN, /aspectos/);
-    assert.match(PAYWALL_SCREEN, /Cinco preguntas por día en El Umbral, en vez de tres/);
+    // de 3 a 5. CORE-1044 suma Tránsitos, Tu momento y Vínculos sin tope, y
+    // muda la lista a `src/domain/planBenefits.ts`: la pantalla sólo la pinta.
+    assert.match(PAYWALL_SCREEN, /PLUS_BENEFITS\.map\(/);
+    const anunciados = PLUS_BENEFITS.join("\n");
+    assert.match(anunciados, /doce casas/);
+    assert.match(anunciados, /aspectos/);
+    assert.match(anunciados, /Cinco preguntas por día en El Umbral, en vez de tres/);
+    assert.match(anunciados, /Tránsitos/);
+    assert.match(anunciados, /Tu momento/);
+    assert.match(anunciados, /Vínculos sin tope/);
     const voidSrc = readFileSync(join(ROOT, "convex/void.ts"), "utf8");
     assert.match(voidSrc, /const LIMIT_FREE = 3;/);
     assert.match(voidSrc, /const LIMIT_PRO = 5;/);
@@ -597,9 +604,12 @@ describe("paywall — salidas, honestidad y doble cobro", () => {
 describe("Perfil — plan, gestión y restauración por el canal correcto", () => {
   it("Free nombra con precisión lo que conserva y ofrece el camino a Plus", () => {
     assert.match(MANAGE_NATIVE, /Estás en Órbita Free/);
-    assert.match(
-      MANAGE_NATIVE,
-      /Hoy, Tránsitos, Vínculos, tu carta base y tres preguntas por día en El Umbral/
+    // CORE-1044: Free ya no tiene Tránsitos y Vínculos tiene tope. La frase
+    // sale de `src/domain/planBenefits.ts`; el Perfil sólo la pinta.
+    assert.match(MANAGE_NATIVE, /<Note>\{FREE_PLAN_SUMMARY\}<\/Note>/);
+    assert.equal(
+      FREE_PLAN_SUMMARY,
+      "Tenés Hoy, la rueda y la tríada de tu carta (Sol, Luna y Ascendente), una persona en Vínculos y tres preguntas por día en El Umbral."
     );
     assert.match(MANAGE_NATIVE, /router\.push\("\/paywall"\)/);
   });

@@ -8,6 +8,7 @@ import { recepcionCta } from "../src/domain/entitlement";
 import { plusActivation } from "../src/domain/paywall";
 import { FREE_TAROT_LIMIT_MARKER, revealFailureKind } from "../src/domain/ritual";
 import { resolveEntryForPlatform, resolveModule, type ModulePlatform } from "./moduleGraph";
+import { FREE_PLAN_SUMMARY, PLUS_SUMMARY } from "../src/domain/planBenefits.web";
 
 /**
  * El cierre del alta: recepción → carta o paywall, el CTA de la carta parcial,
@@ -217,8 +218,13 @@ test("la carta conserva rueda, tríada y posiciones", () => {
 
 test("la carta natal completa se nombra donde se ofrece Plus: rueda, casas, aspectos y capítulos", () => {
   const oferta = PLAN_BLOCK_WEB.slice(PLAN_BLOCK_WEB.indexOf('if (activacion === "activar")'));
-  for (const palabra of ["rueda", "casas", "aspectos", "capítulos"]) {
-    assert.ok(oferta.includes(palabra), `Perfil no nombra "${palabra}" al ofrecer Plus`);
+  // CORE-1044: el texto sale de `src/domain/planBenefits.web.ts`, y la rueda
+  // dejó de anunciarse como Plus porque es gratis: se nombra en la frase Free.
+  assert.match(oferta, /\{FREE_PLAN_SUMMARY\} \{PLUS_SUMMARY\}/);
+  assert.ok(FREE_PLAN_SUMMARY.includes("rueda"), "la frase Free no nombra la rueda");
+  assert.equal(PLUS_SUMMARY.includes("rueda"), false, "Plus se atribuye la rueda, que es gratis");
+  for (const palabra of ["casas", "aspectos", "capítulos"]) {
+    assert.ok(PLUS_SUMMARY.includes(palabra), `Perfil no nombra "${palabra}" al ofrecer Plus`);
   }
   // Y la carta bloqueada dice exactamente qué falta antes de mandar al pago.
   assert.match(CARTA, /Los siete capítulos de tu carta son parte de Órbita Plus/);

@@ -29,6 +29,7 @@ import {
   type NativeStoreTrial,
   type OwnedValue
 } from "@/domain/nativeCommerce";
+import { PLUS_BENEFITS } from "@/domain/planBenefits";
 import { purchaseGuardBlocks } from "@/domain/purchaseGuard";
 import { appApi } from "@/services/appRefs";
 import { clearPurchaseGuard, readPurchaseGuard, storePurchaseGuard } from "@/services/purchaseGuard";
@@ -589,12 +590,12 @@ export function PlusPaywallScreen() {
 
         <Eyebrow style={styles.eyebrow}>TU CARTA, SIN CORTES</Eyebrow>
         <Text style={styles.hero}>Tu cielo,{"\n"}con más profundidad.</Text>
-        <Body style={styles.sub}>Abrí las capas de tu carta que dependen de Órbita Plus.</Body>
+        <Body style={styles.sub}>Abrí tus tránsitos, tu momento y tu carta completa con Órbita Plus.</Body>
 
         {activation === "confirmed" ? (
           <View style={styles.statusCard} accessibilityLiveRegion="polite">
             <Text style={styles.statusTitle}>Órbita Plus está activo.</Text>
-            <Body style={styles.statusBody}>Tus casas, tus aspectos y tu cupo Plus ya están disponibles.</Body>
+            <Body style={styles.statusBody}>Tránsitos, Tu momento, tu carta completa y tu cupo Plus ya están disponibles.</Body>
             {/* La salida de la tienda depende de si RevenueCat está ACTIVO, no
                 de quién gane el rango: con Stripe ganando por fecha, esto
                 escondía el Customer Center de una compra de Apple viva. */}
@@ -623,10 +624,9 @@ export function PlusPaywallScreen() {
 
         <View style={styles.benefitsCard}>
           <Text style={styles.sectionTitle}>Qué abre Plus</Text>
-          <Benefit text="Las doce casas de tu carta natal." />
-          <Benefit text="Los aspectos entre los puntos de tu carta." />
-          <Benefit text="Cinco preguntas por día en El Umbral, en vez de tres." />
-          <Benefit text="7 capítulos personalizados de Tu carta, explicada" />
+          {PLUS_BENEFITS.map((texto) => (
+            <Benefit key={texto} text={texto} />
+          ))}
         </View>
 
         {/* Espera joven: se nombra y no se ofrece nada. Todavía no hay nada que

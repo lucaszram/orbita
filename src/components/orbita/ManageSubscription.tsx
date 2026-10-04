@@ -8,6 +8,7 @@ import { Touchable } from "@/components/v492/Touchable";
 import { v492 } from "@/components/v492/tokens";
 import { Body, Divider, Eyebrow, Label, Note } from "@/components/v492/typography";
 import { createOwnerGates, runExclusive } from "@/domain/exclusive";
+import { FREE_PLAN_SUMMARY } from "@/domain/planBenefits";
 import {
   backendConfirmsStorePurchase,
   entitlementBelongsTo,
@@ -246,7 +247,7 @@ export function ManageSubscriptionBlock() {
     return (
       <PlanBlock>
         <Body style={styles.lead}>Estás en Órbita Free.</Body>
-        <Note>Tenés Hoy, Tránsitos, Vínculos, tu carta base y tres preguntas por día en El Umbral.</Note>
+        <Note>{FREE_PLAN_SUMMARY}</Note>
         <ActionGroup label="ACTIVAR">
           <PrimaryButton
             label="ACTIVAR ÓRBITA PLUS"
