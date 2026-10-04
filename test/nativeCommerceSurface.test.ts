@@ -768,7 +768,6 @@ describe("C13/C14 — configuración sin duplicados ni credenciales de máquina"
     for (const clave of [
       "REVENUECAT_WEBHOOK_AUTH",
       "REVENUECAT_SECRET_API_KEY",
-      "REVENUECAT_SANDBOX_REVIEW_USER_IDS",
       "STRIPE_SECRET_KEY",
       "EXPO_PUBLIC_REVENUECAT_IOS_API_KEY"
     ]) {
@@ -778,6 +777,9 @@ describe("C13/C14 — configuración sin duplicados ni credenciales de máquina"
         `${clave} debe quedar vacía en el ejemplo`
       );
     }
+    // CORE-1043: la allowlist de review se retiró. Que el ejemplo no la vuelva
+    // a ofrecer: producción acepta Sandbox de cualquier cuenta, sin lista.
+    assert.doesNotMatch(env, /REVENUECAT_SANDBOX_REVIEW_USER_IDS/);
   });
 
   it("`eas.json` no versiona rutas de máquina ni credenciales de App Store", () => {

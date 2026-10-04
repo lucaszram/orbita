@@ -6,6 +6,7 @@ import { AstroGlyph } from "@/components/orbita/AstroGlyph";
 import { MeasuredSquare } from "@/components/orbita/ContentCanvas";
 import { NatalWheel } from "@/components/orbita/NatalWheel";
 import { Card, DataRow, ModuleHeader } from "@/components/v492/Module";
+import { PlanWall } from "@/components/v492/PlanLock";
 import { DetailLayerScreen, Section } from "@/components/v492/Screen";
 import { LimitationList } from "@/components/v492/Status";
 import { EmptyBlock, ErrorBlock, GuestBlock, LoadingBlock, PrimaryButton } from "@/components/v492/States";
@@ -36,11 +37,13 @@ import {
   natalHousesAccess,
   type NatalChartState
 } from "@/domain/natalChartState";
+import { cartaCompletaAccess, PLAN_WALLS } from "@/domain/planAccess";
 import { sessionPhase } from "@/domain/screenPhase";
 import { useLayers } from "@/hooks/useLayers";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { useNatalChartRecovery } from "@/hooks/useNatalChartRecovery";
 import { useNatalReading, type NatalReading } from "@/hooks/useNatalReading";
+import { usePlanAccess } from "@/hooks/usePlanAccess";
 import { layersApi, type NatalChartBase } from "@/services/layersApi";
 
 /**
@@ -60,6 +63,18 @@ import { layersApi, type NatalChartBase } from "@/services/layersApi";
  * desde siempre. No se escribe nada acá y no se interpreta nada por aspecto: se
  * dibuja la lectura recibida, tal cual, o el estado que explica por qué todavía
  * no está. Ver `@/hooks/useNatalReading`.
+ *
+ * ## La carta completa es Plus (CORE-1043)
+ *
+ * Con Free la pantalla ENTERA es el muro, con salida a `/paywall`, igual que en
+ * la web: acá no se dibuja una carta a medias con el payload Free (sin casas ni
+ * aspectos). La rueda y la tríada siguen en la pestaña Carta, que no se cierra,
+ * y sus accesos a esta pantalla siguen ahí: aterrizan en el muro, que es donde
+ * está dicho qué abre Plus. Lo decide `cartaCompletaAccess`: el `access.isPro`
+ * de la propia carta cuando ya llegó y, sin carta todavía, el entitlement
+ * remoto. Mientras ninguno de los dos contestó se ve la carga, así que una
+ * cuenta Plus no ve el muro ni un instante. Los bloques `PlusBlock` de más abajo
+ * quedan como defensa: con Plus no se dibujan y Free ya no llega hasta ellos.
  *
  * Dos cosas se dicen distinto y no se confunden: lo que falta porque el cálculo
  * no lo permite —sin hora exacta no hay grados, ni ejes, ni casas— y lo que está
@@ -147,11 +162,25 @@ function CartaCompletaLive() {
   // el fallo de otra cuenta o de otra carta no se hereda.
   // Ver `@/hooks/useNatalChartRecovery`.
   const recuperacion = useNatalChartRecovery({ recovery: estado.recovery, chart });
+  const acceso = cartaCompletaAccess({ plan: usePlanAccess(), chartIsPro: chart?.access.isPro });
 
-  if (estado.phase === "cargando") {
+  // La lectura de la carta o el plan todavía viajan: ni muro ni contenido.
+  if (estado.phase === "cargando" || acceso === "loading") {
     return (
       <Shell>
         <LoadingBlock message="Abriendo tu carta…" />
+      </Shell>
+    );
+  }
+  // Cerrada por plan. Va antes que cualquier estado del cálculo: a una cuenta
+  // Free no se le ofrece recalcular ni completar la hora de una pantalla que su
+  // plan no abre —eso lo resuelve la pestaña Carta, que sí es suya—.
+  if (acceso === "locked") {
+    return (
+      <Shell>
+        <Section>
+          <PlanWall copy={PLAN_WALLS.cartaCompleta} />
+        </Section>
       </Shell>
     );
   }

@@ -187,11 +187,10 @@ export const applyRevenueCatEvent = internalMutation({
       await recordEvent(resolved[0], "deferred_unknown_environment");
       return null;
     }
-    // El corte de entorno NO se decide acá: los candidatos son strings crudos
-    // del evento y cualquiera de ellos podía estar en la allowlist sin ser el
-    // dueño de la fila local. Se decide más abajo, contra la ÚNICA identidad
-    // local que el evento resuelve. Lo único que se descarta ahora es un
-    // production imposible en un deployment que no lo acepta jamás.
+    // El corte de entorno se repite más abajo, ya con la ÚNICA identidad local
+    // que el evento resuelve, para que el descarte quede auditado contra esa
+    // cuenta. Lo único que se descarta ahora es un production imposible en un
+    // deployment que no lo acepta jamás.
     if (environment === "production" && !isRevenueCatEnvironmentAllowed("production")) {
       await recordEvent(
         [...revenueCatUserCandidates(event), ...transferIds.from, ...transferIds.to][0],
@@ -247,17 +246,13 @@ export const applyRevenueCatEvent = internalMutation({
         return null;
       }
 
-      // El MISMO corte de entorno por identidad que el camino ordinario, que
-      // este camino no aplicaba: en un deployment de producción con la
-      // allowlist vacía, un TRANSFER `SANDBOX` movía Órbita Plus de A a B con
-      // un recibo que producción no acepta de nadie. Se exige sobre las DOS
-      // puntas —no sólo sobre quien recibe— porque el mismo evento apaga la
-      // fila de origen, y apagar acceso pago desde un recibo que este
-      // deployment no consume es igual de grave que concederlo.
-      const permitido = [sourceUser, targetUser].every((user) =>
-        isRevenueCatEnvironmentAllowed(environment, { clerkUserId: user.clerkUserId })
-      );
-      if (!permitido) {
+      // El MISMO corte de entorno que el camino ordinario, que este camino no
+      // aplicaba: en un deployment que no consume ese entorno —`unknown`, o
+      // development frente a un recibo productivo—, un TRANSFER movía Órbita
+      // Plus de A a B con un recibo que el deployment no acepta de nadie. El
+      // mismo evento apaga la fila de origen, y apagar acceso pago desde un
+      // recibo que este deployment no consume es igual de grave que concederlo.
+      if (!isRevenueCatEnvironmentAllowed(environment)) {
         await recordEvent(targetUser.clerkUserId, "ignored_environment_mismatch");
         return null;
       }
@@ -366,8 +361,8 @@ export const applyRevenueCatEvent = internalMutation({
     }
     const user = matched[0];
 
-    // A1 — recién ahora se sabe A QUIÉN autoriza este recibo.
-    if (!isRevenueCatEnvironmentAllowed(environment, { clerkUserId: user.clerkUserId })) {
+    // A1 — el descarte por entorno se audita contra la identidad resuelta.
+    if (!isRevenueCatEnvironmentAllowed(environment)) {
       await recordEvent(user.clerkUserId, "ignored_environment_mismatch");
       return null;
     }

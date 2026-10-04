@@ -93,7 +93,7 @@ ninguna de estas cosas se puede resolver desde el repo:
 
 1. configuración externa — producto y oferta introductoria en App Store Connect,
    entitlement `orbita_pro` y Default Offering en RevenueCat, webhook,
-   `REVENUECAT_SECRET_API_KEY` y la allowlist de review;
+   `REVENUECAT_SECRET_API_KEY`;
 2. un build nativo NUEVO: los módulos de RevenueCat no existen en el binario
    actual y ninguna actualización OTA los agrega;
 3. verificación en dispositivo real → Sandbox → TestFlight → App Review.
@@ -132,7 +132,7 @@ anterior:
    funciones y bindings.
 4. **Dev build / TestFlight** con los módulos de RevenueCat y el runtime
    fingerprint; compra, restauración y Customer Center en **Sandbox** con una
-   cuenta legítima; webhook, reconciliación y allowlist de review → §§3 y 4.
+   cuenta legítima; webhook y reconciliación → §§3 y 4.
 5. **Recaptura del estado 06** (cuenta Plus real), **VoiceOver en iPhone
    físico** y checklist legal/App Review.
 
@@ -222,7 +222,6 @@ EAS** (`eas credentials`), fuera del repositorio. En el archivo queda sólo
 | --- | --- | --- |
 | `REVENUECAT_WEBHOOK_AUTH` | Convex (secreto) | Header `Authorization` acordado con el webhook |
 | `REVENUECAT_SECRET_API_KEY` | Convex (secreto) | Sólo la reconciliación REST v1. Sin ella, `not_configured` y nada cambia |
-| `REVENUECAT_SANDBOX_REVIEW_USER_IDS` | Convex (secreto) | Clerk ids de QA/App Review habilitados a comprar en Sandbox contra producción |
 | `ORBITA_ENVIRONMENT` | Convex | Entorno declarado. Sin señal reconocida el comercio **no consume ningún recibo** |
 | `EXPO_PUBLIC_REVENUECAT_IOS_API_KEY` | Build (pública) | Configuración del SDK en iOS |
 | `EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY` | Build (pública) | Ídem Android |
@@ -231,16 +230,22 @@ EAS** (`eas credentials`), fuera del repositorio. En el archivo queda sólo
 ### TestFlight y App Review contra producción
 
 TestFlight y App Review usan el **binario productivo** pero sus compras salen de
-**Sandbox**. Sin una puerta explícita, producción descarta esos eventos y quien
-revisa la app no ve Plus.
+**Sandbox**. Producción acepta esos recibos de **cualquier cuenta**, sin lista
+(CORE-1043): un recibo Sandbox sólo lo generan TestFlight, App Review y los
+testers de Sandbox —nunca una compra de la tienda—, y es la práctica estándar de
+RevenueCat. No hay nada que cargar antes de enviar a revisión ni nada que vaciar
+después: la cuenta de quien revisa se comporta igual que cualquier otra, antes,
+durante y después de la revisión.
 
-- [ ] Antes de enviar a review, agregar el Clerk id de la cuenta de review a
-  `REVENUECAT_SANDBOX_REVIEW_USER_IDS`. Nunca una cuenta real de una persona.
-- [ ] Verificar que la fila creada quede con `environment: "sandbox"` y que no
-  pise ninguna fila productiva de la misma cuenta.
-- [ ] **Vaciar la lista al terminar la revisión.**
-- [ ] Confirmar que una cuenta común sigue sin poder activar Plus con un recibo
-  Sandbox contra producción.
+`REVENUECAT_SANDBOX_REVIEW_USER_IDS` **ya no existe**: el backend dejó de
+leerla. Si quedó cargada en un deployment, se puede retirar; dejarla no cambia
+nada.
+
+- [ ] Verificar que la fila creada por una compra de TestFlight quede con
+  `environment: "sandbox"` y que no pise ninguna fila productiva de la misma
+  cuenta.
+- [ ] Confirmar que un deployment de **development** sigue sin aceptar recibos
+  Production, y que uno sin `ORBITA_ENVIRONMENT` reconocido no acepta ninguno.
 
 ### Revisiones separadas, fuera de este cierre
 

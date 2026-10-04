@@ -3,6 +3,7 @@ import { Pressable, ActivityIndicator, Keyboard, StyleSheet, TextInput, View } f
 import { router, useLocalSearchParams } from "expo-router";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { Card, ModuleHeader } from "@/components/v492/Module";
+import { PlanLockBlock } from "@/components/v492/PlanLock";
 import { DetailLayerScreen, Section } from "@/components/v492/Screen";
 import { Touchable } from "@/components/v492/Touchable";
 import {
@@ -15,6 +16,11 @@ import {
 import { Body, Label, Mono, Note, Subtitle } from "@/components/v492/typography";
 import { v492 } from "@/components/v492/tokens";
 import { timezoneLookupFor } from "@/domain/placeTimezone";
+import {
+  relationshipAddIntent,
+  relationshipLimitLine,
+  relationshipLimitReached
+} from "@/domain/planAccess";
 import {
   createRelationshipIdempotencyKey,
   emptyRelationshipDraft,
@@ -108,7 +114,7 @@ import {
  * la comparación es una ruta hija del perfil y su cálculo empieza cuando alguien
  * la abre, que es lo que mantiene separadas las dos esperas.
  *
- * Cero maqueta: la persona guardada sale de `relationships.savePerson` y el id
+ * Cero maqueta: la persona guardada sale de `relationships.savePersonWithAccess` y el id
  * que se confirma es el que devolvió el backend.
  */
 
@@ -183,10 +189,61 @@ function Shell({ children, editando }: { children: ReactNode; editando: boolean 
  * ofrece el alta explícitamente.
  */
 function ConnectFlow({ pedido }: { pedido: string | null }) {
-  const personas = useQuery(relationshipsApi.list, pedido ? {} : "skip");
+  // La lista se pide SIEMPRE (CORE-1043): la edición valida con ella el id del
+  // enlace, y el alta lee de la misma respuesta si el plan todavía tiene cupo.
+  const lista = useQuery(relationshipsApi.listWithAccess, {});
+  const personas = lista?.profiles;
   const persona = findRelationshipProfile(personas, pedido);
+  /**
+   * El cupo, tal como estaba AL ENTRAR al alta.
+   *
+   * Se fija una vez y no se vuelve a leer para desmontar el formulario: guardar
+   * la primera persona de una cuenta Free deja el cupo lleno en la lista
+   * reactiva un instante antes de que la navegación al perfil ocurra, y sin
+   * esta marca ese instante mostraría "tu plan ya usó su cupo" justo después de
+   * un guardado que salió bien. Quien entró con cupo conserva el formulario; si
+   * lo perdió en el camino, se lo dice el servidor al guardar.
+   */
+  const cupoAlEntrar = useRef<"libre" | "tomado" | null>(null);
+  const intencion = relationshipAddIntent(lista?.access);
+  if (cupoAlEntrar.current === null && intencion !== "esperar") {
+    cupoAlEntrar.current = intencion === "limite" ? "tomado" : "libre";
+  }
+  /** El servidor rechazó el alta con `RELATIONSHIP_LIMIT_REACHED`. */
+  const [rechazadaPorCupo, setRechazadaPorCupo] = useState(false);
 
-  if (!pedido) return <ConnectForm persona={null} />;
+  if (!pedido) {
+    // Mientras la lista viaja no se ofrece el formulario: una cuenta con el
+    // cupo tomado cargaría todos los datos para rebotar al guardar.
+    if (intencion === "esperar") {
+      return (
+        <Shell editando={false}>
+          <LoadingBlock message="Abriendo el alta…" />
+        </Shell>
+      );
+    }
+    // El aviso de Plus en lugar del alta. `intencion` se vuelve a mirar para
+    // que comprar Plus —o borrar a alguien— desde otra pantalla lo destrabe al
+    // volver, sin tener que salir y entrar.
+    if (intencion === "limite" && (cupoAlEntrar.current === "tomado" || rechazadaPorCupo)) {
+      return (
+        <Shell editando={false}>
+          <Section>
+            <ModuleHeader
+              module="Agregar una persona"
+              cadence="cupo de tu plan"
+              intro="Las personas que ya guardaste siguen en Vínculos, con sus datos y su comparación."
+            />
+            <PlanLockBlock
+              line={relationshipLimitLine(lista?.access.limit)}
+              ctaVoice="Ver Órbita Plus para guardar más personas"
+            />
+          </Section>
+        </Shell>
+      );
+    }
+    return <ConnectForm persona={null} onCupoTomado={() => setRechazadaPorCupo(true)} />;
+  }
   if (persona === undefined) {
     return (
       <Shell editando>
@@ -221,8 +278,18 @@ function ConnectFlow({ pedido }: { pedido: string | null }) {
   return <ConnectForm key={persona.profileId} persona={persona} />;
 }
 
-function ConnectForm({ persona }: { persona: RelationshipProfile | null }) {
-  const savePerson = useMutation(relationshipsApi.savePerson);
+function ConnectForm({
+  persona,
+  onCupoTomado
+}: {
+  persona: RelationshipProfile | null;
+  /**
+   * El servidor rechazó el ALTA porque el cupo Free ya está tomado. Sólo existe
+   * en el alta: editar a una persona guardada no cuenta contra el cupo.
+   */
+  onCupoTomado?: () => void;
+}) {
+  const savePerson = useMutation(relationshipsApi.savePersonWithAccess);
   // La zona horaria del LUGAR, derivada de sus coordenadas en el backend. El
   // buscador devuelve etiqueta y coordenadas, nunca la zona.
   const resolveTimezone = useAction(appApi.placeTimezone.atCoordinates);
@@ -489,7 +556,16 @@ function ConnectForm({ persona }: { persona: RelationshipProfile | null }) {
         return;
       }
       router.replace(destino as never);
-    } catch {
+    } catch (error) {
+      // El cupo Free no es un fallo de conexión y "probá de nuevo" sería mentir:
+      // reintentar devuelve lo mismo. Se muestra el MISMO aviso de Plus que ve
+      // quien entra con el cupo tomado, con su salida a `/paywall`. El texto de
+      // abajo queda como respaldo por si la lista todavía no reflejó el cupo.
+      if (!persona && relationshipLimitReached(error)) {
+        setSaveError(relationshipLimitLine(null));
+        onCupoTomado?.();
+        return;
+      }
       setSaveError(
         persona
           ? "No pudimos guardar los datos de esta persona. No se cambió nada: revisá tu conexión y probá de nuevo."

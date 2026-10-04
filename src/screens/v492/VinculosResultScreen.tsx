@@ -5,6 +5,7 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { useConfirm } from "@/components/orbita/ConfirmHost";
 import { Legend, SectionHeader } from "@/components/v492/Layout";
 import { MeterBar } from "@/components/v492/Meter";
+import { PlanLockBlock } from "@/components/v492/PlanLock";
 import { Touchable } from "@/components/v492/Touchable";
 import { DetailLayerScreen, Section } from "@/components/v492/Screen";
 import { StaleNotice, StatusLine } from "@/components/v492/Status";
@@ -20,6 +21,7 @@ import { Body, Label, Mono, Note } from "@/components/v492/typography";
 import { v492 } from "@/components/v492/tokens";
 import { createExclusiveGate, runExclusive } from "@/domain/exclusive";
 import { formatDateTime, latestObservedAt, uniqueLines } from "@/domain/layers";
+import { HIDDEN_CONTACTS_BODY, hiddenContactsTitle } from "@/domain/planAccess";
 import { relationshipCalcKey, relationshipNeedsCalculation } from "@/domain/relationshipCalc";
 import {
   findRelationshipProfile,
@@ -108,12 +110,12 @@ import {
  * Tres reglas sostienen toda la pantalla:
  *
  * 1. **El id de la URL no es un id.** Llega como string y sólo vale si aparece
- *    en `relationships.list`, la lista autorizada de la cuenta. De ahí sale el
+ *    en `relationships.listWithAccess`, la lista autorizada de la cuenta. De ahí sale el
  *    `profileId` ya tipado con el que se pide la comparación: un enlace ajeno o
  *    viejo no abre nada y se dice por qué. Nunca se convierte por conversión de
  *    tipos.
- * 2. **El resultado es el del backend.** `relationships.getComparison` es
- *    reactiva y `relationships.refreshComparison` es la única que recalcula. La
+ * 2. **El resultado es el del backend.** `relationships.getComparisonWithAccess` es
+ *    reactiva y `relationships.refreshComparisonWithAccess` es la única que recalcula. La
  *    pantalla no deriva, no promedia ni completa.
  * 3. **Contar contactos no es medir compatibilidad.** No hay puntaje global, no
  *    hay porcentaje y —desde QA22-020— tampoco hay barra: cada dimensión dice EN
@@ -214,7 +216,7 @@ function Shell({
  * persona encontrada, y su `profileId` ya tipado, se pide la comparación.
  */
 function VinculosResultLive({ profileId, timezone }: { profileId: string; timezone: string }) {
-  const personas = useQuery(relationshipsApi.list, {});
+  const personas = useQuery(relationshipsApi.listWithAccess, {})?.profiles;
   // Al borrar, la lista reactiva deja de traer a esta persona un instante antes
   // de que la navegación ocurra. Sin esta marca, ese instante mostraría "este
   // enlace no corresponde a ninguna persona", que es exactamente lo contrario de
@@ -268,14 +270,24 @@ function ComparisonScreen({
 }) {
   // El nivel pedido NO se manda: el backend lo deriva del perfil guardado y es
   // exactamente `availableLevel`.
-  const comparison = useQuery(relationshipsApi.getComparison, { profileId: persona.profileId });
-  const refreshComparison = useAction(relationshipsApi.refreshComparison);
+  //
+  // La respuesta trae el sobre y, al lado, cuántos contactos dejó afuera el
+  // plan (CORE-1043). Free recibe la evidencia de los tres que más pesan; el
+  // valor y el resumen de cada dimensión no se recortan, así que la lectura de
+  // abajo es la misma y lo único que cambia es cuántos contactos la sostienen a
+  // la vista. `hiddenContacts` es el número del SERVIDOR: acá no se cuenta nada.
+  const conAcceso = useQuery(relationshipsApi.getComparisonWithAccess, {
+    profileId: persona.profileId
+  });
+  const comparison = conAcceso?.comparison;
+  const contactosEnPlus = hiddenContactsTitle(conAcceso?.hiddenContacts ?? 0);
+  const refreshComparison = useAction(relationshipsApi.refreshComparisonWithAccess);
   const removePerson = useMutation(relationshipsApi.removePerson);
   const confirm = useConfirm();
   /**
    * Recalcular y borrar ESCRIBEN en la cuenta (QA23-007).
    *
-   * Recalcular no es una lectura: `relationships.refreshComparison` persiste un
+   * Recalcular no es una lectura: `relationships.refreshComparisonWithAccess` persiste un
    * sobre nuevo sobre la comparación guardada. Borrar es destructivo. Los dos
    * exigen sesión confirmada.
    *
@@ -604,6 +616,18 @@ function ComparisonScreen({
             }
           />
         )}
+
+        {/* Los contactos que el plan no muestra, dichos con su número y justo
+            debajo de los que sí: es el único lugar donde "hay más" tiene
+            sentido. Sólo con contactos de verdad afuera —Plus y la lectura por
+            signo nunca lo ven—. */}
+        {data && contactosEnPlus ? (
+          <PlanLockBlock
+            title={contactosEnPlus}
+            line={HIDDEN_CONTACTS_BODY}
+            ctaVoice={`Ver Órbita Plus para abrir todos los contactos con ${persona.name || "esta persona"}`}
+          />
+        ) : null}
 
         {nivel !== "chart_to_chart" ? (
           <QueFalta

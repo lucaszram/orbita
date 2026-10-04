@@ -5,11 +5,26 @@ import { api } from "../../convex/_generated/api";
  * Capa de datos del front para las capas de tiempo V4.9.2.
  *
  * A diferencia de `appRefs.ts` —que enlaza por `anyApi` y declara las firmas a
- * mano— acá el contrato ES el generado: `convex/_generated/api` ya conoce
- * `layers.getNatalBase`, `layers.getForDate` y `layers.refreshForDate`, así que
- * los tipos de argumentos y de sobre salen del backend y no de una copia
- * paralela que se puede desincronizar. Si Codex cambia el contrato, esto deja
- * de compilar: es exactamente lo que queremos.
+ * mano— acá el contrato ES el generado: `convex/_generated/api` ya conoce estas
+ * funciones, así que los tipos de argumentos y de sobre salen del backend y no
+ * de una copia paralela que se puede desincronizar. Si Codex cambia el
+ * contrato, esto deja de compilar: es exactamente lo que queremos.
+ *
+ * ## Sólo `…WithAccess` (CORE-1043)
+ *
+ * Las cuatro funciones del día y del arco son las que aplican la regla Free/Plus
+ * EN EL SERVIDOR: Plus recibe el payload de siempre; Free recibe Hoy abierto
+ * —la Luna, el cumpleluna y los tres primeros contactos del ranking— y los
+ * sobres de Tránsitos y de Tu momento cerrados, sin el dato. Las versiones sin
+ * sufijo siguen publicadas para el build ya instalado, pero este bundle NO las
+ * enlaza: si una pantalla pudiera elegir el endpoint sin corte, la regla
+ * volvería a depender de qué componente pregunta. Las claves espejan el nombre
+ * REAL de cada función —sufijo incluido— para que leer un `useQuery` alcance
+ * para saber qué endpoint se pide.
+ *
+ * Las dos funciones natales (`getNatalBase`, `getNatalChartBase`) no cambian:
+ * el recorte de la carta —casas, aspectos, capítulos— ya lo aplica su propio
+ * read-model.
  *
  * Regla de la tanda: cero mocks. Ninguna pantalla de capas puede rellenar con
  * datos de maqueta; si el sobre no trae `data`, la UI explica la limitación.
@@ -23,28 +38,47 @@ export const layersApi = {
    * Es el ÚNICO origen de posiciones, grados, precisión y acceso de Carta.
    */
   getNatalChartBase: api.layers.getNatalChartBase,
-  /** Sobre completo del día civil pedido (natal + hoy + tu momento). Reactiva. */
-  getForDate: api.layers.getForDate,
-  /** Recalcula el día: pega al proveedor, persiste y devuelve el sobre nuevo. */
-  refreshForDate: api.layers.refreshForDate,
+  /**
+   * `{ access, bundle }` del día civil pedido: el sobre completo (natal + hoy +
+   * tu momento) ya cortado según el plan, y el acceso que lo explica. Reactiva.
+   */
+  getForDateWithAccess: api.layers.getForDateWithAccess,
+  /**
+   * Recalcula el día: pega al proveedor, persiste y devuelve `{ access, bundle }`
+   * con el mismo corte. Lo persistido es el cálculo completo para cualquier plan.
+   */
+  refreshForDateWithAccess: api.layers.refreshForDateWithAccess,
   /**
    * `ORB-TRN-001` de UN arco concreto del día, tal como quedó calculado.
    * Reactiva y pura. El sobre del bundle sólo trae el arco PRINCIPAL; cualquier
-   * otro tránsito de la lista se pide por acá con su `arcId`.
+   * otro tránsito de la lista se pide por acá con su `arcId`. Free recibe
+   * `{ status: "locked" }` antes de que se lea ningún cálculo.
    */
-  getTransitArc: api.layers.getTransitArc,
+  getTransitArcWithAccess: api.layers.getTransitArcWithAccess,
   /**
    * Calcula el `ORB-TRN-001` del `arcId` pedido: verifica las pasadas de ESE
-   * contacto y persiste el sobre en su propio alcance.
+   * contacto y persiste el sobre en su propio alcance. Free sale `locked` sin
+   * pedir el cielo.
    */
-  refreshTransitArc: api.layers.refreshTransitArc
+  refreshTransitArcWithAccess: api.layers.refreshTransitArcWithAccess
 } as const;
 
 // ---------------------------------------------------------------------------
 // Tipos derivados del contrato generado (no se declaran a mano)
 // ---------------------------------------------------------------------------
 
-export type LayerBundle = NonNullable<FunctionReturnType<typeof api.layers.getForDate>>;
+/** Lo que publica `getForDateWithAccess`: el acceso de la cuenta y su sobre. */
+export type LayerBundleWithAccess = NonNullable<
+  FunctionReturnType<typeof api.layers.getForDateWithAccess>
+>;
+/**
+ * Qué secciones abre el plan, dicho por el servidor: `hoy` siempre `open`;
+ * `transitos` y `momento`, `open` o `locked`. Es lo ÚNICO que decide un muro:
+ * un sobre cerrado llega con `data: null`, igual que uno al que le falta un dato
+ * de nacimiento, y leer el plan de ahí pintaría un límite de plan como un error.
+ */
+export type LayerAccess = LayerBundleWithAccess["access"];
+export type LayerBundle = LayerBundleWithAccess["bundle"];
 export type NatalBaseBundle = NonNullable<FunctionReturnType<typeof api.layers.getNatalBase>>;
 
 /**
@@ -88,12 +122,14 @@ export type TransitPass = TransitArcData["passes"][number];
 /**
  * Sobre `ORB-TRN-001` de un arco pedido por `arcId`. Es el MISMO contrato que el
  * arco principal del bundle: la única diferencia es el alcance con el que se
- * calculó y se guardó. `null` significa que no hay cuenta con datos, igual que en
- * `getForDate`.
+ * calculó y se guardó. Viaja adentro de `{ status: "ready", arc }`; Free recibe
+ * `{ status: "locked" }` y `null` significa que no hay cuenta con datos, igual
+ * que en `getForDateWithAccess`.
  */
-export type TransitArcEnvelope = NonNullable<
-  FunctionReturnType<typeof api.layers.getTransitArc>
+export type TransitArcWithAccess = NonNullable<
+  FunctionReturnType<typeof api.layers.getTransitArcWithAccess>
 >;
+export type TransitArcEnvelope = Extract<TransitArcWithAccess, { status: "ready" }>["arc"];
 
 export type MoonOnChartResult = TodayLayers["moonOnChart"];
 export type MoonOnChartData = NonNullable<MoonOnChartResult["data"]>;

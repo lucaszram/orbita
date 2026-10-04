@@ -5,7 +5,7 @@
  *   primero" ni mutan acceso;
  * - eventos sin `environment` (`TRANSFER`, `TEMPORARY_ENTITLEMENT_GRANT`) no se
  *   descartan antes de resolver, y `undefined` nunca se lee como production;
- * - producción acepta Sandbox sólo para una cuenta de review allowlisted;
+ * - producción acepta Sandbox de cualquier cuenta (CORE-1043), marcado en la fila;
  * - todo camino dudoso deja agendada una reconciliación REST.
  */
 import assert from "node:assert/strict";
@@ -243,7 +243,7 @@ describe("P1-2 — TestFlight y App Review contra producción", () => {
     expiration_at_ms: FUTURE
   };
 
-  it("producción acepta el Sandbox de la cuenta de review allowlisted", async () => {
+  it("producción acepta el Sandbox de la cuenta que revisa la app", async () => {
     await withEnv(
       { ORBITA_ENVIRONMENT: "production", REVENUECAT_SANDBOX_REVIEW_USER_IDS: "user_review" },
       async () => {
@@ -257,14 +257,19 @@ describe("P1-2 — TestFlight y App Review contra producción", () => {
     );
   });
 
-  it("producción sigue rechazando el Sandbox de cualquier otra cuenta", async () => {
+  it("producción acepta el Sandbox de cualquier otra cuenta, sin lista", async () => {
+    // CORE-1043: la variable vieja nombra a OTRA cuenta y no participa. La
+    // cuenta común compra igual que la de review, antes, durante y después de
+    // la revisión, y su fila queda marcada `sandbox`.
     await withEnv(
       { ORBITA_ENVIRONMENT: "production", REVENUECAT_SANDBOX_REVIEW_USER_IDS: "user_review" },
       async () => {
         const { ctx, rows } = harness({ users: [{ _id: "u1", clerkUserId: "user_comun" }] });
         await apply(ctx, { ...compra, app_user_id: "user_comun" });
-        assert.equal(rows.get("subscriptions")?.length, 0);
-        assert.deepEqual(outcomes(rows), ["ignored_environment_mismatch"]);
+        const row = rows.get("subscriptions")?.[0];
+        assert.equal(row?.entitlement, "orbita_pro");
+        assert.equal(row?.environment, "sandbox");
+        assert.deepEqual(outcomes(rows), ["applied"]);
       }
     );
   });

@@ -715,10 +715,12 @@ describe("P1 6 — TRANSFER elige origen y destino por entorno", () => {
     });
   });
 
-  it("REPRO: en producción con allowlist vacía, un TRANSFER SANDBOX no mueve nada", async () => {
-    // P1 2: el camino ordinario aplicaba el corte de entorno por identidad,
-    // pero el TRANSFER no. Un recibo Sandbox que producción no acepta de nadie
-    // movía Órbita Plus de A a B —y de paso apagaba la fila de A—.
+  it("en producción SIN lista de review, un TRANSFER SANDBOX corre como cualquier otro", async () => {
+    // CORE-1043: producción acepta Sandbox de cualquier cuenta, así que el
+    // TRANSFER de una compra de TestFlight/App Review mueve la fila sandbox de
+    // A a B igual que el camino ordinario la habría concedido. El corte sigue
+    // existiendo —las dos pruebas de abajo— pero es del deployment, no de la
+    // identidad.
     await conEnv(
       { ORBITA_ENVIRONMENT: "production", REVENUECAT_SANDBOX_REVIEW_USER_IDS: undefined },
       async () => {
@@ -741,10 +743,10 @@ describe("P1 6 — TRANSFER elige origen y destino por entorno", () => {
           transferred_to: ["user_b"]
         });
 
-        const filas = rows.get("subscriptions") ?? [];
-        assert.equal(filas.length, 1, "no se crea la fila del destino");
-        assert.equal(filas[0].entitlement, "orbita_pro", "y la del origen no se apaga");
-        assert.deepEqual(outcomes(rows), ["ignored_environment_mismatch"]);
+        assert.deepEqual(outcomes(rows), ["applied_transfer"]);
+        const destino = (rows.get("subscriptions") ?? []).find((f) => f.userId === "u_b");
+        assert.equal(destino?.entitlement, "orbita_pro");
+        assert.equal(destino?.environment, "sandbox", "la fila transferida sigue marcada sandbox");
       }
     );
   });
@@ -784,7 +786,7 @@ describe("P1 6 — TRANSFER elige origen y destino por entorno", () => {
     );
   });
 
-  it("en producción con la cuenta de review allowlisted, el TRANSFER sandbox sí corre", async () => {
+  it("la variable vieja de review no cambia el TRANSFER sandbox en producción", async () => {
     await conEnv(
       {
         ORBITA_ENVIRONMENT: "production",
@@ -819,9 +821,12 @@ describe("P1 6 — TRANSFER elige origen y destino por entorno", () => {
     );
   });
 
-  it("una sola punta fuera de la allowlist alcanza para no mover nada", async () => {
+  it("development no deja que un TRANSFER PRODUCTION mueva nada", async () => {
+    // El corte que queda es el del deployment: development no consume recibos
+    // productivos de nadie, y apagar la fila de A desde un recibo que este
+    // deployment no acepta es tan grave como concederlo.
     await conEnv(
-      { ORBITA_ENVIRONMENT: "production", REVENUECAT_SANDBOX_REVIEW_USER_IDS: "user_b" },
+      { ORBITA_ENVIRONMENT: "development", REVENUECAT_SANDBOX_REVIEW_USER_IDS: "user_a,user_b" },
       async () => {
         const { ctx, rows } = harness({
           users: [
@@ -829,21 +834,20 @@ describe("P1 6 — TRANSFER elige origen y destino por entorno", () => {
             { _id: "u_b", clerkUserId: "user_b" }
           ],
           subscriptions: [
-            filaDe({ _id: "sub_a_sand", userId: "u_a", clerkUserId: "user_a", environment: "sandbox" })
+            filaDe({ _id: "sub_a_prod", userId: "u_a", clerkUserId: "user_a", environment: "production" })
           ]
         });
 
         await apply(ctx, {
-          id: "rc_transfer_media_allowlist",
+          id: "rc_transfer_dev_production",
           type: "TRANSFER",
           event_timestamp_ms: EVENT_AT,
-          environment: "SANDBOX",
+          environment: "PRODUCTION",
           transferred_from: ["user_a"],
           transferred_to: ["user_b"]
         });
 
-        // Apagar la fila de A desde un recibo que producción no le acepta a A
-        // es tan grave como concederlo: el corte se exige en las dos puntas.
+        assert.equal(rows.get("subscriptions")?.length, 1, "no se crea la fila del destino");
         assert.equal(rows.get("subscriptions")?.[0].entitlement, "orbita_pro");
         assert.deepEqual(outcomes(rows), ["ignored_environment_mismatch"]);
       }

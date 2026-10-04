@@ -11,6 +11,7 @@ import {
   LAYER_STALE_EPHEMERIS_ERROR
 } from "@/domain/layerRetry";
 import { createLatestRequestGate, transitArcRequestKey } from "@/domain/transitArcRequest";
+import { layerSectionAccess } from "@/domain/planAccess";
 import { useLayers } from "@/hooks/useLayers";
 import { layersApi, type TransitArcEnvelope } from "@/services/layersApi";
 import { backendConfig } from "@/services/backendProviders";
@@ -18,14 +19,15 @@ import { backendConfig } from "@/services/backendProviders";
 /**
  * El `ORB-TRN-001` de UN arco pedido por `arcId`.
  *
- * Por qué existe: el sobre del día (`layers.getForDate`) trae el arco PRINCIPAL y
+ * Por qué existe: el sobre del día (`layers.getForDateWithAccess`) trae el arco PRINCIPAL y
  * nada más. Abrir cualquier otro tránsito de la lista necesita su propio cálculo
  * —su ventana, sus pasadas verificadas, su precisión y sus fuentes—, y ese cálculo
  * tiene su propio alcance de cache: `{ localDate, timezone, arcId }`.
  *
  * Cómo trabaja:
- * - la lectura es `layers.getTransitArc`, que es REACTIVA y no pega al proveedor;
- * - el cálculo es `layers.refreshTransitArc`, que se pide UNA vez por arco, día,
+ * - la lectura es `layers.getTransitArcWithAccess`, que es REACTIVA y no pega al
+ *   proveedor;
+ * - el cálculo es `layers.refreshTransitArcWithAccess`, que se pide UNA vez por arco, día,
  *   zona y hora civil (`transitArcRequestKey`), así que dos renders o dos toques
  *   no largan dos acciones;
  * - una respuesta que vuelve tarde sólo escribe estado si sigue siendo el pedido
@@ -38,14 +40,22 @@ import { backendConfig } from "@/services/backendProviders";
  * sin nada que la persona pudiera hacer. Pasados los 20 s la espera se corta, el
  * corte cuenta como transitorio y entra en los mismos tres reintentos.
  *
- * Y con el mismo detector del fallo que llega como éxito: `refreshTransitArc`
- * puede resolver y devolver igual un sobre `stale` porque el proveedor de
+ * Y con el mismo detector del fallo que llega como éxito: la action puede resolver y devolver igual un sobre `stale` porque el proveedor de
  * efemérides no contestó. Ese resultado se reencauza como transitorio
  * (`isStaleEphemerisResult`) y recorre los mismos tres reintentos; un sobre
  * `stale` por otro motivo, o `unavailable`, no se reintenta.
  *
  * Lo que se registra de un fallo es el CÓDIGO clasificado, no el mensaje crudo:
  * ahí puede viajar el identificador de la persona.
+ *
+ * ## El detalle de arco es Plus (CORE-1043)
+ *
+ * Las dos funciones son las variantes `…WithAccess`: Plus recibe
+ * `{ status: "ready", arc }` y Free, `{ status: "locked" }`. `locked` NO es un
+ * fallo ni un cálculo pendiente —no se reintenta, no se pide el cálculo— y la
+ * pantalla lo dibuja como muro. Si el sobre del día ya dijo que Tránsitos está
+ * cerrado, la lectura ni sale: no hay nada que el servidor vaya a contestar
+ * distinto.
  */
 export type TransitArcState = {
   /**
@@ -53,6 +63,8 @@ export type TransitArcState = {
    * cuenta con datos; la pantalla distingue los dos casos con `loading`.
    */
   envelope: TransitArcEnvelope | null;
+  /** El plan de la cuenta no abre el detalle de arco: se dibuja el muro. */
+  locked: boolean;
   /** La lectura del sobre todavía viaja. */
   loading: boolean;
   /** Hay un cálculo de ESTE arco en vuelo. */
@@ -65,6 +77,7 @@ export type TransitArcState = {
 
 const IDLE: TransitArcState = {
   envelope: null,
+  locked: false,
   loading: false,
   refreshing: false,
   refreshFailed: false,
@@ -81,8 +94,8 @@ export function useTransitArc(arcId: string | null): TransitArcState {
 }
 
 function useTransitArcInner(arcId: string | null): TransitArcState {
-  const { phase, localDate, timezone, nowMs } = useLayers();
-  const refreshTransitArc = useAction(layersApi.refreshTransitArc);
+  const { phase, access, localDate, timezone, nowMs } = useLayers();
+  const refreshTransitArc = useAction(layersApi.refreshTransitArcWithAccess);
 
   const [attempt, setAttempt] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
@@ -119,13 +132,22 @@ function useTransitArcInner(arcId: string | null): TransitArcState {
   }, [arcId]);
 
   const listo = phase === "listo" && localDate !== "" && timezone !== "";
-  const activo = listo && arcId !== null && arcId.length > 0;
+  // El acceso que viajó con el sobre del día. Cerrado, no se pide nada.
+  const cerradoPorPlan = layerSectionAccess(access, "transitos") === "locked";
+  const activo = listo && !cerradoPorPlan && arcId !== null && arcId.length > 0;
   const civilHour = timezone && nowMs > 0 ? civilHourInTimezone(nowMs, timezone) : "";
 
-  const envelope = useQuery(
-    layersApi.getTransitArc,
+  const resultado = useQuery(
+    layersApi.getTransitArcWithAccess,
     activo ? { localDate, timezone, arcId } : "skip"
   );
+  // El servidor es la última palabra: aunque el sobre del día dijera `open`, un
+  // `locked` de acá cierra el detalle igual.
+  const locked = cerradoPorPlan || resultado?.status === "locked";
+  // `undefined` mientras viaja; `null` sin cuenta con datos o con el detalle
+  // cerrado —en los dos casos no hay sobre que leer ni cálculo que pedir—.
+  const envelope =
+    resultado === undefined ? undefined : resultado?.status === "ready" ? resultado.arc : null;
 
   const necesitaCalculo = useMemo(() => {
     // La lectura todavía viaja, o no hay cuenta con datos: no hay nada que pedir.
@@ -207,11 +229,12 @@ function useTransitArcInner(arcId: string | null): TransitArcState {
   return useMemo<TransitArcState>(
     () => ({
       envelope: envelope ?? null,
+      locked,
       loading: activo && envelope === undefined,
       refreshing,
       refreshFailed,
       refresh
     }),
-    [activo, envelope, refreshing, refreshFailed, refresh]
+    [activo, envelope, locked, refreshing, refreshFailed, refresh]
   );
 }

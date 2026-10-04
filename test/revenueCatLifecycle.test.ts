@@ -271,14 +271,18 @@ describe("entorno — cada deployment consume sólo sus recibos", () => {
     expiration_at_ms: FUTURE
   };
 
-  it("producción rechaza un recibo SANDBOX y lo deja auditado", async () => {
+  it("producción acepta un recibo SANDBOX, lo marca `sandbox` y lo deja auditado", async () => {
+    // CORE-1043: TestFlight y App Review compran en Sandbox con el binario
+    // productivo, desde cualquier cuenta. La fila conserva su entorno.
     await withEnv("production", async () => {
       const memory = memoryDb({ users: [user] });
       await applyEvent({ db: memory.db }, compra);
 
-      assert.equal(memory.rows.get("subscriptions")?.length, 0);
+      const fila = memory.rows.get("subscriptions")?.[0];
+      assert.equal(fila?.entitlement, "orbita_pro");
+      assert.equal(fila?.environment, "sandbox");
       const audit = memory.rows.get("paymentEvents")?.[0];
-      assert.equal(audit?.rawPayload?.outcome, "ignored_environment_mismatch");
+      assert.equal(audit?.rawPayload?.outcome, "applied");
       // La auditoría conserva a quién correspondía, sin datos personales.
       assert.equal(audit?.clerkUserId, "user_current");
       assert.equal("app_user_id" in (audit?.rawPayload ?? {}), false);

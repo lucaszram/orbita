@@ -514,26 +514,32 @@ describe("proyección — idempotente y sin pisar webhooks nuevos", () => {
     assert.equal(memory.rows.get("subscriptions")?.[0]?.entitlement, PRO_ENTITLEMENT);
   });
 
-  it("producción NO concede desde un recibo sandbox de una cuenta cualquiera", async () => {
-    // El gate de entorno del webhook no servía de nada si la reconciliación
-    // podía proyectar el mismo recibo sandbox por la puerta de atrás.
+  it("producción concede desde un recibo sandbox de una cuenta cualquiera, marcado `sandbox`", async () => {
+    // El webhook y la reconciliación usan el MISMO corte: producción acepta
+    // Sandbox sin lista (CORE-1043), así que la proyección REST no puede ser
+    // más estricta que el webhook ni dejar a quien revisa la app sin Plus.
     const previo = process.env.ORBITA_ENVIRONMENT;
+    const previoLista = process.env.REVENUECAT_SANDBOX_REVIEW_USER_IDS;
     process.env.ORBITA_ENVIRONMENT = "production";
+    delete process.env.REVENUECAT_SANDBOX_REVIEW_USER_IDS;
     try {
       const memory = memoryDb({ users: [user] });
       await project({ db: memory.db }, { clerkUserId: "user_current", outcome: activo });
-      assert.equal(memory.rows.get("subscriptions")?.length, 0);
+      const fila = memory.rows.get("subscriptions")?.[0];
+      assert.equal(fila?.entitlement, PRO_ENTITLEMENT);
+      assert.equal(fila?.environment, "sandbox");
     } finally {
       if (previo === undefined) delete process.env.ORBITA_ENVIRONMENT;
       else process.env.ORBITA_ENVIRONMENT = previo;
+      if (previoLista !== undefined) process.env.REVENUECAT_SANDBOX_REVIEW_USER_IDS = previoLista;
     }
   });
 
-  it("producción SÍ concede el sandbox de una cuenta de review allowlisted", async () => {
+  it("la variable vieja de review no cambia el resultado: nombrar a OTRA cuenta no cierra nada", async () => {
     const previoEnv = process.env.ORBITA_ENVIRONMENT;
     const previoLista = process.env.REVENUECAT_SANDBOX_REVIEW_USER_IDS;
     process.env.ORBITA_ENVIRONMENT = "production";
-    process.env.REVENUECAT_SANDBOX_REVIEW_USER_IDS = "user_current";
+    process.env.REVENUECAT_SANDBOX_REVIEW_USER_IDS = "user_otra_cuenta";
     try {
       const memory = memoryDb({ users: [user] });
       await project({ db: memory.db }, { clerkUserId: "user_current", outcome: activo });
@@ -558,10 +564,9 @@ describe("proyección — idempotente y sin pisar webhooks nuevos", () => {
     assert.equal(memory.rows.get("subscriptions")?.length, 0);
   });
 
-  it("retirar el acceso no depende de la allowlist: un vacío autoritativo siempre vale", async () => {
-    // Conceder exige entorno permitido; RETIRAR no. Acá el deployment es
-    // producción y la cuenta no está allowlisted, así que jamás podría
-    // conceder desde sandbox — pero sí tiene que poder apagar la fila sandbox
+  it("retirar el acceso no depende del corte de entorno: un vacío autoritativo siempre vale", async () => {
+    // Conceder exige entorno permitido; RETIRAR no. Sea cual sea el corte del
+    // deployment, un vacío autoritativo tiene que poder apagar la fila sandbox
     // que quedó viva.
     const previo = process.env.ORBITA_ENVIRONMENT;
     process.env.ORBITA_ENVIRONMENT = "production";
