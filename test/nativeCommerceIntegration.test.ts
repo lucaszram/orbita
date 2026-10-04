@@ -528,11 +528,13 @@ describe("write-side — un cierre tardío de A no pisa el estado de B", () => {
     assert.match(cuerpo, /answerStore\(userId, "restore_empty"\)/);
   });
 
-  it("el portal de Stripe revalida el dueño dos veces, en nativo y en web", () => {
-    for (const archivo of [
-      "src/components/orbita/ManageSubscription.tsx",
-      "src/components/orbita/ManageSubscription.web.tsx"
-    ]) {
+  it("el portal de Stripe revalida el dueño dos veces en web, y en nativo no existe", () => {
+    assert.doesNotMatch(
+      readFileSync(join(ROOT, "src/components/orbita/ManageSubscription.tsx"), "utf8"),
+      /createPortal|openStripePortal/,
+      "la app nativa no abre el portal de facturación web"
+    );
+    for (const archivo of ["src/components/orbita/ManageSubscription.web.tsx"]) {
       const fuente = readFileSync(join(ROOT, archivo), "utf8");
       const inicio = fuente.search(/const open(StripePortal|Portal) = useCallback/);
       assert.ok(inicio > 0, archivo);

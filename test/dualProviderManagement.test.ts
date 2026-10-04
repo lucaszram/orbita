@@ -170,7 +170,9 @@ describe("P1 3 — el bloque activo se compone por flags, no por el ganador", ()
 
   it("cada salida cuelga de su flag", () => {
     assert.match(MANAGE, /\{management\.showStoreCenter \?/);
-    assert.match(MANAGE, /\{management\.showStripePortal \?/);
+    // La suscripción web no tiene botón en la app: con dos cobros vivos se DICE
+    // por dónde se gestiona el otro, y esa nota cuelga de `dual`.
+    assert.match(MANAGE, /\{management\.dual \? <Note>\{MENSAJE_SUSCRIPCION_WEB\}<\/Note> : null\}/);
   });
 
   it("ya no hay una rama que dibuje sólo un proveedor por `view`", () => {
@@ -187,11 +189,12 @@ describe("P1 3 — el bloque activo se compone por flags, no por el ganador", ()
     assert.match(MANAGE, /const sinSalidaReal =\s*!management\.showStoreCenter && !management\.showStripePortal/);
   });
 
-  it("el portal web nunca se abre solo: siempre detrás de un toque", () => {
-    // `openStripePortal` sólo se referencia desde el `onPress` de su Pill.
-    const usos = [...MANAGE.matchAll(/openStripePortal\(\)/g)];
-    assert.equal(usos.length, 1);
-    assert.match(MANAGE, /onPress=\{\(\) => void openStripePortal\(\)\}/);
+  it("la app nativa no abre el portal web ni consulta el comercio web", () => {
+    // Un botón a un cobro externo que aparece según la cuenta y un interruptor
+    // del servidor es una función que quien revisa el binario no ve.
+    assert.doesNotMatch(MANAGE, /openStripePortal|createPortal|createPortalSession/);
+    assert.doesNotMatch(MANAGE, /getWebOffer|checkoutEnabled|commerceEnabled/);
+    assert.doesNotMatch(MANAGE, /Linking\.openURL\(url\)/);
   });
 
   it("el paywall confirmado decide por el flag, no por el provider ganador", () => {
@@ -243,10 +246,9 @@ describe("P1 3 — el bloque activo se compone por flags, no por el ganador", ()
     assert.deepEqual([soloRevenueCat.showStoreCenter, soloRevenueCat.showStripePortal], [true, false]);
   });
 
-  it("la salida de Stripe existe aunque la tienda no esté disponible", () => {
+  it("la suscripción web se explica aunque la tienda no esté disponible", () => {
     // Sólo Stripe activo (build sin comercio nativo, o SDK sin clave): el flag
-    // del portal sigue en true, y el componente lo abre con el dueño de CLERK,
-    // no con el de RevenueCat, que ahí es null.
+    // sigue en true y el componente explica dónde se gestiona, sin abrir nada.
     const soloStripe = nativeSubscriptionManagement({
       isPro: true,
       provider: "stripe",
@@ -256,13 +258,9 @@ describe("P1 3 — el bloque activo se compone por flags, no por el ganador", ()
       activeProviders: ["stripe"]
     });
     assert.deepEqual([soloStripe.showStoreCenter, soloStripe.showStripePortal], [false, true]);
-    const portal = MANAGE.indexOf("const openStripePortal =");
-    const cuerpo = MANAGE.slice(portal, MANAGE.indexOf("const openCustomerCenter =", portal));
-    assert.match(cuerpo, /const dueño = clerkOwner;/);
-    assert.equal(
-      /storeOwner/.test(cuerpo),
-      false,
-      "REPRO: el portal de Stripe no puede exigir identidad de RevenueCat"
-    );
+    // La salida es un texto sin enlace: dice por dónde se gestiona y no depende
+    // de la tienda ni de ningún interruptor remoto.
+    assert.match(MANAGE, /management\.showStripePortal\s*\? MENSAJE_SUSCRIPCION_WEB/);
+    assert.match(MANAGE, /const MENSAJE_SUSCRIPCION_WEB =\s*"Tu suscripción web se gestiona/);
   });
 });

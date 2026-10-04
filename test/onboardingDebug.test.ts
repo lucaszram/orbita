@@ -70,3 +70,13 @@ test("las herramientas internas siguen apagadas por defecto", () => {
     "un deploy que olvida la variable tiene que quedar cerrado"
   );
 });
+
+test("en la app nativa las herramientas internas no se encienden desde el entorno", () => {
+  // El binario de la tienda no puede traer un modo interno que dependa de una
+  // variable de compilación: en nativo el flag vale `false` sin mirarla.
+  const s = readFileSync(join(ROOT, "src/services/internalTools.ts"), "utf8");
+  assert.match(
+    s,
+    /INTERNAL_TOOLS_ENABLED =\s*Platform\.OS === "web" && process\.env\.EXPO_PUBLIC_ORBITA_INTERNAL_TOOLS === "true"/
+  );
+});

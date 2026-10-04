@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { useAction, useMutation } from "convex/react";
+import { useMutation } from "convex/react";
 import { router } from "expo-router";
 import { ActivityIndicator, Linking, StyleSheet, View } from "react-native";
 
@@ -19,7 +19,7 @@ import {
 } from "@/domain/nativeCommerce";
 import { useEntitlement } from "@/hooks/useLiveApp";
 import { clearPurchaseGuard, storePurchaseGuard } from "@/services/purchaseGuard";
-import { appApi, proposedApi } from "@/services/appRefs";
+import { appApi } from "@/services/appRefs";
 import { useRevenueCat } from "@/services/revenuecat/RevenueCatProvider";
 
 const SUPPORT_URL = "https://orbitaastrologia.xyz/support";
@@ -27,11 +27,18 @@ const SUPPORT_URL = "https://orbitaastrologia.xyz/support";
 const MENSAJE_ACTIVANDO =
   "La tienda confirmó tu compra. Estamos activando el acceso en Órbita; no vuelvas a comprar.";
 
-type CommerceState = { checkoutEnabled: boolean };
+/** Sin enlace: la app no lleva a ningún cobro fuera de la tienda. */
+const MENSAJE_SUSCRIPCION_WEB =
+  "Tu suscripción web se gestiona desde tu Perfil en la web de Órbita, con esta misma cuenta.";
+
 type UiState = "idle" | "opening" | "restoring" | "error";
 
 /**
  * Plan y gestión en la app nativa. La variante web hermana conserva Stripe.
+ *
+ * La app no abre el portal de facturación web ni consulta el comercio web: una
+ * suscripción contratada en la web se gestiona en la web, y acá sólo se dice
+ * por dónde. Lo único que se gestiona desde la app es la compra de la tienda.
  *
  * La presentación es la del sistema V4.9.2 —tipografías, tokens y botones de
  * `components/v492`—, y las acciones viven AGRUPADAS por lo que deciden:
@@ -47,14 +54,12 @@ export function ManageSubscriptionBlock() {
    * correlación con Clerk: una tercera copia de la misma verdad, con su propia
    * ventana en la que el plan de A quedaba publicado bajo la sesión de B.
    *
-   * Se usa el REMOTO: acá se abre el portal de facturación y se restauran
+   * Se usa el REMOTO: acá se gestiona la compra de la tienda y se restauran
    * compras. Un snapshot local no puede ofrecer ninguna de las dos cosas —
    * `undefined` es "validando" y `view` responde `loading`, así que no se
    * dibuja ninguna salida hasta que el backend confirme para esta cuenta.
    */
   const { remote: entitlement, owner: clerkOwner } = useEntitlement();
-  const getWebOffer = useAction(proposedApi.getWebOffer);
-  const createPortal = useAction(proposedApi.createPortalSession);
   // Mutation, no action: deja el trabajo de reparación escrito en la misma
   // transacción que consume el cupo. Una action pública es at-most-once y podía
   // morir antes de crear nada.
@@ -63,21 +68,13 @@ export function ManageSubscriptionBlock() {
   const management = nativeSubscriptionManagement(entitlement);
   const view = management.view;
   /**
-   * DOS dueños, porque son dos comercios distintos.
-   *
-   * `clerkOwner` es la cuenta de Órbita: es la identidad que el backend deriva
-   * de `ctx.auth` para crear la sesión del portal de Stripe, y no depende de
-   * RevenueCat para nada. Atar el portal a `revenueCat.identifiedUserId` dejaba
-   * a una suscripción de Stripe VIVA sin ninguna forma de cancelarla en cuanto
-   * el SDK de la tienda estuviera `unavailable` (build sin clave, error de
-   * configuración, plataforma sin compras): el botón estaba, y no hacía nada.
-   *
-   * `storeOwner` es la identidad del SDK de la tienda, y sólo gobierna lo que
-   * toca la tienda: restaurar y el Customer Center. Esos sí exigen que
-   * RevenueCat esté identificado con la misma cuenta.
+   * DOS dueños. `clerkOwner` es la cuenta de Órbita y existe siempre: es el
+   * dueño del estado y de los mensajes del bloque. `storeOwner` es la identidad
+   * del SDK de la tienda, y sólo gobierna lo que toca la tienda: restaurar y el
+   * Customer Center, que exigen que RevenueCat esté identificado con la misma
+   * cuenta.
    */
   const storeOwner = revenueCat.identifiedUserId;
-  const [commerceEnabled, setCommerceEnabled] = useState<boolean | null | undefined>(undefined);
   /**
    * Estado y mensaje CON DUEÑO.
    *
@@ -88,7 +85,7 @@ export function ManageSubscriptionBlock() {
    * El dueño de la UI es el de CLERK: es el único que existe siempre. Si fuera
    * el de la tienda, el bloque entero se quedaría sin estado ni mensajes cuando
    * RevenueCat no está disponible, que es justo el caso en el que sólo hay
-   * Stripe.
+   * una suscripción web.
    */
   const [stateSlot, setStateSlot] = useState<OwnedValue<UiState>>(() => ownedValue(null, "idle"));
   const [messageSlot, setMessageSlot] = useState<OwnedValue<string | null>>(() =>
@@ -130,22 +127,6 @@ export function ManageSubscriptionBlock() {
   const gate = gates.for(clerkOwner);
   const busy = state === "opening" || state === "restoring";
 
-  const needsStripePortal = management.showStripePortal;
-  useEffect(() => {
-    if (!needsStripePortal) return;
-    let alive = true;
-    getWebOffer({})
-      .then((result) => {
-        if (alive) setCommerceEnabled((result as CommerceState).checkoutEnabled);
-      })
-      .catch(() => {
-        if (alive) setCommerceEnabled(false);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [getWebOffer, needsStripePortal]);
-
   /**
    * Convex confirmó el acceso DE LA TIENDA para ESTE dueño.
    *
@@ -175,37 +156,6 @@ export function ManageSubscriptionBlock() {
       alive = false;
     };
   }, [entitlement, storeOwner]);
-
-  /**
-   * Portal de Stripe, con el dueño de CLERK revalidado DOS veces.
-   *
-   * La URL del portal es una sesión de facturación de UNA cuenta. Si A la pide,
-   * Clerk pasa a B y la respuesta llega tarde, abrirla le mostraría a B la
-   * facturación de A. Se revalida justo antes de pedirla y otra vez justo antes
-   * de abrirla; la URL de A nunca se reusa para B, se descarta.
-   *
-   * RevenueCat no entra en esta decisión: el portal es de Stripe.
-   */
-  const openStripePortal = useCallback(async () => {
-    const dueño = clerkOwner;
-    if (!dueño) return;
-    await runExclusive(gate, async () => {
-      publicarEstado(dueño, "opening");
-      publicarMensaje(dueño, null);
-      try {
-        if (ownerRef.current !== dueño) return;
-        const { url } = await createPortal({});
-        // Segunda revalidación: el cambio de cuenta pudo ocurrir mientras
-        // Stripe generaba la sesión.
-        if (ownerRef.current !== dueño) return;
-        await Linking.openURL(url);
-        publicarEstado(dueño, "idle");
-      } catch {
-        publicarEstado(dueño, "error");
-        publicarMensaje(dueño, "No pudimos abrir la gestión de tu suscripción. Probá de nuevo.");
-      }
-    });
-  }, [clerkOwner, createPortal, gate, publicarEstado, publicarMensaje]);
 
   /** El Customer Center SÍ es de la tienda: exige la identidad de RevenueCat. */
   const openCustomerCenter = useCallback(async () => {
@@ -326,9 +276,7 @@ export function ManageSubscriptionBlock() {
    * separado y se muestran todas las que existan, gane quien gane.
    */
   const lifetime = view === "lifetime";
-  const esperandoComercioWeb = management.showStripePortal && commerceEnabled === undefined;
   const sinSalidaReal = !management.showStoreCenter && !management.showStripePortal;
-  const hayGestion = management.showStoreCenter || management.showStripePortal;
 
   return (
     <PlanBlock>
@@ -345,52 +293,25 @@ export function ManageSubscriptionBlock() {
             : management.showStoreCenter
               ? "Desde acá podés revisar el plan, la renovación y las opciones disponibles en la tienda."
               : management.showStripePortal
-                ? "Tu suscripción se gestiona con el proveedor con el que la contrataste."
+                ? MENSAJE_SUSCRIPCION_WEB
                 : "Si necesitás revisar este acceso, escribinos y lo resolvemos."}
       </Note>
 
-      {/* GESTIONAR agrupa TODAS las salidas reales: con dos cobros vivos son
-          dos botones, uno por canal, y ninguno se esconde detrás del otro. */}
-      {hayGestion ? (
+      {/* GESTIONAR ofrece la única salida que la app abre: la de la tienda. La
+          suscripción web no tiene botón acá; se dice por dónde se gestiona. */}
+      {management.showStoreCenter ? (
         <ActionGroup label="GESTIONAR">
-          {management.showStoreCenter ? (
-            <PrimaryButton
-              label={state === "opening" ? "ABRIENDO…" : management.dual ? "GESTIONAR EN LA TIENDA" : "GESTIONAR SUSCRIPCIÓN"}
-              align="start"
-              accessibilityHint="Abre la gestión de tu suscripción en la tienda"
-              disabled={busy}
-              onPress={() => void openCustomerCenter()}
-            />
-          ) : null}
-
-          {management.showStripePortal ? (
-            <>
-              {esperandoComercioWeb ? (
-                <PlanLoading label="Estamos comprobando la gestión web…" />
-              ) : (
-                <PrimaryButton
-                  label={
-                    state === "opening"
-                      ? "ABRIENDO…"
-                      : management.showStoreCenter
-                        ? "GESTIONAR LA SUSCRIPCIÓN WEB"
-                        : "GESTIONAR SUSCRIPCIÓN"
-                  }
-                  align="start"
-                  accessibilityHint="Abre el portal de facturación web"
-                  // Con el comercio apagado el portal tiraría: el botón queda
-                  // bloqueado y al lado se explica por dónde seguir.
-                  disabled={busy || commerceEnabled !== true}
-                  onPress={() => void openStripePortal()}
-                />
-              )}
-              {commerceEnabled === false ? (
-                <SupportLink text="La gestión online no está disponible en este momento. Escribinos y lo resolvemos." />
-              ) : null}
-            </>
-          ) : null}
+          <PrimaryButton
+            label={state === "opening" ? "ABRIENDO…" : management.dual ? "GESTIONAR EN LA TIENDA" : "GESTIONAR SUSCRIPCIÓN"}
+            align="start"
+            accessibilityHint="Abre la gestión de tu suscripción en la tienda"
+            disabled={busy}
+            onPress={() => void openCustomerCenter()}
+          />
         </ActionGroup>
       ) : null}
+
+      {management.dual ? <Note>{MENSAJE_SUSCRIPCION_WEB}</Note> : null}
 
       {sinSalidaReal ? (
         <SupportLink text="Si necesitás revisar este acceso, escribinos y lo resolvemos." />

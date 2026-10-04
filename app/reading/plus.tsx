@@ -1,7 +1,7 @@
 import { Redirect } from "expo-router";
 
-// Órbita arranca gratuita (App Review): sin Plan Plus, precios ni suscripción.
-// La ruta se conserva para navegaciones viejas, pero nunca muestra planes.
+// Ruta legada: los planes viven en `/paywall`. Se conserva sólo para que las
+// navegaciones y los enlaces viejos caigan en la portada en vez de un 404.
 export default function PlusScreen() {
   return <Redirect href="/" />;
 }
