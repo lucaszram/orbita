@@ -8,6 +8,7 @@ import {
 import { v, type Infer } from "convex/values";
 import { api, internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
+import type { ActionCtx, MutationCtx } from "./_generated/server";
 import { getAnalysisDefinition, getSourceRefs } from "./content/astrologySources";
 import {
   comparisonLevelValidator,
@@ -47,7 +48,12 @@ import {
   requireIdentity,
   requireUser
 } from "./lib/users";
-import { isUserPro } from "./lib/subscriptionAccess";
+import {
+  isUserPro,
+  relationshipComparisonForPlan,
+  relationshipComparisonWithAccessValidator,
+  type RelationshipComparisonWithAccess,
+} from "./lib/subscriptionAccess";
 import {
   computeSynastryContacts,
   FREE_CONTACT_LIMIT,
@@ -84,6 +90,21 @@ const savePersonArgs = {
   timezone: v.optional(nullableString),
   zodiacSign: v.optional(nullableString),
 };
+const savePersonValidator = v.object(savePersonArgs);
+type SavePersonArgs = Infer<typeof savePersonValidator>;
+
+/** El cupo de personas, con la misma forma que publica `listPeople` en la web. */
+const personAccessValidator = v.object({
+  isPro: v.boolean(),
+  limit: nullableNumber,
+  remaining: nullableNumber,
+  atLimit: v.boolean(),
+});
+
+const relationshipListWithAccessValidator = v.object({
+  profiles: v.array(relationshipProfileValidator),
+  access: personAccessValidator,
+});
 
 const relationshipPlacementWireValidator = v.object({
   key: v.string(),
@@ -1503,94 +1524,159 @@ export const upsert = mutation({
 // ---------------------------------------------------------------------------
 // API V4.9.2.
 
+/** Las personas guardadas de la cuenta, de la más antigua a la más reciente. */
+async function publicProfilesOf(ctx: { db: any }, userId: Id<"users">) {
+  const profiles = await ctx.db
+    .query("relationshipProfiles")
+    .withIndex("by_user", (q: any) => q.eq("userId", userId))
+    .collect();
+  return profiles
+    .sort((left: Doc<"relationshipProfiles">, right: Doc<"relationshipProfiles">) =>
+      left.createdAt - right.createdAt || String(left._id).localeCompare(String(right._id)),
+    )
+    .map(toPublicProfile) as PublicRelationshipProfile[];
+}
+
 export const list = query({
   args: {},
   returns: v.array(relationshipProfileValidator),
   handler: async (ctx) => {
     const user = await findCurrentUser(ctx);
     if (!user) return [];
-    const profiles = await ctx.db
-      .query("relationshipProfiles")
-      .withIndex("by_user", (q: any) => q.eq("userId", user._id))
-      .collect();
-    return profiles
-      .sort((left: Doc<"relationshipProfiles">, right: Doc<"relationshipProfiles">) =>
-        left.createdAt - right.createdAt || String(left._id).localeCompare(String(right._id)),
-      )
-      .map(toPublicProfile);
+    return await publicProfilesOf(ctx, user._id);
   },
 });
+
+/**
+ * `relationships.list` con el cupo del plan (CORE-1043): los mismos perfiles,
+ * en el mismo orden, más `access` —la misma forma y la misma función
+ * (`personAccess`) que `listPeople` publica en la web—.
+ *
+ * Alcanzar el cupo no borra ni oculta a nadie, igual que en la web: una cuenta
+ * Free que ya tiene más de una persona guardada (de cuando la app no aplicaba
+ * el tope, o de un período Plus) las sigue viendo TODAS, puede abrir la
+ * comparación de cada una —con el tope de contactos de Free—, editarlas y
+ * borrarlas. Lo único cerrado es crear otra: `access.atLimit` es `true` y
+ * `access.remaining` es 0 hasta que queden menos personas que el cupo.
+ */
+export const listWithAccess = query({
+  args: {},
+  returns: relationshipListWithAccessValidator,
+  handler: async (ctx) => {
+    const user = await findCurrentUser(ctx);
+    if (!user) return { profiles: [], access: personAccess({ isPro: false, count: 0 }) };
+    const profiles = await publicProfilesOf(ctx, user._id);
+    return {
+      profiles,
+      access: personAccess({ isPro: await isUserPro(ctx, user._id), count: profiles.length }),
+    };
+  },
+});
+
+/**
+ * Alta o edición de una persona. `enforcePlan` es la única diferencia entre
+ * `savePerson` (sin cupo: lo llaman los builds ya instalados) y
+ * `savePersonWithAccess` (con el cupo del plan).
+ */
+async function savePersonForPlan(ctx: MutationCtx, args: SavePersonArgs, enforcePlan: boolean) {
+  const user = await requireUser(ctx);
+  const normalized = normalizeRelationshipPersonInput(args);
+  const normalizedIdempotencyKey = normalizeRelationshipIdempotencyKey(args.idempotencyKey);
+  const creationRequestKey = args.profileId ? null : normalizedIdempotencyKey;
+  const now = Date.now();
+  const values = {
+    name: normalized.name,
+    // Un cliente 22/23 no conoce este campo: al editar no debe borrar una
+    // elección hecha luego desde un cliente nuevo. Sólo se toca cuando el
+    // argumento vino declarado explícitamente.
+    ...(args.relationshipType !== undefined
+      ? { relationshipType: normalized.relationshipType ?? undefined }
+      : {}),
+    birthDate: normalized.birthDate ?? undefined,
+    birthTime: normalized.birthTime ?? undefined,
+    birthTimePrecision: normalized.birthTimePrecision,
+    birthPlaceLabel: normalized.birthPlaceLabel ?? undefined,
+    placeId: normalized.placeId ?? undefined,
+    placeProvider: normalized.placeProvider ?? undefined,
+    latitude: normalized.latitude ?? undefined,
+    longitude: normalized.longitude ?? undefined,
+    timezone: normalized.timezone ?? undefined,
+    zodiacSign: normalized.zodiacSign ?? undefined,
+    updatedAt: now,
+  };
+
+  let profileId = args.profileId;
+  if (profileId) {
+    const profile = await getOwnedProfile(ctx, user._id, profileId);
+    if (!profile) throw new Error("RELATIONSHIP_PROFILE_NOT_FOUND");
+    await ctx.db.patch(profileId, values);
+  } else {
+    if (creationRequestKey) {
+      // Esta lectura indexada forma parte de la misma transacción que el
+      // insert. Convex reintenta una de dos mutations concurrentes que hayan
+      // leído el mismo rango; al reintentar encuentra la fila ya creada.
+      const existingRequest = await ctx.db
+        .query("relationshipProfiles")
+        .withIndex("by_user_creation_request_key", (q: any) =>
+          q.eq("userId", user._id).eq("creationRequestKey", creationRequestKey),
+        )
+        .first();
+      if (existingRequest) {
+        if (!relationshipProfileMatchesNormalizedInput(existingRequest, normalized)) {
+          throw new Error("RELATIONSHIP_REQUEST_KEY_CONFLICT");
+        }
+        return toPublicProfile(existingRequest);
+      }
+    }
+    if (enforcePlan) {
+      // El MISMO cupo y el MISMO error que `addPerson` en la web (CORE-214),
+      // comprobado en la transacción del insert: dos altas en paralelo no lo
+      // pasan las dos. Va DESPUÉS de la idempotencia —un reintento de un alta
+      // ya confirmada devuelve su fila, no un rechazo— y sólo en la rama que
+      // crea: editar a alguien ya guardado no cuenta contra el cupo.
+      const saved = await ctx.db
+        .query("relationshipProfiles")
+        .withIndex("by_user", (q: any) => q.eq("userId", user._id))
+        .collect();
+      if (personAccess({ isPro: await isUserPro(ctx, user._id), count: saved.length }).atLimit) {
+        throw new Error("RELATIONSHIP_LIMIT_REACHED");
+      }
+    }
+    const active = await ctx.db
+      .query("relationshipProfiles")
+      .withIndex("by_user_active", (q: any) => q.eq("userId", user._id).eq("isActive", true))
+      .first();
+    profileId = await ctx.db.insert("relationshipProfiles", {
+      userId: user._id,
+      ...values,
+      ...(creationRequestKey ? { creationRequestKey } : {}),
+      isActive: !active,
+      createdAt: now,
+    });
+  }
+
+  const saved = await ctx.db.get(profileId);
+  if (!saved || saved.userId !== user._id) throw new Error("RELATIONSHIP_PROFILE_SAVE_FAILED");
+  return toPublicProfile(saved);
+}
 
 export const savePerson = mutation({
   args: savePersonArgs,
   returns: relationshipProfileValidator,
-  handler: async (ctx, args) => {
-    const user = await requireUser(ctx);
-    const normalized = normalizeRelationshipPersonInput(args);
-    const normalizedIdempotencyKey = normalizeRelationshipIdempotencyKey(args.idempotencyKey);
-    const creationRequestKey = args.profileId ? null : normalizedIdempotencyKey;
-    const now = Date.now();
-    const values = {
-      name: normalized.name,
-      // Un cliente 22/23 no conoce este campo: al editar no debe borrar una
-      // elección hecha luego desde un cliente nuevo. Sólo se toca cuando el
-      // argumento vino declarado explícitamente.
-      ...(args.relationshipType !== undefined
-        ? { relationshipType: normalized.relationshipType ?? undefined }
-        : {}),
-      birthDate: normalized.birthDate ?? undefined,
-      birthTime: normalized.birthTime ?? undefined,
-      birthTimePrecision: normalized.birthTimePrecision,
-      birthPlaceLabel: normalized.birthPlaceLabel ?? undefined,
-      placeId: normalized.placeId ?? undefined,
-      placeProvider: normalized.placeProvider ?? undefined,
-      latitude: normalized.latitude ?? undefined,
-      longitude: normalized.longitude ?? undefined,
-      timezone: normalized.timezone ?? undefined,
-      zodiacSign: normalized.zodiacSign ?? undefined,
-      updatedAt: now,
-    };
+  handler: async (ctx, args) => savePersonForPlan(ctx, args, false),
+});
 
-    let profileId = args.profileId;
-    if (profileId) {
-      const profile = await getOwnedProfile(ctx, user._id, profileId);
-      if (!profile) throw new Error("RELATIONSHIP_PROFILE_NOT_FOUND");
-      await ctx.db.patch(profileId, values);
-    } else {
-      if (creationRequestKey) {
-        // Esta lectura indexada forma parte de la misma transacción que el
-        // insert. Convex reintenta una de dos mutations concurrentes que hayan
-        // leído el mismo rango; al reintentar encuentra la fila ya creada.
-        const existingRequest = await ctx.db
-          .query("relationshipProfiles")
-          .withIndex("by_user_creation_request_key", (q: any) =>
-            q.eq("userId", user._id).eq("creationRequestKey", creationRequestKey),
-          )
-          .first();
-        if (existingRequest) {
-          if (!relationshipProfileMatchesNormalizedInput(existingRequest, normalized)) {
-            throw new Error("RELATIONSHIP_REQUEST_KEY_CONFLICT");
-          }
-          return toPublicProfile(existingRequest);
-        }
-      }
-      const active = await ctx.db
-        .query("relationshipProfiles")
-        .withIndex("by_user_active", (q: any) => q.eq("userId", user._id).eq("isActive", true))
-        .first();
-      profileId = await ctx.db.insert("relationshipProfiles", {
-        userId: user._id,
-        ...values,
-        ...(creationRequestKey ? { creationRequestKey } : {}),
-        isActive: !active,
-        createdAt: now,
-      });
-    }
-
-    const saved = await ctx.db.get(profileId);
-    if (!saved || saved.userId !== user._id) throw new Error("RELATIONSHIP_PROFILE_SAVE_FAILED");
-    return toPublicProfile(saved);
-  },
+/**
+ * `relationships.savePerson` con el cupo del plan (CORE-1043). Mismos
+ * argumentos y mismo perfil de vuelta. Crear una persona con el cupo Free lleno
+ * falla con `RELATIONSHIP_LIMIT_REACHED`, el mismo código que `addPerson`;
+ * editar (`profileId`) y reintentar un alta ya confirmada (`idempotencyKey`)
+ * no cuentan contra el cupo.
+ */
+export const savePersonWithAccess = mutation({
+  args: savePersonArgs,
+  returns: relationshipProfileValidator,
+  handler: async (ctx, args) => savePersonForPlan(ctx, args, true),
 });
 
 export const removePerson = mutation({
@@ -1625,6 +1711,21 @@ export const removePerson = mutation({
   },
 });
 
+/** La última comparación persistida de una persona propia, o su fallback honesto. */
+async function comparisonForProfile(
+  ctx: { db: any },
+  user: Doc<"users">,
+  profileId: Id<"relationshipProfiles">,
+): Promise<ComparisonResult> {
+  const profile = await getOwnedProfile(ctx, user._id, profileId);
+  if (!profile) throw new Error("RELATIONSHIP_PROFILE_NOT_FOUND");
+  const state = await buildComparisonState(ctx, user, profile);
+  if (state.cached && (state.cached.validUntil === null || state.cached.validUntil > Date.now())) {
+    return state.cached;
+  }
+  return fallbackForState(state, Date.now());
+}
+
 export const getComparison = query({
   args: { profileId: v.id("relationshipProfiles") },
   returns: relationshipComparisonResultValidator,
@@ -1633,13 +1734,28 @@ export const getComparison = query({
     if (!user) {
       throw new Error("Authentication required");
     }
-    const profile = await getOwnedProfile(ctx, user._id, args.profileId);
-    if (!profile) throw new Error("RELATIONSHIP_PROFILE_NOT_FOUND");
-    const state = await buildComparisonState(ctx, user, profile);
-    if (state.cached && (state.cached.validUntil === null || state.cached.validUntil > Date.now())) {
-      return state.cached;
+    return await comparisonForProfile(ctx, user, args.profileId);
+  },
+});
+
+/**
+ * `relationships.getComparison` con el tope de contactos del plan
+ * (CORE-1043). Devuelve `{ access, hiddenContacts, comparison }`: `comparison`
+ * es el mismo sobre de siempre; en Free sólo lleva la evidencia de los
+ * `FREE_CONTACT_LIMIT` contactos que más pesan y `hiddenContacts` dice cuántos
+ * faltan (`relationshipComparisonForPlan`). Es la regla de
+ * `relationships.synastry` en la web, con sus mismas constantes.
+ */
+export const getComparisonWithAccess = query({
+  args: { profileId: v.id("relationshipProfiles") },
+  returns: relationshipComparisonWithAccessValidator,
+  handler: async (ctx, args): Promise<RelationshipComparisonWithAccess> => {
+    const user = await findCurrentUser(ctx);
+    if (!user) {
+      throw new Error("Authentication required");
     }
-    return fallbackForState(state, Date.now());
+    const comparison = await comparisonForProfile(ctx, user, args.profileId);
+    return relationshipComparisonForPlan(comparison, await isUserPro(ctx, user._id));
   },
 });
 
@@ -1719,158 +1835,183 @@ export const persistComparisonRefresh = internalMutation({
   },
 });
 
+async function refreshComparisonForProfile(
+  ctx: Pick<ActionCtx, "auth" | "runQuery" | "runMutation">,
+  args: { profileId: Id<"relationshipProfiles"> },
+): Promise<ComparisonResult> {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) throw new Error("Authentication required");
+  const state = await ctx.runQuery(internal.relationships.getComparisonRefreshState, {
+    tokenIdentifier: identity.tokenIdentifier,
+    profileId: args.profileId,
+  });
+  const observedAt = Date.now();
+  let result: ComparisonResult;
+
+  if (state.requestedLevel === "sign_to_sign") {
+    result = fallbackForState(state, observedAt);
+  } else if (!state.ownBirthProfile?.birthDate) {
+    result = fallbackForState(state, observedAt);
+  } else {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), COMPARISON_PROVIDER_TIMEOUT_MS);
+    try {
+      const ownExactCivilResolution = hasExactBirthInputs(state.ownBirthProfile)
+        ? resolveZonedCivilTime({
+            localDate: state.ownBirthProfile!.birthDate!,
+            localTime: state.ownBirthProfile!.birthTime!,
+            timezone: state.ownBirthProfile!.timezone!,
+          })
+        : null;
+      const ownExactCivilLimitation =
+        ownExactCivilResolution && ownExactCivilResolution.status !== "exact"
+          ? relationshipCivilTimeLimitation(ownExactCivilResolution, "own_birth")
+          : null;
+      const ownCanUseExact =
+        hasExactBirthInputs(state.ownBirthProfile) && !ownExactCivilLimitation;
+      const ownPrimaryAttempt = await attemptRelationshipChart(() =>
+        ownCanUseExact
+          ? exactChartForProfile(state.ownBirthProfile!, controller.signal, {
+              legacyStructure: state.ownLegacyStructure,
+              fetchLegacyStructure: false,
+              context: "own_birth",
+            })
+          : dateChartForProfile(state.ownBirthProfile!, controller.signal),
+      );
+      let ownCalculated = ownPrimaryAttempt.calculation;
+      const ownExactCalculationUnavailable = ownCanUseExact && !ownCalculated;
+      if (!ownCalculated && ownCanUseExact) {
+        const ownDateAttempt = await attemptRelationshipChart(() =>
+          dateChartForProfile(state.ownBirthProfile!, controller.signal),
+        );
+        ownCalculated = ownDateAttempt.calculation;
+      }
+      const exactRequested = state.requestedLevel === "chart_to_chart";
+      const primaryAttempt = await attemptRelationshipChart(() =>
+        exactRequested
+          ? exactChartForProfile(state.profile, controller.signal, {
+              fetchLegacyStructure: true,
+              context: "other_birth",
+            })
+          : dateChartForProfile(state.profile, controller.signal),
+      );
+      let calculated = primaryAttempt.calculation;
+      const calculationLimitations = primaryAttempt.civilTimeLimitation
+        ? [primaryAttempt.civilTimeLimitation]
+        : [];
+      const exactCalculationUnavailable =
+        exactRequested && !calculated && !primaryAttempt.civilTimeUnresolved;
+      if (!calculated && exactRequested) {
+        const dateAttempt = await attemptRelationshipChart(() =>
+          dateChartForProfile(state.profile, controller.signal),
+        );
+        calculated = dateAttempt.calculation;
+        if (dateAttempt.civilTimeLimitation) {
+          calculationLimitations.push(dateAttempt.civilTimeLimitation);
+        }
+      }
+      const civilTimeLimitations = Array.from(
+        new Set(
+          [
+            ...calculationLimitations,
+            ownExactCivilLimitation,
+            ownPrimaryAttempt.civilTimeLimitation,
+          ].filter((limitation): limitation is string => Boolean(limitation)),
+        ),
+      );
+      const exactCivilTimeUnresolved =
+        primaryAttempt.civilTimeUnresolved ||
+        Boolean(ownExactCivilLimitation) ||
+        ownPrimaryAttempt.civilTimeUnresolved;
+      if (!calculated || !ownCalculated) {
+        result = staleOrFallbackForState(state, observedAt);
+        if (civilTimeLimitations.length > 0) {
+          result = {
+            ...result,
+            limitations: Array.from(
+              new Set([...result.limitations, ...civilTimeLimitations]),
+            ),
+          };
+        }
+      } else {
+        const versions = Array.from(
+          new Set(
+            [ownCalculated?.providerVersion, calculated.providerVersion].filter(
+              (version): version is string => Boolean(version),
+            ),
+          ),
+        );
+        const extraLimitations = [
+          ...(calculated.limitation ? [calculated.limitation] : []),
+          ...(ownCalculated.limitation ? [ownCalculated.limitation] : []),
+          ...civilTimeLimitations,
+          ...(exactCalculationUnavailable && calculated
+            ? ["No se pudo completar el cálculo con la hora cargada de la otra persona. Se muestra la comparación por fecha, sin casas ni Ascendentes."]
+            : []),
+          ...(ownExactCalculationUnavailable && ownCalculated
+            ? ["No se pudo completar tu cálculo con la hora cargada. Se usa toda tu fecha y se retiran casas y Ascendentes."]
+            : []),
+        ];
+        const exactHousesMissing =
+          exactRequested && (!calculated.hasExactHouses || !ownCalculated.hasExactHouses);
+        result = buildRelationshipComparisonResult({
+          inputHash: state.inputHash,
+          requestedLevel: state.requestedLevel,
+          personA: ownCalculated.personB,
+          personB: calculated.personB,
+          relationshipType: state.profile.relationshipType,
+          observedAt,
+          providerVersion: versions.length > 0 ? versions.join("+") : undefined,
+          providerUnavailable: false,
+          exactCivilTimeUnresolved,
+          extraMissingInputs: [
+            ...(exactRequested && !hasExactBirthInputs(state.ownBirthProfile)
+              ? ["exact_birth_time_and_place"]
+              : []),
+            ...(exactHousesMissing ? ["verified_house_geometry"] : []),
+          ],
+          extraLimitations,
+        });
+      }
+    } catch {
+      result = staleOrFallbackForState(state, observedAt);
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  return await ctx.runMutation(internal.relationships.persistComparisonRefresh, {
+    tokenIdentifier: identity.tokenIdentifier,
+    profileId: args.profileId,
+    expectedInputHash: state.inputHash,
+    requestedLevel: state.requestedLevel,
+    result,
+  });
+}
+
 export const refreshComparison = action({
   args: { profileId: v.id("relationshipProfiles") },
   returns: relationshipComparisonResultValidator,
-  handler: async (ctx, args): Promise<ComparisonResult> => {
+  handler: async (ctx, args): Promise<ComparisonResult> => refreshComparisonForProfile(ctx, args),
+});
+
+/**
+ * `relationships.refreshComparison` con el tope de contactos del plan
+ * (CORE-1043). El recálculo y lo que se persiste son los mismos —la
+ * comparación guardada es la completa, así que pasar a Plus no exige
+ * recalcular—; lo que cambia es lo que la action DEVUELVE: el mismo
+ * `{ access, hiddenContacts, comparison }` de `getComparisonWithAccess`.
+ */
+export const refreshComparisonWithAccess = action({
+  args: { profileId: v.id("relationshipProfiles") },
+  returns: relationshipComparisonWithAccessValidator,
+  handler: async (ctx, args): Promise<RelationshipComparisonWithAccess> => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Authentication required");
-    const state = await ctx.runQuery(internal.relationships.getComparisonRefreshState, {
+    const cupo: { isPro: boolean } = await ctx.runQuery(internalApi.relationships.personQuota, {
       tokenIdentifier: identity.tokenIdentifier,
-      profileId: args.profileId,
     });
-    const observedAt = Date.now();
-    let result: ComparisonResult;
-
-    if (state.requestedLevel === "sign_to_sign") {
-      result = fallbackForState(state, observedAt);
-    } else if (!state.ownBirthProfile?.birthDate) {
-      result = fallbackForState(state, observedAt);
-    } else {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), COMPARISON_PROVIDER_TIMEOUT_MS);
-      try {
-        const ownExactCivilResolution = hasExactBirthInputs(state.ownBirthProfile)
-          ? resolveZonedCivilTime({
-              localDate: state.ownBirthProfile!.birthDate!,
-              localTime: state.ownBirthProfile!.birthTime!,
-              timezone: state.ownBirthProfile!.timezone!,
-            })
-          : null;
-        const ownExactCivilLimitation =
-          ownExactCivilResolution && ownExactCivilResolution.status !== "exact"
-            ? relationshipCivilTimeLimitation(ownExactCivilResolution, "own_birth")
-            : null;
-        const ownCanUseExact =
-          hasExactBirthInputs(state.ownBirthProfile) && !ownExactCivilLimitation;
-        const ownPrimaryAttempt = await attemptRelationshipChart(() =>
-          ownCanUseExact
-            ? exactChartForProfile(state.ownBirthProfile!, controller.signal, {
-                legacyStructure: state.ownLegacyStructure,
-                fetchLegacyStructure: false,
-                context: "own_birth",
-              })
-            : dateChartForProfile(state.ownBirthProfile!, controller.signal),
-        );
-        let ownCalculated = ownPrimaryAttempt.calculation;
-        const ownExactCalculationUnavailable = ownCanUseExact && !ownCalculated;
-        if (!ownCalculated && ownCanUseExact) {
-          const ownDateAttempt = await attemptRelationshipChart(() =>
-            dateChartForProfile(state.ownBirthProfile!, controller.signal),
-          );
-          ownCalculated = ownDateAttempt.calculation;
-        }
-        const exactRequested = state.requestedLevel === "chart_to_chart";
-        const primaryAttempt = await attemptRelationshipChart(() =>
-          exactRequested
-            ? exactChartForProfile(state.profile, controller.signal, {
-                fetchLegacyStructure: true,
-                context: "other_birth",
-              })
-            : dateChartForProfile(state.profile, controller.signal),
-        );
-        let calculated = primaryAttempt.calculation;
-        const calculationLimitations = primaryAttempt.civilTimeLimitation
-          ? [primaryAttempt.civilTimeLimitation]
-          : [];
-        const exactCalculationUnavailable =
-          exactRequested && !calculated && !primaryAttempt.civilTimeUnresolved;
-        if (!calculated && exactRequested) {
-          const dateAttempt = await attemptRelationshipChart(() =>
-            dateChartForProfile(state.profile, controller.signal),
-          );
-          calculated = dateAttempt.calculation;
-          if (dateAttempt.civilTimeLimitation) {
-            calculationLimitations.push(dateAttempt.civilTimeLimitation);
-          }
-        }
-        const civilTimeLimitations = Array.from(
-          new Set(
-            [
-              ...calculationLimitations,
-              ownExactCivilLimitation,
-              ownPrimaryAttempt.civilTimeLimitation,
-            ].filter((limitation): limitation is string => Boolean(limitation)),
-          ),
-        );
-        const exactCivilTimeUnresolved =
-          primaryAttempt.civilTimeUnresolved ||
-          Boolean(ownExactCivilLimitation) ||
-          ownPrimaryAttempt.civilTimeUnresolved;
-        if (!calculated || !ownCalculated) {
-          result = staleOrFallbackForState(state, observedAt);
-          if (civilTimeLimitations.length > 0) {
-            result = {
-              ...result,
-              limitations: Array.from(
-                new Set([...result.limitations, ...civilTimeLimitations]),
-              ),
-            };
-          }
-        } else {
-          const versions = Array.from(
-            new Set(
-              [ownCalculated?.providerVersion, calculated.providerVersion].filter(
-                (version): version is string => Boolean(version),
-              ),
-            ),
-          );
-          const extraLimitations = [
-            ...(calculated.limitation ? [calculated.limitation] : []),
-            ...(ownCalculated.limitation ? [ownCalculated.limitation] : []),
-            ...civilTimeLimitations,
-            ...(exactCalculationUnavailable && calculated
-              ? ["No se pudo completar el cálculo con la hora cargada de la otra persona. Se muestra la comparación por fecha, sin casas ni Ascendentes."]
-              : []),
-            ...(ownExactCalculationUnavailable && ownCalculated
-              ? ["No se pudo completar tu cálculo con la hora cargada. Se usa toda tu fecha y se retiran casas y Ascendentes."]
-              : []),
-          ];
-          const exactHousesMissing =
-            exactRequested && (!calculated.hasExactHouses || !ownCalculated.hasExactHouses);
-          result = buildRelationshipComparisonResult({
-            inputHash: state.inputHash,
-            requestedLevel: state.requestedLevel,
-            personA: ownCalculated.personB,
-            personB: calculated.personB,
-            relationshipType: state.profile.relationshipType,
-            observedAt,
-            providerVersion: versions.length > 0 ? versions.join("+") : undefined,
-            providerUnavailable: false,
-            exactCivilTimeUnresolved,
-            extraMissingInputs: [
-              ...(exactRequested && !hasExactBirthInputs(state.ownBirthProfile)
-                ? ["exact_birth_time_and_place"]
-                : []),
-              ...(exactHousesMissing ? ["verified_house_geometry"] : []),
-            ],
-            extraLimitations,
-          });
-        }
-      } catch {
-        result = staleOrFallbackForState(state, observedAt);
-      } finally {
-        clearTimeout(timeout);
-      }
-    }
-
-    return await ctx.runMutation(internal.relationships.persistComparisonRefresh, {
-      tokenIdentifier: identity.tokenIdentifier,
-      profileId: args.profileId,
-      expectedInputHash: state.inputHash,
-      requestedLevel: state.requestedLevel,
-      result,
-    });
+    return relationshipComparisonForPlan(await refreshComparisonForProfile(ctx, args), cupo.isPro);
   },
 });
 
