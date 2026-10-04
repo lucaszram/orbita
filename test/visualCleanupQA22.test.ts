@@ -224,12 +224,10 @@ describe("QA22-006 · el plan del Perfil nativo habla V4.9.2", () => {
     assert.match(restore, /accessibilityHint="/);
     assert.match(restore, /accessibilityState=\{\{\s*disabled\s*\}\}/);
     assert.match(restore, /disabled\s*\?\s*styles\.secondaryTextOff\s*:\s*styles\.secondaryText/);
-    // Y las salidas de GESTIONAR también: ocupadas o con el comercio apagado
-    // quedan bloqueadas en vez de tirar.
+    // Y la salida de GESTIONAR también: ocupada queda bloqueada en vez de tirar.
     assert.match(MANAGE_ACTIVA, /disabled=\{busy\}/);
-    assert.match(MANAGE_ACTIVA, /disabled=\{busy\s*\|\|\s*commerceEnabled !== true\}/);
     assert.match(MANAGE_ACTIVA, /accessibilityHint="Abre la gestión de tu suscripción en la tienda"/);
-    assert.match(MANAGE_ACTIVA, /accessibilityHint="Abre el portal de facturación web"/);
+    assert.doesNotMatch(MANAGE_ACTIVA, /portal de facturación web/);
   });
 
   it("la lógica de dueño, marcador y reconciliación sigue intacta", () => {

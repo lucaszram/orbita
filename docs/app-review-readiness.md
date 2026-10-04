@@ -22,7 +22,7 @@ mismo binario en TestFlight; aprobar la review no debe publicar automáticamente
   `d6a2b021077536a358e9908d886c5dec41701caf` y válido en TestFlight.
 - iPhone-only (`supportsTablet: false`), orientación vertical e ícono configurado.
 - `ITSAppUsesNonExemptEncryption: false` configurado.
-- EAS `production` usa environment/channel de producción y tiene credenciales de
+- EAS `production` usa el environment de producción, sin canal de EAS Update (el binario no incluye `expo-updates`), y tiene credenciales de
   App Store Connect configuradas.
 - La app requiere cuenta. No existe Home invitada ni “seguir sin cuenta”.
 - Primera versión gratuita: no debe mostrar Plus, precios, compras ni suscripciones.

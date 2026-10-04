@@ -609,9 +609,9 @@ describe("Perfil — plan, gestión y restauración por el canal correcto", () =
     // compra de Apple viva cuando Stripe ganaba el rango, y dejaba sin ninguna
     // salida al caso `stub` + RevenueCat.
     assert.match(MANAGE_NATIVE, /presentCustomerCenter\(\)/);
-    assert.match(MANAGE_NATIVE, /createPortal\(\{\}\)/);
+    assert.doesNotMatch(MANAGE_NATIVE, /createPortal|getWebOffer/, "la app no abre el portal web");
     assert.match(MANAGE_NATIVE, /\{management\.showStoreCenter \?/);
-    assert.match(MANAGE_NATIVE, /\{management\.showStripePortal \?/);
+    assert.match(MANAGE_NATIVE, /management\.showStripePortal\s*\? MENSAJE_SUSCRIPCION_WEB/);
     assert.doesNotMatch(MANAGE_NATIVE, /if \(view === "stripe"\)/);
     assert.doesNotMatch(MANAGE_NATIVE, /if \(view === "revenuecat" \|\| view === "lifetime"\)/);
   });
@@ -624,7 +624,7 @@ describe("Perfil — plan, gestión y restauración por el canal correcto", () =
     assert.match(MANAGE_NATIVE, /createOwnerGates\(\)/);
     assert.match(MANAGE_NATIVE, /const gate = gates\.for\(clerkOwner\)/);
     const acciones = MANAGE_NATIVE.match(/runExclusive\(gate,/g) ?? [];
-    assert.equal(acciones.length, 3, "portal, Customer Center y restaurar comparten UN candado");
+    assert.equal(acciones.length, 2, "Customer Center y restaurar comparten UN candado");
     assert.equal(
       /if \(state === "(opening|restoring)"\) return;/.test(MANAGE_NATIVE),
       false,
@@ -685,10 +685,7 @@ describe("Perfil — plan, gestión y restauración por el canal correcto", () =
     );
   });
 
-  it("REPRO: el portal de Stripe NO depende de la identidad de RevenueCat", () => {
-    // Atado a `revenueCat.identifiedUserId`, una suscripción de Stripe viva se
-    // quedaba sin forma de cancelarse en cuanto el SDK estaba `unavailable`.
-    //
+  it("el dueño del bloque es el de Clerk y las acciones de tienda exigen la identidad de RevenueCat", () => {
     // La cuenta de Órbita ya no se vuelve a derivar acá: sale del mismo provider
     // que publica el plan, así que el dueño y el entitlement que se le atribuye
     // no pueden desalinearse ni por un render.
@@ -710,17 +707,9 @@ describe("Perfil — plan, gestión y restauración por el canal correcto", () =
     );
     assert.match(MANAGE_NATIVE, /const storeOwner = revenueCat\.identifiedUserId;/);
 
-    const portal = MANAGE_NATIVE.indexOf("const openStripePortal =");
-    const cuerpoPortal = MANAGE_NATIVE.slice(portal, MANAGE_NATIVE.indexOf("const openCustomerCenter =", portal));
-    assert.match(cuerpoPortal, /const dueño = clerkOwner;/);
-    assert.equal(
-      /storeOwner|revenueCat\./.test(cuerpoPortal),
-      false,
-      "el portal de Stripe no puede consultar la tienda"
-    );
-    // Y revalida el dueño de Clerk DOS veces: antes de pedir la URL y antes de
-    // abrirla. La URL de A nunca se reusa para B.
-    assert.equal((cuerpoPortal.match(/ownerRef\.current !== dueño/g) ?? []).length, 2);
+    // La suscripción web no se abre desde la app: no existe ninguna acción de
+    // portal que pueda atarse a una identidad u otra.
+    assert.doesNotMatch(MANAGE_NATIVE, /openStripePortal/);
 
     // Las acciones de tienda sí exigen la identidad de RevenueCat alineada.
     for (const nombre of ["const openCustomerCenter =", "const restore ="]) {

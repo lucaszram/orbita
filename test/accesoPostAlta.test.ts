@@ -347,14 +347,15 @@ test("una cuenta Plus conserva la gestión de suscripción y el camino de soport
     PLAN_BLOCK_WEB.indexOf('if (activacion === "activar")') <
       PLAN_BLOCK_WEB.indexOf('if (decision === "oculto") return null;')
   );
-  // Nativo: cada proveedor por su canal. Una suscripción de Stripe vista desde
-  // el teléfono se sigue gestionando en su portal, no en la tienda. La salida ya
-  // no se elige por el ganador de rango (`view`) sino por el FLAG de cada
-  // proveedor: con dos cobros vivos se muestran las dos.
+  // Nativo: la app sólo gestiona la compra de la tienda. Una suscripción de
+  // Stripe vista desde el teléfono se sigue gestionando en la web: la app dice
+  // por dónde, sin abrir el portal ni consultar el comercio web. La salida no se
+  // elige por el ganador de rango (`view`) sino por el FLAG de cada proveedor.
   assert.match(PLAN_BLOCK_NATIVE, /management\.showStoreCenter/);
   assert.match(PLAN_BLOCK_NATIVE, /presentCustomerCenter\(\)/);
   assert.match(PLAN_BLOCK_NATIVE, /management\.showStripePortal/);
-  assert.match(PLAN_BLOCK_NATIVE, /createPortal\(\{\}\)/);
+  assert.match(PLAN_BLOCK_NATIVE, /MENSAJE_SUSCRIPCION_WEB/);
+  assert.doesNotMatch(PLAN_BLOCK_NATIVE, /createPortal|getWebOffer/);
   // Y una salida que la web no tiene: restaurar una compra YA hecha. Va en su
   // propio grupo justamente porque no contrata nada; pegada al CTA comercial,
   // la confusión entre las dos terminaba en un segundo cargo.

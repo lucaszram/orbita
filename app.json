@@ -21,7 +21,7 @@
       "supportsTablet": false,
       "usesAppleSignIn": true,
       "bundleIdentifier": "com.lucasssram.orbita",
-      "buildNumber": "40",
+      "buildNumber": "41",
       "backgroundColor": "#0A0B0E",
       "splash": {
         "backgroundColor": "#0A0B0E",
@@ -78,12 +78,6 @@
       "eas": {
         "projectId": "9e91bb5e-e69e-489e-818d-0e377f397147"
       }
-    },
-    "runtimeVersion": {
-      "policy": "fingerprint"
-    },
-    "updates": {
-      "url": "https://u.expo.dev/9e91bb5e-e69e-489e-818d-0e377f397147"
     }
   }
 }

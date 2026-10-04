@@ -8,7 +8,6 @@
       "developmentClient": true,
       "distribution": "internal",
       "environment": "development",
-      "channel": "development",
       "ios": {
         "simulator": false
       },
@@ -30,11 +29,9 @@
       },
       "android": {
         "buildType": "apk"
-      },
-      "channel": "preview"
+      }
     },
     "production": {
-      "channel": "production",
       "environment": "production",
       "autoIncrement": false
     }
