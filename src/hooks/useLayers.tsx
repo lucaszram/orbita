@@ -23,7 +23,12 @@ import { sessionPhase, type SessionPhase } from "@/domain/screenPhase";
 import { sessionPhaseUnderConfidence } from "@/domain/sessionResilience";
 import { useLiveApp } from "@/hooks/useLiveApp";
 import { useSessionResilience } from "@/hooks/useSessionResilience";
-import { layersApi, type LayerBundle, type NatalBaseBundle } from "@/services/layersApi";
+import {
+  layersApi,
+  type LayerAccess,
+  type LayerBundle,
+  type NatalBaseBundle
+} from "@/services/layersApi";
 import { backendConfig } from "@/services/backendProviders";
 
 /**
@@ -31,7 +36,7 @@ import { backendConfig } from "@/services/backendProviders";
  *
  * Por qué el aparato y no la fecha canónica de `daily.getTodayContext`: las
  * capas V4.9.2 describen lo que está pasando ahora donde está la persona, y
- * `layers.refreshForDate` valida que `localDate` sea el día que el servidor ve
+ * `layers.refreshForDateWithAccess` valida que `localDate` sea el día que el servidor ve
  * en ESA zona. Mandar la zona natal de alguien que viajó haría fallar la
  * acción; mandar la fecha del aparato con otra zona, también.
  *
@@ -42,12 +47,24 @@ import { backendConfig } from "@/services/backendProviders";
  * recálculo falló, y abrir un detalle disparaba una acción más.
  *
  * Ciclo de vida:
- * - al montar y cada vez que cambia el par (fecha, zona) → `refreshForDate`;
+ * - al montar y cada vez que cambia el par (fecha, zona) →
+ *   `refreshForDateWithAccess`;
  * - al volver la app al frente → se vuelve a mirar el reloj y se recalcula;
  * - cada minuto → se mira el reloj: detecta el cruce de medianoche (sobrevive a
  *   suspensiones) y el cambio de hora civil, que acota la caché a una hora;
- * - la lectura es `getForDate`, que es REACTIVA: cuando la acción persiste,
- *   la pantalla se actualiza sola.
+ * - la lectura es `getForDateWithAccess`, que es REACTIVA: cuando la acción
+ *   persiste —o cuando cambia el plan de la cuenta—, la pantalla se actualiza
+ *   sola.
+ *
+ * ## El plan viaja con el sobre (CORE-1043)
+ *
+ * Las dos funciones son las variantes `…WithAccess`: el servidor corta el sobre
+ * según el plan y dice, en la misma respuesta, qué secciones abrió (`access`).
+ * El ciclo NO espera al entitlement para pedirlo ni cambia con el plan —Hoy está
+ * abierto para cualquier cuenta y necesita el cielo del día igual—; lo único
+ * nuevo es que publica `access` al lado de `bundle`, y que las pantallas deciden
+ * su muro con ESO. Como llegan juntos, una cuenta Plus nunca ve un muro mientras
+ * carga y una Free nunca ve un sobre cerrado pintado como "faltan datos".
  *
  * Si la acción falla, la query sigue devolviendo el último sobre persistido y
  * la UI lo dice (`refreshFailed`): nunca se pinta como si fuera de ahora.
@@ -99,6 +116,14 @@ export type LayersState = {
   phase: LayersPhase;
   bundle: LayerBundle | null;
   /**
+   * Qué secciones abre el plan de la cuenta, tal como lo dijo el servidor al
+   * armar ESTE sobre: `transitos` y `momento`, `open` o `locked`. `null` siempre
+   * que `bundle` es `null` —la lectura viaja, no hay sesión, no hay cuenta con
+   * datos—, y ninguno de esos casos es un muro: se lee con
+   * `layerSectionAccess`, que ahí contesta `loading`.
+   */
+  access: LayerAccess | null;
+  /**
    * El sobre del día civil ANTERIOR, tal como quedó guardado. Sirve para una
    * sola cosa: decir cuánto cambió un dato desde ayer (`↓ AYER 1°10′`). Es una
    * lectura pura —nunca dispara un recálculo del pasado— y es `null` cuando ese
@@ -140,6 +165,7 @@ const TICK_MS = 60_000;
 const OFFLINE: LayersState = {
   phase: "invitado",
   bundle: null,
+  access: null,
   yesterday: null,
   localDate: "",
   timezone: "",
@@ -232,7 +258,7 @@ function LayersProviderInner({ children }: { children: ReactNode }) {
     return () => clearInterval(id);
   }, [syncClock]);
 
-  const refreshForDate = useAction(layersApi.refreshForDate);
+  const refreshForDate = useAction(layersApi.refreshForDateWithAccess);
   // La acción viaja por un ref para que la cola sobreviva a los cambios de
   // identidad del binding: la cola se crea UNA vez y nunca pierde lo que tenía
   // en vuelo.
@@ -252,6 +278,10 @@ function LayersProviderInner({ children }: { children: ReactNode }) {
   if (!cicloRef.current) {
     cicloRef.current = createRefreshCycle(
       createRefreshQueue({
+        // La action devuelve `{ access, bundle }`. La cola no lo abre: su
+        // detector del sobre `stale` sin cielo recorre el resultado por
+        // estructura, y un sobre cerrado por plan llega `unavailable`, que no
+        // se reintenta.
         run: (request: RefreshRequest) => accion.current(request),
         alive: () => mounted.current,
         onBusyChange: (busy) => setRefreshing(busy),
@@ -342,22 +372,27 @@ function LayersProviderInner({ children }: { children: ReactNode }) {
     // NUEVA, que es la que manda; el dueño de esos flags es la cola.
   }, [accountKey, clock.localDate, clock.timezone, clock.civilHour, intentoEspejo, ciclo]);
 
-  const bundle = useQuery(
-    layersApi.getForDate,
+  const delDia = useQuery(
+    layersApi.getForDateWithAccess,
     accountKey && clock.localDate && clock.timezone
       ? { localDate: clock.localDate, timezone: clock.timezone }
       : "skip"
   );
+  // `undefined` (viaja) y `null` (sin cuenta con datos) se conservan tal cual:
+  // la fase los distingue. El sobre y su acceso salen de la MISMA respuesta.
+  const bundle = delDia ? delDia.bundle : delDia;
+  const access = delDia ? delDia.access : null;
 
-  // El día anterior, sólo para comparar. `getForDate` es una query: leer un día
+  // El día anterior, sólo para comparar. `getForDateWithAccess` es una query: leer un día
   // pasado no recalcula nada ni pega al proveedor, devuelve lo que quedó
   // guardado. Sin snapshot de ayer, el sobre viene con las capas en
   // `unavailable` y la UI simplemente no dice el cambio.
   const ayer = previousCivilDate(clock.localDate);
-  const yesterday = useQuery(
-    layersApi.getForDate,
+  const deAyer = useQuery(
+    layersApi.getForDateWithAccess,
     accountKey && ayer && clock.timezone ? { localDate: ayer, timezone: clock.timezone } : "skip"
   );
+  const yesterday = deAyer ? deAyer.bundle : null;
 
   // Tocar reintentar diez veces seguidas no larga diez acciones: sólo mueve la
   // clave, y la cola ejecuta una sola vez lo último que quedó pendiente.
@@ -420,7 +455,8 @@ function LayersProviderInner({ children }: { children: ReactNode }) {
     () => ({
       phase,
       bundle: bundle ?? null,
-      yesterday: yesterday ?? null,
+      access,
+      yesterday,
       localDate: clock.localDate,
       timezone: clock.timezone,
       nowMs: clock.nowMs,
@@ -430,7 +466,18 @@ function LayersProviderInner({ children }: { children: ReactNode }) {
       refreshAndWait,
       retrySession
     }),
-    [phase, bundle, yesterday, clock, refreshing, refreshFailed, refresh, refreshAndWait, retrySession]
+    [
+      phase,
+      bundle,
+      access,
+      yesterday,
+      clock,
+      refreshing,
+      refreshFailed,
+      refresh,
+      refreshAndWait,
+      retrySession
+    ]
   );
 
   return <LayersContext.Provider value={value}>{children}</LayersContext.Provider>;

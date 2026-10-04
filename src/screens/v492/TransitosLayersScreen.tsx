@@ -5,6 +5,7 @@ import { MoonDial, TemporalMandalaDial } from "@/components/v492/Dials";
 import { MANDALA_SIZE } from "@/components/v492/mandalaGeometry";
 import { Legend, LinkRow, MetaRow, SectionHeader } from "@/components/v492/Layout";
 import { MeterBar } from "@/components/v492/Meter";
+import { PlanWall } from "@/components/v492/PlanLock";
 import { LayerScreen, Section } from "@/components/v492/Screen";
 import { Segmented } from "@/components/v492/Segmented";
 import { FreshnessNotice } from "@/components/v492/Status";
@@ -33,6 +34,13 @@ import {
 } from "@/domain/layers";
 import { ACTION_HEADING, seasonMeaning, yearMeaning } from "@/domain/layerMeaning";
 import { MANDALA_TRACE, SEASON_TRACE, YEAR_TRACE } from "@/domain/layerReading";
+import {
+  layerSectionAccess,
+  MOMENTO_LOCKED_INTRO,
+  PLAN_WALLS,
+  PLUS_REQUIRED_BADGE,
+  TRANSITOS_LOCKED_INTRO
+} from "@/domain/planAccess";
 import { useLayers } from "@/hooks/useLayers";
 import type {
   AnalysisEnvelope,
@@ -62,6 +70,17 @@ import type {
  * trazabilidad. Reunirlos bajo una sola respuesta de "por qué te muestro esto"
  * haría creer que salen del mismo cálculo: uno puede faltar por hora de
  * nacimiento mientras los otros dos están completos.
+ *
+ * ## Las dos vistas son Plus (CORE-1043)
+ *
+ * Con Free, cada vista muestra su muro —el texto de la web— con salida a
+ * `/paywall`, y nada más: ni la lista, ni los módulos, ni sus acordeones. Lo
+ * decide el `access` que viajó con el sobre del día, no si el sobre trae dato:
+ * `Ahora` SÍ trae tres contactos para Free —son los de Hoy— y `Tu momento` trae
+ * sus tres sobres cerrados, que sin esta puerta se leerían como "falta tu hora
+ * de nacimiento". El selector sigue ahí: las dos vistas existen y cada una dice
+ * qué abre Plus. Mientras el sobre viaja se ve la carga de siempre, así que una
+ * cuenta Plus nunca ve el muro.
  */
 
 export type VistaTransitos = "ahora" | "momento";
@@ -78,8 +97,18 @@ const RUTA_VISTA: Record<VistaTransitos, string> = {
 
 export function TransitosLayersScreen({ mode = "ahora" }: { mode?: VistaTransitos }) {
   const layers = useLayers();
-  const { phase, bundle, yesterday, nowMs, localDate, timezone, refresh, refreshing, refreshFailed } =
-    layers;
+  const {
+    phase,
+    bundle,
+    access,
+    yesterday,
+    nowMs,
+    localDate,
+    timezone,
+    refresh,
+    refreshing,
+    refreshFailed
+  } = layers;
   const irAVista = (vista: VistaTransitos) => {
     if (vista === mode) return;
     router.replace(RUTA_VISTA[vista] as never);
@@ -118,6 +147,26 @@ export function TransitosLayersScreen({ mode = "ahora" }: { mode?: VistaTransito
     return (
       <Shell nowMs={nowMs} timezone={timezone} mode={mode} pills={pills}>
         <EmptyBlock />
+      </Shell>
+    );
+  }
+  // Cerrado por plan. Va ANTES de mirar el dato: para Free `Tu momento` llega
+  // sin él —y las ramas de abajo lo contarían como un faltante— y `Ahora` llega
+  // con los tres contactos de Hoy, que acá se leerían como la lista completa.
+  // Sin "tirar para actualizar": no hay nada de esta vista que recalcular.
+  if (layerSectionAccess(access, mode === "ahora" ? "transitos" : "momento") === "locked") {
+    return (
+      <Shell
+        nowMs={nowMs}
+        timezone={timezone}
+        mode={mode}
+        pills={pills}
+        capas={PLUS_REQUIRED_BADGE}
+        intro={mode === "ahora" ? TRANSITOS_LOCKED_INTRO : MOMENTO_LOCKED_INTRO}
+      >
+        <Section>
+          <PlanWall copy={mode === "ahora" ? PLAN_WALLS.transitos : PLAN_WALLS.momento} />
+        </Section>
       </Shell>
     );
   }

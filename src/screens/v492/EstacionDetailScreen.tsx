@@ -3,6 +3,7 @@ import { MoonDial } from "@/components/v492/Dials";
 import { Legend, MetaRow, SectionHeader } from "@/components/v492/Layout";
 import { MeterBar } from "@/components/v492/Meter";
 import { DataRow } from "@/components/v492/Module";
+import { PlanWall } from "@/components/v492/PlanLock";
 import { DetailLayerScreen, Section } from "@/components/v492/Screen";
 import { FreshnessNotice, LimitationList, MissingBlock, StatusLine } from "@/components/v492/Status";
 import { EmptyBlock, ErrorBlock, GuestBlock, LoadingBlock } from "@/components/v492/States";
@@ -29,6 +30,7 @@ import {
   SEASON_TRACE,
   seasonReading
 } from "@/domain/layerReading";
+import { layerSectionAccess, PLAN_WALLS } from "@/domain/planAccess";
 import { useLayers } from "@/hooks/useLayers";
 import type { AnalysisPrecision, ProgressedLunationData } from "@/services/layersApi";
 
@@ -93,6 +95,19 @@ export function EstacionDetailScreen({
     return (
       <DetailLayerScreen eyebrow={SEASON_DETAIL_EYEBROW} fallbackHref={fallbackHref}>
         <EmptyBlock />
+      </DetailLayerScreen>
+    );
+  }
+  // Tu momento es Plus (CORE-1043). Se decide por el `access` del sobre y ANTES
+  // de leer el dato: para Free este sobre llega cerrado —sin dato y con un
+  // faltante que la pantalla no sabe nombrar—, y dibujarlo sería contarle un
+  // límite de plan como si le faltara un dato de nacimiento.
+  if (layerSectionAccess(layers.access, "momento") === "locked") {
+    return (
+      <DetailLayerScreen eyebrow={SEASON_DETAIL_EYEBROW} fallbackHref={fallbackHref}>
+        <Section>
+          <PlanWall copy={PLAN_WALLS.estacion} />
+        </Section>
       </DetailLayerScreen>
     );
   }

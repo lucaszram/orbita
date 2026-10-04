@@ -304,8 +304,19 @@ test("el detalle pide el ORB-TRN-001 del arcId y sólo usa el ranking para el ad
 test("el hook del arco lee la query reactiva y pide la acción una sola vez por pedido", () => {
   const source = sinComentarios(leer(HOOK));
 
-  assert.match(source, /useQuery\(\s*layersApi\.getTransitArc/, "la lectura es la query tipada");
-  assert.match(source, /useAction\(layersApi\.refreshTransitArc\)/, "el cálculo es la acción tipada");
+  // Las variantes `…WithAccess` (CORE-1043): el servidor decide si el plan abre
+  // el detalle, y la versión sin corte no se enlaza.
+  assert.match(
+    source,
+    /useQuery\(\s*layersApi\.getTransitArcWithAccess\b/,
+    "la lectura es la query tipada"
+  );
+  assert.match(
+    source,
+    /useAction\(layersApi\.refreshTransitArcWithAccess\)/,
+    "el cálculo es la acción tipada"
+  );
+  assert.doesNotMatch(source, /layersApi\.(?:getTransitArc|refreshTransitArc)\b(?!WithAccess)/);
   assert.match(source, /gate\.start\(key\)/, "cada pedido pasa por el coordinador");
   assert.match(
     source,

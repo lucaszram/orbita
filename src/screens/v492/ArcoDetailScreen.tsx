@@ -1,5 +1,6 @@
 import { StyleSheet, View } from "react-native";
 import { ArcTimeline, SectionHeader, StateChip } from "@/components/v492/Layout";
+import { PlanWall } from "@/components/v492/PlanLock";
 import { DetailLayerScreen, Section } from "@/components/v492/Screen";
 import { FreshnessNotice } from "@/components/v492/Status";
 import {
@@ -36,6 +37,7 @@ import {
   type TransitPreview
 } from "@/domain/transitDetail";
 import { canonicalTransitState, contactWorthNaming, summaryWithCanonicalState } from "@/domain/transitState";
+import { layerSectionAccess, PLAN_WALLS } from "@/domain/planAccess";
 import { useLayers } from "@/hooks/useLayers";
 import { useTransitArc } from "@/hooks/useTransitArc";
 import type { AnalysisEnvelope, LayerBundle, TransitArcData } from "@/services/layersApi";
@@ -103,6 +105,14 @@ import type { AnalysisEnvelope, LayerBundle, TransitArcData } from "@/services/l
  * `DURACIÓN REGISTRADA`; con `estimated` o `range` son bordes calculados, la
  * línea va punteada y se dice que acotan una ventana. Ni se llama estimada a una
  * cronología verificada ni al revés.
+ *
+ * **El detalle de arco es Plus (CORE-1043).** Con Free la pantalla entera es el
+ * muro, con salida a `/paywall`: tocar una de las tres filas de Hoy —que Free sí
+ * ve— aterriza acá y lee "esto se abre con Plus", no un error ni un cálculo que
+ * nunca llega. No hay adelanto: el título y la etapa que la fila ya traía son
+ * parte del detalle. Se cierra por el `access` del sobre del día y, por si ése
+ * llegara a decir otra cosa, también por el `locked` de la propia lectura del
+ * arco, que es la última palabra del servidor.
  */
 export function ArcoDetailScreen({
   arcId,
@@ -143,6 +153,9 @@ export function ArcoDetailScreen({
       </DetailLayerScreen>
     );
   }
+  if (layerSectionAccess(layers.access, "transitos") === "locked") {
+    return <ArcoBloqueado fallbackHref={fallbackHref} />;
+  }
 
   return (
     <ArcoResolver
@@ -156,6 +169,17 @@ export function ArcoDetailScreen({
       refreshFailed={layers.refreshFailed}
       onRefreshBundle={layers.refresh}
     />
+  );
+}
+
+/** El muro del detalle: el mismo marco que el detalle, con el cuerpo cerrado. */
+function ArcoBloqueado({ fallbackHref }: { fallbackHref: string }) {
+  return (
+    <DetailLayerScreen eyebrow={TRANSIT_DETAIL_EYEBROW} fallbackHref={fallbackHref}>
+      <Section>
+        <PlanWall copy={PLAN_WALLS.arco} />
+      </Section>
+    </DetailLayerScreen>
   );
 }
 
@@ -205,6 +229,10 @@ function ArcoResolver({
   const enRanking =
     bundle.today.transitRanking.data?.items.find((item) => item.arcId === idAbierto) ?? null;
   const adelanto = enRanking ? transitPreviewFromRanking(enRanking, nowMs, timezone) : null;
+
+  // La lectura del arco contestó `locked`: va antes que cualquier otra rama,
+  // porque sin esto caería en "todavía no hay una carta para leer".
+  if (especifico.locked) return <ArcoBloqueado fallbackHref={fallbackHref} />;
 
   if (esPrincipal) {
     return (

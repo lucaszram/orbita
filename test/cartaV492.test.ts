@@ -141,7 +141,7 @@ test("el hub y la carta completa consumen el read-model canónico mediante el cl
   }
   assert.match(hub, /const natal = bundle\?\.natal/, "tipo lunar y mapa elemental salen del sobre real");
   assert.match(services, /api\.layers\.getNatalBase/);
-  assert.match(services, /api\.layers\.getForDate/);
+  assert.match(services, /api\.layers\.getForDateWithAccess\b/);
   assert.doesNotMatch(`${hub}\n${completa}\n${services}`, /chartMock|natalMock|payloadMock|createFallbackProfile/);
 });
 

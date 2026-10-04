@@ -28,6 +28,7 @@ import {
   topTransits,
   type CumplelunaToday
 } from "@/domain/layers";
+import { layerSectionAccess } from "@/domain/planAccess";
 import { useLayers } from "@/hooks/useLayers";
 import type {
   AnalysisEnvelope,
@@ -60,13 +61,32 @@ import type {
  * pestaña llegan a la misma lista (`/transitos`, vista `Ahora`), y `/hoy/arco`
  * sigue viva para los links que ya existen.
  *
- * Todo sale del sobre real de `layers.getForDate`. Si una capa no tiene datos,
- * el bloque se retira y explica la limitación: no hay valores de maqueta.
+ * Todo sale del sobre real de `layers.getForDateWithAccess`. Si una capa no
+ * tiene datos, el bloque se retira y explica la limitación: no hay valores de
+ * maqueta.
+ *
+ * ## Hoy está abierto para cualquier plan (CORE-1043)
+ *
+ * Esta pantalla NO tiene muro. Con Free el servidor manda la Luna, el cumpleluna
+ * y los tres primeros contactos del ranking —que son justo las tres filas que
+ * se dibujan acá—, y todo se ve igual que con Plus. Las diferencias son dos y
+ * ninguna es un bloqueo de Hoy:
+ *
+ * - la línea `CONTEXTO · TU AÑO DE…` sale de la profección anual, que es de Tu
+ *   momento: para Free no viaja y la línea simplemente no se dibuja;
+ * - las SALIDAS de esta pantalla hacia Tránsitos —tocar una fila, `VER TODOS LOS
+ *   TRÁNSITOS`, `VER TU MOMENTO`— siguen ahí y aterrizan en el muro de esa
+ *   sección, que es donde está escrito qué abre Plus.
+ *
+ * El arco principal (`today.transitArc`) llega cerrado para Free. Hoy no lo
+ * dibuja, pero sí lo contaba entre sus capas y en su aviso de frescura: se saca
+ * de esa cuenta por el `access` del sobre, no por venir sin dato.
  */
 
 export function HoyScreen() {
   const layers = useLayers();
-  const { phase, bundle, yesterday, nowMs, timezone, refresh, refreshing, refreshFailed } = layers;
+  const { phase, bundle, access, yesterday, nowMs, timezone, refresh, refreshing, refreshFailed } =
+    layers;
 
   if (phase === "cargando") {
     return (
@@ -110,6 +130,7 @@ export function HoyScreen() {
   return (
     <HoyContent
       bundle={bundle}
+      arcoCerrado={layerSectionAccess(access, "transitos") === "locked"}
       yesterday={yesterday}
       nowMs={nowMs}
       localDate={layers.localDate}
@@ -156,6 +177,7 @@ function Shell({
 
 function HoyContent({
   bundle,
+  arcoCerrado,
   yesterday,
   nowMs,
   localDate,
@@ -165,6 +187,11 @@ function HoyContent({
   onRefresh
 }: {
   bundle: LayerBundle;
+  /**
+   * El plan no abre Tránsitos, así que el arco principal viajó cerrado. No es
+   * una capa de Hoy que haya fallado: no se cuenta ni se avisa como vieja.
+   */
+  arcoCerrado: boolean;
   yesterday: LayerBundle | null;
   nowMs: number;
   /** Día civil con el que se pidió el sobre: es el "hoy" con el que se compara. */
@@ -191,7 +218,9 @@ function HoyContent({
   // llegar `stale` sin que el recálculo de esta sesión haya fallado —el backend
   // ya lo había marcado—, así que se miran las dos cosas; y de cuándo es el
   // último cálculo decide si alcanza una línea o hace falta el aviso.
-  const sobres = Object.values(bundle.today);
+  const sobres = arcoCerrado
+    ? [transitRanking, moonOnChart, cumpleluna]
+    : Object.values(bundle.today);
   const frescura = envelopesFreshness({
     envelopes: sobres,
     refreshFailed,
