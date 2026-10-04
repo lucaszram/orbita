@@ -112,17 +112,32 @@ test("el cliente de Vínculos deriva argumentos y resultados del API generado", 
   const source = sinComentarios(leer("src/services/relationshipsApi.ts"));
 
   assert.match(source, /import \{ api \} from ["'][^"']*convex\/_generated\/api["']/);
-  for (const method of ["list", "savePerson", "removePerson", "getComparison", "refreshComparison"]) {
+  // CORE-1043: la lista, el alta y la comparación van por las variantes que
+  // aplican la regla Free/Plus en el servidor. Borrar no tiene variante.
+  for (const method of [
+    "listWithAccess",
+    "savePersonWithAccess",
+    "removePerson",
+    "getComparisonWithAccess",
+    "refreshComparisonWithAccess"
+  ]) {
     assert.match(source, new RegExp(`api\\.relationships\\.${method}\\b`), method);
+  }
+  for (const viejo of ["list", "savePerson", "getComparison", "refreshComparison"]) {
+    assert.doesNotMatch(
+      source,
+      new RegExp(`api\\.relationships\\.${viejo}\\b(?!WithAccess)`),
+      `${viejo} sin corte de plan no se enlaza`
+    );
   }
   assert.match(
     source,
-    /FunctionReturnType<\s*typeof api\.relationships\.(?:list|getComparison)\s*>/,
+    /FunctionReturnType<\s*typeof api\.relationships\.(?:listWithAccess|getComparisonWithAccess)\s*>/,
     "los datos de salida deben derivarse del contrato generado"
   );
   assert.match(
     source,
-    /FunctionArgs<\s*typeof api\.relationships\.(?:savePerson|getComparison|refreshComparison)\s*>/,
+    /FunctionArgs<\s*typeof api\.relationships\.(?:savePersonWithAccess|getComparisonWithAccess|refreshComparisonWithAccess)\s*>/,
     "los argumentos públicos deben derivarse del contrato generado"
   );
   assert.doesNotMatch(source, /\banyApi\b|\bFunctionReference\b|\bv\.any\b|\bas any\b/);
@@ -133,8 +148,8 @@ test("la raíz muestra el patrón propio y la lista real de personas guardadas",
 
   assert.match(source, /useLayers\s*\(/);
   assert.match(source, /\.natal\.relationshipPattern\b/);
-  assert.match(source, /relationshipsApi\.list\b/);
-  assert.match(source, /useQuery\s*\(\s*relationshipsApi\.list\s*,\s*\{\s*\}\s*\)/);
+  assert.match(source, /relationshipsApi\.listWithAccess\b/);
+  assert.match(source, /useQuery\s*\(\s*relationshipsApi\.listWithAccess\s*,\s*\{\s*\}\s*\)/);
   assert.match(source, /(?:profile|person|persona)\.name\b/);
   assert.match(source, /(?:profile|person|persona)\.profileId\b/);
   assert.match(source, /TraceAccordion\b/, "ORB-REL-001 debe exponer su trazabilidad");
@@ -149,8 +164,8 @@ test("Conectar ofrece signo, fecha y carta completa sin fabricar precisión", ()
   for (const level of ["sign_to_sign", "date_to_date", "chart_to_chart"]) {
     assert.match(source, new RegExp(`["]${level}["]`), `falta el nivel ${level}`);
   }
-  assert.match(source, /relationshipsApi\.savePerson\b/);
-  assert.match(source, /useMutation\s*\(\s*relationshipsApi\.savePerson\s*\)/);
+  assert.match(source, /relationshipsApi\.savePersonWithAccess\b/);
+  assert.match(source, /useMutation\s*\(\s*relationshipsApi\.savePersonWithAccess\s*\)/);
   assert.match(source, /birthTimePrecision\b/);
   assert.match(source, /(?:searchPlaces|geocod|Photon)/i, "la carta completa debe resolver el lugar real");
   assert.match(source, /(?:placeTimezone|atCoordinates|withResolvedTimezone)/, "la carta completa debe resolver la zona del lugar");
@@ -170,7 +185,7 @@ test("el perfil valida profileId y no monta ningún cálculo (QA23-005)", () => 
   const source = fuenteNativa(RUTA_PERFIL);
 
   assert.match(source, /useLocalSearchParams\s*</);
-  assert.match(source, /relationshipsApi\.list\b/);
+  assert.match(source, /relationshipsApi\.listWithAccess\b/);
   assert.match(source, /\.find\s*\(/, "el id del deep link debe resolverse contra la lista autorizada");
   assert.doesNotMatch(
     source,
@@ -192,12 +207,12 @@ test("la comparación valida profileId y usa la comparación persistida", () => 
   const source = fuenteNativa(RUTA_COMPARACION);
 
   assert.match(source, /useLocalSearchParams\s*</);
-  assert.match(source, /relationshipsApi\.list\b/);
+  assert.match(source, /relationshipsApi\.listWithAccess\b/);
   assert.match(source, /\.find\s*\(/, "el id del deep link debe resolverse contra la lista autorizada");
-  assert.match(source, /relationshipsApi\.getComparison\b/);
-  assert.match(source, /relationshipsApi\.refreshComparison\b/);
-  assert.match(source, /useQuery\s*\(\s*relationshipsApi\.getComparison/);
-  assert.match(source, /useAction\s*\(\s*relationshipsApi\.refreshComparison\s*\)/);
+  assert.match(source, /relationshipsApi\.getComparisonWithAccess\b/);
+  assert.match(source, /relationshipsApi\.refreshComparisonWithAccess\b/);
+  assert.match(source, /useQuery\s*\(\s*relationshipsApi\.getComparisonWithAccess/);
+  assert.match(source, /useAction\s*\(\s*relationshipsApi\.refreshComparisonWithAccess\s*\)/);
   assert.doesNotMatch(
     source,
     /(?:params\.)?profileId\s+as\s+(?:Id<|RelationshipProfile)/,

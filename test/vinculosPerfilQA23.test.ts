@@ -284,8 +284,11 @@ test("nadie arranca la comparación por haber guardado: sólo la comparación ca
 
   // Y la comparación sigue teniendo su recálculo acotado, que es donde
   // corresponde: se llega ahí por una acción explícita.
-  assert.match(resultado, /useQuery\(relationshipsApi\.getComparison, \{ profileId: persona\.profileId \}\)/);
-  assert.match(resultado, /useAction\(relationshipsApi\.refreshComparison\)/);
+  assert.match(
+    resultado,
+    /useQuery\(relationshipsApi\.getComparisonWithAccess, \{\s*profileId: persona\.profileId\s*\}\)/
+  );
+  assert.match(resultado, /useAction\(relationshipsApi\.refreshComparisonWithAccess\)/);
   assert.match(resultado, /if \(pedidoAutomatico\.current === clave\) return;/);
 });
 
@@ -316,7 +319,7 @@ test("con un id ajeno, el perfil no publica NINGÚN dato de esa persona", () => 
 
   // La resolución es la misma conversión autorizada que usan el formulario y la
   // comparación: entra el string de la URL, sale una persona de TU lista.
-  assert.match(live, /useQuery\(relationshipsApi\.list, \{\}\)/);
+  assert.match(live, /useQuery\(relationshipsApi\.listWithAccess, \{\}\)\?\.profiles/);
   assert.match(live, /const persona = findRelationshipProfile\(personas, profileId\)/);
   // Y nunca por conversión de tipos.
   assert.doesNotMatch(source, /profileId\s+as\s+(?:Id<|RelationshipProfile)/);

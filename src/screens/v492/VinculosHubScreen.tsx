@@ -3,6 +3,7 @@ import { StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import { useQuery } from "convex/react";
 import { Card, CardButton, Chip, ChipRow, DataRow, ModuleHeader } from "@/components/v492/Module";
+import { PlanLockBlock } from "@/components/v492/PlanLock";
 import { LayerScreen, Section } from "@/components/v492/Screen";
 import { LimitationList, MissingBlock, StaleNotice, StatusLine } from "@/components/v492/Status";
 import { Touchable } from "@/components/v492/Touchable";
@@ -17,6 +18,7 @@ import { TraceAccordion } from "@/components/v492/Trace";
 import { Body, Label, Mono, Note, Subtitle } from "@/components/v492/typography";
 import { v492 } from "@/components/v492/tokens";
 import { anyStale, hasData, latestObservedAt } from "@/domain/layers";
+import { relationshipAddIntent, relationshipLimitLine } from "@/domain/planAccess";
 import {
   RELATIONSHIP_LEVEL_LABEL,
   RELATIONSHIP_LEVEL_NOTE,
@@ -54,7 +56,7 @@ import { relationshipsApi, type RelationshipProfile } from "@/services/relations
  * existe no se estima ni se deja el hueco: el módulo declara su estado y la
  * lista de límites dice por qué falta.
  *
- * Las personas salen de `relationships.list`, que es la lista autorizada de la
+ * Las personas salen de `relationships.listWithAccess`, que es la lista autorizada de la
  * cuenta. De ahí sale el `profileId` con el que se abre cada perfil: un id nunca
  * se arma en el front.
  *
@@ -140,8 +142,19 @@ function Shell({
 }
 
 /**
- * La lista de personas sólo se pide con sesión confirmada: `relationships.list`
- * necesita la fila `users` creada, y la fase ya la garantizó.
+ * La lista de personas sólo se pide con sesión confirmada:
+ * `relationships.listWithAccess` necesita la fila `users` creada, y la fase ya
+ * la garantizó.
+ *
+ * ## El cupo de personas (CORE-1043)
+ *
+ * La misma respuesta trae las personas y el cupo del plan. Con Free y el cupo
+ * tomado (`access.atLimit`), `AGREGAR UNA PERSONA` deja su lugar al aviso de
+ * Plus con salida a `/paywall`: ofrecer un formulario que el servidor va a
+ * rechazar al guardar es hacerle cargar datos a alguien para nada. Las personas
+ * ya guardadas se siguen viendo, abriendo y editando —todas, aunque sean más
+ * que el cupo—. Mientras la lista viaja no hay ni botón ni aviso: una cuenta
+ * Plus no ve el límite ni un instante.
  */
 function VinculosHubLive({
   pattern,
@@ -156,7 +169,9 @@ function VinculosHubLive({
   refreshFailed: boolean;
   onRefresh: () => void;
 }) {
-  const personas = useQuery(relationshipsApi.list, {});
+  const lista = useQuery(relationshipsApi.listWithAccess, {});
+  const personas = lista?.profiles;
+  const agregar = relationshipAddIntent(lista?.access);
 
   return (
     <Shell meta={metaPersonas(personas)} onRefresh={onRefresh} refreshing={refreshing}>
@@ -184,13 +199,21 @@ function VinculosHubLive({
           intro="Cada persona guardada abre su perfil, y desde ahí, su comparación. Qué se puede comparar depende de los datos que tengas de ella: con el signo alcanza para el estilo general, con la fecha entran las posiciones del día y con hora y lugar exactos, también las casas."
         />
         <PersonasBlock personas={personas} />
-        <View style={styles.cta}>
-          <PrimaryButton
-            label="AGREGAR UNA PERSONA"
-            accessibilityLabel="Agregar una persona a Vínculos"
-            onPress={() => router.push(VINCULOS_FORM_ROUTE as never)}
+        {agregar === "formulario" ? (
+          <View style={styles.cta}>
+            <PrimaryButton
+              label="AGREGAR UNA PERSONA"
+              accessibilityLabel="Agregar una persona a Vínculos"
+              onPress={() => router.push(VINCULOS_FORM_ROUTE as never)}
+            />
+          </View>
+        ) : null}
+        {agregar === "limite" ? (
+          <PlanLockBlock
+            line={relationshipLimitLine(lista?.access.limit)}
+            ctaVoice="Ver Órbita Plus para guardar más personas"
           />
-        </View>
+        ) : null}
 
         <View style={styles.module}>
           <ModuleHeader

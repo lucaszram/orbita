@@ -65,7 +65,7 @@ import { relationshipsApi, type RelationshipProfile } from "@/services/relations
  * ## Tres reglas
  *
  * 1. **El id de la URL no es un id.** Llega como string y sólo vale si aparece en
- *    `relationships.list`, la lista autorizada de la cuenta. Un enlace ajeno o
+ *    `relationships.listWithAccess`, la lista autorizada de la cuenta. Un enlace ajeno o
  *    viejo no muestra NADA de esa persona: ni el nombre, ni el signo, ni la
  *    fecha. Nunca se convierte por conversión de tipos.
  * 2. **Esta pantalla no calcula nada.** No monta `getComparison` ni
@@ -134,7 +134,9 @@ function Shell({ children }: { children: ReactNode }) {
  * ella. En los dos casos la pantalla no publica nada de nadie.
  */
 function VinculosProfileLive({ profileId }: { profileId: string }) {
-  const personas = useQuery(relationshipsApi.list, {});
+  // Sólo las personas: el cupo del plan no cambia nada acá. Un perfil guardado
+  // se abre siempre, aunque la cuenta Free tenga más personas que su cupo.
+  const personas = useQuery(relationshipsApi.listWithAccess, {})?.profiles;
   const persona = findRelationshipProfile(personas, profileId);
   // Qué guardado acaba de terminar, si es que se viene de guardar uno. Es un
   // string de URL y sólo vale si es uno de los dos modos; un parámetro repetido
