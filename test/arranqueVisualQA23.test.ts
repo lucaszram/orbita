@@ -107,7 +107,6 @@ const APP_JSON = JSON.parse(leer("app.json")) as {
     backgroundColor: string;
     splash: { backgroundColor: string; resizeMode: string };
     androidNavigationBar: { barStyle: string; backgroundColor: string };
-    runtimeVersion: { policy: string };
     plugins: unknown[];
     extra: { router: { origin: boolean } };
     ios: {
@@ -296,16 +295,15 @@ test("no queda un solo color de arranque distinto del canónico", () => {
   assert.equal(expo.android.adaptiveIcon.backgroundColor, "#0D0E12");
 });
 
-test("la promoción autorizada conserva 1.0.0 y prepara exactamente el build 40", () => {
-  // Esta tanda toca `app.json`, así que el efecto nativo aparece recién con un
-  // build nuevo — y la política de runtime es `fingerprint`, o sea que el
-  // fingerprint cambió. Lucas autorizó explícitamente la promoción: se conserva
-  // la versión comercial y se fija el número exacto del nuevo RC. El 40 es el
-  // primer build que sale de main reconciliado (CORE-247 → CORE-264): App
-  // Store Connect ya tenía números por encima del 30, así que se salta a 40.
-  assert.equal(APP_JSON.expo.runtimeVersion.policy, "fingerprint");
+test("la promoción autorizada conserva 1.0.0 y prepara exactamente el build 41", () => {
+  // Lucas autorizó explícitamente la promoción: se conserva la versión
+  // comercial y se fija el número exacto del nuevo RC. El 40 fue el primer
+  // build que salió de main reconciliado (CORE-247 → CORE-264). El 41 es el
+  // primero sin actualizaciones remotas: ya no hay política de runtime que
+  // fijar, porque el binario sólo ejecuta el JS con el que se compiló
+  // (`test/easRuntimeProfiles.test.ts`).
   assert.equal(APP_JSON.expo.version, "1.0.0");
-  assert.equal(APP_JSON.expo.ios.buildNumber, "40");
+  assert.equal(APP_JSON.expo.ios.buildNumber, "41");
 });
 
 // ---------------------------------------------------------------------------
