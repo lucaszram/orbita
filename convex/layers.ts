@@ -8,7 +8,7 @@ import {
 import { v, type Infer } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import type { QueryCtx } from "./_generated/server";
+import type { ActionCtx, QueryCtx } from "./_generated/server";
 import { getAnalysisDefinition, getSourceRefs, type AnalysisId } from "./content/astrologySources";
 import { runAstrologyApiPlanetsTropical } from "./lib/astrologyApi";
 import { findCurrentBirthData, findExactNatalChart } from "./lib/birthDataConsistency";
@@ -43,6 +43,7 @@ import {
   type CumplelunaResult,
   type ElementMapResult,
   type EphemerisPosition,
+  type LayerBundle,
   type LunarTypeResult,
   type MoonOnChartResult,
   type NormalizedChartSnapshot,
@@ -91,7 +92,14 @@ import {
   unwrapDegrees,
 } from "./lib/layersMath";
 import { stableInputHash } from "./lib/stableHash";
-import { isUserPro } from "./lib/subscriptionAccess";
+import {
+  isUserPro,
+  layerBundleForPlan,
+  layerBundleWithAccessValidator,
+  transitArcWithAccessValidator,
+  type LayerBundleWithAccess,
+  type TransitArcWithAccess,
+} from "./lib/subscriptionAccess";
 import {
   matchMajorAspect,
   rankTransitContacts,
@@ -185,8 +193,23 @@ const internalApi: {
       RefreshState
     >;
     persistRefresh: FunctionReference<"mutation", "internal", PersistRefreshArgs, { written: number }>;
+    getPlanAccess: FunctionReference<
+      "query",
+      "internal",
+      { tokenIdentifier: string },
+      { isPro: boolean }
+    >;
   };
 } = internal;
+
+/** Lo que las actions de capas usan del contexto: sesión, lecturas y escrituras internas. */
+type LayerActionCtx = Pick<ActionCtx, "auth" | "runQuery" | "runMutation">;
+
+/** El plan de la persona con sesión, para las queries que cortan por plan. */
+async function currentUserIsPro(ctx: QueryCtx): Promise<boolean> {
+  const user = await findCurrentUser(ctx);
+  return user ? await isUserPro(ctx, user._id) : false;
+}
 
 function assertLocalDate(localDate: string) {
   try {
@@ -3170,124 +3193,162 @@ export const getNatalChartBase = query({
   },
 });
 
+/**
+ * El sobre completo del día, tal como quedó calculado. Lo comparten
+ * `getForDate` (sin corte por plan: lo llaman los builds ya instalados) y
+ * `getForDateWithAccess` (con la regla Free/Plus). Hay UNA sola lectura.
+ */
+async function layerBundleForDate(
+  ctx: QueryCtx,
+  args: { localDate: string; timezone: string },
+): Promise<LayerBundle | null> {
+  assertLocalDate(args.localDate);
+  assertTimezone(args.timezone);
+  const now = Date.now();
+  const state = await currentStateForQuery(ctx, args);
+  if (!state) return null;
+  const natal = natalResults({
+    birthData: state.birthData,
+    legacyChartSnapshot: state.chart,
+    natalEphemeris: state.natalEphemeris,
+    cached: state.snapshots,
+    observedAt: now,
+  });
+  const dailyScope = { localDate: args.localDate, timezone: args.timezone };
+  const cachedOrUnavailable = (
+    analysisId: AnalysisId,
+    missingInputs: string[],
+    options?: Parameters<typeof unavailableResult>[4],
+  ) =>
+    latestMatching(
+      state.snapshots,
+      analysisId,
+      resultHash(natal.baseHash, analysisId, dailyScope),
+      now,
+    ) ?? unavailableResult(analysisId, resultHash(natal.baseHash, analysisId, dailyScope), now, missingInputs, options);
+
+  const transitRanking = cachedOrUnavailable("ORB-TRN-002", ["current_ephemeris"]) as TransitRankingResult;
+  // Los dos sobres se rescatan del cache por separado, así que una fila vieja
+  // del arco puede describir otro contacto que el que encabeza este ranking.
+  // La lectura pura no calcula nada: si no corresponden, el arco se descarta.
+  const transitArc = coherentTransitArc({
+    ranking: transitRanking,
+    arc: cachedOrUnavailable("ORB-TRN-001", ["active_transit_arc"]) as TransitArcResult,
+    observedAt: now,
+    status: "unavailable",
+    validUntil: null,
+  });
+  const moonOnChart = cachedOrUnavailable("ORB-LUN-003", ["current_ephemeris"]) as MoonOnChartResult;
+  const cumpleluna = (
+    latestMatching(
+      state.snapshots,
+      "ORB-LUN-002",
+      cumplelunaInputHash(natal.baseHash, dailyScope),
+      now,
+    ) ??
+    unavailableResult(
+      "ORB-LUN-002",
+      cumplelunaInputHash(natal.baseHash, dailyScope),
+      now,
+      ["current_ephemeris"],
+    )
+  ) as CumplelunaResult;
+  const progressedLunation = (
+    latestMatching(
+      state.snapshots,
+      "ORB-CYC-002",
+      progressedLunationInputHash(natal.baseHash),
+      now,
+    ) ??
+    unavailableResult(
+      "ORB-CYC-002",
+      progressedLunationInputHash(natal.baseHash),
+      now,
+      ["progressed_ephemeris"],
+      state.birthData
+        ? undefined
+        : { status: "needs_birth_time", precision: "not_applicable" },
+    )
+  ) as ProgressedLunationResult;
+
+  const profectionBuild = buildAnnualProfectionLayerData({
+    chart: natal.chart,
+    asOfDate: args.localDate,
+    civilDateToTimestamp: (civilDate) =>
+      zonedInstant(civilDate, "00:00", args.timezone),
+  });
+  const profectionHash = resultHash(natal.baseHash, "ORB-CYC-001", {
+    periodStart: profectionBuild.data?.periodStart ?? null,
+  });
+  const annualProfection = wrapBuild({
+    analysisId: "ORB-CYC-001",
+    inputHash: profectionHash,
+    observedAt: now,
+    validUntil: profectionBuild.data?.periodEnd ?? null,
+    build: profectionBuild,
+  }) as AnnualProfectionResult;
+  const mandalaSources: AnalysisResult[] = [
+    progressedLunation,
+    annualProfection,
+    cumpleluna,
+    transitArc,
+  ];
+  const mandalaHash = temporalMandalaInputHash(natal.baseHash, dailyScope, mandalaSources);
+  const mandalaMissingInputs = Array.from(
+    new Set(mandalaSources.flatMap((source) => source.missingInputs)),
+  );
+  const temporalMandala = (
+    latestMatching(state.snapshots, "ORB-CYC-007", mandalaHash, now) ??
+    unavailableResult(
+      "ORB-CYC-007",
+      mandalaHash,
+      now,
+      mandalaMissingInputs.length > 0
+        ? mandalaMissingInputs
+        : ["temporal_mandala_refresh"],
+    )
+  ) as TemporalMandalaResult;
+  return {
+    natal: natal.bundle,
+    today: { transitRanking, transitArc, moonOnChart, cumpleluna },
+    moment: { progressedLunation, annualProfection, temporalMandala },
+  };
+}
+
 export const getForDate = query({
   args: {
     localDate: v.string(),
     timezone: v.string(),
   },
   returns: v.union(layerBundleValidator, v.null()),
+  handler: async (ctx, args) => layerBundleForDate(ctx, args),
+});
+
+/**
+ * `layers.getForDate` con la regla Free/Plus aplicada en el servidor
+ * (CORE-1043). Mismos argumentos; devuelve `{ access, bundle }` o `null` sin
+ * cuenta con datos.
+ *
+ * `bundle` conserva la forma de `getForDate`. Plus lo recibe intacto. Free
+ * recibe Hoy —Luna sobre la carta, Cumpleluna y los tres primeros contactos del
+ * ranking— y lo natal; el arco y las tres capas de Tu momento viajan cerrados
+ * (`data: null`, `missingInputs: ["orbita_plus"]`) y el resto del ranking no
+ * viaja. `access` declara qué sección quedó abierta para que el cliente no lo
+ * deduzca de un `data` vacío. El detalle del corte está en
+ * `layerBundleForPlan`.
+ *
+ * Sirve igual para el día anterior (la comparación «AYER»): el mismo corte.
+ */
+export const getForDateWithAccess = query({
+  args: {
+    localDate: v.string(),
+    timezone: v.string(),
+  },
+  returns: v.union(layerBundleWithAccessValidator, v.null()),
   handler: async (ctx, args) => {
-    assertLocalDate(args.localDate);
-    assertTimezone(args.timezone);
-    const now = Date.now();
-    const state = await currentStateForQuery(ctx, args);
-    if (!state) return null;
-    const natal = natalResults({
-      birthData: state.birthData,
-      legacyChartSnapshot: state.chart,
-      natalEphemeris: state.natalEphemeris,
-      cached: state.snapshots,
-      observedAt: now,
-    });
-    const dailyScope = { localDate: args.localDate, timezone: args.timezone };
-    const cachedOrUnavailable = (
-      analysisId: AnalysisId,
-      missingInputs: string[],
-      options?: Parameters<typeof unavailableResult>[4],
-    ) =>
-      latestMatching(
-        state.snapshots,
-        analysisId,
-        resultHash(natal.baseHash, analysisId, dailyScope),
-        now,
-      ) ?? unavailableResult(analysisId, resultHash(natal.baseHash, analysisId, dailyScope), now, missingInputs, options);
-
-    const transitRanking = cachedOrUnavailable("ORB-TRN-002", ["current_ephemeris"]) as TransitRankingResult;
-    // Los dos sobres se rescatan del cache por separado, así que una fila vieja
-    // del arco puede describir otro contacto que el que encabeza este ranking.
-    // La lectura pura no calcula nada: si no corresponden, el arco se descarta.
-    const transitArc = coherentTransitArc({
-      ranking: transitRanking,
-      arc: cachedOrUnavailable("ORB-TRN-001", ["active_transit_arc"]) as TransitArcResult,
-      observedAt: now,
-      status: "unavailable",
-      validUntil: null,
-    });
-    const moonOnChart = cachedOrUnavailable("ORB-LUN-003", ["current_ephemeris"]) as MoonOnChartResult;
-    const cumpleluna = (
-      latestMatching(
-        state.snapshots,
-        "ORB-LUN-002",
-        cumplelunaInputHash(natal.baseHash, dailyScope),
-        now,
-      ) ??
-      unavailableResult(
-        "ORB-LUN-002",
-        cumplelunaInputHash(natal.baseHash, dailyScope),
-        now,
-        ["current_ephemeris"],
-      )
-    ) as CumplelunaResult;
-    const progressedLunation = (
-      latestMatching(
-        state.snapshots,
-        "ORB-CYC-002",
-        progressedLunationInputHash(natal.baseHash),
-        now,
-      ) ??
-      unavailableResult(
-        "ORB-CYC-002",
-        progressedLunationInputHash(natal.baseHash),
-        now,
-        ["progressed_ephemeris"],
-        state.birthData
-          ? undefined
-          : { status: "needs_birth_time", precision: "not_applicable" },
-      )
-    ) as ProgressedLunationResult;
-
-    const profectionBuild = buildAnnualProfectionLayerData({
-      chart: natal.chart,
-      asOfDate: args.localDate,
-      civilDateToTimestamp: (civilDate) =>
-        zonedInstant(civilDate, "00:00", args.timezone),
-    });
-    const profectionHash = resultHash(natal.baseHash, "ORB-CYC-001", {
-      periodStart: profectionBuild.data?.periodStart ?? null,
-    });
-    const annualProfection = wrapBuild({
-      analysisId: "ORB-CYC-001",
-      inputHash: profectionHash,
-      observedAt: now,
-      validUntil: profectionBuild.data?.periodEnd ?? null,
-      build: profectionBuild,
-    }) as AnnualProfectionResult;
-    const mandalaSources: AnalysisResult[] = [
-      progressedLunation,
-      annualProfection,
-      cumpleluna,
-      transitArc,
-    ];
-    const mandalaHash = temporalMandalaInputHash(natal.baseHash, dailyScope, mandalaSources);
-    const mandalaMissingInputs = Array.from(
-      new Set(mandalaSources.flatMap((source) => source.missingInputs)),
-    );
-    const temporalMandala = (
-      latestMatching(state.snapshots, "ORB-CYC-007", mandalaHash, now) ??
-      unavailableResult(
-        "ORB-CYC-007",
-        mandalaHash,
-        now,
-        mandalaMissingInputs.length > 0
-          ? mandalaMissingInputs
-          : ["temporal_mandala_refresh"],
-      )
-    ) as TemporalMandalaResult;
-    return {
-      natal: natal.bundle,
-      today: { transitRanking, transitArc, moonOnChart, cumpleluna },
-      moment: { progressedLunation, annualProfection, temporalMandala },
-    };
+    const bundle = await layerBundleForDate(ctx, args);
+    if (!bundle) return null;
+    return layerBundleForPlan(bundle, await currentUserIsPro(ctx));
   },
 });
 
@@ -3314,6 +3375,41 @@ function transitArcScope(args: { localDate: string; timezone: string; arcId: str
  * hecho distinto de "ese tránsito ya no está activo"
  * (`requested_transit_arc`).
  */
+async function transitArcForDate(
+  ctx: QueryCtx,
+  args: { localDate: string; timezone: string; arcId: string },
+): Promise<TransitArcResult | null> {
+  assertLocalDate(args.localDate);
+  assertTimezone(args.timezone);
+  assertArcId(args.arcId);
+  const now = Date.now();
+  const state = await currentStateForQuery(ctx, args);
+  if (!state) return null;
+  const natal = natalResults({
+    birthData: state.birthData,
+    legacyChartSnapshot: state.chart,
+    natalEphemeris: state.natalEphemeris,
+    cached: state.snapshots,
+    observedAt: now,
+  });
+  const arcHash = resultHash(natal.baseHash, "ORB-TRN-001", transitArcScope(args));
+  const cached = latestMatching(state.snapshots, "ORB-TRN-001", arcHash, now);
+  if (cached && arcResultMatchesArcId(cached, args.arcId)) {
+    return cached as TransitArcResult;
+  }
+  return unavailableResult(
+    "ORB-TRN-001",
+    arcHash,
+    now,
+    ["requested_transit_arc_calculation"],
+    {
+      limitations: [
+        "Todavía no calculamos la línea de tiempo de este tránsito para hoy.",
+      ],
+    },
+  ) as TransitArcResult;
+}
+
 export const getTransitArc = query({
   args: {
     localDate: v.string(),
@@ -3321,36 +3417,35 @@ export const getTransitArc = query({
     arcId: v.string(),
   },
   returns: v.union(transitArcResultValidator, v.null()),
-  handler: async (ctx, args) => {
+  handler: async (ctx, args) => transitArcForDate(ctx, args),
+});
+
+/**
+ * `layers.getTransitArc` con la regla Free/Plus (CORE-1043). El detalle de un
+ * arco es Tránsitos, y Tránsitos es Plus: Free recibe `locked` ANTES de leer
+ * ningún cálculo, así que ni el arco guardado ni su ausencia viajan. Plus
+ * recibe `ready` con el mismo sobre `ORB-TRN-001` de siempre en `arc`. `null`
+ * conserva su significado: no hay cuenta.
+ */
+export const getTransitArcWithAccess = query({
+  args: {
+    localDate: v.string(),
+    timezone: v.string(),
+    arcId: v.string(),
+  },
+  returns: v.union(transitArcWithAccessValidator, v.null()),
+  handler: async (ctx, args): Promise<TransitArcWithAccess | null> => {
     assertLocalDate(args.localDate);
     assertTimezone(args.timezone);
     assertArcId(args.arcId);
-    const now = Date.now();
-    const state = await currentStateForQuery(ctx, args);
-    if (!state) return null;
-    const natal = natalResults({
-      birthData: state.birthData,
-      legacyChartSnapshot: state.chart,
-      natalEphemeris: state.natalEphemeris,
-      cached: state.snapshots,
-      observedAt: now,
-    });
-    const arcHash = resultHash(natal.baseHash, "ORB-TRN-001", transitArcScope(args));
-    const cached = latestMatching(state.snapshots, "ORB-TRN-001", arcHash, now);
-    if (cached && arcResultMatchesArcId(cached, args.arcId)) {
-      return cached as TransitArcResult;
+    const user = await findCurrentUser(ctx);
+    if (!user) return null;
+    if (!(await isUserPro(ctx, user._id))) {
+      return { status: "locked", access: { isPro: false } };
     }
-    return unavailableResult(
-      "ORB-TRN-001",
-      arcHash,
-      now,
-      ["requested_transit_arc_calculation"],
-      {
-        limitations: [
-          "Todavía no calculamos la línea de tiempo de este tránsito para hoy.",
-        ],
-      },
-    ) as TransitArcResult;
+    const arc = await transitArcForDate(ctx, args);
+    if (!arc) return null;
+    return { status: "ready", access: { isPro: true }, arc };
   },
 });
 
@@ -3367,152 +3462,69 @@ export const getTransitArc = query({
  * salió de la lista, el sobre lo dice; si falla el proveedor o el seguimiento,
  * queda `stale`, `partial` o `error` con su motivo.
  */
-export const refreshTransitArc = action({
-  args: {
-    localDate: v.string(),
-    timezone: v.string(),
-    arcId: v.string(),
-  },
-  returns: transitArcResultValidator,
-  handler: async (ctx, args): Promise<TransitArcResult> => {
-    assertLocalDate(args.localDate);
-    assertTimezone(args.timezone);
-    assertArcId(args.arcId);
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Authentication required");
-    const observedAt = Date.now();
-    if (localDateForInstant(new Date(observedAt), args.timezone) !== args.localDate) {
-      throw new Error("localDate must match the server-captured instant in the requested timezone");
-    }
-    const state = await ctx.runQuery(internalApi.layers.getRefreshState, {
-      tokenIdentifier: identity.tokenIdentifier,
-      localDate: args.localDate,
-      timezone: args.timezone,
-    });
-    const expectedInputFingerprint = buildLayerRefreshInputFingerprint({
-      userId: state.userId,
-      birthDataId: state.birthDataId,
-      natalChartId: state.natalChartId,
-      birthData: state.birthData,
-      chart: state.chart,
-    });
-    // La efeméride natal es del ciclo del día completo (`refreshForDate`): acá se
-    // reutiliza tal como está. Si falta, el sobre declara ese faltante en vez de
-    // calcular la carta canónica por un camino paralelo.
-    const natal = natalResults({
-      birthData: state.birthData,
-      legacyChartSnapshot: state.chart,
-      natalEphemeris: state.natalEphemeris,
-      cached: state.snapshots,
-      observedAt,
-    });
-    const arcHash = resultHash(natal.baseHash, "ORB-TRN-001", transitArcScope(args));
-    const cached = latestMatching(state.snapshots, "ORB-TRN-001", arcHash, observedAt);
-    if (cached && cached.status !== "stale" && cached.data !== null && arcResultMatchesArcId(cached, args.arcId)) {
-      // Dentro de la vigencia horaria del cielo, repetir la búsqueda de pasadas
-      // serían decenas de consultas históricas para el mismo resultado.
-      return cached as TransitArcResult;
-    }
+async function refreshTransitArcForDate(
+  ctx: LayerActionCtx,
+  args: { localDate: string; timezone: string; arcId: string },
+): Promise<TransitArcResult> {
+  assertLocalDate(args.localDate);
+  assertTimezone(args.timezone);
+  assertArcId(args.arcId);
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) throw new Error("Authentication required");
+  const observedAt = Date.now();
+  if (localDateForInstant(new Date(observedAt), args.timezone) !== args.localDate) {
+    throw new Error("localDate must match the server-captured instant in the requested timezone");
+  }
+  const state = await ctx.runQuery(internalApi.layers.getRefreshState, {
+    tokenIdentifier: identity.tokenIdentifier,
+    localDate: args.localDate,
+    timezone: args.timezone,
+  });
+  const expectedInputFingerprint = buildLayerRefreshInputFingerprint({
+    userId: state.userId,
+    birthDataId: state.birthDataId,
+    natalChartId: state.natalChartId,
+    birthData: state.birthData,
+    chart: state.chart,
+  });
+  // La efeméride natal es del ciclo del día completo (`refreshForDate`): acá se
+  // reutiliza tal como está. Si falta, el sobre declara ese faltante en vez de
+  // calcular la carta canónica por un camino paralelo.
+  const natal = natalResults({
+    birthData: state.birthData,
+    legacyChartSnapshot: state.chart,
+    natalEphemeris: state.natalEphemeris,
+    cached: state.snapshots,
+    observedAt,
+  });
+  const arcHash = resultHash(natal.baseHash, "ORB-TRN-001", transitArcScope(args));
+  const cached = latestMatching(state.snapshots, "ORB-TRN-001", arcHash, observedAt);
+  if (cached && cached.status !== "stale" && cached.data !== null && arcResultMatchesArcId(cached, args.arcId)) {
+    // Dentro de la vigencia horaria del cielo, repetir la búsqueda de pasadas
+    // serían decenas de consultas históricas para el mismo resultado.
+    return cached as TransitArcResult;
+  }
 
-    const sky = await resolveDailySky({
-      sky: state.sky,
-      observedAt,
-      localDate: args.localDate,
-      timezone: args.timezone,
-    });
-    const staleLimitation = sky.isStale
-      ? ["No pudimos actualizar el cielo; se muestra el último cálculo disponible."]
-      : [];
+  const sky = await resolveDailySky({
+    sky: state.sky,
+    observedAt,
+    localDate: args.localDate,
+    timezone: args.timezone,
+  });
+  const staleLimitation = sky.isStale
+    ? ["No pudimos actualizar el cielo; se muestra el último cálculo disponible."]
+    : [];
 
-    if (!sky.ephemeris) {
-      const fallback = staleProviderFallback(state.snapshots, "ORB-TRN-001", arcHash, observedAt);
-      const envelope = (
-        fallback && arcResultMatchesArcId(fallback, args.arcId)
-          ? fallback
-          : unavailableResult("ORB-TRN-001", arcHash, observedAt, ["current_ephemeris"], {
-              status: "error",
-              validUntil: observedAt + HOUR_MS,
-            })
-      ) as TransitArcResult;
-      await ctx.runMutation(internalApi.layers.persistRefresh, {
-        userId: state.userId,
-        birthDataId: state.birthDataId,
-        natalChartId: state.natalChartId,
-        expectedInputFingerprint,
-        localDate: args.localDate,
-        timezone: args.timezone,
-        results: [envelope],
-        sky: null,
-        natalEphemeris: null,
-      });
-      return envelope;
-    }
-
-    const contacts = buildTransitContacts({
-      baseHash: natal.baseHash,
-      chart: natal.chart,
-      ephemeris: sky.ephemeris,
-      observedAt: sky.observedAt,
-      natalSamples: natal.samples,
-    });
-    const selected = contactForArcId(contacts, sky.observedAt, args.arcId, args.localDate, args.timezone);
-    // La identidad del arco viaja con el contacto: verificar las pasadas mueve la
-    // ventana y con ella el identificador derivado, y el sobre tiene que seguir
-    // siendo el del arco que se pidió.
-    const timeline =
-      !sky.isStale && selected
-        ? await verifiedTimelineForContact({
-            contact: { ...selected, arcId: args.arcId },
-            timezone: args.timezone,
-          })
-        : null;
-    const arcContacts =
-      timeline?.status === "verified"
-        ? timeline.contacts
-        : selected
-          ? contacts.map((contact) => (contact === selected ? { ...contact, arcId: args.arcId } : contact))
-          : contacts;
-    const rawArcBuild = natal.chart
-      ? buildTransitArcLayerData({
-          contacts: arcContacts,
-          observedAt: sky.observedAt,
-          arcId: args.arcId,
-          localDate: args.localDate,
-          timezone: args.timezone,
-        })
-      : ({
-          data: null,
-          status: "unavailable",
-          precision: "not_applicable",
-          missingInputs: ["natal_chart"],
-          limitations: [],
-        } satisfies LayerDataBuild<Extract<AnalysisData, { kind: "transit_arc" }>>);
-    const arcBuild = honestTransitArcBuild(rawArcBuild, natal.chart, natal.samples, timeline);
-    const calculated = wrapBuild({
-      analysisId: "ORB-TRN-001",
-      inputHash: arcHash,
-      observedAt: sky.observedAt,
-      validUntil: sky.observedAt + HOUR_MS,
-      build: arcBuild,
-      providerVersion:
-        timeline?.status === "verified" ? NATAL_EPHEMERIS_PROVIDER_VERSION : sky.providerVersion,
-      forceStatus: sky.isStale && arcBuild.data ? "stale" : undefined,
-      extraLimitations: staleLimitation,
-    }) as TransitArcResult;
-    const timelineFailed =
-      timeline !== null && timeline.status !== "verified" && timeline.status !== "not_active";
-    const staleCandidate =
-      sky.isStale || timelineFailed || arcBuild.missingInputs.includes("full_day_natal_samples")
-        ? staleProviderFallback(state.snapshots, "ORB-TRN-001", arcHash, observedAt)
-        : null;
-    // Un `stale` sólo sirve si es de ESTE arco. El hash ya está acotado al
-    // `arcId`, y esta comprobación además exige que el dato guardado lo declare.
+  if (!sky.ephemeris) {
+    const fallback = staleProviderFallback(state.snapshots, "ORB-TRN-001", arcHash, observedAt);
     const envelope = (
-      staleCandidate && staleCandidate.data !== null && arcResultMatchesArcId(staleCandidate, args.arcId)
-        ? staleCandidate
-        : calculated
+      fallback && arcResultMatchesArcId(fallback, args.arcId)
+        ? fallback
+        : unavailableResult("ORB-TRN-001", arcHash, observedAt, ["current_ephemeris"], {
+            status: "error",
+            validUntil: observedAt + HOUR_MS,
+          })
     ) as TransitArcResult;
-
     await ctx.runMutation(internalApi.layers.persistRefresh, {
       userId: state.userId,
       birthDataId: state.birthDataId,
@@ -3521,10 +3533,140 @@ export const refreshTransitArc = action({
       localDate: args.localDate,
       timezone: args.timezone,
       results: [envelope],
-      sky: sky.toPersist,
+      sky: null,
       natalEphemeris: null,
     });
     return envelope;
+  }
+
+  const contacts = buildTransitContacts({
+    baseHash: natal.baseHash,
+    chart: natal.chart,
+    ephemeris: sky.ephemeris,
+    observedAt: sky.observedAt,
+    natalSamples: natal.samples,
+  });
+  const selected = contactForArcId(contacts, sky.observedAt, args.arcId, args.localDate, args.timezone);
+  // La identidad del arco viaja con el contacto: verificar las pasadas mueve la
+  // ventana y con ella el identificador derivado, y el sobre tiene que seguir
+  // siendo el del arco que se pidió.
+  const timeline =
+    !sky.isStale && selected
+      ? await verifiedTimelineForContact({
+          contact: { ...selected, arcId: args.arcId },
+          timezone: args.timezone,
+        })
+      : null;
+  const arcContacts =
+    timeline?.status === "verified"
+      ? timeline.contacts
+      : selected
+        ? contacts.map((contact) => (contact === selected ? { ...contact, arcId: args.arcId } : contact))
+        : contacts;
+  const rawArcBuild = natal.chart
+    ? buildTransitArcLayerData({
+        contacts: arcContacts,
+        observedAt: sky.observedAt,
+        arcId: args.arcId,
+        localDate: args.localDate,
+        timezone: args.timezone,
+      })
+    : ({
+        data: null,
+        status: "unavailable",
+        precision: "not_applicable",
+        missingInputs: ["natal_chart"],
+        limitations: [],
+      } satisfies LayerDataBuild<Extract<AnalysisData, { kind: "transit_arc" }>>);
+  const arcBuild = honestTransitArcBuild(rawArcBuild, natal.chart, natal.samples, timeline);
+  const calculated = wrapBuild({
+    analysisId: "ORB-TRN-001",
+    inputHash: arcHash,
+    observedAt: sky.observedAt,
+    validUntil: sky.observedAt + HOUR_MS,
+    build: arcBuild,
+    providerVersion:
+      timeline?.status === "verified" ? NATAL_EPHEMERIS_PROVIDER_VERSION : sky.providerVersion,
+    forceStatus: sky.isStale && arcBuild.data ? "stale" : undefined,
+    extraLimitations: staleLimitation,
+  }) as TransitArcResult;
+  const timelineFailed =
+    timeline !== null && timeline.status !== "verified" && timeline.status !== "not_active";
+  const staleCandidate =
+    sky.isStale || timelineFailed || arcBuild.missingInputs.includes("full_day_natal_samples")
+      ? staleProviderFallback(state.snapshots, "ORB-TRN-001", arcHash, observedAt)
+      : null;
+  // Un `stale` sólo sirve si es de ESTE arco. El hash ya está acotado al
+  // `arcId`, y esta comprobación además exige que el dato guardado lo declare.
+  const envelope = (
+    staleCandidate && staleCandidate.data !== null && arcResultMatchesArcId(staleCandidate, args.arcId)
+      ? staleCandidate
+      : calculated
+  ) as TransitArcResult;
+
+  await ctx.runMutation(internalApi.layers.persistRefresh, {
+    userId: state.userId,
+    birthDataId: state.birthDataId,
+    natalChartId: state.natalChartId,
+    expectedInputFingerprint,
+    localDate: args.localDate,
+    timezone: args.timezone,
+    results: [envelope],
+    sky: sky.toPersist,
+    natalEphemeris: null,
+  });
+  return envelope;
+}
+
+export const refreshTransitArc = action({
+  args: {
+    localDate: v.string(),
+    timezone: v.string(),
+    arcId: v.string(),
+  },
+  returns: transitArcResultValidator,
+  handler: async (ctx, args): Promise<TransitArcResult> => refreshTransitArcForDate(ctx, args),
+});
+
+/**
+ * `layers.refreshTransitArc` con la regla Free/Plus (CORE-1043). Free sale con
+ * `locked` antes de pedir el cielo, de buscar las pasadas y de persistir: una
+ * cuenta sin Plus no gasta una sola consulta al proveedor por un arco que no
+ * puede ver. Plus recibe `ready` con el sobre recalculado en `arc`.
+ */
+export const refreshTransitArcWithAccess = action({
+  args: {
+    localDate: v.string(),
+    timezone: v.string(),
+    arcId: v.string(),
+  },
+  returns: transitArcWithAccessValidator,
+  handler: async (ctx, args): Promise<TransitArcWithAccess> => {
+    assertLocalDate(args.localDate);
+    assertTimezone(args.timezone);
+    assertArcId(args.arcId);
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Authentication required");
+    const plan = await ctx.runQuery(internalApi.layers.getPlanAccess, {
+      tokenIdentifier: identity.tokenIdentifier,
+    });
+    if (!plan.isPro) return { status: "locked", access: { isPro: false } };
+    return {
+      status: "ready",
+      access: { isPro: true },
+      arc: await refreshTransitArcForDate(ctx, args),
+    };
+  },
+});
+
+/** Sólo el plan de la persona con sesión: para cortar por plan desde una action. */
+export const getPlanAccess = internalQuery({
+  args: { tokenIdentifier: v.string() },
+  returns: v.object({ isPro: v.boolean() }),
+  handler: async (ctx, args) => {
+    const user = await findUserByTokenIdentifier(ctx, args.tokenIdentifier);
+    if (!user) throw new Error("User record not found");
+    return { isPro: await isUserPro(ctx, user._id) };
   },
 });
 
@@ -3753,130 +3895,196 @@ export const persistRefresh = internalMutation({
   },
 });
 
-export const refreshForDate = action({
-  args: {
-    localDate: v.string(),
-    timezone: v.string(),
-  },
-  returns: layerBundleValidator,
-  handler: async (ctx, args) => {
-    assertLocalDate(args.localDate);
-    assertTimezone(args.timezone);
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Authentication required");
-    const observedAt = Date.now();
-    if (localDateForInstant(new Date(observedAt), args.timezone) !== args.localDate) {
-      throw new Error("localDate must match the server-captured instant in the requested timezone");
-    }
-    const state = await ctx.runQuery(internalApi.layers.getRefreshState, {
-      tokenIdentifier: identity.tokenIdentifier,
-      localDate: args.localDate,
-      timezone: args.timezone,
-    });
-    const expectedInputFingerprint = buildLayerRefreshInputFingerprint({
-      userId: state.userId,
-      birthDataId: state.birthDataId,
-      natalChartId: state.natalChartId,
-      birthData: state.birthData,
-      chart: state.chart,
-    });
+async function refreshLayerBundleForDate(
+  ctx: LayerActionCtx,
+  args: { localDate: string; timezone: string },
+): Promise<LayerBundle> {
+  assertLocalDate(args.localDate);
+  assertTimezone(args.timezone);
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) throw new Error("Authentication required");
+  const observedAt = Date.now();
+  if (localDateForInstant(new Date(observedAt), args.timezone) !== args.localDate) {
+    throw new Error("localDate must match the server-captured instant in the requested timezone");
+  }
+  const state = await ctx.runQuery(internalApi.layers.getRefreshState, {
+    tokenIdentifier: identity.tokenIdentifier,
+    localDate: args.localDate,
+    timezone: args.timezone,
+  });
+  const expectedInputFingerprint = buildLayerRefreshInputFingerprint({
+    userId: state.userId,
+    birthDataId: state.birthDataId,
+    natalChartId: state.natalChartId,
+    birthData: state.birthData,
+    chart: state.chart,
+  });
 
-    let natalEphemeris = matchingNatalEphemeris(state.birthData, state.natalEphemeris);
-    let natalEphemerisToPersist: NatalEphemerisSnapshot | null = null;
-    let natalProviderFailed = false;
-    if (state.birthData && !natalEphemeris) {
-      natalEphemeris = await calculateNatalEphemeris(state.birthData, observedAt);
-      natalEphemerisToPersist = natalEphemeris;
-      natalProviderFailed = natalEphemeris === null;
-    }
-    const natal = natalResults({
+  let natalEphemeris = matchingNatalEphemeris(state.birthData, state.natalEphemeris);
+  let natalEphemerisToPersist: NatalEphemerisSnapshot | null = null;
+  let natalProviderFailed = false;
+  if (state.birthData && !natalEphemeris) {
+    natalEphemeris = await calculateNatalEphemeris(state.birthData, observedAt);
+    natalEphemerisToPersist = natalEphemeris;
+    natalProviderFailed = natalEphemeris === null;
+  }
+  const natal = natalResults({
+    birthData: state.birthData,
+    legacyChartSnapshot: state.chart,
+    natalEphemeris,
+    cached: state.snapshots,
+    observedAt,
+    providerAttemptFailed: natalProviderFailed,
+  });
+  const samples = natal.samples;
+
+  const profectionBuild = buildAnnualProfectionLayerData({
+    chart: natal.chart,
+    asOfDate: args.localDate,
+    civilDateToTimestamp: (civilDate) =>
+      zonedInstant(civilDate, "00:00", args.timezone),
+  });
+  const annualProfection = wrapBuild({
+    analysisId: "ORB-CYC-001",
+    inputHash: resultHash(natal.baseHash, "ORB-CYC-001", {
+      periodStart: profectionBuild.data?.periodStart ?? null,
+    }),
+    observedAt,
+    validUntil: profectionBuild.data?.periodEnd ?? null,
+    build: profectionBuild,
+  }) as AnnualProfectionResult;
+
+  const progressedHash = progressedLunationInputHash(natal.baseHash);
+  const cachedProgressed = latestMatching(state.snapshots, "ORB-CYC-002", progressedHash, observedAt);
+  let progressedLunation: ProgressedLunationResult;
+  if (cachedProgressed && cachedProgressed.status !== "stale") {
+    progressedLunation = cachedProgressed as ProgressedLunationResult;
+  } else {
+    const build = await progressedLunationBuild({
       birthData: state.birthData,
-      legacyChartSnapshot: state.chart,
-      natalEphemeris,
-      cached: state.snapshots,
       observedAt,
-      providerAttemptFailed: natalProviderFailed,
     });
-    const samples = natal.samples;
+    const calculated = wrapBuild({
+      analysisId: "ORB-CYC-002",
+      inputHash: progressedHash,
+      observedAt,
+      validUntil: build.data
+        ? Math.min(
+            build.data.nextPhaseAtRange?.earliest ?? build.data.nextPhaseAt,
+            observedAt + MONTH_MS,
+          )
+        : build.status === "needs_birth_time"
+          ? null
+          : observedAt + HOUR_MS,
+      build,
+      providerVersion: build.data ? "astrologyapi-planets-tropical-v1" : undefined,
+    }) as ProgressedLunationResult;
+    progressedLunation =
+      calculated.data === null && cachedProgressed?.data
+        ? (cachedProgressed as ProgressedLunationResult)
+        : calculated;
+  }
 
-    const profectionBuild = buildAnnualProfectionLayerData({
+  const sky = await resolveDailySky({
+    sky: state.sky,
+    observedAt,
+    localDate: args.localDate,
+    timezone: args.timezone,
+  });
+  const ephemeris = sky.ephemeris;
+  const ephemerisObservedAt = sky.observedAt;
+  const ephemerisValidUntil = sky.validUntil;
+  const providerVersion = sky.providerVersion;
+  const skyIsStale = sky.isStale;
+  const skyToPersist = sky.toPersist;
+
+  const dailyScope = { localDate: args.localDate, timezone: args.timezone };
+  const todayValidUntil = ephemerisObservedAt + HOUR_MS;
+  let transitRanking: TransitRankingResult;
+  let transitArc: TransitArcResult;
+  let moonOnChart: MoonOnChartResult;
+  let cumpleluna: CumplelunaResult;
+  if (ephemeris) {
+    const contacts = buildTransitContacts({
+      baseHash: natal.baseHash,
       chart: natal.chart,
-      asOfDate: args.localDate,
-      civilDateToTimestamp: (civilDate) =>
-        zonedInstant(civilDate, "00:00", args.timezone),
+      ephemeris,
+      observedAt: ephemerisObservedAt,
+      natalSamples: samples,
     });
-    const annualProfection = wrapBuild({
-      analysisId: "ORB-CYC-001",
-      inputHash: resultHash(natal.baseHash, "ORB-CYC-001", {
-        periodStart: profectionBuild.data?.periodStart ?? null,
-      }),
-      observedAt,
-      validUntil: profectionBuild.data?.periodEnd ?? null,
-      build: profectionBuild,
-    }) as AnnualProfectionResult;
+    const rawRankingBuild = natal.chart
+      ? buildTransitRankingLayerData({
+          contacts,
+          observedAt: ephemerisObservedAt,
+          localDate: args.localDate,
+          timezone: args.timezone,
+        })
+      : ({
+          data: null,
+          status: "unavailable",
+          precision: "not_applicable",
+          missingInputs: ["natal_chart"],
+          limitations: ["El ranking necesita una carta natal para calcular contactos personales."],
+        } satisfies LayerDataBuild<Extract<AnalysisData, { kind: "transit_ranking" }>>);
+    const rankingBuild = honestTransitRankingBuild(rawRankingBuild, natal.chart, samples);
+    const staleLimitation = skyIsStale
+      ? ["No pudimos actualizar el cielo; se muestra el último cálculo disponible."]
+      : [];
+    const rankingHash = resultHash(natal.baseHash, "ORB-TRN-002", dailyScope);
+    const calculatedRanking = wrapBuild({
+      analysisId: "ORB-TRN-002",
+      inputHash: rankingHash,
+      observedAt: ephemerisObservedAt,
+      validUntil: todayValidUntil,
+      build: rankingBuild,
+      providerVersion,
+      forceStatus: skyIsStale && rankingBuild.data ? "stale" : undefined,
+      extraLimitations: staleLimitation,
+    }) as TransitRankingResult;
+    transitRanking =
+      rankingBuild.data === null && rankingBuild.missingInputs.includes("full_day_natal_samples")
+        ? ((staleProviderFallback(
+            state.snapshots,
+            "ORB-TRN-002",
+            rankingHash,
+            observedAt,
+          ) as TransitRankingResult | null) ?? calculatedRanking)
+        : calculatedRanking;
 
-    const progressedHash = progressedLunationInputHash(natal.baseHash);
-    const cachedProgressed = latestMatching(state.snapshots, "ORB-CYC-002", progressedHash, observedAt);
-    let progressedLunation: ProgressedLunationResult;
-    if (cachedProgressed && cachedProgressed.status !== "stale") {
-      progressedLunation = cachedProgressed as ProgressedLunationResult;
+    const arcHash = resultHash(natal.baseHash, "ORB-TRN-001", dailyScope);
+    const cachedArc = latestMatching(state.snapshots, "ORB-TRN-001", arcHash, observedAt);
+    const primary = primaryTransitContact(contacts, ephemerisObservedAt, args.localDate, args.timezone);
+    if (
+      cachedArc &&
+      cachedArc.status !== "stale" &&
+      arcResultMatchesPrimary(cachedArc as TransitArcResult, primary)
+    ) {
+      // La cronología comparte la vigencia horaria del cielo. Reutilizar el
+      // sobre evita repetir decenas de consultas históricas en refreshes
+      // concurrentes o al retomar la app dentro de la misma hora.
+      transitArc = cachedArc as TransitArcResult;
     } else {
-      const build = await progressedLunationBuild({
-        birthData: state.birthData,
-        observedAt,
-      });
-      const calculated = wrapBuild({
-        analysisId: "ORB-CYC-002",
-        inputHash: progressedHash,
-        observedAt,
-        validUntil: build.data
-          ? Math.min(
-              build.data.nextPhaseAtRange?.earliest ?? build.data.nextPhaseAt,
-              observedAt + MONTH_MS,
-            )
-          : build.status === "needs_birth_time"
-            ? null
-            : observedAt + HOUR_MS,
-        build,
-        providerVersion: build.data ? "astrologyapi-planets-tropical-v1" : undefined,
-      }) as ProgressedLunationResult;
-      progressedLunation =
-        calculated.data === null && cachedProgressed?.data
-          ? (cachedProgressed as ProgressedLunationResult)
-          : calculated;
-    }
-
-    const sky = await resolveDailySky({
-      sky: state.sky,
-      observedAt,
-      localDate: args.localDate,
-      timezone: args.timezone,
-    });
-    const ephemeris = sky.ephemeris;
-    const ephemerisObservedAt = sky.observedAt;
-    const ephemerisValidUntil = sky.validUntil;
-    const providerVersion = sky.providerVersion;
-    const skyIsStale = sky.isStale;
-    const skyToPersist = sky.toPersist;
-
-    const dailyScope = { localDate: args.localDate, timezone: args.timezone };
-    const todayValidUntil = ephemerisObservedAt + HOUR_MS;
-    let transitRanking: TransitRankingResult;
-    let transitArc: TransitArcResult;
-    let moonOnChart: MoonOnChartResult;
-    let cumpleluna: CumplelunaResult;
-    if (ephemeris) {
-      const contacts = buildTransitContacts({
-        baseHash: natal.baseHash,
-        chart: natal.chart,
-        ephemeris,
-        observedAt: ephemerisObservedAt,
-        natalSamples: samples,
-      });
-      const rawRankingBuild = natal.chart
-        ? buildTransitRankingLayerData({
-            contacts,
+      const timeline =
+        !skyIsStale && primary
+          ? await verifiedTimelineForContact({
+              contact: primary.contact,
+              timezone: args.timezone,
+            })
+          : null;
+      // Verificar mueve las FECHAS del arco, no su identidad: los contactos
+      // verificados conservan el `arcId` que declaró el contacto principal, que
+      // es exactamente el que publicó el ranking de esta misma corrida.
+      const arcContacts =
+        timeline?.status === "verified"
+          ? timeline.contacts
+          : primary
+            ? contacts.map((contact) => (contact === primary.source ? primary.contact : contact))
+            : contacts;
+      const rawArcBuild = natal.chart
+        ? buildTransitArcLayerData({
+            contacts: arcContacts,
             observedAt: ephemerisObservedAt,
+            arcId: primary?.arcId,
             localDate: args.localDate,
             timezone: args.timezone,
           })
@@ -3885,332 +4093,295 @@ export const refreshForDate = action({
             status: "unavailable",
             precision: "not_applicable",
             missingInputs: ["natal_chart"],
-            limitations: ["El ranking necesita una carta natal para calcular contactos personales."],
-          } satisfies LayerDataBuild<Extract<AnalysisData, { kind: "transit_ranking" }>>);
-      const rankingBuild = honestTransitRankingBuild(rawRankingBuild, natal.chart, samples);
-      const staleLimitation = skyIsStale
-        ? ["No pudimos actualizar el cielo; se muestra el último cálculo disponible."]
-        : [];
-      const rankingHash = resultHash(natal.baseHash, "ORB-TRN-002", dailyScope);
-      const calculatedRanking = wrapBuild({
-        analysisId: "ORB-TRN-002",
-        inputHash: rankingHash,
+            limitations: [],
+          } satisfies LayerDataBuild<Extract<AnalysisData, { kind: "transit_arc" }>>);
+      const arcBuild = honestTransitArcBuild(rawArcBuild, natal.chart, samples, timeline);
+      const calculatedArc = wrapBuild({
+        analysisId: "ORB-TRN-001",
+        inputHash: arcHash,
         observedAt: ephemerisObservedAt,
         validUntil: todayValidUntil,
-        build: rankingBuild,
-        providerVersion,
-        forceStatus: skyIsStale && rankingBuild.data ? "stale" : undefined,
-        extraLimitations: staleLimitation,
-      }) as TransitRankingResult;
-      transitRanking =
-        rankingBuild.data === null && rankingBuild.missingInputs.includes("full_day_natal_samples")
-          ? ((staleProviderFallback(
-              state.snapshots,
-              "ORB-TRN-002",
-              rankingHash,
-              observedAt,
-            ) as TransitRankingResult | null) ?? calculatedRanking)
-          : calculatedRanking;
-
-      const arcHash = resultHash(natal.baseHash, "ORB-TRN-001", dailyScope);
-      const cachedArc = latestMatching(state.snapshots, "ORB-TRN-001", arcHash, observedAt);
-      const primary = primaryTransitContact(contacts, ephemerisObservedAt, args.localDate, args.timezone);
-      if (
-        cachedArc &&
-        cachedArc.status !== "stale" &&
-        arcResultMatchesPrimary(cachedArc as TransitArcResult, primary)
-      ) {
-        // La cronología comparte la vigencia horaria del cielo. Reutilizar el
-        // sobre evita repetir decenas de consultas históricas en refreshes
-        // concurrentes o al retomar la app dentro de la misma hora.
-        transitArc = cachedArc as TransitArcResult;
-      } else {
-        const timeline =
-          !skyIsStale && primary
-            ? await verifiedTimelineForContact({
-                contact: primary.contact,
-                timezone: args.timezone,
-              })
-            : null;
-        // Verificar mueve las FECHAS del arco, no su identidad: los contactos
-        // verificados conservan el `arcId` que declaró el contacto principal, que
-        // es exactamente el que publicó el ranking de esta misma corrida.
-        const arcContacts =
+        build: arcBuild,
+        providerVersion:
           timeline?.status === "verified"
-            ? timeline.contacts
-            : primary
-              ? contacts.map((contact) => (contact === primary.source ? primary.contact : contact))
-              : contacts;
-        const rawArcBuild = natal.chart
-          ? buildTransitArcLayerData({
-              contacts: arcContacts,
-              observedAt: ephemerisObservedAt,
-              arcId: primary?.arcId,
-              localDate: args.localDate,
-              timezone: args.timezone,
-            })
-          : ({
-              data: null,
-              status: "unavailable",
-              precision: "not_applicable",
-              missingInputs: ["natal_chart"],
-              limitations: [],
-            } satisfies LayerDataBuild<Extract<AnalysisData, { kind: "transit_arc" }>>);
-        const arcBuild = honestTransitArcBuild(rawArcBuild, natal.chart, samples, timeline);
-        const calculatedArc = wrapBuild({
-          analysisId: "ORB-TRN-001",
-          inputHash: arcHash,
-          observedAt: ephemerisObservedAt,
-          validUntil: todayValidUntil,
-          build: arcBuild,
-          providerVersion:
-            timeline?.status === "verified"
-              ? NATAL_EPHEMERIS_PROVIDER_VERSION
-              : providerVersion,
-          forceStatus: skyIsStale && arcBuild.data ? "stale" : undefined,
-          extraLimitations: staleLimitation,
-        }) as TransitArcResult;
-        const timelineFailed = timeline !== null && timeline.status !== "verified" && timeline.status !== "not_active";
-        const staleCandidate =
-          skyIsStale || timelineFailed || arcBuild.missingInputs.includes("full_day_natal_samples")
-            ? (staleProviderFallback(
-                state.snapshots,
-                "ORB-TRN-001",
-                arcHash,
-                observedAt,
-              ) as TransitArcResult | null)
-            : null;
-        const cachedFallback =
-          staleCandidate && arcResultMatchesPrimary(staleCandidate, primary)
-            ? staleCandidate
-            : null;
-        transitArc = cachedFallback ?? calculatedArc;
-      }
-      const moonBuild = buildCurrentMoonLayerData({ chart: natal.chart, ephemeris });
-      moonOnChart = wrapBuild({
-        analysisId: "ORB-LUN-003",
-        inputHash: resultHash(natal.baseHash, "ORB-LUN-003", dailyScope),
-        observedAt: ephemerisObservedAt,
-        validUntil: todayValidUntil,
-        build: moonBuild,
-        providerVersion,
-        forceStatus: skyIsStale && moonBuild.data ? "stale" : undefined,
+            ? NATAL_EPHEMERIS_PROVIDER_VERSION
+            : providerVersion,
+        forceStatus: skyIsStale && arcBuild.data ? "stale" : undefined,
         extraLimitations: staleLimitation,
-      }) as MoonOnChartResult;
-
-      const cumpleHash = cumplelunaInputHash(natal.baseHash, dailyScope);
-      const cachedCumple = latestMatching(state.snapshots, "ORB-LUN-002", cumpleHash, observedAt);
-      if (cachedCumple && cachedCumple.status !== "stale") {
-        cumpleluna = cachedCumple as CumplelunaResult;
-      } else if (skyIsStale) {
-        cumpleluna =
-          cachedCumple?.data
-            ? (cachedCumple as CumplelunaResult)
-            : (unavailableResult("ORB-LUN-002", cumpleHash, observedAt, ["fresh_ephemeris"]) as CumplelunaResult);
-      } else {
-        const cumpleBuild = await cumplelunaBuild({
-          birthData: state.birthData,
-          chart: natal.chart,
-          natalSamples: samples,
-          ephemeris,
-          observedAt,
-          localDate: args.localDate,
-          timezone: args.timezone,
-        });
-        const calculated = wrapBuild({
-          analysisId: "ORB-LUN-002",
-          inputHash: cumpleHash,
-          observedAt,
-          validUntil: cumplelunaSnapshotValidUntil({
-            skyValidUntil: ephemerisValidUntil,
-            nextExactAtRange: cumpleBuild.data?.nextExactAtRange,
-            nextExactAt: cumpleBuild.data?.nextExactAt,
-          }),
-          build: cumpleBuild,
-          providerVersion,
-        }) as CumplelunaResult;
-        const rootRefreshFailed = calculated.missingInputs.some((missingInput) =>
-          ["cumpleluna_roots", "cumpleluna_root_ranges"].includes(missingInput),
-        );
-        const cachedFallback = rootRefreshFailed
+      }) as TransitArcResult;
+      const timelineFailed = timeline !== null && timeline.status !== "verified" && timeline.status !== "not_active";
+      const staleCandidate =
+        skyIsStale || timelineFailed || arcBuild.missingInputs.includes("full_day_natal_samples")
           ? (staleProviderFallback(
               state.snapshots,
-              "ORB-LUN-002",
-              cumpleHash,
+              "ORB-TRN-001",
+              arcHash,
               observedAt,
-            ) as CumplelunaResult | null)
+            ) as TransitArcResult | null)
           : null;
-        // Un rango que cruza el ciclo es una omisión deliberada, no un fallo
-        // del proveedor. En ese caso nunca se rescata una fecha cacheada que
-        // ya pertenece al ciclo anterior.
-        cumpleluna = cachedFallback ?? calculated;
-      }
-    } else {
-      const rankingHash = resultHash(natal.baseHash, "ORB-TRN-002", dailyScope);
-      const arcHash = resultHash(natal.baseHash, "ORB-TRN-001", dailyScope);
-      const moonHash = resultHash(natal.baseHash, "ORB-LUN-003", dailyScope);
-      const cumpleHash = cumplelunaInputHash(natal.baseHash, dailyScope);
-      transitRanking = (
-        staleProviderFallback(state.snapshots, "ORB-TRN-002", rankingHash, observedAt) ??
-        unavailableResult("ORB-TRN-002", rankingHash, observedAt, ["current_ephemeris"], {
-          status: "error",
-          validUntil: observedAt + HOUR_MS,
-        })
-      ) as TransitRankingResult;
-      transitArc = (
-        staleProviderFallback(state.snapshots, "ORB-TRN-001", arcHash, observedAt) ??
-        unavailableResult("ORB-TRN-001", arcHash, observedAt, ["current_ephemeris"], {
-          status: "error",
-          validUntil: observedAt + HOUR_MS,
-        })
-      ) as TransitArcResult;
-      moonOnChart = (
-        staleProviderFallback(state.snapshots, "ORB-LUN-003", moonHash, observedAt) ??
-        unavailableResult("ORB-LUN-003", moonHash, observedAt, ["current_ephemeris"], {
-          status: "error",
-          validUntil: observedAt + HOUR_MS,
-        })
-      ) as MoonOnChartResult;
-      cumpleluna = (
-        latestMatching(state.snapshots, "ORB-LUN-002", cumpleHash, observedAt) ??
-        unavailableResult("ORB-LUN-002", cumpleHash, observedAt, ["current_ephemeris"], {
-          status: "error",
-          validUntil: observedAt + HOUR_MS,
-        })
-      ) as CumplelunaResult;
+      const cachedFallback =
+        staleCandidate && arcResultMatchesPrimary(staleCandidate, primary)
+          ? staleCandidate
+          : null;
+      transitArc = cachedFallback ?? calculatedArc;
     }
-
-    // Un solo punto de coherencia para las dos ramas, antes de que el arco entre
-    // en el mandala y en lo que se persiste. Con efeméride el arco se recalcula
-    // con el ranking de esta corrida, pero cualquiera de los dos sobres puede
-    // venir de un `stale` anterior; sin efeméride los dos se rescatan por
-    // separado. Si el par no corresponde, el arco incoherente se descarta —y la
-    // fila guardada queda reemplazada por el sobre honesto, así que el defecto
-    // no sobrevive a este refresh—.
-    transitArc = coherentTransitArc({
-      ranking: transitRanking,
-      arc: transitArc,
-      observedAt,
-      // Sin cielo no se pudo calcular nada: ese es el hecho, y lleva su fecha de
-      // reintento. Con cielo, el hecho es que no hay arco correspondiente.
-      status: ephemeris ? "unavailable" : "error",
-      validUntil: observedAt + HOUR_MS,
-      missingInputs: ephemeris ? [] : ["current_ephemeris"],
-    });
-
-    const mandalaData = buildTemporalMandalaData({
-      observedAt,
-      progressedLunation: progressedLunation.data,
-      annualProfection: annualProfection.data,
-      cumpleluna: cumpleluna.data,
-      transitArc: transitArc.data,
-      sourceQuality: {
-        progressedLunation: {
-          status: progressedLunation.status,
-          precision: progressedLunation.precision,
-        },
-        annualProfection: {
-          status: annualProfection.status,
-          precision: annualProfection.precision,
-        },
-        cumpleluna: {
-          status: cumpleluna.status,
-          precision: cumpleluna.precision,
-        },
-        transitArc: {
-          status: transitArc.status,
-          precision: transitArc.precision,
-        },
-      },
-    });
-    const mandalaMissing = mandalaData.rings.filter((ring) => !ring.available).map((ring) => ring.key);
-    const mandalaSources: AnalysisResult[] = [
-      progressedLunation,
-      annualProfection,
-      cumpleluna,
-      transitArc,
-    ];
-    const usedSources = mandalaSources.filter((source) => source.data !== null);
-    const anyUsedSourceStale = usedSources.some((source) => source.status === "stale");
-    const anySourceEstimated = usedSources.some((source) => source.precision === "estimated");
-    const anySourceRange = usedSources.some((source) => source.precision === "range");
-    const anySourcePartial = mandalaSources.some(
-      (source) =>
-        source.status === "partial" ||
-        source.precision === "estimated" ||
-        source.precision === "range",
-    );
-    const mandalaMissingInputs = Array.from(
-      new Set([
-        ...mandalaMissing,
-        ...mandalaSources.flatMap((source) => source.missingInputs),
-      ]),
-    );
-    const mandalaLimitations = Array.from(
-      new Set([
-        ...mandalaSources.flatMap((source) => source.limitations),
-        ...(mandalaMissing.length > 0
-          ? ["Los anillos sin datos permanecen visibles como no disponibles."]
-          : []),
-      ]),
-    );
-    const temporalMandalaWrapped = wrapBuild({
-      analysisId: "ORB-CYC-007",
-      inputHash: temporalMandalaInputHash(natal.baseHash, dailyScope, mandalaSources),
-      observedAt,
-      validUntil: temporalMandalaValidUntil(observedAt, mandalaSources),
-      build: {
-        data: mandalaData,
-        status:
-          anyUsedSourceStale || anySourcePartial || mandalaMissing.length > 0
-            ? "partial"
-            : "ready",
-        precision: anySourceRange
-          ? "range"
-          : anySourceEstimated
-            ? "estimated"
-            : usedSources.length > 0
-              ? "exact"
-              : "not_applicable",
-        missingInputs: mandalaMissingInputs,
-        limitations: mandalaLimitations,
-      },
+    const moonBuild = buildCurrentMoonLayerData({ chart: natal.chart, ephemeris });
+    moonOnChart = wrapBuild({
+      analysisId: "ORB-LUN-003",
+      inputHash: resultHash(natal.baseHash, "ORB-LUN-003", dailyScope),
+      observedAt: ephemerisObservedAt,
+      validUntil: todayValidUntil,
+      build: moonBuild,
       providerVersion,
-      forceStatus: anyUsedSourceStale ? "stale" : undefined,
-    }) as TemporalMandalaResult;
-    const temporalMandala = {
-      ...temporalMandalaWrapped,
-      missingInputs: Array.from(new Set(temporalMandalaWrapped.missingInputs)),
-      limitations: Array.from(new Set(temporalMandalaWrapped.limitations)),
-    } as TemporalMandalaResult;
+      forceStatus: skyIsStale && moonBuild.data ? "stale" : undefined,
+      extraLimitations: staleLimitation,
+    }) as MoonOnChartResult;
 
-    const results: AnalysisResult[] = [
-      natal.bundle.lunarType,
-      natal.bundle.elementMap,
-      natal.bundle.relationshipPattern,
-      progressedLunation,
-      annualProfection,
-      transitRanking,
-      transitArc,
-      moonOnChart,
-      cumpleluna,
-      temporalMandala,
-    ];
-    await ctx.runMutation(internalApi.layers.persistRefresh, {
-      userId: state.userId,
-      birthDataId: state.birthDataId,
-      natalChartId: state.natalChartId,
-      expectedInputFingerprint,
-      localDate: args.localDate,
-      timezone: args.timezone,
-      results,
-      sky: skyToPersist,
-      natalEphemeris: natalEphemerisToPersist,
+    const cumpleHash = cumplelunaInputHash(natal.baseHash, dailyScope);
+    const cachedCumple = latestMatching(state.snapshots, "ORB-LUN-002", cumpleHash, observedAt);
+    if (cachedCumple && cachedCumple.status !== "stale") {
+      cumpleluna = cachedCumple as CumplelunaResult;
+    } else if (skyIsStale) {
+      cumpleluna =
+        cachedCumple?.data
+          ? (cachedCumple as CumplelunaResult)
+          : (unavailableResult("ORB-LUN-002", cumpleHash, observedAt, ["fresh_ephemeris"]) as CumplelunaResult);
+    } else {
+      const cumpleBuild = await cumplelunaBuild({
+        birthData: state.birthData,
+        chart: natal.chart,
+        natalSamples: samples,
+        ephemeris,
+        observedAt,
+        localDate: args.localDate,
+        timezone: args.timezone,
+      });
+      const calculated = wrapBuild({
+        analysisId: "ORB-LUN-002",
+        inputHash: cumpleHash,
+        observedAt,
+        validUntil: cumplelunaSnapshotValidUntil({
+          skyValidUntil: ephemerisValidUntil,
+          nextExactAtRange: cumpleBuild.data?.nextExactAtRange,
+          nextExactAt: cumpleBuild.data?.nextExactAt,
+        }),
+        build: cumpleBuild,
+        providerVersion,
+      }) as CumplelunaResult;
+      const rootRefreshFailed = calculated.missingInputs.some((missingInput) =>
+        ["cumpleluna_roots", "cumpleluna_root_ranges"].includes(missingInput),
+      );
+      const cachedFallback = rootRefreshFailed
+        ? (staleProviderFallback(
+            state.snapshots,
+            "ORB-LUN-002",
+            cumpleHash,
+            observedAt,
+          ) as CumplelunaResult | null)
+        : null;
+      // Un rango que cruza el ciclo es una omisión deliberada, no un fallo
+      // del proveedor. En ese caso nunca se rescata una fecha cacheada que
+      // ya pertenece al ciclo anterior.
+      cumpleluna = cachedFallback ?? calculated;
+    }
+  } else {
+    const rankingHash = resultHash(natal.baseHash, "ORB-TRN-002", dailyScope);
+    const arcHash = resultHash(natal.baseHash, "ORB-TRN-001", dailyScope);
+    const moonHash = resultHash(natal.baseHash, "ORB-LUN-003", dailyScope);
+    const cumpleHash = cumplelunaInputHash(natal.baseHash, dailyScope);
+    transitRanking = (
+      staleProviderFallback(state.snapshots, "ORB-TRN-002", rankingHash, observedAt) ??
+      unavailableResult("ORB-TRN-002", rankingHash, observedAt, ["current_ephemeris"], {
+        status: "error",
+        validUntil: observedAt + HOUR_MS,
+      })
+    ) as TransitRankingResult;
+    transitArc = (
+      staleProviderFallback(state.snapshots, "ORB-TRN-001", arcHash, observedAt) ??
+      unavailableResult("ORB-TRN-001", arcHash, observedAt, ["current_ephemeris"], {
+        status: "error",
+        validUntil: observedAt + HOUR_MS,
+      })
+    ) as TransitArcResult;
+    moonOnChart = (
+      staleProviderFallback(state.snapshots, "ORB-LUN-003", moonHash, observedAt) ??
+      unavailableResult("ORB-LUN-003", moonHash, observedAt, ["current_ephemeris"], {
+        status: "error",
+        validUntil: observedAt + HOUR_MS,
+      })
+    ) as MoonOnChartResult;
+    cumpleluna = (
+      latestMatching(state.snapshots, "ORB-LUN-002", cumpleHash, observedAt) ??
+      unavailableResult("ORB-LUN-002", cumpleHash, observedAt, ["current_ephemeris"], {
+        status: "error",
+        validUntil: observedAt + HOUR_MS,
+      })
+    ) as CumplelunaResult;
+  }
+
+  // Un solo punto de coherencia para las dos ramas, antes de que el arco entre
+  // en el mandala y en lo que se persiste. Con efeméride el arco se recalcula
+  // con el ranking de esta corrida, pero cualquiera de los dos sobres puede
+  // venir de un `stale` anterior; sin efeméride los dos se rescatan por
+  // separado. Si el par no corresponde, el arco incoherente se descarta —y la
+  // fila guardada queda reemplazada por el sobre honesto, así que el defecto
+  // no sobrevive a este refresh—.
+  transitArc = coherentTransitArc({
+    ranking: transitRanking,
+    arc: transitArc,
+    observedAt,
+    // Sin cielo no se pudo calcular nada: ese es el hecho, y lleva su fecha de
+    // reintento. Con cielo, el hecho es que no hay arco correspondiente.
+    status: ephemeris ? "unavailable" : "error",
+    validUntil: observedAt + HOUR_MS,
+    missingInputs: ephemeris ? [] : ["current_ephemeris"],
+  });
+
+  const mandalaData = buildTemporalMandalaData({
+    observedAt,
+    progressedLunation: progressedLunation.data,
+    annualProfection: annualProfection.data,
+    cumpleluna: cumpleluna.data,
+    transitArc: transitArc.data,
+    sourceQuality: {
+      progressedLunation: {
+        status: progressedLunation.status,
+        precision: progressedLunation.precision,
+      },
+      annualProfection: {
+        status: annualProfection.status,
+        precision: annualProfection.precision,
+      },
+      cumpleluna: {
+        status: cumpleluna.status,
+        precision: cumpleluna.precision,
+      },
+      transitArc: {
+        status: transitArc.status,
+        precision: transitArc.precision,
+      },
+    },
+  });
+  const mandalaMissing = mandalaData.rings.filter((ring) => !ring.available).map((ring) => ring.key);
+  const mandalaSources: AnalysisResult[] = [
+    progressedLunation,
+    annualProfection,
+    cumpleluna,
+    transitArc,
+  ];
+  const usedSources = mandalaSources.filter((source) => source.data !== null);
+  const anyUsedSourceStale = usedSources.some((source) => source.status === "stale");
+  const anySourceEstimated = usedSources.some((source) => source.precision === "estimated");
+  const anySourceRange = usedSources.some((source) => source.precision === "range");
+  const anySourcePartial = mandalaSources.some(
+    (source) =>
+      source.status === "partial" ||
+      source.precision === "estimated" ||
+      source.precision === "range",
+  );
+  const mandalaMissingInputs = Array.from(
+    new Set([
+      ...mandalaMissing,
+      ...mandalaSources.flatMap((source) => source.missingInputs),
+    ]),
+  );
+  const mandalaLimitations = Array.from(
+    new Set([
+      ...mandalaSources.flatMap((source) => source.limitations),
+      ...(mandalaMissing.length > 0
+        ? ["Los anillos sin datos permanecen visibles como no disponibles."]
+        : []),
+    ]),
+  );
+  const temporalMandalaWrapped = wrapBuild({
+    analysisId: "ORB-CYC-007",
+    inputHash: temporalMandalaInputHash(natal.baseHash, dailyScope, mandalaSources),
+    observedAt,
+    validUntil: temporalMandalaValidUntil(observedAt, mandalaSources),
+    build: {
+      data: mandalaData,
+      status:
+        anyUsedSourceStale || anySourcePartial || mandalaMissing.length > 0
+          ? "partial"
+          : "ready",
+      precision: anySourceRange
+        ? "range"
+        : anySourceEstimated
+          ? "estimated"
+          : usedSources.length > 0
+            ? "exact"
+            : "not_applicable",
+      missingInputs: mandalaMissingInputs,
+      limitations: mandalaLimitations,
+    },
+    providerVersion,
+    forceStatus: anyUsedSourceStale ? "stale" : undefined,
+  }) as TemporalMandalaResult;
+  const temporalMandala = {
+    ...temporalMandalaWrapped,
+    missingInputs: Array.from(new Set(temporalMandalaWrapped.missingInputs)),
+    limitations: Array.from(new Set(temporalMandalaWrapped.limitations)),
+  } as TemporalMandalaResult;
+
+  const results: AnalysisResult[] = [
+    natal.bundle.lunarType,
+    natal.bundle.elementMap,
+    natal.bundle.relationshipPattern,
+    progressedLunation,
+    annualProfection,
+    transitRanking,
+    transitArc,
+    moonOnChart,
+    cumpleluna,
+    temporalMandala,
+  ];
+  await ctx.runMutation(internalApi.layers.persistRefresh, {
+    userId: state.userId,
+    birthDataId: state.birthDataId,
+    natalChartId: state.natalChartId,
+    expectedInputFingerprint,
+    localDate: args.localDate,
+    timezone: args.timezone,
+    results,
+    sky: skyToPersist,
+    natalEphemeris: natalEphemerisToPersist,
+  });
+  return {
+    natal: natal.bundle,
+    today: { transitRanking, transitArc, moonOnChart, cumpleluna },
+    moment: { progressedLunation, annualProfection, temporalMandala },
+  };
+}
+
+export const refreshForDate = action({
+  args: {
+    localDate: v.string(),
+    timezone: v.string(),
+  },
+  returns: layerBundleValidator,
+  handler: async (ctx, args): Promise<LayerBundle> => refreshLayerBundleForDate(ctx, args),
+});
+
+/**
+ * `layers.refreshForDate` con la regla Free/Plus (CORE-1043). El recálculo es
+ * el mismo —Hoy necesita el cielo del día para cualquier plan, y el cache queda
+ * listo si la cuenta pasa a Plus—; lo que cambia es lo que la action DEVUELVE:
+ * el mismo `{ access, bundle }` de `getForDateWithAccess`, con el mismo corte.
+ * El plan se lee antes de calcular: una cuenta sin fila `users` falla acá igual
+ * que en `refreshForDate`.
+ */
+export const refreshForDateWithAccess = action({
+  args: {
+    localDate: v.string(),
+    timezone: v.string(),
+  },
+  returns: layerBundleWithAccessValidator,
+  handler: async (ctx, args): Promise<LayerBundleWithAccess> => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Authentication required");
+    const plan = await ctx.runQuery(internalApi.layers.getPlanAccess, {
+      tokenIdentifier: identity.tokenIdentifier,
     });
-    return {
-      natal: natal.bundle,
-      today: { transitRanking, transitArc, moonOnChart, cumpleluna },
-      moment: { progressedLunation, annualProfection, temporalMandala },
-    };
+    return layerBundleForPlan(await refreshLayerBundleForDate(ctx, args), plan.isPro);
   },
 });
