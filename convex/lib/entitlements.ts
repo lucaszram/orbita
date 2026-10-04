@@ -58,7 +58,7 @@ export type SubscriptionRow = {
  * Contexto de resolución. Lo que no se puede demostrar, no concede.
  *
  * Los dos flags los calcula `convex/lib/subscriptionAccess.ts` a partir del
- * entorno declarado del deployment y de la allowlist de review. Los DOS tienen
+ * entorno declarado del deployment. Los DOS tienen
  * default `false` para que cualquier consumidor que los olvide falle CERRADO.
  *
  * `productionAllowed` no existía, y ésa era la puerta: un consumidor que
@@ -87,8 +87,8 @@ export function isRowActive(
   // Las TRES formas fallan cerrado y hay que autorizarlas explícitamente:
   //
   // - sin `environment` (fila legada): no se puede demostrar de qué tienda vino;
-  // - `sandbox`: sólo con `sandboxAllowed` (development, o una cuenta de review
-  //   allowlisted contra producción);
+  // - `sandbox`: sólo con `sandboxAllowed` (development y producción: TestFlight
+  //   y App Review compran en Sandbox con el binario productivo);
   // - `production`: sólo con `productionAllowed`. Sin esto, un deployment de
   //   development —o uno que no declara su entorno— concedía Órbita Plus desde
   //   una fila productiva, y cualquier consumidor que llamara sin contexto

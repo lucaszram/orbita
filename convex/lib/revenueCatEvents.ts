@@ -151,48 +151,34 @@ export function revenueCatEnvironment(event: RevenueCatEvent): "sandbox" | "prod
 type RevenueCatEnvSource = Record<string, string | undefined>;
 
 /**
- * Cuentas de QA/App Review autorizadas a comprar en Sandbox contra producción.
- *
- * TestFlight y App Review usan el binario PRODUCTIVO pero sus compras salen de
- * Sandbox. Sin esta puerta, quien revisa la app compra, RevenueCat manda un
- * evento `SANDBOX`, producción lo descarta y la app se ve rota justo en la
- * revisión. La puerta es por identidad explícita: se abre para los Clerk id que
- * el secreto enumera y para nadie más.
- *
- * Se compara con distinción de mayúsculas, igual que el resto de la resolución
- * de identidad contra Clerk.
- */
-export function revenueCatSandboxReviewers(env: RevenueCatEnvSource = process.env): Set<string> {
-  return new Set(
-    (env.REVENUECAT_SANDBOX_REVIEW_USER_IDS ?? "")
-      .split(",")
-      .map((entry) => entry.trim())
-      .filter((entry) => entry.length > 0)
-  );
-}
-
-/**
  * ¿Este deployment puede consumir este recibo?
  *
- * Falla CERRADO en tres direcciones:
+ * Falla CERRADO donde no hay entorno que sostener y no distingue cuentas:
  *
  * - un deployment sin entorno declarado (`unknown`) no acepta nada; antes se
  *   asumía development y consumía Sandbox;
  * - development sólo acepta Sandbox;
- * - producción acepta Production siempre y Sandbox **sólo** para una cuenta de
- *   review allowlisted, nunca de forma global y nunca sin identidad resuelta.
+ * - producción acepta Production y Sandbox, de CUALQUIER cuenta.
+ *
+ * Por qué producción acepta Sandbox sin lista (CORE-1043): TestFlight y App
+ * Review usan el binario PRODUCTIVO pero sus compras salen de Sandbox, y un
+ * recibo Sandbox sólo lo puede generar TestFlight, App Review o un tester de
+ * Sandbox —nunca una compra de la tienda—. Es la práctica estándar de
+ * RevenueCat. La allowlist por Clerk id que había antes hacía que la cuenta de
+ * quien revisa se comportara distinto que el resto, y vaciarla después de la
+ * revisión le quitaba el acceso: exactamente el comportamiento distinto durante
+ * la revisión que la norma 5.6 de Apple prohíbe. La fila conserva su
+ * `environment: "sandbox"`, así que el origen del acceso sigue siendo auditable
+ * y nunca pisa la fila productiva de la misma cuenta.
  */
 export function isRevenueCatEnvironmentAllowed(
   eventEnvironment: "sandbox" | "production",
-  options: { env?: RevenueCatEnvSource; clerkUserId?: string } = {}
+  options: { env?: RevenueCatEnvSource } = {}
 ): boolean {
   const env = options.env ?? process.env;
   switch (resolveDeploymentEnvironment(env)) {
     case "production":
-      if (eventEnvironment === "production") return true;
-      return Boolean(
-        options.clerkUserId && revenueCatSandboxReviewers(env).has(options.clerkUserId)
-      );
+      return true;
     case "development":
       return eventEnvironment === "sandbox";
     default:

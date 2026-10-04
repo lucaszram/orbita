@@ -886,7 +886,7 @@ async function applyProjection(
     // nada sobre el acceso y no puede leerse como un sí.
     if (patch.entitlement === PRO_ENTITLEMENT) {
       if (!outcome.environment) return await auditar(eventId);
-      if (!isRevenueCatEnvironmentAllowed(outcome.environment, { clerkUserId })) {
+      if (!isRevenueCatEnvironmentAllowed(outcome.environment)) {
         return await auditar(eventId);
       }
 

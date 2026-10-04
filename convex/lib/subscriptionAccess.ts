@@ -7,7 +7,7 @@ import {
 import { isRevenueCatEnvironmentAllowed } from "./revenueCatEvents";
 
 /**
- * Contexto de resolución para UNA cuenta.
+ * Contexto de resolución del deployment.
  *
  * Se calcula acá, en un único lugar, para que todos los consumidores del
  * entitlement usen el mismo criterio en vez de repetirlo (o de olvidarlo, que
@@ -17,39 +17,31 @@ import { isRevenueCatEnvironmentAllowed } from "./revenueCatEvents";
  * el webhook, así que el corte es idéntico venga por donde venga:
  *
  * - `development` acepta Sandbox y **no** Production;
- * - `production` acepta Production siempre, y Sandbox sólo para las cuentas de
- *   QA/App Review allowlisted;
+ * - `production` acepta Production y Sandbox, de cualquier cuenta (CORE-1043:
+ *   sin allowlist de review, ver `isRevenueCatEnvironmentAllowed`);
  * - un deployment sin entorno declarado (`unknown`) no acepta **ninguna** fila.
  *
- * Sin `clerkUserId` no se puede evaluar la allowlist, pero el corte productivo
- * no depende de la identidad: se resuelve igual, y sandbox queda cerrado.
+ * El corte ya no depende de la identidad: es el mismo para todas las cuentas.
  */
 export function entitlementContextFor(
-  clerkUserId: string | undefined,
   env: Record<string, string | undefined> = process.env
 ): EntitlementContext {
   return {
-    sandboxAllowed: clerkUserId
-      ? isRevenueCatEnvironmentAllowed("sandbox", { env, clerkUserId })
-      : false,
-    productionAllowed: isRevenueCatEnvironmentAllowed("production", { env, clerkUserId })
+    sandboxAllowed: isRevenueCatEnvironmentAllowed("sandbox", { env }),
+    productionAllowed: isRevenueCatEnvironmentAllowed("production", { env })
   };
 }
 
 /**
- * Resolución canónica a partir de las filas de un usuario.
- *
- * El `clerkUserId` sale de las propias filas (está denormalizado en la tabla),
- * así que no hace falta una lectura extra ni pasarlo por parámetro en cada
- * consumidor.
+ * Resolución canónica a partir de las filas de un usuario, con el corte de
+ * entorno de ESTE deployment.
  */
 export function resolveRowsForUser(
   rows: SubscriptionRow[],
   now: number = Date.now(),
   env: Record<string, string | undefined> = process.env
 ): ResolvedEntitlement {
-  const clerkUserId = rows.find((row) => row.clerkUserId)?.clerkUserId;
-  return resolveEntitlement(rows, now, entitlementContextFor(clerkUserId, env));
+  return resolveEntitlement(rows, now, entitlementContextFor(env));
 }
 
 export async function isUserPro(

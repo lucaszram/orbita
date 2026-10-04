@@ -104,16 +104,19 @@ async function withEnv(vars: Record<string, string | undefined>, run: () => Prom
   }
 }
 
+// Producción ya no lee ninguna lista (CORE-1043). La variable vieja se deja
+// cargada a propósito con UNA cuenta: si alguien volviera a leerla, las
+// pruebas de abajo —que compran con otra— se pondrían rojas.
 const PROD_CON_REVIEW = {
   ORBITA_ENVIRONMENT: "production",
   REVENUECAT_SANDBOX_REVIEW_USER_IDS: "user_review"
 };
 
-describe("A1 — la allowlist autoriza a la identidad resuelta, no a un string cualquiera", () => {
-  it("un alias allowlisted NO habilita el sandbox de otra cuenta", async () => {
-    // El evento nombra a `user_review` (allowlisted, sin fila local) y a
-    // `user_common` (fila local real, NO allowlisted). Autorizar por "algún
-    // candidato coincide" le regalaba Plus a user_common en producción.
+describe("A1 — producción acepta Sandbox de cualquier cuenta, y la fila es de la identidad resuelta", () => {
+  it("una cuenta común compra en Sandbox y la fila queda a SU nombre, no al del alias", async () => {
+    // El evento nombra a `user_review` (sin fila local) y a `user_common` (fila
+    // local real). La compra es de la ÚNICA identidad local que el evento
+    // resuelve: queda Plus, marcada `sandbox`, a nombre de user_common.
     await withEnv(PROD_CON_REVIEW, async () => {
       const { ctx, rows } = harness({ users: [{ _id: "u_common", clerkUserId: "user_common" }] });
       await apply(ctx, {
@@ -127,11 +130,11 @@ describe("A1 — la allowlist autoriza a la identidad resuelta, no a un string c
         product_id: "orbita_monthly",
         expiration_at_ms: FUTURE
       });
-      assert.equal(rows.get("subscriptions")?.length, 0, "user_common no puede quedar Pro");
-      assert.equal(
-        rows.get("paymentEvents")?.[0]?.rawPayload?.outcome,
-        "ignored_environment_mismatch"
-      );
+      const filas = rows.get("subscriptions") ?? [];
+      assert.equal(filas.length, 1, "una sola fila: la de la cuenta que compró");
+      assert.equal(filas[0]?.clerkUserId, "user_common");
+      assert.equal(filas[0]?.entitlement, "orbita_pro");
+      assert.equal(filas[0]?.environment, "sandbox", "el origen Sandbox queda auditado en la fila");
     });
   });
 
@@ -153,7 +156,7 @@ describe("A1 — la allowlist autoriza a la identidad resuelta, no a un string c
     });
   });
 
-  it("la proyección REST tampoco autoriza por un id que no es el dueño de la fila", async () => {
+  it("la proyección REST concede el Sandbox de una cuenta común y lo marca `sandbox`", async () => {
     await withEnv(PROD_CON_REVIEW, async () => {
       const { ctx, rows } = harness({ users: [{ _id: "u_common", clerkUserId: "user_common" }] });
       await project(ctx, {
@@ -171,7 +174,10 @@ describe("A1 — la allowlist autoriza a la identidad resuelta, no a un string c
           }
         }
       });
-      assert.equal(rows.get("subscriptions")?.length, 0);
+      const filas = rows.get("subscriptions") ?? [];
+      assert.equal(filas.length, 1);
+      assert.equal(filas[0]?.clerkUserId, "user_common");
+      assert.equal(filas[0]?.environment, "sandbox");
     });
   });
 });
@@ -222,7 +228,7 @@ describe("A2 — sandbox y production no se pisan", () => {
     );
   });
 
-  it("al vaciar la allowlist, una fila sandbox persistida deja de conceder Plus", () => {
+  it("una fila sandbox sólo concede con el contexto que la autoriza, y producción lo da sin lista", () => {
     const sandboxRow: SubscriptionRow = {
       entitlement: "orbita_pro",
       provider: "revenuecat",
@@ -235,6 +241,18 @@ describe("A2 — sandbox y production no se pisan", () => {
     assert.equal(resolveEntitlement([sandboxRow], NOW, { sandboxAllowed: false }).isPro, false);
     // Sin contexto explícito se falla cerrado.
     assert.equal(isRowActive(sandboxRow, NOW), false);
+    // El contexto real de cada deployment: producción y development la
+    // conceden; uno sin entorno declarado, no. Ninguna lista participa, así
+    // que no hay nada que vaciar que le quite el acceso a quien revisó la app.
+    assert.equal(
+      resolveRowsForUser([sandboxRow], NOW, { ORBITA_ENVIRONMENT: "production" }).isPro,
+      true
+    );
+    assert.equal(
+      resolveRowsForUser([sandboxRow], NOW, { ORBITA_ENVIRONMENT: "development" }).isPro,
+      true
+    );
+    assert.equal(resolveRowsForUser([sandboxRow], NOW, {}).isPro, false);
   });
 
   it("una fila production no depende de la allowlist DE SANDBOX", () => {

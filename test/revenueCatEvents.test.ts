@@ -527,12 +527,12 @@ test("environment, timestamp y Authorization fallan cerrados", () => {
   assert.equal(revenueCatEnvironment({ environment: "SANDBOX" }), "sandbox");
   assert.equal(revenueCatEnvironment({ environment: "PRODUCTION" }), "production");
   assert.equal(revenueCatEnvironment({ environment: "UNKNOWN" }), undefined);
-  // El gate pasó a recibir opciones porque producción necesita saber QUIÉN
-  // compró: TestFlight y App Review generan Sandbox con el binario productivo.
+  // Producción consume los dos: TestFlight y App Review generan Sandbox con el
+  // binario productivo, y lo hacen desde cualquier cuenta (CORE-1043).
   const prod = { ORBITA_ENVIRONMENT: "production" };
   const dev = { CONVEX_DEPLOYMENT: "dev:test" };
   assert.equal(isRevenueCatEnvironmentAllowed("production", { env: prod }), true);
-  assert.equal(isRevenueCatEnvironmentAllowed("sandbox", { env: prod }), false);
+  assert.equal(isRevenueCatEnvironmentAllowed("sandbox", { env: prod }), true);
   assert.equal(isRevenueCatEnvironmentAllowed("sandbox", { env: dev }), true);
   assert.equal(isRevenueCatEnvironmentAllowed("production", { env: dev }), false);
   // Y un deployment sin entorno declarado no consume nada.
