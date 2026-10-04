@@ -1,7 +1,8 @@
 # App Store Launch Pack - Órbita
 
-> Documento histórico iniciado el 2026-07-10. Para el estado vigente usar
-> `docs/app-review-readiness.md`.
+> Documento histórico iniciado el 2026-07-10. Para el envío vigente usar
+> `docs/app-review-build-41.md`. El plan anual y el «sin cuenta demo» de este
+> archivo no están vigentes: el catálogo es sólo mensual y la app exige cuenta.
 
 Estado inicial: 2026-07-10.
 

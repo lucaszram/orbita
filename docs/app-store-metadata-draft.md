@@ -1,7 +1,7 @@
 # App Store Metadata Draft - Órbita
 
 > Borrador histórico iniciado el 2026-07-10. Para la metadata y los gates
-> vigentes usar `docs/app-review-readiness.md`.
+> vigentes usar `docs/app-review-build-41.md`.
 
 Estado: 2026-07-10.
 

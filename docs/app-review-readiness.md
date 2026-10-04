@@ -1,4 +1,10 @@
-# App Review — fuente de verdad
+# App Review — evidencia histórica del build 17
+
+> **No usar para un envío.** El envío vigente se prepara con
+> `docs/app-review-build-41.md`. La descripción, las keywords, las notas de
+> revisión y la respuesta de privacidad de este archivo describen una versión
+> gratuita, con carta diaria, Diario y `tarot`, que no es la app que se envía:
+> cargarlas en App Store Connect contradice al binario.
 
 > **Alcance histórico del build 17 gratuito (2026-07-18).** Desde el
 > 2026-08-18, las frases de este documento que excluyen Plus, RevenueCat o IAP no
